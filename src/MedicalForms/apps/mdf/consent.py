@@ -69,7 +69,7 @@ _T = re.compile(r'<w:t(?: [^>]*)?>(.*?)</w:t>', re.S)
 _BOLD = re.compile(r'<w:b/>|<w:b w:val="(?:1|true|on)"/>')
 START_MARK = 'ასევე ჩემთვის ცნობილია'      # the last paragraph of page 1
 # sentences that some older sheets have near the complications: not complications
-NOT_COMPLICATIONS = ('პაციენტს აეხსნა ფინანსური', 'პაციენტს პასუხი გაეცა')
+NOT_COMPLICATIONS = ('აეხსნა ფინანსური', 'პასუხი გაეცა ყველა')
 END_MARK = 'მკურნალი ექიმი'                  # the signatures start
 
 
