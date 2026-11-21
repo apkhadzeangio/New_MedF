@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Medicine, NivForm, PrescriptionTemplate, StaffProfile
+from .models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
 
 admin.site.site_header = 'Medical Forms - ადმინისტრირება'
 admin.site.site_title = 'Medical Forms'
@@ -48,3 +48,12 @@ class StaffProfileAdmin(admin.ModelAdmin):
         if obj.photo:
             return format_html('<img src="{}" style="width:40px;height:40px;border-radius:50%;object-fit:cover">', obj.photo.url)
         return obj.initial
+
+
+@admin.register(DutyNote)
+class DutyNoteAdmin(admin.ModelAdmin):
+    list_display = ['duty_date', 'patient', 'created_at', 'created_by']
+    list_filter = ['duty_date']
+    search_fields = ('patient', 'body')
+    date_hierarchy = 'duty_date'
+    readonly_fields = ('duty_date', 'created_at', 'updated_at', 'created_by', 'updated_by')

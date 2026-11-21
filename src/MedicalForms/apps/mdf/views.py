@@ -560,7 +560,7 @@ class TemplateFromAnalysisView(LoginRequiredMixin, generic.View):
 # --------------------------------------------------------------------------
 
 BACKUP_MODELS = ['mdf.medicine', 'mdf.note', 'mdf.nivform', 'mdf.prescriptiontemplate',
-                 'mdf.staffprofile', 'auth.user']
+                 'mdf.staffprofile', 'mdf.dutynote', 'auth.user']
 
 
 def write_backup(stream):

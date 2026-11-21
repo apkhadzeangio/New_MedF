@@ -1,0 +1,112 @@
+{% load static mdf_tags %}<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>მორიგე ექიმის ჩანაწერი — {{ day.short }}{% if notes|length == 1 and notes.0.patient %} — {{ notes.0.patient }}{% endif %}</title>
+{# theme.css only for the bundled Noto Sans Georgian font #}
+<link rel="stylesheet" href="{% static 'css/theme.css' %}?v=5">
+<style>
+@page { size: A4 portrait; margin: 16mm 18mm 16mm 18mm; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+    font-family: 'Noto Sans Georgian', 'Sylfaen', sans-serif;
+    color: #111;
+    background: #e9ecef;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.sheet {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 12mm auto;
+    padding: 16mm 18mm;
+    background: #fff;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .15);
+}
+.note + .note { break-before: page; page-break-before: always; }
+.head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8mm;
+    padding-bottom: 3mm; border-bottom: 0.4mm solid #1f2a44; margin-bottom: 6mm;
+}
+.head img { height: 15mm; width: auto; display: block; }
+.head .t { text-align: right; }
+.head h1 { margin: 0; font-size: 15pt; font-weight: 700; letter-spacing: .01em; }
+.head .d { font-size: 10.5pt; margin-top: 1mm; color: #333; }
+.head .d b { color: #111; }
+.patient {
+    display: flex; align-items: flex-end; gap: 2.5mm; margin-bottom: 6mm; font-size: 10.5pt; color: #333;
+}
+.patient .v {
+    flex: 1 1 auto; border-bottom: 0.25mm solid #111; padding: 0 1.5mm 0.6mm;
+    font-size: 12pt; font-weight: 600; color: #111; min-height: 6mm; overflow-wrap: anywhere;
+}
+.body {
+    font-size: 11.5pt; line-height: 1.6; overflow-wrap: anywhere; white-space: pre-wrap;
+    orphans: 3; widows: 3;
+}
+.body p, .body div { margin: 0 0 2.2mm; }
+.body ul, .body ol { margin: 0 0 2.2mm; padding-left: 7mm; }
+.body li { margin-bottom: 1mm; }
+.body:empty::after { content: "—"; color: #777; }
+.foot {
+    margin-top: 10mm; display: flex; justify-content: space-between; align-items: flex-end; gap: 10mm;
+    font-size: 10pt; color: #333; break-inside: avoid; page-break-inside: avoid;
+}
+.foot .sign { display: flex; align-items: flex-end; gap: 2mm; flex: 0 1 85mm; }
+.foot .sign span.l { flex: 1 1 auto; border-bottom: 0.25mm solid #111; min-height: 6mm; padding: 0 1.5mm 0.6mm; font-weight: 600; color: #111; }
+.foot .meta { font-size: 9pt; color: #555; text-align: right; }
+
+.ptools {
+    max-width: 210mm; margin: 12mm auto 0; display: flex; gap: 8px; font-family: system-ui, sans-serif;
+}
+.ptools button, .ptools a {
+    font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 6px; border: 1px solid #0d6efd;
+    background: #0d6efd; color: #fff; cursor: pointer; text-decoration: none;
+}
+.ptools a { background: #fff; color: #0d6efd; }
+
+@media print {
+    body { background: #fff; }
+    .ptools { display: none; }
+    /* the page margins come from @page; long text flows onto the next pages */
+    .sheet { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+}
+</style>
+</head>
+<body>
+<div class="ptools">
+    <button type="button" onclick="window.print()">🖨 ბეჭდვა</button>
+    <a href="javascript:window.close()">დახურვა</a>
+</div>
+
+<div class="sheet">
+{% for note in notes %}
+    <section class="note">
+        <div class="head">
+            <img src="{% static 'img/logo.jpg' %}" alt="">
+            <div class="t">
+                <h1>მორიგე ექიმის ჩანაწერი</h1>
+                <div class="d">მორიგეობა: <b>{{ day.short }}</b>, {{ day.weekday }}</div>
+            </div>
+        </div>
+        {% if note.patient %}
+        <div class="patient"><span>პაციენტი:</span><span class="v">{{ note.patient }}</span></div>
+        {% endif %}
+        <div class="body">{{ note.body|duty_html }}</div>
+        <div class="foot">
+            <div class="sign"><span>ექიმი:</span><span class="l">{{ note.author_name }}</span></div>
+            <div class="meta">ჩანაწერი შეიქმნა {{ note.created_at|date:"d.m.Y H:i" }}{% if note.updated_at|date:"YmdHi" != note.created_at|date:"YmdHi" %}<br>ბოლოს შეიცვალა {{ note.updated_at|date:"d.m.Y H:i" }}{% endif %}</div>
+        </div>
+    </section>
+{% endfor %}
+</div>
+
+<script>
+// open the print dialog as soon as the fonts are ready
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () {
+    setTimeout(function () { window.print(); }, 150);
+});
+</script>
+</body>
+</html>

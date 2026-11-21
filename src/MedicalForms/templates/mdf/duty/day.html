@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block title %}მორიგეობა {{ day.short }}{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <a href="{% url 'duty-index' %}" class="small">← ყველა მორიგეობა</a>
+    <div class="page-head">
+        <h1>მორიგეობა {{ day.short }} <span class="count">· {{ day.weekday }}</span>{% if is_current %} <span class="duty-badge">მიმდინარე</span>{% endif %}</h1>
+        {% if notes %}
+        <a class="x-btn js-print-page" href="{% url 'duty-day-print' day.iso %}" target="_blank">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>ყველას ბეჭდვა ({{ notes|length }})</a>
+        {% endif %}
+        <a class="x-btn primary" href="{% url 'duty-new' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>ახალი ჩანაწერი</a>
+    </div>
+    {% if not is_current %}
+        <p class="lead-muted">ახალი ჩანაწერი ავტომატურად მიეკუთვნება მიმდინარე მორიგეობას — {{ current.short }}.</p>
+    {% endif %}
+
+    {% for note in notes %}
+    <article class="x-card duty-note">
+        <div class="duty-note-head">
+            <a class="duty-note-title" href="{% url 'duty-note' note.pk %}">{{ note.patient|default:"უსათაურო ჩანაწერი" }}</a>
+            <span class="duty-note-meta">
+                შეიქმნა {{ note.created_at|date:"d.m.Y H:i" }}{% if note.created_by %} · {{ note.created_by.profile.display_name|default:note.created_by.username }}{% endif %}
+                {% if note.updated_at|date:"YmdHi" != note.created_at|date:"YmdHi" %} · შეცვალა {{ note.updated_at|date:"d.m H:i" }}{% endif %}
+            </span>
+        </div>
+        {% if note.preview %}<p class="duty-note-preview">{{ note.preview|linebreaksbr }}</p>{% endif %}
+        <div class="d-flex gap-2 flex-wrap">
+            <a class="x-btn sm" href="{% url 'duty-note' note.pk %}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>გახსნა / რედაქტირება</a>
+            <a class="x-btn sm js-print-page" href="{% url 'duty-note-print' note.pk %}" target="_blank">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>ბეჭდვა</a>
+        </div>
+    </article>
+    {% empty %}
+    <div class="x-card text-muted">ამ თარიღზე ჩანაწერი არ არის.</div>
+    {% endfor %}
+
+    <nav class="d-flex justify-content-between gap-2" aria-label="მორიგეობები">
+        {% if prev_day %}<a class="x-btn" href="{% url 'duty-day' prev_day.iso %}">← {{ prev_day.short }}</a>{% else %}<span></span>{% endif %}
+        {% if next_day %}<a class="x-btn" href="{% url 'duty-day' next_day.iso %}">{{ next_day.short }} →</a>{% endif %}
+    </nav>
+</div>
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+
+{% block title %}მორიგე ექიმის ჩანაწერი{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="page-head">
+        <h1>მორიგე ექიმის ჩანაწერი</h1>
+        <a class="x-btn primary" href="{% url 'duty-new' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>ახალი ჩანაწერი</a>
+    </div>
+
+    <a class="duty-now" href="{% url 'duty-day' current.iso %}">
+        <span class="duty-now-label">მიმდინარე მორიგეობა</span>
+        <span class="duty-now-date">{{ current.short }} <span>{{ current.weekday }}</span></span>
+        <span class="duty-now-count">{% if current_count %}{{ current_count }} ჩანაწერი{% else %}ჯერ ჩანაწერი არ არის{% endif %}</span>
+        <span class="duty-now-hint">17:00-დან ახალი ჩანაწერები მომდევნო დღის მორიგეობას ეკუთვნის</span>
+    </a>
+
+    <div class="duty-tools">
+        <form method="get" class="duty-search" role="search">
+            <label class="search-box" for="duty-date" style="height: 48px">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+                <span class="visually-hidden">თარიღით ძებნა</span>
+                <input type="date" id="duty-date" name="date" style="font-size: 16px">
+            </label>
+            <button class="x-btn">გახსნა</button>
+        </form>
+        <form method="get" class="duty-search" role="search">
+            <label class="search-box" for="duty-q" style="height: 48px">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5A6478" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <span class="visually-hidden">ძებნა პაციენტით ან ტექსტით</span>
+                <input type="search" id="duty-q" name="q" value="{{ q }}" placeholder="ძებნა პაციენტით ან ტექსტით…" style="font-size: 16px">
+            </label>
+        </form>
+        <nav class="seg" aria-label="დალაგება" style="min-width: 260px">
+            <a href="?order=new" class="{% if order != 'old' %}on{% endif %}">ახლიდან ძველისკენ</a>
+            <a href="?order=old" class="{% if order == 'old' %}on{% endif %}">ძველიდან ახლისკენ</a>
+        </nav>
+    </div>
+
+    {% if q %}
+        <section class="x-card">
+            <h2>ძებნის შედეგი: „{{ q }}“ <span class="text-muted fw-normal">({{ found|length }})</span></h2>
+            {% for note in found %}
+                <a class="duty-hit" href="{% url 'duty-note' note.pk %}">
+                    <span class="duty-hit-date">{{ note.duty_date|date:"d.m.Y" }}</span>
+                    <span class="duty-hit-main"><b>{{ note.patient|default:"უსათაურო ჩანაწერი" }}</b><span>{{ note.preview }}</span></span>
+                </a>
+            {% empty %}
+                <p class="text-muted m-0">ვერაფერი მოიძებნა.</p>
+            {% endfor %}
+        </section>
+    {% endif %}
+
+    {% if cards %}
+        <div class="duty-grid">
+            {% for c in cards %}
+            <a class="duty-card{% if c.is_current %} current{% endif %}" href="{% url 'duty-day' c.iso %}">
+                <span class="dc-day">{{ c.date|date:"d" }}</span>
+                <span class="dc-month">{{ c.month }} {{ c.date|date:"Y" }}</span>
+                <span class="dc-week">{{ c.weekday }}</span>
+                <span class="dc-count">{{ c.count }} ჩანაწერი</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% include 'partials/pagination.html' %}
+    {% elif not q %}
+        <div class="x-card text-muted">ჩანაწერები ჯერ არ არის. დააჭირეთ „ახალი ჩანაწერი“.</div>
+    {% endif %}
+</div>
+{% endblock %}

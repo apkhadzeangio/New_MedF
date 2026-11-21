@@ -349,3 +349,42 @@ class PrescriptionTemplate(models.Model):
     @property
     def medicine_key(self):
         return medicine_key(self.medicines)
+
+
+class DutyNote(models.Model):
+    """On-duty doctor's free-text note about one patient ("მორიგე ექიმის ჩანაწერი").
+
+    ``duty_date`` is set once, when the note is created (17:00 and later belong
+    to the next day's duty, see apps.mdf.duty.duty_date_for) and never changes
+    on later edits. ``created_at`` keeps the real creation time.
+    """
+    duty_date = models.DateField('მორიგეობის თარიღი', db_index=True, editable=False)
+    patient = models.CharField('პაციენტი (სახელი, გვარი, ისტორიის N)', max_length=255, blank=True)
+    body = models.TextField('ჩანაწერი', blank=True)
+    created_at = models.DateTimeField('შეიქმნა', editable=False)
+    updated_at = models.DateTimeField('განახლდა', auto_now=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name='ავტორი', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+')
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name='ბოლოს შეცვალა', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        db_table = 'duty_notes'
+        ordering = ('duty_date', 'created_at')
+        verbose_name = 'მორიგე ექიმის ჩანაწერი'
+        verbose_name_plural = 'მორიგე ექიმის ჩანაწერები'
+
+    def __str__(self):
+        return f'{self.duty_date:%d.%m.%Y} — {self.patient or "ჩანაწერი"}'
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            from django.utils import timezone
+            from .duty import duty_date_for
+            if not self.created_at:
+                self.created_at = timezone.now()
+            if not self.duty_date:
+                self.duty_date = duty_date_for(self.created_at)
+        super().save(*args, **kwargs)

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import blood, views
+from . import blood, duty, views
 
 urlpatterns = [
     path('', views.LoginView.as_view(), name='login'),
@@ -28,6 +28,14 @@ urlpatterns = [
     # Blood order blank
     path('blood/', blood.BloodOrderView.as_view(), name='blood-order'),
     path('blood/print/', blood.BloodOrderPrintView.as_view(), name='blood-order-print'),
+
+    # On-duty doctor's notes
+    path('duty/', duty.DutyIndexView.as_view(), name='duty-index'),
+    path('duty/new/', duty.DutyNoteEditView.as_view(), name='duty-new'),
+    path('duty/note/<int:pk>/', duty.DutyNoteEditView.as_view(), name='duty-note'),
+    path('duty/note/<int:pk>/print/', duty.DutyPrintView.as_view(), name='duty-note-print'),
+    path('duty/<str:day>/', duty.DutyDayView.as_view(), name='duty-day'),
+    path('duty/<str:day>/print/', duty.DutyPrintView.as_view(), name='duty-day-print'),
 
     path('api/medicines/', views.MedicineAPIView.as_view(), name='medicines'),
     path('api/notes/', views.NoteAPIView.as_view(), name='notes'),

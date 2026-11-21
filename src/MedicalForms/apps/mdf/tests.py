@@ -13,7 +13,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from .models import Medicine, NivForm, PrescriptionTemplate, StaffProfile
+from .models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
 from .utils import validate_take_medicine
 from .views import NivDocumentView
 
@@ -463,3 +463,145 @@ class BloodOrderTests(BaseViewTest):
         r = self.client.post(reverse('my-photo'), {'full_name': 'ქავთარაძე მირანდა'})
         self.assertRedirects(r, reverse('niv-cover'))
         self.assertEqual(StaffProfile.objects.get(user=self.user).full_name, 'ქავთარაძე მირანდა')
+
+
+class DutyNoteTests(BaseViewTest):
+    """On-duty doctor's notes ("მორიგე ექიმის ჩანაწერი")."""
+
+    @staticmethod
+    def at(text):
+        import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.datetime.strptime(text, '%d.%m.%Y %H:%M').replace(tzinfo=ZoneInfo('Asia/Tbilisi'))
+
+    def test_duty_date_rule(self):
+        import datetime
+        from .duty import duty_date_for
+        d = datetime.date
+        cases = {
+            '21.11.2026 00:00': d(2026, 11, 21),
+            '21.11.2026 09:00': d(2026, 11, 21),
+            '21.11.2026 16:59': d(2026, 11, 21),
+            '21.11.2026 17:00': d(2026, 11, 22),
+            '21.11.2026 23:30': d(2026, 11, 22),
+            '21.11.2026 23:59': d(2026, 11, 22),
+            '22.11.2026 08:00': d(2026, 11, 22),
+            '30.11.2026 17:00': d(2026, 12, 1),      # end of month
+            '31.12.2026 16:59': d(2026, 12, 31),
+            '31.12.2026 17:00': d(2027, 1, 1),       # end of year
+            '28.02.2027 18:00': d(2027, 3, 1),       # February
+            '28.02.2028 18:00': d(2028, 2, 29),      # leap year
+        }
+        for moment, expected in cases.items():
+            self.assertEqual(duty_date_for(self.at(moment)), expected, moment)
+        # the same moment given in UTC: 13:00 UTC = 17:00 Tbilisi
+        utc = datetime.datetime(2026, 11, 21, 13, 0, tzinfo=datetime.timezone.utc)
+        self.assertEqual(duty_date_for(utc), d(2026, 11, 22))
+        utc = datetime.datetime(2026, 11, 21, 12, 59, tzinfo=datetime.timezone.utc)
+        self.assertEqual(duty_date_for(utc), d(2026, 11, 21))
+
+    def create(self, moment, **data):
+        from unittest import mock
+        with mock.patch('django.utils.timezone.now', return_value=self.at(moment)):
+            return self.client.post(reverse('duty-new'), data)
+
+    def test_create_edit_keeps_duty_date(self):
+        import datetime
+        from unittest import mock
+        r = self.create('21.11.2026 17:00', patient='ბერიძე ნინო, 3780/26', body='<p>ტემპ. 38.2</p><p>ღამე მშვიდად</p>')
+        note = DutyNote.objects.get()
+        self.assertRedirects(r, reverse('duty-note', args=[note.pk]) + '?saved=1')
+        self.assertEqual(note.duty_date, datetime.date(2026, 11, 22))
+        self.assertEqual(note.created_at, self.at('21.11.2026 17:00'))
+        self.assertEqual(note.created_by, self.user)
+        # edited the next day after 17:00: the duty date must not move
+        with mock.patch('django.utils.timezone.now', return_value=self.at('22.11.2026 18:30')):
+            self.client.post(reverse('duty-note', args=[note.pk]), {'patient': 'ბერიძე ნინო', 'body': '<p>შეცვლილი</p>'})
+        note.refresh_from_db()
+        self.assertEqual(note.duty_date, datetime.date(2026, 11, 22))
+        self.assertEqual(note.body, '<p>შეცვლილი</p>')
+        self.assertEqual(note.created_at, self.at('21.11.2026 17:00'))
+
+    def test_many_patients_one_duty_and_listing(self):
+        import datetime
+        self.create('21.11.2026 18:00', patient='პაციენტი ა', body='ტექსტი ა')
+        self.create('22.11.2026 02:00', patient='პაციენტი ბ', body='ტექსტი ბ')
+        self.create('22.11.2026 16:59', patient='', body='<p>უსათაურო</p>')
+        self.create('22.11.2026 17:00', patient='პაციენტი გ', body='ტექსტი გ')
+        days = dict(DutyNote.objects.values_list('patient', 'duty_date'))
+        self.assertEqual(days['პაციენტი ა'], datetime.date(2026, 11, 22))
+        self.assertEqual(days['პაციენტი ბ'], datetime.date(2026, 11, 22))
+        self.assertEqual(days[''], datetime.date(2026, 11, 22))
+        self.assertEqual(days['პაციენტი გ'], datetime.date(2026, 11, 23))
+
+        r = self.client.get(reverse('duty-index'))
+        self.assertContains(r, '/duty/2026-11-22/')
+        self.assertContains(r, '/duty/2026-11-23/')
+        self.assertContains(r, '3 ჩანაწერი')
+        cards = [c['iso'] for c in r.context['cards']]
+        self.assertEqual(cards, ['2026-11-23', '2026-11-22'])                  # newest first
+        r = self.client.get(reverse('duty-index') + '?order=old')
+        self.assertEqual([c['iso'] for c in r.context['cards']], ['2026-11-22', '2026-11-23'])
+
+        r = self.client.get(reverse('duty-day', args=['2026-11-22']))
+        self.assertEqual(len(r.context['notes']), 3)
+        for text in ('პაციენტი ა', 'პაციენტი ბ', 'უსათაურო ჩანაწერი', '21.11.2026 18:00'):
+            self.assertContains(r, text)
+        self.assertNotContains(r, 'პაციენტი გ')
+
+        # date search and text search
+        self.assertRedirects(self.client.get(reverse('duty-index') + '?date=2026-11-22'),
+                             reverse('duty-day', args=['2026-11-22']), fetch_redirect_response=False)
+        self.assertRedirects(self.client.get(reverse('duty-index') + '?date=22.11.2026'),
+                             reverse('duty-day', args=['2026-11-22']), fetch_redirect_response=False)
+        r = self.client.get(reverse('duty-index') + '?q=ტექსტი ბ')
+        self.assertEqual([n.patient for n in r.context['found']], ['პაციენტი ბ'])
+
+    def test_html_is_cleaned(self):
+        self.create('21.11.2026 10:00', patient='x', body='<p onclick="evil()">ა<b>ბ</b><script>alert(1)</script>'
+                                                         '<img src=x onerror=alert(2)><a href="javascript:x">ბმული</a></p>')
+        note = DutyNote.objects.get()
+        self.assertEqual(note.body, '<p>ა<b>ბ</b>ბმული</p>')
+        r = self.client.get(reverse('duty-note-print', args=[note.pk]))
+        self.assertNotContains(r, '<script>alert')
+        self.assertNotContains(r, 'onerror')
+
+    def test_emoji_removed(self):
+        self.create('21.11.2026 10:00', patient='ნინო 😊', body='<p>კარგად 👍 არის</p>')
+        note = DutyNote.objects.get()
+        self.assertEqual((note.patient, note.body), ('ნინო', '<p>კარგად  არის</p>'))
+
+    def test_empty_note_is_not_saved(self):
+        r = self.create('21.11.2026 10:00', patient='  ', body='<p><br></p>')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'ჩანაწერი ცარიელია')
+        self.assertFalse(DutyNote.objects.exists())
+
+    def test_print_single_and_whole_day(self):
+        long_text = ''.join(f'<p>აბზაცი {i}: ' + 'ძალიან გრძელი ტექსტი ' * 40 + '</p>' for i in range(30))
+        self.create('21.11.2026 20:00', patient='ბერიძე ნინო', body=long_text)
+        self.create('21.11.2026 21:00', patient='კაპანაძე ნანა', body='<p>მეორე</p>')
+        a, b = DutyNote.objects.order_by('created_at')
+        r = self.client.get(reverse('duty-note-print', args=[a.pk]))
+        self.assertContains(r, 'მორიგე ექიმის ჩანაწერი')
+        self.assertContains(r, '22.11.2026')
+        self.assertContains(r, 'ბერიძე ნინო')
+        self.assertContains(r, 'აბზაცი 29')
+        self.assertContains(r, 'size: A4 portrait')
+        self.assertNotContains(r, 'app-nav')                 # no site menu on paper
+        r = self.client.get(reverse('duty-day-print', args=['2026-11-22']))
+        self.assertContains(r, 'ბერიძე ნინო')
+        self.assertContains(r, 'კაპანაძე ნანა')
+        self.assertContains(r, 'class="note"', count=2)
+        self.assertEqual(self.client.get(reverse('duty-day-print', args=['2030-01-01'])).status_code, 404)
+
+    def test_login_required(self):
+        self.client.logout()
+        for url in (reverse('duty-index'), reverse('duty-new'), reverse('duty-day', args=['2026-11-22'])):
+            self.assertEqual(self.client.get(url).status_code, 302, url)
+
+    def test_backup_includes_notes(self):
+        import gzip
+        self.create('21.11.2026 10:00', patient='x', body='y')
+        data = json.loads(gzip.decompress(self.client.get(reverse('backup-download')).content))
+        self.assertTrue(any(o['model'] == 'mdf.dutynote' for o in data))

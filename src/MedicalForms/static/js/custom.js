@@ -571,6 +571,38 @@ $(document).ready(function () {
         }
     });
 
+    // Any printable HTML page (e.g. duty notes): it opens the print dialog
+    // by itself once loaded in the hidden frame.
+    function printHtmlUrl(url, el) {
+        printStart(el);
+        fetch(url, {credentials: 'same-origin'}).then(function (r) {
+            if (!r.ok) {
+                throw new Error('bad response');
+            }
+            return r.text();
+        }).then(function (html) {
+            var frame = hiddenPrintFrame();
+            frame.onload = function () { setTimeout(function () { printEnd(el); }, 500); };
+            frame.srcdoc = html;
+        }).catch(function () { printFailed(el); });
+    }
+
+    window.medfPrintPage = function (url, el) {
+        if (!window.fetch) {
+            window.open(url, '_blank');
+        } else if (!printBusy) {
+            printHtmlUrl(url, el);
+        }
+    };
+
+    $(document).on('click', 'a.js-print-page', function (e) {
+        if (e.ctrlKey || e.metaKey || e.shiftKey || !window.fetch) {
+            return;
+        }
+        e.preventDefault();
+        window.medfPrintPage(this.href, this);
+    });
+
     // Blood order blank (HTML): it opens the print dialog by itself once loaded.
     $('#blood-form').on('submit', function (e) {
         if (!window.fetch) {

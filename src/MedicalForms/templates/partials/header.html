@@ -9,13 +9,14 @@
             <a href="{% url 'rx-templates' %}" class="{% if url_name == 'rx-templates' %}active{% endif %}">შაბლონები</a>
             <a href="{% url 'rx-analysis' %}" class="{% if url_name == 'rx-analysis' %}active{% endif %}">ნოზოლოგიების ანალიზი</a>
             <a href="{% url 'blood-order' %}" class="{% if url_name == 'blood-order' %}active{% endif %}">სისხლის შეკვეთა</a>
+            <a href="{% url 'duty-index' %}" class="{% if url_name == 'duty-index' or url_name == 'duty-day' or url_name == 'duty-new' or url_name == 'duty-note' %}active{% endif %}">მორიგე ექიმის ჩანაწერი</a>
         </div>
         {% endwith %}
         {% if request.user.is_authenticated %}
         <div class="dropdown ms-auto">
-            <a class="user dropdown-toggle" href="#" id="userDrop" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <a class="user dropdown-toggle" href="#" id="userDrop" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="{{ request.user.profile.display_name|default:request.user.username }}">
                 {% if request.user.profile %}{% include "partials/avatar.html" with profile=request.user.profile size=34 %}{% endif %}
-                {{ request.user.profile.display_name|default:request.user.get_full_name|default:request.user.username }}
+                <span class="uname">{{ request.user.profile.display_name|default:request.user.get_full_name|default:request.user.username }}</span>
             </a>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDrop">
                 <li><a class="dropdown-item" href="{% url 'my-photo' %}">ჩემი პროფილი (ფოტო, სახელი)</a></li>
