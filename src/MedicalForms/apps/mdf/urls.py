@@ -17,7 +17,8 @@ urlpatterns = [
 
     # Templates = reusable medicine sets
     path('templates/', views.TemplateListView.as_view(), name='rx-templates'),
-    path('templates/frequent/', views.FrequentPrescriptionsView.as_view(), name='rx-frequent'),
+    path('analysis/', views.NosologyAnalysisView.as_view(), name='rx-analysis'),
+    path('templates/from-analysis/', views.TemplateFromAnalysisView.as_view(), name='rx-template-from-analysis'),
     path('templates/save/', views.TemplateSaveView.as_view(), name='rx-template-save'),
     path('templates/from/<int:pk>/', views.TemplateFromPrescriptionView.as_view(), name='rx-template-from'),
     path('templates/<int:pk>/rename/', views.TemplateRenameView.as_view(), name='rx-template-rename'),

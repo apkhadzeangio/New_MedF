@@ -2,7 +2,7 @@ import gzip
 import io
 import json
 import logging
-from collections import Counter
+from urllib.parse import quote
 from typing import Any
 
 from django.contrib import messages
@@ -22,12 +22,13 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import generic
 from django_docxtpl import DocxTemplateView
 
+from . import analysis
 from .backends import ModelFilterBackend
 from .enums import Symbols, YesNo, RadialPulse
 from .forms import LoginForm, NivFormFrom, PhotoForm
 from .mixins import LoginRedirectMixin, GetObjectMixin
 from .models import (
-    Medicine, Note, NivForm, PrescriptionTemplate, StaffProfile, ROW_COUNT, medicine_key,
+    Medicine, Note, NivForm, PrescriptionTemplate, StaffProfile, ROW_COUNT,
 )
 from .utils import validate_take_medicine, clean_template_rows, resize_photo
 
@@ -474,59 +475,64 @@ class TemplateUsedView(LoginRequiredMixin, generic.View):
         return JsonResponse({'ok': True})
 
 
-class FrequentPrescriptionsView(LoginRequiredMixin, generic.TemplateView):
-    """Groups existing prescriptions by their set of medicines and shows the
-    most repeated ones, so they can be turned into templates with one click."""
-    template_name = 'mdf/rx-frequent.html'
-    max_groups = 60
+class NosologyAnalysisView(LoginRequiredMixin, generic.TemplateView):
+    """Which medicines are prescribed for which nosology (diagnosis)."""
+    template_name = 'mdf/rx-analysis.html'
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        q = self.request.GET.get('q', '').strip().lower()
-        try:
-            min_count = max(1, int(self.request.GET.get('min', 2)))
-        except ValueError:
-            min_count = 2
-
-        groups = {}
-        for niv in NivForm.objects.only(*_row_columns()).order_by('-id').iterator():
-            names = [getattr(niv, f'm{i}') for i in range(1, ROW_COUNT + 1)]
-            key = medicine_key(names)
-            if not key:
-                continue
-            group = groups.get(key)
-            if group is None:
-                group = groups[key] = {
-                    'key': key, 'count': 0, 'titles': Counter(),
-                    'latest': niv, 'medicines': [n for n in names if n and n.strip()],
-                }
-            group['count'] += 1
-            if niv.title:
-                group['titles'][niv.title.strip()] += 1
-
-        existing = {t.medicine_key: t for t in PrescriptionTemplate.objects.all()}
-        result = []
-        for group in groups.values():
-            if group['count'] < min_count:
-                continue
-            titles = [t for t, _ in group['titles'].most_common(4)]
-            if q and not (any(q in t.lower() for t in titles)
-                          or any(q in m.lower() for m in group['medicines'])):
-                continue
-            group['top_titles'] = titles
-            group['suggested_name'] = titles[0] if titles else ''
-            group['template'] = existing.get(group['key'])
-            result.append(group)
-        result.sort(key=lambda g: (-g['count'], g['suggested_name']))
-
+        get = self.request.GET
+        group_by = get.get('by', 'diagnosis')
+        if group_by not in analysis.FIELDS:
+            group_by = 'diagnosis'
+        search = get.get('s', '').strip()
+        nosology = get.get('q', '').strip()
+        match_in = get.get('in', 'both')
+        if match_in not in ('diagnosis', 'title', 'both'):
+            match_in = 'both'
         ctx.update({
-            'groups': result[:self.max_groups],
-            'total_groups': len(result),
-            'q': self.request.GET.get('q', '').strip(),
-            'min_count': min_count,
+            'group_by': group_by, 'fields': analysis.FIELDS, 'search': search,
+            'q': nosology, 'match_in': match_in,
             'total_prescriptions': NivForm.objects.count(),
         })
+        if nosology:
+            total, medicines = analysis.medicines_for(nosology, match_in)
+            label = get.get('l', '').strip() or nosology
+            name = analysis.ICD_RE.sub('', label).strip(' -—,.') or label
+            ctx.update({'matched': total, 'medicines': medicines, 'label': label,
+                        'suggested_name': name[:150]})
+        else:
+            ctx['groups'], ctx['groups_total'] = analysis.overview(group_by, search)
         return ctx
+
+
+class TemplateFromAnalysisView(LoginRequiredMixin, generic.View):
+    """Create a template from the medicines ticked on the analysis page."""
+    http_method_names = ['post']
+
+    def post(self, request, *args, **kwargs):
+        nosology = request.POST.get('q', '').strip()
+        match_in = request.POST.get('in', 'both')
+        chosen = set(request.POST.getlist('med'))
+        _, medicines = analysis.medicines_for(nosology, match_in)
+        selected = [m for m in medicines if m['key'] in chosen]
+        back = (f"{reverse('rx-analysis')}?q={quote(nosology)}&in={quote(match_in)}"
+                f"&l={quote(request.POST.get('l', ''))}")
+        if not selected:
+            messages.error(request, 'მონიშნეთ მინიმუმ ერთი მედიკამენტი.')
+            return HttpResponseRedirect(back)
+        tpl, error = _save_template(request, request.POST.get('name'),
+                                    analysis.template_rows(selected),
+                                    overwrite=request.POST.get('overwrite') == '1')
+        if error == 'exists':
+            messages.warning(request, f'შაბლონი „{tpl.name}“ უკვე არსებობს — აირჩიეთ სხვა სახელი '
+                                      f'ან მონიშნეთ „ჩანაცვლება“.')
+            return HttpResponseRedirect(back)
+        if error:
+            messages.error(request, error)
+            return HttpResponseRedirect(back)
+        messages.success(request, f'შაბლონი „{tpl.name}“ შეიქმნა ({len(selected)} მედიკამენტი).')
+        return HttpResponseRedirect(reverse('rx-templates'))
 
 
 # --------------------------------------------------------------------------

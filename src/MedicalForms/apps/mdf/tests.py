@@ -303,18 +303,43 @@ class TemplateTests(BaseViewTest):
         self.client.post(reverse('rx-template-delete', args=[tpl.pk]))
         self.assertFalse(PrescriptionTemplate.objects.exists())
 
-    def test_frequent_groups(self):
-        for _ in range(3):
-            self.make_niv(title='ანევრიზმა', m1='Aspirin', m2='Heparin')
-        self.make_niv(title='სხვა', m1='heparin ', m2='ASPIRIN')   # same set, different case/order
-        self.make_niv(title='ერთჯერადი', m1='Rare drug')
-        r = self.client.get(reverse('rx-frequent'))
-        groups = r.context['groups']
-        self.assertEqual(len(groups), 1)
-        self.assertEqual(groups[0]['count'], 4)
-        self.assertEqual(groups[0]['suggested_name'], 'ანევრიზმა')
-        r = self.client.get(reverse('rx-frequent') + '?min=1&q=rare')
-        self.assertEqual([g['count'] for g in r.context['groups']], [1])
+    def test_nosology_analysis(self):
+        aneurysm = dict(d1=hours('a', 'i'), d2={}, d3={})
+        for i in range(4):
+            self.make_niv(title=f'პაციენტი {i}', diagnosis='I71.4 მუცლის აორტის ანევრიზმა',
+                          m1='Heparin 5000', n1='კანქვეშ', r1=aneurysm,
+                          m2='Aspirin' if i < 2 else 'Clopidogrel', n2='', r2={})
+        self.make_niv(title='ლერიში', diagnosis='I74.0 ლერიშის სინდრომი', m1='Pentoxifylline')
+        self.make_niv(title='x', diagnosis='i71.4 ანევრიზმა (განმეორებითი)', m1='Heparin 5000', m2='heparin 5000')
+
+        r = self.client.get(reverse('rx-analysis'))
+        groups = {g['key']: g for g in r.context['groups']}
+        self.assertEqual(groups['I71.4']['count'], 5)     # grouped by ICD-10 code
+        self.assertEqual(groups['I71.4']['variants'], 2)
+        self.assertEqual(groups['I74.0']['count'], 1)
+
+        r = self.client.get(reverse('rx-analysis') + '?q=ანევრიზმა&in=diagnosis')
+        self.assertEqual(r.context['matched'], 5)
+        meds = {m['name']: m for m in r.context['medicines']}
+        self.assertEqual(meds['Heparin 5000']['count'], 5)    # counted once per prescription
+        self.assertEqual(meds['Heparin 5000']['percent'], 100)
+        self.assertEqual(meds['Heparin 5000']['note'], 'კანქვეშ')
+        self.assertEqual(meds['Heparin 5000']['hours_text'], 'დღე 1: 8, 24')
+        self.assertEqual(meds['Aspirin']['percent'], 40)
+        self.assertEqual(r.context['medicines'][0]['name'], 'Heparin 5000')
+        self.assertContains(r, 'value="heparin 5000" checked')
+
+        r = self.client.post(reverse('rx-template-from-analysis'), {
+            'q': 'ანევრიზმა', 'in': 'diagnosis', 'name': 'ანევრიზმა',
+            'med': ['heparin 5000', 'aspirin']})
+        self.assertRedirects(r, reverse('rx-templates'))
+        tpl = PrescriptionTemplate.objects.get(name='ანევრიზმა')
+        self.assertEqual([row['m'] for row in tpl.rows if row['m']], ['Heparin 5000', 'Aspirin'])
+        self.assertEqual(tpl.rows[0]['n'], 'კანქვეშ')
+        self.assertEqual(tpl.rows[0]['r']['d1'], {'a': '+', 'i': '+'})
+
+        r = self.client.get(reverse('rx-analysis') + '?by=title&s=ლერ')
+        self.assertEqual([g['label'] for g in r.context['groups']], ['ლერიში'])
 
 
 class StaffAndBackupTests(TestCase):

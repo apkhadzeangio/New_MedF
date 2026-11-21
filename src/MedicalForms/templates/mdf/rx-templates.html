@@ -4,7 +4,7 @@
 <div class="container mt-3">
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
         <h4 class="mb-0 me-auto">შაბლონები <span class="text-muted fs-6">({{ object_list|length }})</span></h4>
-        <a class="btn btn-outline-secondary" href="{% url 'rx-frequent' %}">ხშირი დანიშნულებებიდან დამატება</a>
+        <a class="btn btn-outline-secondary" href="{% url 'rx-analysis' %}">ნოზოლოგიების ანალიზიდან დამატება</a>
     </div>
     <form method="get" class="mb-3">
         <input type="search" name="q" value="{{ q }}" class="form-control form-control-lg" placeholder="ძიება შაბლონის სახელით ან მედიკამენტით..." autocomplete="off" autofocus>
@@ -35,7 +35,7 @@
     {% else %}
         <div class="alert alert-light border">
             {% if q %}შაბლონი ვერ მოიძებნა.{% else %}
-            შაბლონები ჯერ არ არის. დაამატეთ <a href="{% url 'rx-frequent' %}">ხშირი დანიშნულებებიდან</a>,
+            შაბლონები ჯერ არ არის. შექმენით <a href="{% url 'rx-analysis' %}">ნოზოლოგიების ანალიზიდან</a>,
             ან დანიშნულების გვერდზე დააჭირეთ „შაბლონად შენახვა“.{% endif %}
         </div>
     {% endif %}

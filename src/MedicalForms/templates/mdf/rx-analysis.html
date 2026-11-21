@@ -1,0 +1,127 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-3 mb-5">
+{% if q %}
+    {# ---------------- one nosology: which medicines ---------------- #}
+    <a href="{% url 'rx-analysis' %}" class="small">← ყველა ნოზოლოგია</a>
+    <form method="get" class="row g-2 align-items-center my-2">
+        <div class="col-md-6">
+            <input type="search" name="q" value="{{ q }}" class="form-control form-control-lg" placeholder="ნოზოლოგია: ანევრიზმა, I70.2, ლერიში..." autocomplete="off">
+        </div>
+        <div class="col-auto">
+            <select name="in" class="form-select form-select-lg">
+                <option value="both"{% if match_in == 'both' %} selected{% endif %}>დიაგნოზში ან დასახელებაში</option>
+                <option value="diagnosis"{% if match_in == 'diagnosis' %} selected{% endif %}>მხოლოდ დიაგნოზში</option>
+                <option value="title"{% if match_in == 'title' %} selected{% endif %}>მხოლოდ დასახელებაში</option>
+            </select>
+        </div>
+        <div class="col-auto"><button class="btn btn-primary btn-lg">ანალიზი</button></div>
+    </form>
+
+    <h4 class="mt-3">{{ label }} — {{ matched }} დანიშნულება <span class="text-muted fs-6">(სულ ბაზაში {{ total_prescriptions }})</span></h4>
+
+    {% if medicines %}
+    <p class="text-muted small mb-2">
+        % — რამდენ დანიშნულებაში (ამ ნოზოლოგიიდან) გვხვდება პრეპარატი. „ჩვეული დანიშნულება“ და „საათები“ — ყველაზე ხშირი ვარიანტი.
+    </p>
+    <form method="post" action="{% url 'rx-template-from-analysis' %}">
+        {% csrf_token %}
+        <input type="hidden" name="q" value="{{ q }}">
+        <input type="hidden" name="in" value="{{ match_in }}">
+        <input type="hidden" name="l" value="{{ label }}">
+        <div class="table-responsive">
+        <table class="table table-sm align-middle analysis-table">
+            <thead class="table-light">
+                <tr>
+                    <th style="width: 32px"><input type="checkbox" class="form-check-input" id="check-all" title="ყველა"></th>
+                    <th>პრეპარატი</th>
+                    <th style="min-width: 180px">სიხშირე</th>
+                    <th>ჩვეული დანიშნულება</th>
+                    <th>საათები</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for m in medicines %}
+                <tr>
+                    <td><input type="checkbox" class="form-check-input med-check" name="med" value="{{ m.key }}"{% if m.percent >= 50 %} checked{% endif %}></td>
+                    <td class="fw-semibold">{{ m.name }}</td>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="progress flex-grow-1" style="height: 10px" role="progressbar" aria-valuenow="{{ m.percent }}" aria-valuemin="0" aria-valuemax="100">
+                                <div class="progress-bar{% if m.percent >= 50 %} bg-success{% elif m.percent < 20 %} bg-secondary{% endif %}" style="width: {{ m.percent }}%"></div>
+                            </div>
+                            <span class="text-nowrap small"><b>{{ m.percent }}%</b> ({{ m.count }})</span>
+                        </div>
+                    </td>
+                    <td class="small">{{ m.note|default:"—" }}{% if m.notes|length > 1 %}<div class="text-muted">ასევე: {{ m.notes|slice:"1:"|join:"; " }}</div>{% endif %}</td>
+                    <td class="small text-nowrap">{{ m.hours_text|default:"—" }}{% if m.hours_text %} <span class="text-muted">({{ m.hours_share }}%)</span>{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        <div class="card bg-light border-0">
+            <div class="card-body d-flex flex-wrap align-items-center gap-2">
+                <span class="fw-semibold">შაბლონის შექმნა მონიშნულიდან (<span id="checked-count">0</span>):</span>
+                <input type="text" name="name" value="{{ suggested_name }}" maxlength="150" class="form-control" style="max-width: 320px" required placeholder="შაბლონის სახელი">
+                <label class="form-check-label small"><input type="checkbox" name="overwrite" value="1" class="form-check-input me-1">ჩანაცვლება, თუ უკვე არსებობს</label>
+                <button class="btn btn-success">შაბლონის შექმნა</button>
+                <span class="small text-muted w-100">შაბლონში ჩაიწერება ჩვეული დანიშნულება და საათები; შემდეგ შეგიძლიათ ჩასვათ დანიშნულებაში და შეცვალოთ.</span>
+            </div>
+        </div>
+    </form>
+    {% else %}
+        <div class="alert alert-light border">ამ ნოზოლოგიით დანიშნულება ვერ მოიძებნა.</div>
+    {% endif %}
+
+{% else %}
+    {# ---------------- overview: list of nosologies ---------------- #}
+    <h4 class="mb-1">ნოზოლოგიების ანალიზი</h4>
+    <p class="text-muted">
+        აირჩიეთ ნოზოლოგია და ნახავთ, რომელი პრეპარატები ენიშნებათ ამ პაციენტებს და რა სიხშირით
+        ({{ total_prescriptions }} დანიშნულების მიხედვით). დიაგნოზები ICD-10 კოდით ჯგუფდება.
+    </p>
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item"><a class="nav-link{% if group_by == 'diagnosis' %} active{% endif %}" href="?by=diagnosis{% if search %}&s={{ search|urlencode }}{% endif %}">დიაგნოზით</a></li>
+        <li class="nav-item"><a class="nav-link{% if group_by == 'title' %} active{% endif %}" href="?by=title{% if search %}&s={{ search|urlencode }}{% endif %}">დასახელებით</a></li>
+    </ul>
+    <form method="get" class="row g-2 mb-3">
+        <input type="hidden" name="by" value="{{ group_by }}">
+        <div class="col-md-8"><input type="search" name="s" value="{{ search }}" class="form-control form-control-lg" placeholder="ფილტრი: ანევრიზმა, I70, ლერიში..." autocomplete="off" autofocus></div>
+        <div class="col-auto"><button class="btn btn-outline-primary btn-lg">ფილტრი</button></div>
+        <div class="col-auto"><a class="btn btn-link btn-lg" href="?q=&in=both" onclick="var v=prompt('ნოზოლოგია ან სიტყვა (მაგ. ანევრიზმა):'); if(v){location.href='?in=both&q='+encodeURIComponent(v);} return false;">თავისუფალი ძიება…</a></div>
+    </form>
+    {% if groups %}
+    <div class="small text-muted mb-2">{{ groups|length }}{% if groups_total > groups|length %} / {{ groups_total }}{% endif %} ნოზოლოგია</div>
+    <table class="table table-hover align-middle">
+        <thead class="table-light"><tr><th>{% if group_by == 'diagnosis' %}დიაგნოზი{% else %}დასახელება{% endif %}</th><th class="text-end">დანიშნულება</th></tr></thead>
+        <tbody>
+        {% for g in groups %}
+            <tr>
+                <td>
+                    <a href="?q={% if group_by == 'diagnosis' and g.key|length <= 6 %}{{ g.key|urlencode }}{% else %}{{ g.label|urlencode }}{% endif %}&in={{ group_by }}&l={{ g.label|urlencode }}" class="fw-semibold text-decoration-none">{{ g.label }}</a>
+                    {% if g.variants > 1 %}<div class="small text-muted">{{ g.variants }} ჩაწერის ვარიანტი{% if g.other_labels %}: {{ g.other_labels|join:"; " }}{% endif %}</div>{% endif %}
+                </td>
+                <td class="text-end fw-semibold">{{ g.count }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <div class="alert alert-light border">ვერაფერი მოიძებნა.</div>
+    {% endif %}
+{% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+$(function () {
+    function update() { $('#checked-count').text($('.med-check:checked').length); }
+    $('#check-all').on('change', function () { $('.med-check').prop('checked', this.checked); update(); });
+    $(document).on('change', '.med-check', update);
+    update();
+});
+</script>
+{% endblock %}
