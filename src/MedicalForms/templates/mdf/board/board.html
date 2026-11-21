@@ -8,6 +8,7 @@
     <div class="page-head bd-head">
         <h1>პაციენტების დაფა <span class="count">· {{ total }}</span></h1>
         <span class="bd-duty" title="17:00-დან იწყება მომდევნო დღის მორიგეობა">მორიგეობა <b>{{ day.short }}</b> {{ day.weekday }}</span>
+        <div class="bd-tools">
         <div class="seg bd-filter" role="group" aria-label="ჩვენება">
             <a href="{% url 'board' %}" class="{% if not mine %}on{% endif %}">ყველა</a>
             <a href="{% url 'board' %}?show=mine" class="{% if mine %}on{% endif %}">ჩემი პაციენტები</a>
@@ -24,6 +25,7 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>მორიგეობის რეპორტი</a>
         <a class="x-btn primary" href="{% url 'board-patient-new' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>პაციენტის დამატება</a>
+        </div>
     </div>
 
     <div class="bd-columns">
@@ -96,6 +98,7 @@
 
     <div class="bd-links">
         <a href="{% url 'board-discharged' %}">გაწერილი პაციენტები</a>
+        <a href="{% url 'board-stats' %}">სტატისტიკა</a>
         <a href="{% url 'board-reports' %}">შენახული რეპორტები{% if reports %} ({{ reports }}){% endif %}</a>
         {% if old_notes %}<a href="{% url 'duty-index' %}">ძველი მორიგეობის ჩანაწერები ({{ old_notes }})</a>{% endif %}
         <span class="bd-refresh">დაფა თავისით ახლდება ყოველ 2 წუთში</span>

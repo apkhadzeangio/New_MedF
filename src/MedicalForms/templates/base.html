@@ -10,10 +10,16 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
 
     <link rel="icon" type="image/png" href="{% static 'img/healthcare.png' %}" sizes="16x16">
+    <link rel="manifest" href="{% url 'pwa-manifest' %}">
+    <link rel="apple-touch-icon" href="{% static 'img/app/apple-touch-icon.png' %}">
+    <meta name="theme-color" content="#1B2437">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="დაფა">
     <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}?v=1">
     <link rel="stylesheet" href="{% static 'css/jquery-ui.min.css' %}">
     <link rel="stylesheet" href="{% static 'css/style.css' %}?v=26">
-    <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=8">
+    <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=10">
 
     {% block extra_styles %}
     {% endblock %}
@@ -41,6 +47,9 @@
 <script src="{% static 'js/clipboard.min.js' %}"></script>
 <script src="{% static 'js/custom.js' %}?v=31"></script>
 
+<script>
+if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('{% url "pwa-sw" %}').catch(function () {}); }); }
+</script>
 {% block extra_scripts %}{% endblock %}
 
 </body>

@@ -936,3 +936,47 @@ class RemindersAndMedicinesTests(BaseViewTest):
         self.assertFalse(b.is_active)
         self.assertEqual(niv.m1, 'aspirin 100 mg')
         self.assertEqual(self.client.get(reverse('medicine-duplicates')).context['groups'], [])
+
+
+class StatsAndAppTests(BoardBase):
+    """Monthly statistics from the board; home-screen icon files."""
+
+    def test_month_stats(self):
+        import datetime
+        from .board import month_stats
+        from .models import BoardEntry, BoardPatient
+        a = BoardPatient.objects.create(name='ა', unit='icu', doctor=self.user, admitted_at=self.at('02.10.2026 10:00'),
+                                        discharged_at=self.at('06.10.2026 10:00'))
+        b = BoardPatient.objects.create(name='ბ', unit='ward', doctor=self.user, admitted_at=self.at('20.09.2026 10:00'))
+        BoardPatient.objects.create(name='ძველი', unit='ward', admitted_at=self.at('01.08.2026 10:00'),
+                                    discharged_at=self.at('10.09.2026 10:00'))
+        BoardEntry.objects.create(patient=a, kind='status', text='x', created_by=self.duty, created_at=self.at('02.10.2026 20:00'))
+        BoardEntry.objects.create(patient=a, kind='task', text='t', created_by=self.user, created_at=self.at('03.10.2026 09:00'),
+                                  done_by=self.duty, done_at=self.at('03.10.2026 11:00'))
+        BoardEntry.objects.create(patient=b, kind='task', text='t2', created_by=self.user, created_at=self.at('04.10.2026 09:00'))
+        BoardEntry.objects.create(patient=a, kind='event', text='გადაყვანილია: რეანიმაცია → სტაციონარი',
+                                  created_by=self.user, created_at=self.at('04.10.2026 12:00'))
+        s = month_stats(datetime.date(2026, 10, 1), datetime.date(2026, 11, 1))
+        self.assertEqual((s['admitted'], s['admitted_icu'], s['discharged']), (1, 1, 1))
+        self.assertAlmostEqual(s['avg_stay'], 4.0)
+        self.assertEqual((s['tasks'], s['tasks_done'], s['tasks_pct']), (2, 1, 50))
+        self.assertAlmostEqual(s['median_hours'], 2.0)
+        self.assertEqual(s['transfers'], 1)
+        # 31 duties for "ბ" + 5 for "ა" (duties 02.10 - 06.10 touch 02.10 10:00 - 06.10 10:00); one has a state
+        self.assertEqual((s['coverage_written'], s['coverage_needed']), (1, 36))
+        self.assertAlmostEqual(s['avg_patients'], (31 + 4) / 31, places=2)
+        names = {r['name']: r for r in s['people']}
+        self.assertEqual(names['ფარულავა ია']['done'], 1)
+        self.assertEqual(names['აფხაძე რამაზი']['tasks'], 2)
+        page = self.client.get(reverse('board-stats') + '?month=2026-10')
+        self.assertContains(page, 'ოქტომბერი 2026')
+        self.assertEqual(self.client.get(reverse('board-stats') + '?month=bad').status_code, 200)
+
+    def test_home_screen_files(self):
+        self.client.logout()                            # the phone asks for these before logging in
+        manifest = self.client.get(reverse('pwa-manifest')).json()
+        self.assertEqual(manifest['start_url'], reverse('board'))
+        self.assertEqual(manifest['display'], 'standalone')
+        sw = self.client.get(reverse('pwa-sw'))
+        self.assertEqual(sw['Content-Type'], 'application/javascript')
+        self.assertNotIn('caches', sw.content.decode())          # nothing is stored on the phone

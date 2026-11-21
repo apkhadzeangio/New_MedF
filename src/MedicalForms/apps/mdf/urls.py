@@ -1,9 +1,11 @@
 from django.urls import path
 
-from . import blood, board, duty, medicines, views
+from . import blood, board, duty, medicines, pwa, views
 
 urlpatterns = [
     path('', views.LoginView.as_view(), name='login'),
+    path('manifest.webmanifest', pwa.manifest, name='pwa-manifest'),
+    path('sw.js', pwa.service_worker, name='pwa-sw'),
     path('logout/', views.LogoutView.as_view(), name='logout'),
     path('me/photo/', views.PhotoView.as_view(), name='my-photo'),
 
@@ -34,6 +36,7 @@ urlpatterns = [
     # Patients board (ICU + ward) and duty reports
     path('board/', board.BoardView.as_view(), name='board'),
     path('board/print/', board.BoardPrintView.as_view(), name='board-print'),
+    path('board/stats/', board.StatsView.as_view(), name='board-stats'),
     path('board/seen/', board.SeenAllView.as_view(), name='board-seen'),
     path('board/patient/new/', board.PatientFormView.as_view(), name='board-patient-new'),
     path('board/patient/<int:pk>/', board.PatientView.as_view(), name='board-patient'),

@@ -25,7 +25,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views import generic
 
-from .duty import DUTY_CHANGE_HOUR, TBILISI, _parse_day, day_label, duty_date_for, strip_astral
+from .duty import DUTY_CHANGE_HOUR, MONTHS, TBILISI, _parse_day, day_label, duty_date_for, strip_astral
 from .models import BoardEntry, BoardPatient, BoardSeen, DutyNote, DutyReport
 
 TEXT_LIMIT = 4000
@@ -544,3 +544,127 @@ class SavedReportView(LoginRequiredMixin, generic.TemplateView):
 class ReportPrintView(SavedReportView):
     template_name = 'mdf/board/report_print.html'
 
+
+
+# --------------------------------------------------------------------------
+# monthly statistics (from the board data only)
+# --------------------------------------------------------------------------
+
+def _month_bounds(value):
+    today = timezone.localdate()
+    try:
+        year, month = (int(x) for x in (value or '').split('-'))
+        first = datetime.date(year, month, 1)
+    except (TypeError, ValueError):
+        first = today.replace(day=1)
+    if first > today:
+        first = today.replace(day=1)
+    nxt = (first + datetime.timedelta(days=32)).replace(day=1)
+    return first, nxt
+
+
+def _aware(day):
+    return datetime.datetime.combine(day, datetime.time(), tzinfo=TBILISI)
+
+
+def month_stats(first, nxt):
+    start, end = _aware(first), _aware(nxt)
+    now = timezone.now()
+    stop = min(end, now)
+    patients = list(BoardPatient.objects.filter(admitted_at__lt=end)
+                    .filter(Q(discharged_at__isnull=True) | Q(discharged_at__gte=start))
+                    .select_related('doctor__profile'))
+    admitted = [p for p in patients if p.admitted_at >= start]
+    discharged = [p for p in patients if p.discharged_at and start <= p.discharged_at < end]
+    stays = sorted((p.discharged_at - p.admitted_at).total_seconds() / 86400 for p in discharged)
+
+    # patient-days in this month -> average number of patients per day
+    patient_days = sum(
+        max(0.0, (min(p.discharged_at or stop, stop) - max(p.admitted_at, start)).total_seconds() / 86400)
+        for p in patients)
+    month_days = max((stop - start).total_seconds() / 86400, 1 / 24)
+
+    entries = list(BoardEntry.objects.filter(patient__in=patients, created_at__gte=start, created_at__lt=end)
+                   .select_related('created_by__profile', 'done_by__profile'))
+    tasks = [e for e in entries if e.kind == BoardEntry.TASK]
+    done = [t for t in tasks if t.done_at]
+    hours = sorted((t.done_at - t.created_at).total_seconds() / 3600 for t in done)
+    transfers = sum(1 for e in entries if e.kind == BoardEntry.EVENT and e.text.startswith('გადაყვანილია'))
+
+    # duties of the month: was each patient's state written at least once?
+    status_times = {}
+    for e in entries:
+        if e.kind == BoardEntry.STATUS:
+            status_times.setdefault(e.patient_id, []).append(e.created_at)
+    needed = written = 0
+    day = first
+    while day < nxt and _aware(day) <= now:
+        w_start, w_end = duty_window(day)
+        if w_end > now:                    # the duty that is still going on is not counted
+            break
+        for p in patients:
+            if p.admitted_at < w_end and (p.discharged_at is None or p.discharged_at >= w_start):
+                needed += 1
+                written += any(w_start <= t < w_end for t in status_times.get(p.pk, []))
+        day += datetime.timedelta(days=1)
+
+    people = {}
+
+    def person(user):
+        key = user.pk if user else 0
+        if key not in people:
+            people[key] = {'name': person_full_name(user) or '—', 'patients': 0, 'status': 0,
+                           'tasks': 0, 'done': 0, 'comments': 0}
+        return people[key]
+
+    for p in admitted:
+        if p.doctor:
+            person(p.doctor)['patients'] += 1
+    for e in entries:
+        if e.kind == BoardEntry.STATUS:
+            person(e.created_by)['status'] += 1
+        elif e.kind == BoardEntry.TASK:
+            person(e.created_by)['tasks'] += 1
+        elif e.kind == BoardEntry.COMMENT:
+            person(e.created_by)['comments'] += 1
+    for t in BoardEntry.objects.filter(kind=BoardEntry.TASK, done_at__gte=start, done_at__lt=end).select_related('done_by__profile'):
+        person(t.done_by)['done'] += 1
+
+    def median(values):
+        if not values:
+            return None
+        mid = len(values) // 2
+        return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
+
+    return {
+        'admitted': len(admitted),
+        'admitted_icu': sum(1 for p in admitted if p.unit == BoardPatient.ICU),
+        'discharged': len(discharged),
+        'avg_stay': sum(stays) / len(stays) if stays else None,
+        'median_stay': median(stays),
+        'avg_patients': patient_days / month_days,
+        'transfers': transfers,
+        'tasks': len(tasks), 'tasks_done': len(done),
+        'tasks_pct': round(100 * len(done) / len(tasks)) if tasks else None,
+        'median_hours': median(hours),
+        'status': sum(len(v) for v in status_times.values()),
+        'coverage_pct': round(100 * written / needed) if needed else None,
+        'coverage_needed': needed, 'coverage_written': written,
+        'people': sorted((v for k, v in people.items() if k), key=lambda r: r['name']),
+    }
+
+
+class StatsView(LoginRequiredMixin, generic.TemplateView):
+    template_name = 'mdf/board/stats.html'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        first, nxt = _month_bounds(self.request.GET.get('month'))
+        prev = (first - datetime.timedelta(days=1)).replace(day=1)
+        ctx.update({
+            's': month_stats(first, nxt), 'month': first,
+            'month_label': f'{MONTHS[first.month - 1]} {first.year}',
+            'prev': f'{prev:%Y-%m}',
+            'next': f'{nxt:%Y-%m}' if nxt <= timezone.localdate() else None,
+        })
+        return ctx

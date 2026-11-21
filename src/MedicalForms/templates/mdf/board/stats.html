@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}სტატისტიკა — {{ month_label }}{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <a href="{% url 'board' %}" class="small">← დაფა</a>
+    <div class="page-head">
+        <h1>განყოფილების სტატისტიკა</h1>
+        <div class="st-month">
+            <a class="x-btn x-icon" href="?month={{ prev }}" aria-label="წინა თვე" title="წინა თვე">‹</a>
+            <b>{{ month_label }}</b>
+            {% if next %}<a class="x-btn x-icon" href="?month={{ next }}" aria-label="შემდეგი თვე" title="შემდეგი თვე">›</a>{% else %}<span class="x-icon"></span>{% endif %}
+        </div>
+    </div>
+    <p class="lead-muted">მხოლოდ დაფის მონაცემებით (დანიშნულებებს არ ეხება). თვე ჯერ არ დასრულებულა — რიცხვები დღემდეა.</p>
+
+    <div class="st-tiles">
+        <div class="st-tile"><span>მიღებული</span><b>{{ s.admitted }}</b><small>მათ შორის რეანიმაციაში: {{ s.admitted_icu }}</small></div>
+        <div class="st-tile"><span>გაწერილი</span><b>{{ s.discharged }}</b><small>გადაყვანა რეანიმაცია ↔ სტაციონარი: {{ s.transfers }}</small></div>
+        <div class="st-tile"><span>დაყოვნება (საშუალო)</span><b>{% if s.avg_stay is not None %}{{ s.avg_stay|floatformat:1 }} დღე{% else %}—{% endif %}</b><small>{% if s.median_stay is not None %}მედიანა {{ s.median_stay|floatformat:1 }} დღე · {% endif %}გაწერილებზე</small></div>
+        <div class="st-tile"><span>პაციენტი დღეში (საშუალოდ)</span><b>{{ s.avg_patients|floatformat:1 }}</b><small>დაფაზე ერთდროულად</small></div>
+        <div class="st-tile"><span>დავალება შესრულდა</span><b>{% if s.tasks_pct is not None %}{{ s.tasks_pct }}%{% else %}—{% endif %}</b><small>{{ s.tasks_done }} / {{ s.tasks }}{% if s.median_hours is not None %} · მედიანა {{ s.median_hours|floatformat:1 }} სთ{% endif %}</small></div>
+        <div class="st-tile"><span>მდგომარეობა ჩაწერილია</span><b>{% if s.coverage_pct is not None %}{{ s.coverage_pct }}%{% else %}—{% endif %}</b><small>{{ s.coverage_written }} / {{ s.coverage_needed }} პაციენტი-მორიგეობა</small></div>
+    </div>
+
+    <section class="x-card">
+        <h2><span class="dot"></span>ექიმების მიხედვით</h2>
+        {% if s.people %}
+        <div class="table-responsive">
+        <table class="table st-table mb-0">
+            <thead><tr><th>ექიმი</th><th>ახალი პაციენტი<br><small>მკურნალი</small></th><th>მდგომარეობა<br><small>ჩაწერა</small></th><th>დავალება<br><small>მისცა</small></th><th>დავალება<br><small>შეასრულა</small></th><th>კომენტარი</th></tr></thead>
+            <tbody>
+            {% for r in s.people %}
+            <tr><td>{{ r.name }}</td><td>{{ r.patients }}</td><td>{{ r.status }}</td><td>{{ r.tasks }}</td><td>{{ r.done }}</td><td>{{ r.comments }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="text-muted m-0">ამ თვეში ჩანაწერი არ არის.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
