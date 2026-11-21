@@ -106,9 +106,11 @@ def parse_docx(fileobj):
     for text, bold in paras[start + 1:end]:
         if not text.strip() or any(m in text for m in NOT_COMPLICATIONS):
             continue
-        if bold or not blocks:
+        # a heading: bold, or a "… გართულებები:" line even without bold
+        heading = bold or (text.strip().endswith(':') and 'გართულებ' in text and len(text.strip()) < 120)
+        if heading or not blocks:
             blocks.append({'title': text, 'left': [], 'right': []})
-            if bold:
+            if heading:
                 continue
         # two columns in Word = a tab or a wide run of spaces (a few spaces are just a typo)
         parts = [p for p in re.split(r'\t+| {6,}', text.strip()) if p.strip()]
