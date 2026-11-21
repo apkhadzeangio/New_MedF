@@ -1,0 +1,823 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+    <br>
+    <div class="container-fluid">
+    <div class="table w-100 d-block d-md-table" style="display: table">
+      <table class="table table-bordered cf">
+        <thead>
+          <tr style="height: 25px">
+            <th scope="col" class="n-field">რიცხვი</th>
+            <th scope="col" colspan="13" class="field-date" style="border-right: 5px solid black !important;">
+                <input type="text" class="fdate1" style="text-align: center; font-weight: bold; border: none; padding: 0 !important; width: 100%;height: 54px">
+            </th>
+            <th scope="col" colspan="12" class="field-date" style="border-right: 5px solid black !important;">
+                <input type="text" class="fdate2" style="text-align: center; font-weight: bold; border: none; padding: 0 !important; width: 100%;height: 54px">
+            </th>
+            <th scope="col" colspan="12" class="field-date">
+                <input type="text" class="fdate3" style="text-align: center; font-weight: bold; border: none; padding: 0 !important; width: 100%;height: 54px">
+            </th>
+          </tr>
+          <tr style="height: 30px">
+            <th scope="col" class="n-field">დანიშნულება</th>
+            <th scope="col" class="hour-txt"><span>8</span></th>
+            <th scope="col" class="hour-txt"><span>10</span></th>
+            <th scope="col" class="hour-txt"><span>12</span></th>
+            <th scope="col" class="hour-txt"><span>14</span></th>
+            <th scope="col" class="hour-txt"><span>16</span></th>
+            <th scope="col" class="hour-txt"><span>18</span></th>
+            <th scope="col" class="hour-txt"><span>20</span></th>
+            <th scope="col" class="hour-txt"><span>22</span></th>
+            <th scope="col" class="hour-txt"><span>24</span></th>
+            <th scope="col" class="hour-txt"><span>2</span></th>
+            <th scope="col" class="hour-txt"><span>4</span></th>
+            <th scope="col" class="hour-txt"><span>6</span></th>
+            <th scope="col" class="hour-txt" style="border-right: 5px solid black !important;"><span>8</span></th>
+            <th scope="col" class="hour-txt"><span>10</span></th>
+            <th scope="col" class="hour-txt"><span>12</span></th>
+            <th scope="col" class="hour-txt"><span>14</span></th>
+            <th scope="col" class="hour-txt"><span>16</span></th>
+            <th scope="col" class="hour-txt"><span>18</span></th>
+            <th scope="col" class="hour-txt"><span>20</span></th>
+            <th scope="col" class="hour-txt"><span>22</span></th>
+            <th scope="col" class="hour-txt"><span>24</span></th>
+            <th scope="col" class="hour-txt"><span>2</span></th>
+            <th scope="col" class="hour-txt"><span>4</span></th>
+            <th scope="col" class="hour-txt"><span>6</span></th>
+            <th scope="col" class="hour-txt" style="border-right: 5px solid black !important;"><span>8</span></th>
+            <th scope="col" class="hour-txt"><span>10</span></th>
+            <th scope="col" class="hour-txt"><span>12</span></th>
+            <th scope="col" class="hour-txt"><span>14</span></th>
+            <th scope="col" class="hour-txt"><span>16</span></th>
+            <th scope="col" class="hour-txt"><span>18</span></th>
+            <th scope="col" class="hour-txt"><span>20</span></th>
+            <th scope="col" class="hour-txt"><span>22</span></th>
+            <th scope="col" class="hour-txt"><span>24</span></th>
+            <th scope="col" class="hour-txt"><span>2</span></th>
+            <th scope="col" class="hour-txt"><span>4</span></th>
+            <th scope="col" class="hour-txt"><span>6</span></th>
+            <th scope="col" class="hour-txt"><span>8</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td scope="col" class="n-field input_container">
+              <div class="row">
+                <div class="col">
+                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m13|default:'' }}"/>
+                </div>
+                <div class="w-100"></div>
+                <div class="col">
+                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n13|default:'' }}"/>
+                </div>
+              </div>
+            </td>
+            <td scope="col" class="hour" id="r13-d1-a">{{ niv.r13.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-b">{{ niv.r13.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-c">{{ niv.r13.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-d">{{ niv.r13.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-e">{{ niv.r13.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-f">{{ niv.r13.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-g">{{ niv.r13.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-h">{{ niv.r13.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-i">{{ niv.r13.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-j">{{ niv.r13.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-k">{{ niv.r13.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-l">{{ niv.r13.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d1-m" style="border-right: 5px solid black !important;">{{ niv.r13.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="r13-d2-a">{{ niv.r13.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-b">{{ niv.r13.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-c">{{ niv.r13.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-d">{{ niv.r13.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-e">{{ niv.r13.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-f">{{ niv.r13.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-g">{{ niv.r13.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-h">{{ niv.r13.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-i">{{ niv.r13.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-j">{{ niv.r13.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-k">{{ niv.r13.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d2-l" style="border-right: 5px solid black !important;">{{ niv.r13.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="r13-d3-a">{{ niv.r13.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-b">{{ niv.r13.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-c">{{ niv.r13.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-d">{{ niv.r13.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-e">{{ niv.r13.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-f">{{ niv.r13.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-g">{{ niv.r13.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-h">{{ niv.r13.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-i">{{ niv.r13.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-j">{{ niv.r13.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-k">{{ niv.r13.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r13-d3-l">{{ niv.r13.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field input_container">
+              <div class="row">
+                <div class="col">
+                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m14|default:'' }}"/>
+                </div>
+                <div class="w-100"></div>
+                <div class="col">
+                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n14|default:'' }}"/>
+                </div>
+              </div>
+            </td>
+            <td scope="col" class="hour" id="r14-d1-a">{{ niv.r14.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-b">{{ niv.r14.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-c">{{ niv.r14.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-d">{{ niv.r14.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-e">{{ niv.r14.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-f">{{ niv.r14.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-g">{{ niv.r14.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-h">{{ niv.r14.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-i">{{ niv.r14.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-j">{{ niv.r14.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-k">{{ niv.r14.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-l">{{ niv.r14.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d1-m" style="border-right: 5px solid black !important;">{{ niv.r14.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="r14-d2-a">{{ niv.r14.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-b">{{ niv.r14.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-c">{{ niv.r14.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-d">{{ niv.r14.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-e">{{ niv.r14.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-f">{{ niv.r14.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-g">{{ niv.r14.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-h">{{ niv.r14.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-i">{{ niv.r14.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-j">{{ niv.r14.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-k">{{ niv.r14.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d2-l" style="border-right: 5px solid black !important;">{{ niv.r14.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="r14-d3-a">{{ niv.r14.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-b">{{ niv.r14.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-c">{{ niv.r14.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-d">{{ niv.r14.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-e">{{ niv.r14.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-f">{{ niv.r14.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-g">{{ niv.r14.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-h">{{ niv.r14.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-i">{{ niv.r14.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-j">{{ niv.r14.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-k">{{ niv.r14.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r14-d3-l">{{ niv.r14.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field input_container">
+              <div class="row">
+                <div class="col">
+                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m15|default:'' }}"/>
+                </div>
+                <div class="w-100"></div>
+                <div class="col">
+                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n15|default:'' }}"/>
+                </div>
+              </div>
+            </td>
+            <td scope="col" class="hour" id="r15-d1-a">{{ niv.r15.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-b">{{ niv.r15.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-c">{{ niv.r15.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-d">{{ niv.r15.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-e">{{ niv.r15.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-f">{{ niv.r15.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-g">{{ niv.r15.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-h">{{ niv.r15.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-i">{{ niv.r15.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-j">{{ niv.r15.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-k">{{ niv.r15.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-l">{{ niv.r15.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d1-m" style="border-right: 5px solid black !important;">{{ niv.r15.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="r15-d2-a">{{ niv.r15.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-b">{{ niv.r15.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-c">{{ niv.r15.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-d">{{ niv.r15.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-e">{{ niv.r15.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-f">{{ niv.r15.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-g">{{ niv.r15.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-h">{{ niv.r15.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-i">{{ niv.r15.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-j">{{ niv.r15.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-k">{{ niv.r15.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d2-l" style="border-right: 5px solid black !important;">{{ niv.r15.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="r15-d3-a">{{ niv.r15.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-b">{{ niv.r15.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-c">{{ niv.r15.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-d">{{ niv.r15.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-e">{{ niv.r15.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-f">{{ niv.r15.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-g">{{ niv.r15.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-h">{{ niv.r15.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-i">{{ niv.r15.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-j">{{ niv.r15.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-k">{{ niv.r15.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r15-d3-l">{{ niv.r15.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field input_container">
+              <div class="row">
+                <div class="col">
+                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m16|default:'' }}"/>
+                </div>
+                <div class="w-100"></div>
+                <div class="col">
+                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n16|default:'' }}"/>
+                </div>
+              </div>
+            </td>
+            <td scope="col" class="hour" id="r16-d1-a">{{ niv.r16.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-b">{{ niv.r16.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-c">{{ niv.r16.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-d">{{ niv.r16.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-e">{{ niv.r16.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-f">{{ niv.r16.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-g">{{ niv.r16.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-h">{{ niv.r16.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-i">{{ niv.r16.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-j">{{ niv.r16.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-k">{{ niv.r16.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-l">{{ niv.r16.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d1-m" style="border-right: 5px solid black !important;">{{ niv.r16.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="r16-d2-a">{{ niv.r16.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-b">{{ niv.r16.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-c">{{ niv.r16.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-d">{{ niv.r16.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-e">{{ niv.r16.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-f">{{ niv.r16.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-g">{{ niv.r16.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-h">{{ niv.r16.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-i">{{ niv.r16.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-j">{{ niv.r16.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-k">{{ niv.r16.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d2-l" style="border-right: 5px solid black !important;">{{ niv.r16.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="r16-d3-a">{{ niv.r16.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-b">{{ niv.r16.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-c">{{ niv.r16.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-d">{{ niv.r16.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-e">{{ niv.r16.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-f">{{ niv.r16.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-g">{{ niv.r16.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-h">{{ niv.r16.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-i">{{ niv.r16.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-j">{{ niv.r16.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-k">{{ niv.r16.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="r16-d3-l">{{ niv.r16.d3.l|safe|default:'' }}</td>
+          </tr>
+
+          <tr>
+            <td scope="col" class="n-field">
+              გლიკემიის კონტროლი
+            </td>
+            <td scope="col" class="hour" id="gk-d1-a">{{ niv.gk.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-b">{{ niv.gk.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-c">{{ niv.gk.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-d">{{ niv.gk.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-e">{{ niv.gk.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-f">{{ niv.gk.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-g">{{ niv.gk.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-h">{{ niv.gk.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-i">{{ niv.gk.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-j">{{ niv.gk.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-k">{{ niv.gk.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-l">{{ niv.gk.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d1-m" style="border-right: 5px solid black !important;">{{ niv.gk.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="gk-d2-a">{{ niv.gk.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-b">{{ niv.gk.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-c">{{ niv.gk.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-d">{{ niv.gk.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-e">{{ niv.gk.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-f">{{ niv.gk.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-g">{{ niv.gk.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-h">{{ niv.gk.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-i">{{ niv.gk.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-j">{{ niv.gk.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-k">{{ niv.gk.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d2-l" style="border-right: 5px solid black !important;">{{ niv.gk.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="gk-d3-a">{{ niv.gk.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-b">{{ niv.gk.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-c">{{ niv.gk.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-d">{{ niv.gk.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-e">{{ niv.gk.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-f">{{ niv.gk.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-g">{{ niv.gk.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-h">{{ niv.gk.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-i">{{ niv.gk.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-j">{{ niv.gk.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-k">{{ niv.gk.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gk-d3-l">{{ niv.gk.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              P
+            </td>
+            <td scope="col" class="hour" id="p-d1-a">{{ niv.p.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-b">{{ niv.p.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-c">{{ niv.p.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-d">{{ niv.p.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-e">{{ niv.p.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-f">{{ niv.p.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-g">{{ niv.p.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-h">{{ niv.p.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-i">{{ niv.p.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-j">{{ niv.p.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-k">{{ niv.p.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-l">{{ niv.p.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d1-m" style="border-right: 5px solid black !important;">{{ niv.p.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="p-d2-a">{{ niv.p.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-b">{{ niv.p.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-c">{{ niv.p.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-d">{{ niv.p.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-e">{{ niv.p.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-f">{{ niv.p.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-g">{{ niv.p.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-h">{{ niv.p.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-i">{{ niv.p.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-j">{{ niv.p.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-k">{{ niv.p.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d2-l" style="border-right: 5px solid black !important;">{{ niv.p.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="p-d3-a">{{ niv.p.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-b">{{ niv.p.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-c">{{ niv.p.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-d">{{ niv.p.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-e">{{ niv.p.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-f">{{ niv.p.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-g">{{ niv.p.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-h">{{ niv.p.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-i">{{ niv.p.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-j">{{ niv.p.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-k">{{ niv.p.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="p-d3-l">{{ niv.p.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              TA
+            </td>
+            <td scope="col" class="hour" id="ta-d1-a">{{ niv.ta.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-b">{{ niv.ta.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-c">{{ niv.ta.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-d">{{ niv.ta.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-e">{{ niv.ta.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-f">{{ niv.ta.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-g">{{ niv.ta.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-h">{{ niv.ta.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-i">{{ niv.ta.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-j">{{ niv.ta.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-k">{{ niv.ta.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-l">{{ niv.ta.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d1-m" style="border-right: 5px solid black !important;">{{ niv.ta.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="ta-d2-a">{{ niv.ta.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-b">{{ niv.ta.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-c">{{ niv.ta.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-d">{{ niv.ta.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-e">{{ niv.ta.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-f">{{ niv.ta.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-g">{{ niv.ta.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-h">{{ niv.ta.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-i">{{ niv.ta.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-j">{{ niv.ta.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-k">{{ niv.ta.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d2-l" style="border-right: 5px solid black !important;">{{ niv.ta.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="ta-d3-a">{{ niv.ta.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-b">{{ niv.ta.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-c">{{ niv.ta.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-d">{{ niv.ta.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-e">{{ niv.ta.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-f">{{ niv.ta.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-g">{{ niv.ta.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-h">{{ niv.ta.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-i">{{ niv.ta.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-j">{{ niv.ta.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-k">{{ niv.ta.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="ta-d3-l">{{ niv.ta.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              T °C
+            </td>
+            <td scope="col" class="hour" id="tc-d1-a">{{ niv.tc.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-b">{{ niv.tc.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-c">{{ niv.tc.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-d">{{ niv.tc.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-e">{{ niv.tc.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-f">{{ niv.tc.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-g">{{ niv.tc.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-h">{{ niv.tc.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-i">{{ niv.tc.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-j">{{ niv.tc.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-k">{{ niv.tc.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-l">{{ niv.tc.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d1-m" style="border-right: 5px solid black !important;">{{ niv.tc.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="tc-d2-a">{{ niv.tc.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-b">{{ niv.tc.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-c">{{ niv.tc.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-d">{{ niv.tc.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-e">{{ niv.tc.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-f">{{ niv.tc.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-g">{{ niv.tc.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-h">{{ niv.tc.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-i">{{ niv.tc.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-j">{{ niv.tc.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-k">{{ niv.tc.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d2-l" style="border-right: 5px solid black !important;">{{ niv.tc.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="tc-d3-a">{{ niv.tc.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-b">{{ niv.tc.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-c">{{ niv.tc.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-d">{{ niv.tc.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-e">{{ niv.tc.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-f">{{ niv.tc.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-g">{{ niv.tc.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-h">{{ niv.tc.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-i">{{ niv.tc.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-j">{{ niv.tc.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-k">{{ niv.tc.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="tc-d3-l">{{ niv.tc.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              f (სუნთქვა)
+            </td>
+            <td scope="col" class="hour" id="fs-d1-a">{{ niv.fs.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-b">{{ niv.fs.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-c">{{ niv.fs.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-d">{{ niv.fs.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-e">{{ niv.fs.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-f">{{ niv.fs.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-g">{{ niv.fs.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-h">{{ niv.fs.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-i">{{ niv.fs.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-j">{{ niv.fs.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-k">{{ niv.fs.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-l">{{ niv.fs.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d1-m" style="border-right: 5px solid black !important;">{{ niv.fs.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="fs-d2-a">{{ niv.fs.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-b">{{ niv.fs.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-c">{{ niv.fs.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-d">{{ niv.fs.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-e">{{ niv.fs.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-f">{{ niv.fs.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-g">{{ niv.fs.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-h">{{ niv.fs.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-i">{{ niv.fs.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-j">{{ niv.fs.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-k">{{ niv.fs.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d2-l" style="border-right: 5px solid black !important;">{{ niv.fs.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="fs-d3-a">{{ niv.fs.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-b">{{ niv.fs.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-c">{{ niv.fs.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-d">{{ niv.fs.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-e">{{ niv.fs.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-f">{{ niv.fs.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-g">{{ niv.fs.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-h">{{ niv.fs.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-i">{{ niv.fs.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-j">{{ niv.fs.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-k">{{ niv.fs.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="fs-d3-l">{{ niv.fs.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              SpO2 (სატურატი)
+            </td>
+            <td scope="col" class="hour" id="sp2s-d1-a">{{ niv.sp2s.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-b">{{ niv.sp2s.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-c">{{ niv.sp2s.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-d">{{ niv.sp2s.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-e">{{ niv.sp2s.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-f">{{ niv.sp2s.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-g">{{ niv.sp2s.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-h">{{ niv.sp2s.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-i">{{ niv.sp2s.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-j">{{ niv.sp2s.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-k">{{ niv.sp2s.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-l">{{ niv.sp2s.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d1-m" style="border-right: 5px solid black !important;">{{ niv.sp2s.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="sp2s-d2-a">{{ niv.sp2s.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-b">{{ niv.sp2s.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-c">{{ niv.sp2s.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-d">{{ niv.sp2s.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-e">{{ niv.sp2s.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-f">{{ niv.sp2s.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-g">{{ niv.sp2s.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-h">{{ niv.sp2s.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-i">{{ niv.sp2s.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-j">{{ niv.sp2s.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-k">{{ niv.sp2s.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d2-l" style="border-right: 5px solid black !important;">{{ niv.sp2s.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="sp2s-d3-a">{{ niv.sp2s.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-b">{{ niv.sp2s.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-c">{{ niv.sp2s.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-d">{{ niv.sp2s.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-e">{{ niv.sp2s.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-f">{{ niv.sp2s.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-g">{{ niv.sp2s.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-h">{{ niv.sp2s.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-i">{{ niv.sp2s.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-j">{{ niv.sp2s.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-k">{{ niv.sp2s.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="sp2s-d3-l">{{ niv.sp2s.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              გადაისხა ი.ვ.
+            </td>
+            <td scope="col" class="hour" id="giv-d1-a">{{ niv.giv.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-b">{{ niv.giv.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-c">{{ niv.giv.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-d">{{ niv.giv.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-e">{{ niv.giv.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-f">{{ niv.giv.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-g">{{ niv.giv.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-h">{{ niv.giv.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-i">{{ niv.giv.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-j">{{ niv.giv.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-k">{{ niv.giv.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-l">{{ niv.giv.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d1-m" style="border-right: 5px solid black !important;">{{ niv.giv.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="giv-d2-a">{{ niv.giv.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-b">{{ niv.giv.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-c">{{ niv.giv.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-d">{{ niv.giv.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-e">{{ niv.giv.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-f">{{ niv.giv.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-g">{{ niv.giv.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-h">{{ niv.giv.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-i">{{ niv.giv.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-j">{{ niv.giv.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-k">{{ niv.giv.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d2-l" style="border-right: 5px solid black !important;">{{ niv.giv.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="giv-d3-a">{{ niv.giv.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-b">{{ niv.giv.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-c">{{ niv.giv.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-d">{{ niv.giv.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-e">{{ niv.giv.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-f">{{ niv.giv.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-g">{{ niv.giv.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-h">{{ niv.giv.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-i">{{ niv.giv.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-j">{{ niv.giv.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-k">{{ niv.giv.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="giv-d3-l">{{ niv.giv.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              Per-Os
+            </td>
+            <td scope="col" class="hour" id="per0s-d1-a">{{ niv.per0s.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-b">{{ niv.per0s.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-c">{{ niv.per0s.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-d">{{ niv.per0s.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-e">{{ niv.per0s.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-f">{{ niv.per0s.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-g">{{ niv.per0s.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-h">{{ niv.per0s.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-i">{{ niv.per0s.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-j">{{ niv.per0s.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-k">{{ niv.per0s.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-l">{{ niv.per0s.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d1-m" style="border-right: 5px solid black !important;">{{ niv.per0s.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="per0s-d2-a">{{ niv.per0s.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-b">{{ niv.per0s.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-c">{{ niv.per0s.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-d">{{ niv.per0s.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-e">{{ niv.per0s.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-f">{{ niv.per0s.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-g">{{ niv.per0s.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-h">{{ niv.per0s.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-i">{{ niv.per0s.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-j">{{ niv.per0s.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-k">{{ niv.per0s.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d2-l" style="border-right: 5px solid black !important;">{{ niv.per0s.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="per0s-d3-a">{{ niv.per0s.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-b">{{ niv.per0s.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-c">{{ niv.per0s.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-d">{{ niv.per0s.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-e">{{ niv.per0s.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-f">{{ niv.per0s.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-g">{{ niv.per0s.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-h">{{ niv.per0s.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-i">{{ niv.per0s.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-j">{{ niv.per0s.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-k">{{ niv.per0s.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="per0s-d3-l">{{ niv.per0s.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              დიურეზი
+            </td>
+            <td scope="col" class="hour" id="di-d1-a">{{ niv.di.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-b">{{ niv.di.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-c">{{ niv.di.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-d">{{ niv.di.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-e">{{ niv.di.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-f">{{ niv.di.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-g">{{ niv.di.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-h">{{ niv.di.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-i">{{ niv.di.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-j">{{ niv.di.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-k">{{ niv.di.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-l">{{ niv.di.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d1-m" style="border-right: 5px solid black !important;">{{ niv.di.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="di-d2-a">{{ niv.di.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-b">{{ niv.di.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-c">{{ niv.di.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-d">{{ niv.di.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-e">{{ niv.di.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-f">{{ niv.di.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-g">{{ niv.di.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-h">{{ niv.di.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-i">{{ niv.di.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-j">{{ niv.di.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-k">{{ niv.di.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d2-l" style="border-right: 5px solid black !important;">{{ niv.di.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="di-d3-a">{{ niv.di.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-b">{{ niv.di.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-c">{{ niv.di.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-d">{{ niv.di.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-e">{{ niv.di.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-f">{{ niv.di.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-g">{{ niv.di.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-h">{{ niv.di.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-i">{{ niv.di.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-j">{{ niv.di.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-k">{{ niv.di.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="di-d3-l">{{ niv.di.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              დეფეკაცია
+            </td>
+            <td scope="col" class="hour" id="de-d1-a">{{ niv.de.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-b">{{ niv.de.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-c">{{ niv.de.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-d">{{ niv.de.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-e">{{ niv.de.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-f">{{ niv.de.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-g">{{ niv.de.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-h">{{ niv.de.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-i">{{ niv.de.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-j">{{ niv.de.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-k">{{ niv.de.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-l">{{ niv.de.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d1-m" style="border-right: 5px solid black !important;">{{ niv.de.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="de-d2-a">{{ niv.de.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-b">{{ niv.de.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-c">{{ niv.de.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-d">{{ niv.de.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-e">{{ niv.de.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-f">{{ niv.de.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-g">{{ niv.de.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-h">{{ niv.de.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-i">{{ niv.de.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-j">{{ niv.de.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-k">{{ niv.de.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d2-l" style="border-right: 5px solid black !important;">{{ niv.de.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="de-d3-a">{{ niv.de.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-b">{{ niv.de.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-c">{{ niv.de.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-d">{{ niv.de.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-e">{{ niv.de.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-f">{{ niv.de.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-g">{{ niv.de.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-h">{{ niv.de.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-i">{{ niv.de.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-j">{{ niv.de.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-k">{{ niv.de.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="de-d3-l">{{ niv.de.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              დერნაჟ გამონადენი
+            </td>
+            <td scope="col" class="hour" id="dg-d1-a">{{ niv.dg.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-b">{{ niv.dg.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-c">{{ niv.dg.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-d">{{ niv.dg.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-e">{{ niv.dg.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-f">{{ niv.dg.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-g">{{ niv.dg.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-h">{{ niv.dg.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-i">{{ niv.dg.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-j">{{ niv.dg.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-k">{{ niv.dg.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-l">{{ niv.dg.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d1-m" style="border-right: 5px solid black !important;">{{ niv.dg.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="dg-d2-a">{{ niv.dg.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-b">{{ niv.dg.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-c">{{ niv.dg.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-d">{{ niv.dg.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-e">{{ niv.dg.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-f">{{ niv.dg.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-g">{{ niv.dg.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-h">{{ niv.dg.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-i">{{ niv.dg.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-j">{{ niv.dg.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-k">{{ niv.dg.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d2-l" style="border-right: 5px solid black !important;">{{ niv.dg.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="dg-d3-a">{{ niv.dg.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-b">{{ niv.dg.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-c">{{ niv.dg.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-d">{{ niv.dg.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-e">{{ niv.dg.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-f">{{ niv.dg.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-g">{{ niv.dg.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-h">{{ niv.dg.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-i">{{ niv.dg.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-j">{{ niv.dg.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-k">{{ niv.dg.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="dg-d3-l">{{ niv.dg.d3.l|safe|default:'' }}</td>
+          </tr>
+          <tr>
+            <td scope="col" class="n-field">
+              გლუკოზა
+            </td>
+            <td scope="col" class="hour" id="gl-d1-a">{{ niv.gl.d1.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-b">{{ niv.gl.d1.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-c">{{ niv.gl.d1.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-d">{{ niv.gl.d1.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-e">{{ niv.gl.d1.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-f">{{ niv.gl.d1.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-g">{{ niv.gl.d1.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-h">{{ niv.gl.d1.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-i">{{ niv.gl.d1.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-j">{{ niv.gl.d1.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-k">{{ niv.gl.d1.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-l">{{ niv.gl.d1.l|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d1-m" style="border-right: 5px solid black !important;">{{ niv.gl.d1.m|safe|default:'' }}</td>
+            <!-- end block 1 -->
+            <td scope="col" class="hour" id="gl-d2-a">{{ niv.gl.d2.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-b">{{ niv.gl.d2.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-c">{{ niv.gl.d2.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-d">{{ niv.gl.d2.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-e">{{ niv.gl.d2.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-f">{{ niv.gl.d2.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-g">{{ niv.gl.d2.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-h">{{ niv.gl.d2.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-i">{{ niv.gl.d2.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-j">{{ niv.gl.d2.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-k">{{ niv.gl.d2.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d2-l" style="border-right: 5px solid black !important;">{{ niv.gl.d2.l|safe|default:'' }}</td>
+              <!-- end block 2 -->
+            <td scope="col" class="hour" id="gl-d3-a">{{ niv.gl.d3.a|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-b">{{ niv.gl.d3.b|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-c">{{ niv.gl.d3.c|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-d">{{ niv.gl.d3.d|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-e">{{ niv.gl.d3.e|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-f">{{ niv.gl.d3.f|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-g">{{ niv.gl.d3.g|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-h">{{ niv.gl.d3.h|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-i">{{ niv.gl.d3.i|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-j">{{ niv.gl.d3.j|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-k">{{ niv.gl.d3.k|safe|default:'' }}</td>
+            <td scope="col" class="hour" id="gl-d3-l">{{ niv.gl.d3.l|safe|default:'' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    </div>
+
+    <div class="container-fluid" style="font-weight: bold; margin-top: -20px;">
+        <div class="p-2 inf">
+            მკურნალი ექიმი <input type="text" value="{{ niv.doctor|default:'' }}" style="border: none; text-decoration: underline; width: 80%; border-bottom: 1px solid;">
+        </div>
+        <div class="p-2 inf" style="font-size: small;vertical-align: top;line-height: 0; margin-left: 20%;"> (სახელი, გვარი),         (სახელი,გვარი),            (სახელი, გვარი)</div>
+        <div class="p-2 inf">
+            მორიგე ექთანი <input type="text" value="{{ niv.nurse|default:'' }}" style="border: none; text-decoration: underline; width: 80%">
+            <div class="dashed_line inf">
+                <div class="line"></div>
+                <div class="line"></div>
+                <div class="line"></div>
+            </div>
+        </div>
+        <div class="p-2 inf" style="font-size: small;vertical-align: top;line-height: 0; margin-left: 20%;"> (სახელი, გვარი),         (სახელი, გვარი),            (სახელი, გვარი)</div>
+
+    </div>
+    <br>
+{% endblock %}

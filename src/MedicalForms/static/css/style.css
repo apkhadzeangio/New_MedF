@@ -1,0 +1,119 @@
+body{
+  -webkit-print-color-adjust:exact !important;
+  print-color-adjust:exact !important;
+}
+
+.hour {
+    background: transparent;
+    max-width: 26px !important;
+    text-align: center;
+    font-weight: bold;
+    color: #000000;
+    font-size: 11pt;
+    vertical-align: middle !important;
+    white-space: nowrap;
+    direction: ltr;
+    padding: 0 !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+}
+
+.hour-txt {
+    text-align: center;
+    max-width: 28.5px !important;
+    min-width: 28.5px !important;
+    font-weight: bold;
+    color: #000000;
+    font-size: 10pt;
+    vertical-align: middle !important;
+    white-space: nowrap;
+    direction: ltr;
+    padding: 0 !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+}
+
+th span {
+    -ms-writing-mode: tb-rl;
+    -webkit-writing-mode: vertical-rl;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    white-space: nowrap;
+}
+
+.n-field {
+    text-align: center;
+    font-weight: bold;
+    color: #000000;
+    font-size: 13pt;
+    vertical-align: middle;
+    white-space: normal;
+    word-wrap: break-word;
+    direction: ltr;
+    min-width: 320px !important;
+    max-width: 320px !important;
+}
+
+.cf thead tr, .cf tbody tr {
+    border: 1px SOLID #000000 !important;
+}
+
+.col {
+    line-height: 0 !important;
+}
+
+
+.cf thead tr th, .cf tbody tr td {
+    border: 1px SOLID #000000 !important;
+}
+
+.field-date {
+    text-align: center;
+    color: #000000;
+    font-size: 10pt;
+    vertical-align: middle;
+    white-space: nowrap;
+    direction: ltr;
+    padding: 0 !important;
+}
+
+.field-date input {
+    text-align: center;
+    color: #000000;
+    font-size: 13pt;
+    vertical-align: middle;
+    white-space: nowrap;
+    direction: ltr;
+    padding: 0 !important;
+}
+
+.input_container {
+  padding: 0 !important;
+}
+
+.input_container input {
+    min-height: 25px;
+    width: 100%;
+    text-wrap: inherit;
+    line-height: 0 !important;
+}
+
+.inf {
+    margin-left: 100px;
+}
+
+.hide-dh {
+    display: none;
+}
+
+.line {
+    height: 1px;
+    background-color: #000;
+}
+.dashed_line {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 40px;
+    width: 80%;
+    margin-left: 140px;
+}

@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container">
+    <nav class="navbar bg-body-tertiary w-100">
+      <div class="container-fluid justify-content-start">
+        <a class="btn btn-outline-success me-2" href="{% url 'niv-cover' %}">შაბლონის შექმნა</a>
+      </div>
+      <form action="{% url 'niv-templates' %}" class="d-flex w-100" id="search-form" method="get">
+        {% csrf_token %}
+        <div class="form-group w-100">
+          <label for="q"></label>
+          <input type="hidden" value="{{ page_obj.number }}" name="page">
+          <input type="text" name="q" class="form-control-lg w-100" id="q" value="{{ q }}" placeholder="ძიება...">
+        </div>
+      </form>
+    </nav>
+</div>
+    <div class="container text-center" id="niv-forms">
+        {% if object_list %}
+            <table class="table">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">შაბლონის სახელი</th>
+                  <th scope="col"></th>
+                  <th scope="col"></th>
+                  <th scope="col"></th>
+                  <th scope="col"></th>
+                </tr>
+              </thead>
+              <tbody>
+                  {% for object in object_list %}
+                    <tr>
+                      <th scope="row">{{ forloop.counter }}</th>
+                        <td>
+                            <a href="{% url 'niv-cover' %}?t={{ object.pk }}">
+                                {{ object.title }}
+                            </a>
+                        </td>
+                      <td>
+                          <button class="btn btn-info me-2 copy-btn" data-clipboard-text="{{ object.rows_as_string }}" data-clipboard-action="copy" style="display: inline-flex; align-items: center">
+                                  {% include 'partials/clipboard-svg-icon.html' %} &nbsp;&nbsp;
+                              კოპირება
+                          </button>
+                      </td>
+                      <td>
+                          <a class="btn btn-info me-2 copy-btn" href="{% url 'niv-cover' %}?as={{ object.pk }}" style="display: inline-flex; align-items: center">
+                              Save As
+                          </a>
+                      </td>
+                      <td>
+                          <div class="dropdown">
+                              <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                ბეჭდვა
+                              </button>
+                              <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                                  <li><a class="dropdown-item" href="{% url 'print-niv-cover' %}?t={{ object.pk }}" target="_blank">წინა მხარე</a></li>
+                                  <li><a class="dropdown-item" href="{% url 'print-niv-back' %}?t={{ object.pk }}" target="_blank">უკანა მხარე</a></li>
+                              </ul>
+                            </div>
+                      </td>
+                      <td>
+                          <div class="dropdown">
+                              <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton1" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                ქმედებები
+                              </button>
+                              <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton1">
+                                  <li><a class="dropdown-item" id="niv-edit-btn" href="{% url 'niv-cover' %}?t={{ object.pk }}">შაბლონის რედაქტირება</a></li>
+                                  <li><a class="dropdown-item" id="niv-del-btn" href="#" data-href="{% url 'niv-delete' object.pk %}">შაბლონის წაშლა</a></li>
+                              </ul>
+                            </div>
+                      </td>
+                    </tr>
+                  {% endfor %}
+              </tbody>
+            </table>
+            <div class="row">
+            {% include 'partials/pagination.html' %}
+            </div>
+        {% else %}
+            <div class="p-2">შაბლონები არ მოიძებნა.</div>
+        {% endif %}
+    </div>
+{% endblock %}
