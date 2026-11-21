@@ -105,7 +105,8 @@ def parse_docx(fileobj):
             blocks.append({'title': text, 'left': [], 'right': []})
             if bold:
                 continue
-        parts = [p for p in re.split(r'\t+| {3,}', text.strip()) if p.strip()]
+        # two columns in Word = a tab or a wide run of spaces (a few spaces are just a typo)
+        parts = [p for p in re.split(r'\t+| {6,}', text.strip()) if p.strip()]
         if parts:
             blocks[-1]['left'].append(parts[0])
         if len(parts) > 1:

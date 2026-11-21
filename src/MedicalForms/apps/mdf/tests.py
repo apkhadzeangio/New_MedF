@@ -1065,7 +1065,7 @@ class ConsentTests(BaseViewTest):
         from .models import ConsentForm
         first = ConsentForm.objects.get(name__startswith='აორტა-ბარძაყის')
         self.assertEqual(first.blocks[0]['left'][0], 'სისხლდენა')
-        self.assertEqual(ConsentForm.objects.count(), 4)                       # + the three from Word files
+        self.assertEqual(ConsentForm.objects.count(), 9)                       # + the eight from Word files
         other = ConsentForm.objects.create(name='კაროტიდული ენდარტერექტომია', blocks=[])
         for _ in range(3):
             self.client.get(reverse('consent-sheet', args=[other.pk]))
@@ -1109,6 +1109,7 @@ class ConsentTests(BaseViewTest):
             ('ასევე ჩემთვის ცნობილია სამედიცინო მომსახურებაზე უარის შემთხვევაში მოსალოდნელი შედეგების შესახებ.', False),
             ('გართულებები  საძილე არტერიის   ოპერაციის დროს:', True),
             ('სისხლდენა                         ინსულტი', False),
+            ('არტერიული სისტემის   თრომბოზი', False),
             ('ინფექცია', False),
             ('პაციენტს აეხსნა ფინანსური და სოციალური საკითხები, ეცნობა ღირებულების შესახებ.', False),
             ('პაციენტს პასუხი გაეცა ყველა სხვა საინტერესო შეკითხვაზე.', False),
@@ -1118,7 +1119,8 @@ class ConsentTests(BaseViewTest):
         new = ConsentForm.objects.latest('id')
         self.assertRedirects(r, reverse('consent-sheet', args=[new.pk]), fetch_redirect_response=False)
         self.assertEqual(new.blocks, [{'title': 'გართულებები საძილე არტერიის ოპერაციის დროს:',
-                                       'left': ['სისხლდენა', 'ინფექცია'], 'right': ['ინსულტი']}])
+                                       'left': ['სისხლდენა', 'არტერიული სისტემის თრომბოზი', 'ინფექცია'],
+                                       'right': ['ინსულტი']}])
         self.assertEqual(new.name, 'საძილე არტერიის ოპერაციის დროს')
         self.assertNotIn('პაციენტის სახელი', str(new.blocks))
         # not the right form -> a message, nothing created
