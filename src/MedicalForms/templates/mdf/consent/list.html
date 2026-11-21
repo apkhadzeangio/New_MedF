@@ -10,7 +10,7 @@
             {% csrf_token %}
             <label class="x-btn" title="ამავე ფორმის Word ფაილიდან გართულებები თავისით გადმოვა">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 15v5h16v-5"/></svg>Word ფაილიდან
-                <input type="file" name="docx" accept=".docx" hidden onchange="this.form.submit()">
+                <input type="file" name="docx" accept=".docx,.doc,.rtf,.odt" hidden onchange="this.form.submit()">
             </label>
         </form>
         <form method="post" action="{% url 'consent-new' %}" class="m-0">

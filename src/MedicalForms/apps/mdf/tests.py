@@ -1065,7 +1065,7 @@ class ConsentTests(BaseViewTest):
         from .models import ConsentForm
         first = ConsentForm.objects.get(name__startswith='აორტა-ბარძაყის')
         self.assertEqual(first.blocks[0]['left'][0], 'სისხლდენა')
-        self.assertEqual(ConsentForm.objects.count(), 14)                      # + 13 from the Word files
+        self.assertEqual(ConsentForm.objects.count(), 17)                      # + 16 from the Word files
         other = ConsentForm.objects.create(name='კაროტიდული ენდარტერექტომია', blocks=[])
         for _ in range(3):
             self.client.get(reverse('consent-sheet', args=[other.pk]))
@@ -1142,3 +1142,29 @@ class ConsentTests(BaseViewTest):
     def test_login_required(self):
         self.client.logout()
         self.assertEqual(self.client.get(reverse('consent-list')).status_code, 302)
+
+
+class ConsentUploadFormatsTests(BaseViewTest):
+
+    def test_empty_file_gets_a_clear_message(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .models import ConsentForm
+        count = ConsentForm.objects.count()
+        r = self.client.post(reverse('consent-new'), {'docx': SimpleUploadedFile('x.docx', b'')}, follow=True)
+        self.assertContains(r, 'ცარიელია')
+        self.assertEqual(ConsentForm.objects.count(), count)
+
+    @skipUnless(shutil.which('soffice'), 'LibreOffice is needed for .rtf')
+    def test_rtf_is_converted(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .models import ConsentForm
+        rtf = (r'{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}'
+               r'\pard ასევე ჩემთვის ცნობილია შედეგების შესახებ.\par'
+               r'\pard\b გართულებები ტესტის დროს:\b0\par'
+               r'\pard სისხლდენა\par'
+               r'\pard მკურნალი ექიმი ____\par}')
+        # RTF keeps Georgian as \uN escapes
+        rtf = ''.join(c if ord(c) < 128 else f'\\u{ord(c)}?' for c in rtf)
+        self.client.post(reverse('consent-new'), {'docx': SimpleUploadedFile('x.rtf', rtf.encode())})
+        new = ConsentForm.objects.latest('id')
+        self.assertEqual(new.blocks, [{'title': 'გართულებები ტესტის დროს:', 'left': ['სისხლდენა'], 'right': []}])

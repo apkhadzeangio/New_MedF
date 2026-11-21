@@ -8,9 +8,14 @@ patient's name, the doctor and the date are written on the sheet before
 printing and are not stored.
 """
 import html
+import io
 import json
 import re
+import shutil
+import subprocess
+import tempfile
 import zipfile
+from pathlib import Path
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -117,6 +122,40 @@ def parse_docx(fileobj):
     return blocks
 
 
+WORD_TYPES = ('.docx', '.doc', '.rtf', '.odt')
+
+
+def _soffice():
+    return shutil.which('soffice') or shutil.which('libreoffice') or next(
+        (p for p in ('/usr/bin/soffice', '/usr/lib/libreoffice/program/soffice') if Path(p).exists()), None)
+
+
+def to_docx(upload):
+    """A .docx file object; older .doc / .rtf / .odt files are converted with LibreOffice."""
+    name = upload.name.lower()
+    if name.endswith('.docx'):
+        return upload
+    soffice = _soffice()
+    if not soffice:
+        raise ValueError('ამ ფორმატის წასაკითხად სერვერზე LibreOffice არ არის — შეინახეთ Word-ში .docx-ად.')
+    suffix = Path(name).suffix
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / f'sheet{suffix}'
+        with open(src, 'wb') as fh:
+            for chunk in upload.chunks():
+                fh.write(chunk)
+        try:
+            subprocess.run([soffice, '--headless', f'-env:UserInstallation=file://{tmp}/profile',
+                            '--convert-to', 'docx', '--outdir', tmp, str(src)],
+                           capture_output=True, timeout=90, check=False)
+        except subprocess.TimeoutExpired:
+            raise ValueError('ფაილის გარდაქმნამ ძალიან დიდხანს გასტანა — შეინახეთ Word-ში .docx-ად.')
+        out = Path(tmp) / 'sheet.docx'
+        if not out.exists():
+            raise ValueError('ფაილი ვერ გადავაკეთე .docx-ად — შეინახეთ Word-ში .docx-ად.')
+        return io.BytesIO(out.read_bytes())
+
+
 # --------------------------------------------------------------------------
 # views
 # --------------------------------------------------------------------------
@@ -190,11 +229,14 @@ class ConsentCreateView(LoginRequiredMixin, generic.View):
     def post(self, request):
         upload = request.FILES.get('docx')
         if upload:
-            if upload.size > 5 * 1024 * 1024 or not upload.name.lower().endswith('.docx'):
-                messages.error(request, 'აირჩიეთ Word ფაილი (.docx), 5 MB-მდე.')
+            if upload.size > 5 * 1024 * 1024 or not upload.name.lower().endswith(WORD_TYPES):
+                messages.error(request, 'აირჩიეთ Word ფაილი (.docx, .doc ან .rtf), 5 MB-მდე.')
+                return HttpResponseRedirect(reverse('consent-list'))
+            if not upload.size:
+                messages.error(request, f'ფაილი „{upload.name}“ ცარიელია (0 ბაიტი) — მასში არაფერი წერია.')
                 return HttpResponseRedirect(reverse('consent-list'))
             try:
-                blocks = parse_docx(upload)
+                blocks = parse_docx(to_docx(upload))
             except (ValueError, KeyError, zipfile.BadZipFile) as exc:
                 messages.error(request, str(exc) if isinstance(exc, ValueError) else 'ფაილი ვერ წავიკითხე.')
                 return HttpResponseRedirect(reverse('consent-list'))
