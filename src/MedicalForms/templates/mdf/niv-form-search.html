@@ -1,3 +1,4 @@
+{% load mdf_tags %}
 {% if object_list %}
   <table class="table align-middle">
     <thead>
@@ -15,6 +16,7 @@
           <tr>
             <th scope="row">{% if page_obj %}{{ page_obj.start_index|add:forloop.counter0 }}{% else %}{{ forloop.counter }}{% endif %}</th>
               <td>
+                  {% with pic=object.diagnosis|disease_avatar %}{% if pic %}<img src="{{ pic }}" alt="" class="disease-avatar me-2" style="width:36px;height:36px" title="{{ object.diagnosis }}">{% endif %}{% endwith %}
                   <a href="{% url 'niv-cover' %}?t={{ object.pk }}">
                       {{ object.title }}
                   </a>

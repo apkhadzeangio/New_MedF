@@ -405,3 +405,22 @@ class StaffAndBackupTests(TestCase):
             profile = StaffProfile.objects.get(user=user)
             self.assertEqual(Image.open(profile.photo.path).size, (400, 400))
             self.assertEqual(self.client.get(profile.photo.url).status_code, 200)
+
+
+class AvatarTests(BaseViewTest):
+
+    def test_disease_and_staff_avatars(self):
+        from django.test import override_settings
+        from apps.mdf import avatars
+        avatars._static_file.cache_clear()
+        url, key = avatars.disease_avatar('I71.4 მუცლის აორტის ანევრიზმით')
+        if not url:
+            self.skipTest('no test image in static/img/patients')
+        self.assertEqual(key, 'aneurysm')
+        self.assertEqual(avatars.disease_avatar('ჰიპერტენზია'), (None, None))
+        self.make_niv(title='ბ', diagnosis='აორტის ანევრიზმა')
+        self.assertContains(self.client.get(reverse('niv-templates')), 'img/patients/aneurysm.png')
+        self.assertContains(self.client.get(reverse('rx-analysis')), 'img/patients/aneurysm.png')
+        ina = User.objects.create_user('ina', password='x')
+        profile = StaffProfile.objects.create(user=ina, display_name='ინა')
+        self.assertTrue(profile.avatar_url.endswith('img/staff/ina.png'))

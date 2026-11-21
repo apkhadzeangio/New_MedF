@@ -207,7 +207,7 @@ class NivTemplateListView(LoginRequiredMixin, generic.ListView):
         ).strip()
 
     def get_queryset(self):
-        qs = NivForm.objects.only(*_row_columns()).order_by('-id')
+        qs = NivForm.objects.only(*_row_columns(), 'diagnosis').order_by('-id')
         q = self.get_search_term()
         if q:
             qs = qs.filter(

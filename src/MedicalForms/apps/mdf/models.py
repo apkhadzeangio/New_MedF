@@ -304,6 +304,14 @@ class StaffProfile(models.Model):
     def initial(self):
         return (self.display_name or self.user.username)[:1].upper()
 
+    @property
+    def avatar_url(self):
+        """Uploaded photo, else static/img/staff/<username>.png, else None."""
+        if self.photo:
+            return self.photo.url
+        from .avatars import staff_avatar_url
+        return staff_avatar_url(self.user.username)
+
 
 class PrescriptionTemplate(models.Model):
     """Reusable set of medicines + hours (e.g. "ანევრიზმა", "ლერიში")."""
