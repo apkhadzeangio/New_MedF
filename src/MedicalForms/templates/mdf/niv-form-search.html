@@ -34,6 +34,7 @@
             </td>
             <td>
                 <a class="btn btn-secondary" href="{% url 'print-niv-cover' %}?t={{ object.pk }}" target="_blank">ბეჭდვა</a>
+                <a class="btn btn-outline-danger ms-1" href="{% url 'blood-order' %}?t={{ object.pk }}" title="სისხლის შეკვეთა ამ პაციენტზე">🩸 სისხლის შეკვეთა</a>
             </td>
             <td>
                 <div class="dropdown">

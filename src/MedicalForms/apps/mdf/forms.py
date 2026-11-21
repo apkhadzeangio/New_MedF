@@ -17,10 +17,11 @@ class NivFormFrom(forms.ModelForm):
 
 
 class PhotoForm(forms.Form):
-    photo = forms.ImageField(label='ფოტო')
+    full_name = forms.CharField(label='სახელი და გვარი (ბლანკებისთვის)', max_length=150, required=False)
+    photo = forms.ImageField(label='ფოტო', required=False)
 
     def clean_photo(self):
-        photo = self.cleaned_data['photo']
-        if photo.size > 10 * 1024 * 1024:
+        photo = self.cleaned_data.get('photo')
+        if photo and photo.size > 10 * 1024 * 1024:
             raise forms.ValidationError('ფოტო ძალიან დიდია (მაქს. 10 MB).')
         return photo

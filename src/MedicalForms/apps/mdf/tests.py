@@ -425,3 +425,49 @@ class AvatarTests(BaseViewTest):
         ina = User.objects.create_user('ina', password='x')
         profile = StaffProfile.objects.create(user=ina, display_name='ინა')
         self.assertTrue('img/staff/ina.' in profile.avatar_url)
+
+
+class BloodOrderTests(BaseViewTest):
+
+    def test_empty_form_has_doctor_and_now(self):
+        StaffProfile.objects.create(user=self.user, display_name='ინა', full_name='შეროზია ინა')
+        r = self.client.get(reverse('blood-order'))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'value="შეროზია ინა"')
+        from django.utils import timezone
+        self.assertContains(r, timezone.localtime().strftime('%d.%m.%Y'))
+        self.assertContains(r, 'value="ტრანსფუზიოლოგია"')
+
+    def test_prefilled_from_prescription(self):
+        niv = self.make_niv(patient_name='ბერიძე ნინო', person_id='01001012345', dob='12.03.1960',
+                            diagnosis='ათეროსკლეროზი', card_number='1234/26')
+        r = self.client.get(reverse('blood-order') + f'?t={niv.pk}')
+        for value in ('ბერიძე ნინო', '01001012345', '12.03.1960', 'ათეროსკლეროზი', '1234/26'):
+            self.assertContains(r, f'value="{value}"')
+        self.assertContains(self.client.get(reverse('niv-templates')), f'/blood/?t={niv.pk}')
+
+    def test_print_context(self):
+        from .blood import print_context
+        ctx = print_context({'patient_name': ' ბერიძე ', 'date': '21.11.2026', 'time': '15:40', 'nurse': ''})
+        self.assertEqual(ctx['patient_name'], 'ბერიძე')
+        self.assertEqual((ctx['day'], ctx['month'], ctx['year'], ctx['time']), ('21', '11', '2026', '15:40'))
+        self.assertEqual(ctx['nurse_padded'], ' ' * 51)
+
+    @skipUnless(shutil.which('soffice') or shutil.which('libreoffice'), 'LibreOffice not installed')
+    def test_print_pdf_and_remember_doctor(self):
+        StaffProfile.objects.create(user=self.user, display_name='ინა')
+        r = self.client.post(reverse('blood-order-print'), {
+            'patient_name': 'ბერიძე ნინო', 'diagnosis': 'A & B <C>', 'doctor': 'შეროზია ინა',
+            'date': '21.11.2026', 'time': '15:40'})
+        self.assertEqual(r.status_code, 200)
+        body = b''.join(r.streaming_content) if r.streaming else r.content
+        self.assertTrue(body.startswith(b'%PDF'))
+        self.assertEqual(StaffProfile.objects.get(user=self.user).full_name, 'შეროზია ინა')
+
+    def test_print_requires_post(self):
+        self.assertEqual(self.client.get(reverse('blood-order-print')).status_code, 405)
+
+    def test_profile_full_name(self):
+        r = self.client.post(reverse('my-photo'), {'full_name': 'ქავთარაძე მირანდა'})
+        self.assertRedirects(r, reverse('niv-cover'))
+        self.assertEqual(StaffProfile.objects.get(user=self.user).full_name, 'ქავთარაძე მირანდა')

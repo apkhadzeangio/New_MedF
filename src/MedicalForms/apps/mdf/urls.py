@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import blood, views
 
 urlpatterns = [
     path('', views.LoginView.as_view(), name='login'),
@@ -24,6 +24,10 @@ urlpatterns = [
     path('templates/<int:pk>/rename/', views.TemplateRenameView.as_view(), name='rx-template-rename'),
     path('templates/<int:pk>/delete/', views.TemplateDeleteView.as_view(), name='rx-template-delete'),
     path('templates/<int:pk>/used/', views.TemplateUsedView.as_view(), name='rx-template-used'),
+
+    # Blood order blank
+    path('blood/', blood.BloodOrderView.as_view(), name='blood-order'),
+    path('blood/print/', blood.BloodOrderPrintView.as_view(), name='blood-order-print'),
 
     path('api/medicines/', views.MedicineAPIView.as_view(), name='medicines'),
     path('api/notes/', views.NoteAPIView.as_view(), name='notes'),

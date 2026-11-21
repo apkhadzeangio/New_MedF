@@ -39,9 +39,9 @@ class PrescriptionTemplateAdmin(admin.ModelAdmin):
 
 @admin.register(StaffProfile)
 class StaffProfileAdmin(admin.ModelAdmin):
-    list_display = ['thumb', 'display_name', 'user', 'order', 'show_on_login']
+    list_display = ['thumb', 'display_name', 'full_name', 'user', 'order', 'show_on_login']
     list_display_links = ['thumb', 'display_name']
-    list_editable = ['order', 'show_on_login']
+    list_editable = ['full_name', 'order', 'show_on_login']
 
     @admin.display(description='')
     def thumb(self, obj):

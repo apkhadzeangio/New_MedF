@@ -287,6 +287,9 @@ class StaffProfile(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile'
     )
     display_name = models.CharField('სახელი', max_length=50)
+    full_name = models.CharField(
+        'სახელი და გვარი (ბლანკებისთვის)', max_length=150, blank=True,
+        help_text='მაგ. შეროზია ინა — იწერება სისხლის შეკვეთის ბლანკზე „ექიმი“-ს ველში.')
     photo = models.ImageField('ფოტო', upload_to='staff/', blank=True)
     order = models.PositiveSmallIntegerField('რიგითობა', default=0)
     show_on_login = models.BooleanField('ჩანს შესვლის გვერდზე', default=True)
@@ -299,6 +302,10 @@ class StaffProfile(models.Model):
 
     def __str__(self):
         return self.display_name
+
+    @property
+    def doctor_name(self):
+        return self.full_name or self.user.get_full_name() or self.display_name
 
     @property
     def initial(self):

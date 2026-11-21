@@ -19,6 +19,9 @@
             <li class="nav-item">
               <a class="nav-link{% if url_name == 'rx-analysis' %} active{% endif %}" href="{% url 'rx-analysis' %}">ნოზოლოგიების ანალიზი</a>
             </li>
+            <li class="nav-item">
+              <a class="nav-link{% if url_name == 'blood-order' %} active{% endif %}" href="{% url 'blood-order' %}">სისხლის შეკვეთა</a>
+            </li>
           </ul>
           {% if request.user.is_authenticated %}
           <ul class="navbar-nav">
@@ -28,7 +31,7 @@
                   {{ request.user.profile.display_name|default:request.user.get_full_name|default:request.user.username }}
               </a>
               <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{% url 'my-photo' %}">ჩემი ფოტო</a></li>
+                <li><a class="dropdown-item" href="{% url 'my-photo' %}">ჩემი პროფილი (ფოტო, სახელი)</a></li>
                 {% if request.user.is_staff %}
                 <li><a class="dropdown-item" href="{% url 'admin:mdf_medicine_changelist' %}">მედიკამენტების ბაზა</a></li>
                 {% endif %}

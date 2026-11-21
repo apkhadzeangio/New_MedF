@@ -107,6 +107,9 @@ class PhotoView(LoginRequiredMixin, generic.FormView):
         )
         return profile
 
+    def get_initial(self):
+        return {'full_name': self.get_profile().full_name}
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['profile'] = self.get_profile()
@@ -114,10 +117,14 @@ class PhotoView(LoginRequiredMixin, generic.FormView):
 
     def form_valid(self, form):
         profile = self.get_profile()
-        if profile.photo:
-            profile.photo.delete(save=False)
-        profile.photo.save(f'{profile.user.username}.jpg', resize_photo(form.cleaned_data['photo']))
-        messages.success(self.request, 'ფოტო შეიცვალა.')
+        profile.full_name = form.cleaned_data.get('full_name', '').strip()
+        profile.save(update_fields=['full_name'])
+        photo = form.cleaned_data.get('photo')
+        if photo:
+            if profile.photo:
+                profile.photo.delete(save=False)
+            profile.photo.save(f'{profile.user.username}.jpg', resize_photo(photo))
+        messages.success(self.request, 'პროფილი შენახულია.')
         return super().form_valid(form)
 
 
