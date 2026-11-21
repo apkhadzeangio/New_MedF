@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+
+{% block title %}მედიკამენტების დუბლიკატები{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="page-head"><h1>მედიკამენტების დუბლიკატები <span class="count">· {{ groups|length }}</span></h1>
+        <a class="x-btn" href="{% url 'admin:mdf_medicine_changelist' %}">მედიკამენტების ბაზა</a></div>
+    <p class="lead-muted">ერთი და იგივე წამალი სხვადასხვანაირად ჩაწერილი (დიდი/პატარა ასო, ჰარი, წერტილი). თითო ჯგუფში აირჩიეთ, რომელი დარჩეს —
+        დანარჩენები დაიმალება ძებნის სიიდან. შენახულ და დაბეჭდილ დანიშნულებებს ეს <b>არ ცვლის</b>. დამალული ჩანაწერი ბაზაში რჩება და შეიძლება ისევ ჩაირთოს.</p>
+    {% if groups %}
+    <form method="post" class="d-flex flex-column gap-3">
+        {% csrf_token %}
+        {% for meds in groups %}
+        <fieldset class="x-card md-group">
+            <legend class="visually-hidden">{{ meds.0.name }}</legend>
+            {% for m in meds %}
+            <label class="md-opt">
+                <input type="radio" name="keep-{% for x in meds %}{{ x.id }}{% if not forloop.last %}-{% endif %}{% endfor %}" value="{{ m.id }}" {% if forloop.first %}checked{% endif %}>
+                <span class="md-name">{{ m.name }}</span>
+                <span class="md-note">{{ m.note|default:"" }}</span>
+                <span class="md-used">{{ m.used }} დანიშნულებაში</span>
+            </label>
+            {% endfor %}
+        </fieldset>
+        {% endfor %}
+        <div><button type="submit" class="x-btn primary">მონიშნულის დატოვება, დანარჩენის დამალვა</button></div>
+    </form>
+    {% else %}
+    <div class="x-card text-muted">დუბლიკატი არ მოიძებნა.</div>
+    {% endif %}
+</div>
+{% endblock %}

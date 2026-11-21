@@ -866,3 +866,73 @@ class BoardLinksTests(BoardBase):
         self.assertContains(page, 'ბერიძე ნინო')
         self.assertContains(page, 'ანალიზი 22:00')
         self.assertContains(page, 'window.print()')
+
+
+class RemindersAndMedicinesTests(BaseViewTest):
+    """Monthly reminders (site expiry, backup) and duplicate medicine names."""
+
+    def reminders(self):
+        return [r['key'].split('-')[0] for r in self.client.get(reverse('board')).context['reminders']]
+
+    def test_backup_reminder_until_downloaded(self):
+        import datetime
+        from unittest import mock
+        with mock.patch('django.utils.timezone.localdate', return_value=datetime.date(2026, 11, 10)):
+            self.assertEqual(self.reminders(), ['backup'])
+            self.client.get(reverse('backup-download'))
+            self.assertEqual(self.reminders(), [])
+
+    def test_month_end_reminder_without_api(self):
+        import datetime
+        from unittest import mock
+        self.client.get(reverse('backup-download'))
+        with mock.patch('django.utils.timezone.localdate', return_value=datetime.date(2026, 11, 26)):
+            self.assertEqual(self.reminders(), ['expiry'])
+
+    def test_expiry_from_api_when_available(self):
+        import datetime, io, json
+        from unittest import mock
+        from django.core.cache import cache
+        self.client.get(reverse('backup-download'))
+        cache.clear()
+        answer = io.BytesIO(json.dumps({'expiry': '2026-11-15'}).encode())
+        with mock.patch.dict('os.environ', {'API_TOKEN': 'x'}), \
+                mock.patch('urllib.request.urlopen', return_value=answer) as urlopen, \
+                mock.patch('django.utils.timezone.localdate', return_value=datetime.date(2026, 11, 10)):
+            page = self.client.get(reverse('board'), HTTP_HOST='medf.pythonanywhere.com')
+            self.assertEqual(urlopen.call_args[0][0].full_url,
+                             'https://www.pythonanywhere.com/api/v0/user/medf/webapps/medf.pythonanywhere.com/')
+            self.assertContains(page, '15.11.2026')
+            self.client.get(reverse('board'), HTTP_HOST='medf.pythonanywhere.com')
+            self.assertEqual(urlopen.call_count, 1)                    # cached
+        cache.clear()
+
+    def test_api_failure_never_breaks_a_page(self):
+        from unittest import mock
+        from django.core.cache import cache
+        cache.clear()
+        with mock.patch.dict('os.environ', {'API_TOKEN': 'x'}), \
+                mock.patch('urllib.request.urlopen', side_effect=OSError('blocked')):
+            page = self.client.get(reverse('niv-cover'), HTTP_HOST='medf.pythonanywhere.com')
+        self.assertEqual(page.status_code, 200)
+        cache.clear()
+
+    def test_duplicates_hidden_prescriptions_untouched(self):
+        from .medicines import name_key
+        self.assertEqual(name_key('Aspirin 100mg'), name_key(' aspirin-100 MG.'))
+        a = Medicine.objects.create(name='Aspirin 100mg', note='1 ტაბ.')
+        b = Medicine.objects.create(name='aspirin 100 mg')
+        Medicine.objects.create(name='Heparin')
+        niv = self.make_niv(m1='aspirin 100 mg')
+        self.assertEqual(self.client.get(reverse('medicine-duplicates')).status_code, 403)   # staff only
+        self.user.is_staff = True
+        self.user.save()
+        page = self.client.get(reverse('medicine-duplicates'))
+        (group,) = page.context['groups']
+        self.assertEqual(group[0], b)                                   # the one used in a prescription first
+        self.client.post(reverse('medicine-duplicates'), {f'keep-{a.pk}-{b.pk}': str(a.pk)})
+        a.refresh_from_db(); b.refresh_from_db(); niv.refresh_from_db()
+        self.assertTrue(a.is_active)
+        self.assertFalse(b.is_active)
+        self.assertEqual(niv.m1, 'aspirin 100 mg')
+        self.assertEqual(self.client.get(reverse('medicine-duplicates')).context['groups'], [])

@@ -590,6 +590,8 @@ class BackupDownloadView(LoginRequiredMixin, generic.View):
     def get(self, request, *args, **kwargs):
         buf = io.BytesIO()
         write_backup(buf)
+        from .models import SiteState
+        SiteState.touch('backup_downloaded')
         stamp = timezone.localtime().strftime('%Y-%m-%d_%H%M')
         response = HttpResponse(buf.getvalue(), content_type='application/gzip')
         response['Content-Disposition'] = f'attachment; filename="medf-backup-{stamp}.json.gz"'

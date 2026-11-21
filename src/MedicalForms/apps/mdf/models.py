@@ -494,3 +494,17 @@ class BoardSeen(models.Model):
     class Meta:
         db_table = 'board_seen'
         unique_together = ('user', 'patient')
+
+
+class SiteState(models.Model):
+    """Small facts the site remembers (e.g. when the backup was last downloaded)."""
+    key = models.CharField(max_length=50, unique=True)
+    value = models.CharField(max_length=255, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'site_state'
+
+    @classmethod
+    def touch(cls, key, value=''):
+        cls.objects.update_or_create(key=key, defaults={'value': value})

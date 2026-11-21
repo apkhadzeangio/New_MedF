@@ -22,6 +22,7 @@
                 <li><a class="dropdown-item" href="{% url 'my-photo' %}">ჩემი პროფილი (ფოტო, სახელი)</a></li>
                 {% if request.user.is_staff %}
                 <li><a class="dropdown-item" href="{% url 'admin:mdf_medicine_changelist' %}">მედიკამენტების ბაზა</a></li>
+                <li><a class="dropdown-item" href="{% url 'medicine-duplicates' %}">მედიკამენტების დუბლიკატები</a></li>
                 {% endif %}
                 <li><a class="dropdown-item" href="{% url 'backup-download' %}">ბაზის ასლის ჩამოტვირთვა</a></li>
                 <li><hr class="dropdown-divider"></li>
@@ -31,4 +32,30 @@
         {% endif %}
     </div>
 </nav>
+{% if reminders %}
+<div class="app-main rm-wrap d-print-none" id="site-reminders">
+    {% for r in reminders %}
+    <div class="rm {{ r.level }}" data-key="{{ r.key }}" role="status">
+        <span>{{ r.text }}</span>
+        {% if r.link == 'backup' %}<a class="x-btn sm" href="{% url 'backup-download' %}" onclick="this.closest('.rm').remove()">ჩამოტვირთვა</a>{% endif %}
+        <button type="button" class="rm-x" aria-label="დახურვა" title="დახურვა">✕</button>
+    </div>
+    {% endfor %}
+</div>
+<script>
+(function () {
+    var box = document.getElementById('site-reminders');
+    function get() { try { return JSON.parse(localStorage.getItem('medf-closed') || '[]'); } catch (e) { return []; } }
+    var closed = get();
+    box.querySelectorAll('.rm').forEach(function (el) {
+        if (closed.indexOf(el.dataset.key) >= 0) { el.remove(); return; }
+        el.querySelector('.rm-x').addEventListener('click', function () {
+            var list = get(); list.push(el.dataset.key);
+            try { localStorage.setItem('medf-closed', JSON.stringify(list.slice(-30))); } catch (e) {}
+            el.remove();
+        });
+    });
+})();
+</script>
+{% endif %}
 {% include "partials/messages.html" %}
