@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-3">
+    <h4 class="mb-1">ხშირი დანიშნულებები</h4>
+    <p class="text-muted">
+        არსებული {{ total_prescriptions }} დანიშნულება დაჯგუფებულია მედიკამენტების ერთნაირი ნაკრების მიხედვით —
+        ზემოთ ყველაზე ხშირად განმეორებადი. ღილაკი „შაბლონად გადატანა“ ქმნის შაბლონს ჯგუფის ბოლო დანიშნულებიდან
+        (მედიკამენტები, დანიშნულებები, საათები). ორიგინალი დანიშნულებები არ იცვლება.
+    </p>
+    <form method="get" class="row g-2 mb-3 align-items-center">
+        <div class="col-md-8">
+            <input type="search" name="q" value="{{ q }}" class="form-control form-control-lg" placeholder="ძიება: ანევრიზმა, ლერიში, სტენტირება, მედიკამენტი..." autocomplete="off">
+        </div>
+        <div class="col-auto">
+            <select name="min" class="form-select form-select-lg" onchange="this.form.submit()">
+                {% for n in "12345" %}<option value="{{ n }}"{% if min_count|stringformat:"s" == n %} selected{% endif %}>მინ. {{ n }}-ჯერ</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-auto"><button class="btn btn-primary btn-lg">ძიება</button></div>
+    </form>
+
+    {% if groups %}
+    <div class="small text-muted mb-2">ნაჩვენებია {{ groups|length }} ჯგუფი{% if total_groups > groups|length %} ({{ total_groups }}-დან){% endif %}.</div>
+    {% for g in groups %}
+    <div class="card mb-3{% if g.template %} border-success{% endif %}">
+        <div class="card-body">
+            <div class="d-flex flex-wrap align-items-start gap-3">
+                <div class="text-center" style="min-width: 70px">
+                    <div class="fs-3 fw-bold lh-1">{{ g.count }}</div>
+                    <div class="small text-muted">-ჯერ</div>
+                </div>
+                <div class="flex-grow-1" style="min-width: 260px">
+                    <div class="mb-1">
+                        {% for t in g.top_titles %}<span class="badge text-bg-light border me-1">{{ t }}</span>{% endfor %}
+                    </div>
+                    <ol class="small mb-0">
+                        {% for m in g.medicines %}<li>{{ m }}</li>{% endfor %}
+                    </ol>
+                </div>
+                <div style="min-width: 280px">
+                    {% if g.template %}
+                        <div class="text-success mb-2">✓ უკვე შაბლონია: <a href="{% url 'niv-cover' %}?tpl={{ g.template.pk }}">{{ g.template.name }}</a></div>
+                    {% endif %}
+                    <form method="post" action="{% url 'rx-template-from' g.latest.pk %}" class="d-flex gap-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                        <input type="text" name="name" value="{{ g.suggested_name }}" class="form-control" maxlength="150" required placeholder="შაბლონის სახელი">
+                        <button class="btn btn-success text-nowrap">შაბლონად გადატანა</button>
+                    </form>
+                    <a class="small" href="{% url 'niv-cover' %}?t={{ g.latest.pk }}" target="_blank">ბოლო დანიშნულების ნახვა ↗</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+        <div class="alert alert-light border">ასეთი ჯგუფი ვერ მოიძებნა.</div>
+    {% endif %}
+</div>
+{% endblock %}

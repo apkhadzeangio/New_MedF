@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-3">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <h4 class="mb-0 me-auto">შაბლონები <span class="text-muted fs-6">({{ object_list|length }})</span></h4>
+        <a class="btn btn-outline-secondary" href="{% url 'rx-frequent' %}">ხშირი დანიშნულებებიდან დამატება</a>
+    </div>
+    <form method="get" class="mb-3">
+        <input type="search" name="q" value="{{ q }}" class="form-control form-control-lg" placeholder="ძიება შაბლონის სახელით ან მედიკამენტით..." autocomplete="off" autofocus>
+    </form>
+
+    {% if object_list %}
+    <div class="list-group">
+        {% for t in object_list %}
+        <div class="list-group-item py-3">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <a class="fs-5 fw-semibold me-auto text-decoration-none" href="{% url 'niv-cover' %}?tpl={{ t.pk }}">{{ t.name }}</a>
+                <span class="badge text-bg-light" title="რამდენჯერ იქნა გამოყენებული">გამოყენებულია {{ t.use_count }}-ჯერ</span>
+                <a class="btn btn-primary btn-sm" href="{% url 'niv-cover' %}?tpl={{ t.pk }}">ახალი დანიშნულება ამ შაბლონით</a>
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">ქმედებები</button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item tpl-rename" href="#" data-url="{% url 'rx-template-rename' t.pk %}" data-name="{{ t.name }}">სახელის შეცვლა</a></li>
+                        <li><a class="dropdown-item text-danger tpl-delete" href="#" data-url="{% url 'rx-template-delete' t.pk %}" data-name="{{ t.name }}">წაშლა</a></li>
+                    </ul>
+                </div>
+            </div>
+            <ol class="small text-muted mb-0 mt-2 tpl-meds">
+                {% for row in t.rows %}{% if row.m %}<li><span class="text-body">{{ row.m }}</span>{% if row.n %} — {{ row.n }}{% endif %}</li>{% endif %}{% endfor %}
+            </ol>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+        <div class="alert alert-light border">
+            {% if q %}შაბლონი ვერ მოიძებნა.{% else %}
+            შაბლონები ჯერ არ არის. დაამატეთ <a href="{% url 'rx-frequent' %}">ხშირი დანიშნულებებიდან</a>,
+            ან დანიშნულების გვერდზე დააჭირეთ „შაბლონად შენახვა“.{% endif %}
+        </div>
+    {% endif %}
+</div>
+<form method="post" id="tpl-action-form" hidden>{% csrf_token %}<input type="hidden" name="name"></form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+$(function () {
+    var $f = $('#tpl-action-form');
+    $('.tpl-rename').on('click', function (e) {
+        e.preventDefault();
+        var name = prompt('ახალი სახელი:', this.dataset.name);
+        if (name && name.trim()) {
+            $f.attr('action', this.dataset.url).find('[name=name]').val(name.trim());
+            $f.submit();
+        }
+    });
+    $('.tpl-delete').on('click', function (e) {
+        e.preventDefault();
+        if (confirm('წავშალო შაბლონი „' + this.dataset.name + '“?\n(დანიშნულებები, რომლებიც ამ შაბლონით შეიქმნა, არ წაიშლება)')) {
+            $f.attr('action', this.dataset.url).submit();
+        }
+    });
+});
+</script>
+{% endblock %}

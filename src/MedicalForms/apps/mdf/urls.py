@@ -1,37 +1,30 @@
 from django.urls import path
 
-from .views import (
-    LoginView,
-    LogoutView,
-    NivFormCoverView,
-    NivFormBackView,
-    MedicineAPIView,
-    NoteAPIView,
-    NivTemplateListView,
-    NivTemplateCreateView,
-    NivTemplateDeleteView,
-    PrintNivFormCoverView,
-    PrintNivFormBackView,
-    AssignmentSheetView,
-    NivDocumentView,
-    PasswordChangeView,
-)
-
+from . import views
 
 urlpatterns = [
-    path('', LoginView.as_view(), name='login'),
-    path('logout/', LogoutView.as_view(), name='logout'),
-    path('password/change/', PasswordChangeView.as_view(), name='password-change'),
-    path('assignment-sheet/', AssignmentSheetView.as_view(), name='assigment-sheet'),
-    path('niv-300-9-a/cover/', NivFormCoverView.as_view(), name='niv-cover'),
-    # path('niv-300-9-a/cover/print/', PrintNivFormCoverView.as_view(), name='print-niv-cover'),
-    path('niv-300-9-a/cover/print/', NivDocumentView.as_view(), name='print-niv-cover'),
-    path('niv-300-9-a/back/', NivFormBackView.as_view(), name='niv-back'),
-    path('niv-300-9-a/back/print/', PrintNivFormBackView.as_view(), name='print-niv-back'),
-    path('niv-300-9-a/create/', NivTemplateCreateView.as_view(), name='niv-create'),
-    path('niv-300-9-a/delete/<int:pk>/', NivTemplateDeleteView.as_view(), name='niv-delete'),
-    path('niv-300-9-a/templates/', NivTemplateListView.as_view(), name='niv-templates'),
-    path('api/medicines/', MedicineAPIView.as_view(), name='medicines'),
-    path('api/notes/', NoteAPIView.as_view(), name='notes'),
-    path('niv-export/', NivDocumentView.as_view(), name='niv-export'),
+    path('', views.LoginView.as_view(), name='login'),
+    path('logout/', views.LogoutView.as_view(), name='logout'),
+    path('me/photo/', views.PhotoView.as_view(), name='my-photo'),
+
+    # Prescription = front side of NIV-300-9/a (the printed state form)
+    path('niv-300-9-a/cover/', views.NivFormCoverView.as_view(), name='niv-cover'),
+    path('niv-300-9-a/cover/print/', views.NivDocumentView.as_view(), name='print-niv-cover'),
+    path('niv-300-9-a/create/', views.NivTemplateCreateView.as_view(), name='niv-create'),
+    path('niv-300-9-a/delete/<int:pk>/', views.NivTemplateDeleteView.as_view(), name='niv-delete'),
+    path('niv-300-9-a/templates/', views.NivTemplateListView.as_view(), name='niv-templates'),
+    path('niv-export/', views.NivDocumentView.as_view(), name='niv-export'),
+
+    # Templates = reusable medicine sets
+    path('templates/', views.TemplateListView.as_view(), name='rx-templates'),
+    path('templates/frequent/', views.FrequentPrescriptionsView.as_view(), name='rx-frequent'),
+    path('templates/save/', views.TemplateSaveView.as_view(), name='rx-template-save'),
+    path('templates/from/<int:pk>/', views.TemplateFromPrescriptionView.as_view(), name='rx-template-from'),
+    path('templates/<int:pk>/rename/', views.TemplateRenameView.as_view(), name='rx-template-rename'),
+    path('templates/<int:pk>/delete/', views.TemplateDeleteView.as_view(), name='rx-template-delete'),
+    path('templates/<int:pk>/used/', views.TemplateUsedView.as_view(), name='rx-template-used'),
+
+    path('api/medicines/', views.MedicineAPIView.as_view(), name='medicines'),
+    path('api/notes/', views.NoteAPIView.as_view(), name='notes'),
+    path('backup/download/', views.BackupDownloadView.as_view(), name='backup-download'),
 ]

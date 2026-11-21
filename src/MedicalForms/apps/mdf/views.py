@@ -1,91 +1,76 @@
+import gzip
+import io
 import json
 import logging
+from collections import Counter
 from typing import Any
 
-from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout, authenticate, login
-from django.contrib.auth import views as auth_views
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core import serializers
-from django.core.cache import cache
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.core.management import call_command
+from django.db.models import Case, F, IntegerField, Q, Value, When
 from django.forms import model_to_dict
 from django.http import (
     Http404, HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse,
 )
 from django.shortcuts import get_object_or_404
 from django.urls import reverse, reverse_lazy
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import generic
 from django_docxtpl import DocxTemplateView
 
 from .backends import ModelFilterBackend
 from .enums import Symbols, YesNo, RadialPulse
-from .forms import LoginForm, NivFormFrom
+from .forms import LoginForm, NivFormFrom, PhotoForm
 from .mixins import LoginRedirectMixin, GetObjectMixin
-from .models import Medicine, Note, NivForm, ROW_COUNT
-from .utils import validate_take_medicine
+from .models import (
+    Medicine, Note, NivForm, PrescriptionTemplate, StaffProfile, ROW_COUNT, medicine_key,
+)
+from .utils import validate_take_medicine, clean_template_rows, resize_photo
 
 logger = logging.getLogger(__name__)
 
 
+# --------------------------------------------------------------------------
+# Login / logout / profile photo
+# --------------------------------------------------------------------------
+
 class LoginView(LoginRedirectMixin, generic.FormView):
+    """Login page: pick your photo/name, type the password."""
     template_name = 'mdf/login.html'
     form_class = LoginForm
     success_url = reverse_lazy('niv-cover')
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx['next'] = self.request.GET.get('next', '')
+        ctx['next'] = self.request.GET.get('next', self.request.POST.get('next', ''))
+        ctx['profiles'] = (StaffProfile.objects.filter(show_on_login=True, user__is_active=True)
+                           .select_related('user'))
         return ctx
-
-    def _client_ip(self):
-        forwarded = self.request.META.get('HTTP_X_FORWARDED_FOR', '')
-        if forwarded:
-            return forwarded.split(',')[0].strip()
-        return self.request.META.get('REMOTE_ADDR', '')
-
-    def _lock_key(self, username):
-        return f'login-fail:{username.lower()}:{self._client_ip()}'
 
     def form_invalid(self, form):
         return self.render_to_response(self.get_context_data(
-            form=form, message='შეიყვანეთ მომხმარებელი და პაროლი.'
+            form=form, message='აირჩიეთ სახელი და შეიყვანეთ პაროლი.'
         ))
 
     def form_valid(self, form):
-        username = form.cleaned_data['username']
-        lock_key = self._lock_key(username)
-        failures = cache.get(lock_key, 0)
-        if failures >= settings.LOGIN_MAX_FAILED_ATTEMPTS:
-            logger.warning('Login locked for %s', lock_key)
-            return self.render_to_response(self.get_context_data(
-                form=form,
-                message='ძალიან ბევრი წარუმატებელი მცდელობა. სცადეთ 15 წუთში.',
-            ))
-
         user = authenticate(
             self.request,
-            username=username,
-            password=form.cleaned_data['password']
+            username=form.cleaned_data['username'],
+            password=form.cleaned_data['password'],
         )
         if not user:
-            cache.set(lock_key, failures + 1, settings.LOGIN_LOCKOUT_SECONDS)
             return self.render_to_response(self.get_context_data(
-                form=form, message='მომხმარებელი ან პაროლი არასწორია.'
+                form=form, message='პაროლი არასწორია.'
             ))
-
-        cache.delete(lock_key)
-        login(self.request, user)
-        if not form.cleaned_data.get('remember_me'):
-            # Log out automatically when the browser is closed.
-            self.request.session.set_expiry(0)
+        login(self.request, user)  # session lasts SESSION_COOKIE_AGE (stays logged in)
 
         next_page = form.cleaned_data['next']
         if next_page and next_page != reverse('logout') and url_has_allowed_host_and_scheme(
-            next_page,
-            allowed_hosts={self.request.get_host()},
+            next_page, allowed_hosts={self.request.get_host()},
             require_https=self.request.is_secure(),
         ):
             return HttpResponseRedirect(next_page)
@@ -101,18 +86,45 @@ class LogoutView(LoginRequiredMixin, generic.View):
     post = get
 
 
-class PasswordChangeView(auth_views.PasswordChangeView):
-    template_name = 'mdf/password-change.html'
+class PhotoView(LoginRequiredMixin, generic.FormView):
+    """Each person can set their own login-page photo."""
+    template_name = 'mdf/photo.html'
+    form_class = PhotoForm
     success_url = reverse_lazy('niv-cover')
 
+    def get_profile(self):
+        user = self.request.user
+        profile, _ = StaffProfile.objects.get_or_create(
+            user=user, defaults={'display_name': user.get_full_name() or user.username}
+        )
+        return profile
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['profile'] = self.get_profile()
+        return ctx
+
     def form_valid(self, form):
-        messages.success(self.request, 'პაროლი შეიცვალა.')
+        profile = self.get_profile()
+        if profile.photo:
+            profile.photo.delete(save=False)
+        profile.photo.save(f'{profile.user.username}.jpg', resize_photo(form.cleaned_data['photo']))
+        messages.success(self.request, 'ფოტო შეიცვალა.')
         return super().form_valid(form)
 
 
-class NivFormCoverView(LoginRequiredMixin,
-                       GetObjectMixin,
-                       generic.TemplateView):
+# --------------------------------------------------------------------------
+# Prescription (front side of NIV-300-9/a)
+# --------------------------------------------------------------------------
+
+def templates_for_page():
+    return [
+        {'id': t.pk, 'name': t.name, 'rows': t.rows}
+        for t in PrescriptionTemplate.objects.order_by('-use_count', 'name')
+    ]
+
+
+class NivFormCoverView(LoginRequiredMixin, GetObjectMixin, generic.TemplateView):
     template_name = 'mdf/niv.html'
 
     def get_context_data(self, **kwargs):
@@ -123,24 +135,9 @@ class NivFormCoverView(LoginRequiredMixin,
             ctx['can_update'] = False
         else:
             ctx['can_update'] = True
-        ctx['rows'] = range(1, ROW_COUNT + 1)
+        ctx['rx_templates'] = templates_for_page()
+        ctx['apply_template'] = self.request.GET.get('tpl', '')
         return ctx
-
-
-class AssignmentSheetView(NivFormCoverView):
-    template_name = 'mdf/assignment_sheet.html'
-
-
-class NivFormBackView(NivFormCoverView):
-    template_name = 'mdf/niv-back.html'
-
-
-class PrintNivFormCoverView(NivFormCoverView):
-    template_name = 'mdf/print-niv.html'
-
-
-class PrintNivFormBackView(NivFormBackView):
-    template_name = 'mdf/print-niv-back.html'
 
 
 # How many suggestions the autocomplete returns at most.
@@ -183,7 +180,15 @@ class NoteAPIView(BaseAPIView):
     queryset = Note.objects.filter(is_active=True)
 
 
+def _row_columns():
+    columns = ['id', 'title']
+    for i in range(1, ROW_COUNT + 1):
+        columns += [f'm{i}', f'n{i}']
+    return columns
+
+
 class NivTemplateListView(LoginRequiredMixin, generic.ListView):
+    """List of all prescriptions (everyone sees everyone's)."""
     model = NivForm
     template_name = 'mdf/niv-templates.html'
     paginate_by = 50
@@ -194,19 +199,14 @@ class NivTemplateListView(LoginRequiredMixin, generic.ListView):
         ).strip()
 
     def get_queryset(self):
-        # Only the columns the list needs (title + rows for "copy").
-        columns = ['id', 'title']
-        for i in range(1, ROW_COUNT + 1):
-            columns += [f'm{i}', f'n{i}']
-        qs = NivForm.objects.only(*columns).order_by('-id')
+        qs = NivForm.objects.only(*_row_columns()).order_by('-id')
         q = self.get_search_term()
         if q:
             qs = qs.filter(
                 Q(title__icontains=q) | Q(doe__icontains=q) |
                 Q(patient_name__icontains=q) | Q(department__icontains=q) |
                 Q(card_number__icontains=q) | Q(chamber_number__icontains=q) |
-                Q(diagnosis__icontains=q) | Q(doctor__icontains=q) |
-                Q(nurse__icontains=q) | Q(person_id__icontains=q)
+                Q(diagnosis__icontains=q) | Q(person_id__icontains=q)
             )
         return qs
 
@@ -216,8 +216,7 @@ class NivTemplateListView(LoginRequiredMixin, generic.ListView):
         return ctx
 
     def paginate_queryset(self, queryset, page_size):
-        # An out-of-range ?page= (e.g. after narrowing the search) shows the
-        # last page instead of a 404 error.
+        # An out-of-range ?page= shows the last page instead of a 404 error.
         paginator = self.get_paginator(queryset, page_size)
         page = paginator.get_page(self.request.GET.get('page'))
         return paginator, page, page.object_list, page.has_other_pages()
@@ -233,6 +232,7 @@ class NivTemplateListView(LoginRequiredMixin, generic.ListView):
 
 
 class NivTemplateCreateView(LoginRequiredMixin, GetObjectMixin, generic.View):
+    """Save a prescription (new, update, or "Save As" copy)."""
     http_method_names = ['post']
 
     def post(self, request, *args, **kwargs):
@@ -246,8 +246,6 @@ class NivTemplateCreateView(LoginRequiredMixin, GetObjectMixin, generic.View):
 
         if instance and save_as_title:
             # "Save As": create a copy with the edits, leave the original as it was.
-            # Fields that are not on the page (e.g. back-side rows) are copied
-            # from the original.
             for name, value in model_to_dict(instance).items():
                 if name == 'id' or name in data or value in (None, False):
                     continue
@@ -264,28 +262,24 @@ class NivTemplateCreateView(LoginRequiredMixin, GetObjectMixin, generic.View):
             for field, errors in form.errors.items():
                 label = form.fields[field].label if field in form.fields else field
                 messages.error(request, f'{label}: {" ".join(errors)}')
-            messages.error(request, 'შაბლონი ვერ შეინახა. გაასწორეთ შეცდომა და სცადეთ თავიდან.')
+            messages.error(request, 'დანიშნულება ვერ შეინახა. გაასწორეთ შეცდომა და სცადეთ თავიდან.')
             back = reverse('niv-cover')
             if instance:
                 back = f'{back}?t={instance.pk}'
             return HttpResponseRedirect(back)
 
         instance = form.save()
-        messages.success(request, f'შაბლონი „{instance.title}“ შენახულია.')
+        messages.success(request, f'დანიშნულება „{instance.title}“ შენახულია.')
 
         cover = reverse('niv-cover')
         if action == 'save_and_new':
             return HttpResponseRedirect(cover)
-        if action in ('save', 'save_as_continue'):
-            return HttpResponseRedirect(f'{cover}?t={instance.pk}')
         if action == 'save_as':
             return HttpResponseRedirect(reverse('niv-templates'))
-        # Plain "Save" of a new template: stay on it.
         return HttpResponseRedirect(f'{cover}?t={instance.pk}')
 
 
 class NivTemplateDeleteView(LoginRequiredMixin, generic.View):
-    """Delete a template. Requires POST (or DELETE) with a CSRF token."""
     http_method_names = ['post', 'delete']
     success_url = reverse_lazy('niv-templates')
 
@@ -296,17 +290,15 @@ class NivTemplateDeleteView(LoginRequiredMixin, generic.View):
         logger.info('NivForm %s (%s) deleted by %s', kwargs.get('pk'), title, request.user)
         if request.headers.get('x-requested-with') == 'XMLHttpRequest':
             return JsonResponse({'deleted': True})
-        messages.success(request, f'შაბლონი „{title}“ წაიშალა.')
+        messages.success(request, f'დანიშნულება „{title}“ წაიშალა.')
         return HttpResponseRedirect(self.success_url)
 
     delete = post
 
 
-class NivDocumentView(LoginRequiredMixin,
-                      DocxTemplateView):
+class NivDocumentView(LoginRequiredMixin, DocxTemplateView):
     # NOTE: the printed form (MDFNew.docx) is the officially approved layout.
     # Do not change the template or the context keys below.
-    # template_name = 'MDF.docx'
     template_name = 'MDFNew.docx'
     filename = "MDF"
     output_format = 'pdf'
@@ -329,10 +321,10 @@ class NivDocumentView(LoginRequiredMixin,
         if not niv.exists():
             niv = self._find(self.request.GET.get('as', self.request.POST.get('as')))
         if not niv.exists():
-            raise Http404('შაბლონი ვერ მოიძებნა.')
+            raise Http404('დანიშნულება ვერ მოიძებნა.')
         data = serializers.serialize("json", niv)
         data = json.loads(data)[0]['fields']
-        for i in range(1, 17):
+        for i in range(1, ROW_COUNT + 1):
             row = data[f'r{i}']
             if not isinstance(row, dict):
                 row = data[f'r{i}'] = {}
@@ -361,3 +353,205 @@ class NivDocumentView(LoginRequiredMixin,
             else:
                 txt += f' {Symbols.UNCHECKED.value} {pulse}'
         return txt.strip()
+
+
+# --------------------------------------------------------------------------
+# Templates (reusable medicine sets)
+# --------------------------------------------------------------------------
+
+def _save_template(request, name, rows, overwrite=False):
+    """Create or (with overwrite) update a template. Returns (template, error)."""
+    name = (name or '').strip()[:150]
+    rows = clean_template_rows(rows)
+    if not name:
+        return None, 'შაბლონის სახელი აუცილებელია.'
+    if not any(row['m'] for row in rows):
+        return None, 'შაბლონში არ არის არცერთი მედიკამენტი.'
+    existing = PrescriptionTemplate.objects.filter(name__iexact=name).first()
+    if existing and not overwrite:
+        return existing, 'exists'
+    if existing:
+        existing.rows = rows
+        existing.save(update_fields=['rows', 'updated_at'])
+        return existing, None
+    tpl = PrescriptionTemplate.objects.create(
+        name=name, rows=rows,
+        created_by=request.user if request.user.is_authenticated else None,
+    )
+    return tpl, None
+
+
+class TemplateListView(LoginRequiredMixin, generic.ListView):
+    model = PrescriptionTemplate
+    template_name = 'mdf/rx-templates.html'
+
+    def get_queryset(self):
+        qs = PrescriptionTemplate.objects.select_related('created_by').order_by('-use_count', 'name')
+        q = self.request.GET.get('q', '').strip().lower()
+        if q:
+            qs = [t for t in qs if q in t.name.lower()
+                  or any(q in m.lower() for m in t.medicines)]
+        return qs
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['q'] = self.request.GET.get('q', '').strip()
+        return ctx
+
+
+class TemplateSaveView(LoginRequiredMixin, generic.View):
+    """POST JSON {name, rows, overwrite} -> save template (from the prescription page)."""
+    http_method_names = ['post']
+
+    def post(self, request, *args, **kwargs):
+        try:
+            payload = json.loads(request.body or b'{}')
+        except ValueError:
+            return JsonResponse({'error': 'bad json'}, status=400)
+        tpl, error = _save_template(request, payload.get('name'), payload.get('rows'),
+                                    overwrite=bool(payload.get('overwrite')))
+        if error == 'exists':
+            return JsonResponse({'exists': True, 'error': 'ასეთი შაბლონი უკვე არსებობს.'}, status=409)
+        if error:
+            return JsonResponse({'error': error}, status=400)
+        return JsonResponse({'id': tpl.pk, 'name': tpl.name})
+
+
+class TemplateFromPrescriptionView(LoginRequiredMixin, generic.View):
+    """Copy the medicines/hours of an existing prescription into a template."""
+    http_method_names = ['post']
+
+    def post(self, request, pk, *args, **kwargs):
+        niv = get_object_or_404(NivForm, pk=pk)
+        name = request.POST.get('name') or niv.title
+        tpl, error = _save_template(request, name, niv.rows_data(),
+                                    overwrite=request.POST.get('overwrite') == '1')
+        if error == 'exists':
+            messages.warning(request, f'შაბლონი „{tpl.name}“ უკვე არსებობს — აირჩიეთ სხვა სახელი.')
+        elif error:
+            messages.error(request, error)
+        else:
+            messages.success(request, f'შაბლონი „{tpl.name}“ შეიქმნა.')
+        back = request.POST.get('next') or reverse('rx-templates')
+        if not url_has_allowed_host_and_scheme(back, allowed_hosts={request.get_host()}):
+            back = reverse('rx-templates')
+        return HttpResponseRedirect(back)
+
+
+class TemplateRenameView(LoginRequiredMixin, generic.View):
+    http_method_names = ['post']
+
+    def post(self, request, pk, *args, **kwargs):
+        tpl = get_object_or_404(PrescriptionTemplate, pk=pk)
+        name = (request.POST.get('name') or '').strip()[:150]
+        if not name:
+            messages.error(request, 'სახელი ცარიელია.')
+        elif PrescriptionTemplate.objects.filter(name__iexact=name).exclude(pk=pk).exists():
+            messages.error(request, f'შაბლონი „{name}“ უკვე არსებობს.')
+        else:
+            tpl.name = name
+            tpl.save(update_fields=['name', 'updated_at'])
+            messages.success(request, 'სახელი შეიცვალა.')
+        return HttpResponseRedirect(reverse('rx-templates'))
+
+
+class TemplateDeleteView(LoginRequiredMixin, generic.View):
+    http_method_names = ['post']
+
+    def post(self, request, pk, *args, **kwargs):
+        tpl = get_object_or_404(PrescriptionTemplate, pk=pk)
+        tpl.delete()
+        messages.success(request, f'შაბლონი „{tpl.name}“ წაიშალა.')
+        return HttpResponseRedirect(reverse('rx-templates'))
+
+
+class TemplateUsedView(LoginRequiredMixin, generic.View):
+    """Called by the page when a template is applied (for "most used" sorting)."""
+    http_method_names = ['post']
+
+    def post(self, request, pk, *args, **kwargs):
+        PrescriptionTemplate.objects.filter(pk=pk).update(use_count=F('use_count') + 1)
+        return JsonResponse({'ok': True})
+
+
+class FrequentPrescriptionsView(LoginRequiredMixin, generic.TemplateView):
+    """Groups existing prescriptions by their set of medicines and shows the
+    most repeated ones, so they can be turned into templates with one click."""
+    template_name = 'mdf/rx-frequent.html'
+    max_groups = 60
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        q = self.request.GET.get('q', '').strip().lower()
+        try:
+            min_count = max(1, int(self.request.GET.get('min', 2)))
+        except ValueError:
+            min_count = 2
+
+        groups = {}
+        for niv in NivForm.objects.only(*_row_columns()).order_by('-id').iterator():
+            names = [getattr(niv, f'm{i}') for i in range(1, ROW_COUNT + 1)]
+            key = medicine_key(names)
+            if not key:
+                continue
+            group = groups.get(key)
+            if group is None:
+                group = groups[key] = {
+                    'key': key, 'count': 0, 'titles': Counter(),
+                    'latest': niv, 'medicines': [n for n in names if n and n.strip()],
+                }
+            group['count'] += 1
+            if niv.title:
+                group['titles'][niv.title.strip()] += 1
+
+        existing = {t.medicine_key: t for t in PrescriptionTemplate.objects.all()}
+        result = []
+        for group in groups.values():
+            if group['count'] < min_count:
+                continue
+            titles = [t for t, _ in group['titles'].most_common(4)]
+            if q and not (any(q in t.lower() for t in titles)
+                          or any(q in m.lower() for m in group['medicines'])):
+                continue
+            group['top_titles'] = titles
+            group['suggested_name'] = titles[0] if titles else ''
+            group['template'] = existing.get(group['key'])
+            result.append(group)
+        result.sort(key=lambda g: (-g['count'], g['suggested_name']))
+
+        ctx.update({
+            'groups': result[:self.max_groups],
+            'total_groups': len(result),
+            'q': self.request.GET.get('q', '').strip(),
+            'min_count': min_count,
+            'total_prescriptions': NivForm.objects.count(),
+        })
+        return ctx
+
+
+# --------------------------------------------------------------------------
+# Backup download
+# --------------------------------------------------------------------------
+
+BACKUP_MODELS = ['mdf.medicine', 'mdf.note', 'mdf.nivform', 'mdf.prescriptiontemplate',
+                 'mdf.staffprofile', 'auth.user']
+
+
+def write_backup(stream):
+    """Write a gzip-compressed JSON dump of all clinic data to ``stream``."""
+    with gzip.GzipFile(fileobj=stream, mode='wb') as gz:
+        text = io.TextIOWrapper(gz, encoding='utf-8')
+        call_command('dumpdata', *BACKUP_MODELS, indent=1, stdout=text)
+        text.flush()
+        text.detach()
+
+
+class BackupDownloadView(LoginRequiredMixin, generic.View):
+
+    def get(self, request, *args, **kwargs):
+        buf = io.BytesIO()
+        write_backup(buf)
+        stamp = timezone.localtime().strftime('%Y-%m-%d_%H%M')
+        response = HttpResponse(buf.getvalue(), content_type='application/gzip')
+        response['Content-Disposition'] = f'attachment; filename="medf-backup-{stamp}.json.gz"'
+        return response

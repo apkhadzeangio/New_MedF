@@ -169,7 +169,7 @@ $(document).ready(function () {
     var TEXT_FIELDS = [
         'doe', 'dob', 'patient_name', 'person_id', 'mews_score', 'bmi_score',
         'gcs_score', 'risk_falling', 'card_number', 'department',
-        'chamber_number', 'doctor', 'nurse', 'diagnosis'
+        'chamber_number', 'diagnosis'
     ];
     TEXT_FIELDS.forEach(function (name) {
         $('input[id="' + name + '"]').on('input change', function () {
@@ -373,7 +373,7 @@ $(document).ready(function () {
 
     // Focus the name field when a dialog opens; Enter = save.
     $('.modal').on('shown.bs.modal', function () {
-        $(this).find('input[type="text"]').first().trigger('focus');
+        $(this).find('input[type="text"]').first().trigger('focus').trigger('select');
     });
     $('#title, #titleNew, #titleAs').on('keydown', function (e) {
         if (e.key === 'Enter') {
@@ -389,7 +389,7 @@ $(document).ready(function () {
         }
         e.preventDefault();
         if ($('.modal.show').length) {
-            $('.modal.show .modal-footer .btn-primary').trigger('click');
+            $('.modal.show .modal-footer .btn-primary').first().trigger('click');
         } else if ($('#updateBtn').length) {
             $('#updateBtn').trigger('click');
         } else if ($('#saveModal').length && window.bootstrap) {
@@ -410,6 +410,155 @@ $(document).ready(function () {
     $('a[href*="/print/"]').on('click', function (e) {
         if (isDirty && !confirm('ცვლილებები ჯერ არ არის შენახული.\nდაიბეჭდება ბოლოს შენახული ვერსია.\n\nგავაგრძელო ბეჭდვა?')) {
             e.preventDefault();
+        }
+    });
+
+
+    /* ------------------------------------------------------------------ */
+    /* Templates: insert into the page / save the page as a template       */
+    /* ------------------------------------------------------------------ */
+
+    var ROWS = 16;
+    var rxTemplates = [];
+    try {
+        rxTemplates = JSON.parse($('#rx-templates-data').text() || '[]');
+    } catch (err) { rxTemplates = []; }
+    var $rxConfig = $('#rx-config');
+
+    function setRowText(i, kind, value) {
+        $('input[id="' + kind + i + '"]').val(value || '');
+        $('input[id="form-' + kind + i + '"]').val(value || '');
+    }
+
+    function pageHasMedicines() {
+        for (var i = 1; i <= ROWS; i++) {
+            if (($('#m' + i).val() || '').trim()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function applyTemplate(tpl) {
+        for (var i = 1; i <= ROWS; i++) {
+            var row = (tpl.rows || [])[i - 1] || {};
+            setRowText(i, 'm', row.m);
+            setRowText(i, 'n', row.n);
+            // clear this row's hours, then mark the template's hours
+            $('td.hour[id^="r' + i + '-"]').each(function () {
+                if ($(this).text().trim() === '+') {
+                    setHour(this, false);
+                }
+            });
+            var hours = row.r || {};
+            ['d1', 'd2', 'd3'].forEach(function (day) {
+                Object.keys(hours[day] || {}).forEach(function (letter) {
+                    var cell = document.getElementById('r' + i + '-' + day + '-' + letter);
+                    if (cell) {
+                        setHour(cell, true);
+                    }
+                });
+            });
+        }
+        markDirty();
+        $.ajax({
+            url: $rxConfig.data('used-url').replace('/0/', '/' + tpl.id + '/'),
+            type: 'POST',
+            headers: {'X-CSRFToken': csrfToken()}
+        });
+        $.notify('შაბლონი „' + tpl.name + '“ ჩაისვა', 'success');
+    }
+
+    function findTemplate(id) {
+        id = parseInt(id, 10);
+        return rxTemplates.filter(function (t) { return t.id === id; })[0];
+    }
+
+    $('#tpl-select').on('change', function () {
+        var tpl = findTemplate(this.value);
+        this.value = '';
+        if (!tpl) {
+            return;
+        }
+        if (pageHasMedicines() && !confirm('მედიკამენტები და საათები შეიცვლება შაბლონით „' + tpl.name + '“.\nპაციენტის მონაცემები დარჩება.\n\nგავაგრძელო?')) {
+            return;
+        }
+        applyTemplate(tpl);
+    });
+
+    // opened as /cover/?tpl=<id> from the templates page
+    if ($rxConfig.length && $rxConfig.data('apply')) {
+        var startTpl = findTemplate($rxConfig.data('apply'));
+        if (startTpl && hasSaveForm) {
+            applyTemplate(startTpl);
+        }
+    }
+
+    function collectRows() {
+        var rows = [];
+        for (var i = 1; i <= ROWS; i++) {
+            var r = {d1: {}, d2: {}, d3: {}};
+            $('td.hour[id^="r' + i + '-"]').each(function () {
+                if ($(this).text().trim() === '+') {
+                    var parts = this.id.split('-');
+                    r[parts[1]][parts[2]] = '+';
+                }
+            });
+            rows.push({m: ($('#m' + i).val() || '').trim(), n: ($('#n' + i).val() || '').trim(), r: r});
+        }
+        return rows;
+    }
+
+    $('#tplSaveOpen').on('click', function () {
+        if (!pageHasMedicines()) {
+            alert('ჯერ შეავსეთ მედიკამენტები.');
+            return;
+        }
+        $('#tplSaveErr').hide();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('tplSaveModal')).show();
+    });
+
+    function saveTemplate(overwrite) {
+        var name = ($('#tplName').val() || '').trim();
+        if (!name) {
+            $('#tplSaveErr').text('შაბლონის სახელი აუცილებელია!').show();
+            return;
+        }
+        $.ajax({
+            url: $rxConfig.data('save-url'),
+            type: 'POST',
+            contentType: 'application/json',
+            headers: {'X-CSRFToken': csrfToken()},
+            data: JSON.stringify({name: name, rows: collectRows(), overwrite: !!overwrite}),
+            success: function (res) {
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('tplSaveModal')).hide();
+                $.notify('შაბლონი „' + res.name + '“ შენახულია', 'success');
+                var existing = findTemplate(res.id);
+                if (existing) {
+                    existing.rows = collectRows();
+                } else {
+                    rxTemplates.push({id: res.id, name: res.name, rows: collectRows()});
+                    $('#tpl-select').append($('<option>').val(res.id).text(res.name));
+                }
+            },
+            error: function (xhr) {
+                var res = xhr.responseJSON || {};
+                if (xhr.status === 409 && res.exists) {
+                    if (confirm('შაბლონი „' + name + '“ უკვე არსებობს.\nჩავანაცვლო ახლით?')) {
+                        saveTemplate(true);
+                    }
+                    return;
+                }
+                $('#tplSaveErr').text(res.error || 'შენახვა ვერ მოხერხდა.').show();
+            }
+        });
+    }
+
+    $('#tplSaveBtn').on('click', function () { saveTemplate(false); });
+    $('#tplName').on('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            saveTemplate(false);
         }
     });
 
@@ -434,6 +583,21 @@ $(document).ready(function () {
                 alert('წაშლა ვერ მოხერხდა. განაახლეთ გვერდი და სცადეთ თავიდან.');
             }
         });
+    });
+
+    // prescriptions list: copy a prescription's medicines into a template
+    $(document).on('click', '.niv-to-tpl-btn', function (e) {
+        e.preventDefault();
+        var name = prompt('შაბლონის სახელი (მაგ. ანევრიზმა, ლერიში):', this.dataset.title || '');
+        if (!name || !name.trim()) {
+            return;
+        }
+        var $form = $('<form method="post" hidden></form>').attr('action', this.dataset.href);
+        $form.append($('<input type="hidden" name="csrfmiddlewaretoken">').val(csrfToken()));
+        $form.append($('<input type="hidden" name="name">').val(name.trim()));
+        $form.append($('<input type="hidden" name="next">').val(window.location.pathname + window.location.search));
+        $('body').append($form);
+        $form.submit();
     });
 
     if (window.ClipboardJS) {

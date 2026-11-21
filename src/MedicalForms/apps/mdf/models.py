@@ -1,7 +1,8 @@
+from django.conf import settings
 from django.db import models
 from django.utils.functional import cached_property
 
-from .enums import RadialPulse, YesNo
+from .enums import RadialPulse
 from .utils import jsonfield_default_value
 
 # Number of medicine rows on the printed NIV-300-9/a form.
@@ -36,7 +37,7 @@ class Note(models.Model):
 
 
 class NivForm(models.Model):
-    title = models.CharField(verbose_name='შაბლონის სახელი', max_length=255)
+    title = models.CharField(verbose_name='დასახელება', max_length=255)
 
     doe = models.CharField(
         verbose_name='შემოსვლის თარიღი', max_length=50, null=True, blank=True
@@ -68,12 +69,6 @@ class NivForm(models.Model):
     bmi_score = models.CharField(null=True, blank=True, max_length=11, default='')
     gcs_score = models.CharField(null=True, blank=True, max_length=11, default='')
     risk_falling = models.CharField(null=True, blank=True, max_length=11, default='')
-    doctor = models.CharField(
-        verbose_name='მკურნალი ექიმი', max_length=150, null=True, blank=True
-    )
-    nurse = models.CharField(
-        verbose_name='მორიგე ექთანი', max_length=150, null=True, blank=True
-    )
 
     day1 = models.CharField(
         verbose_name='დღე 1', max_length=15, null=True, blank=True
@@ -245,69 +240,11 @@ class NivForm(models.Model):
         verbose_name='დღეები, საათები', null=True, blank=True,
         default=jsonfield_default_value
     )
-    m17 = models.CharField(
-        verbose_name='მედიკამენტი 17', max_length=512, null=True, blank=True
-    )
-    n17 = models.CharField(
-        verbose_name='დანიშნულება', max_length=512, null=True, blank=True
-    )
-    r17 = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    gk = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    p = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    ta = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    tc = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    fs = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    sp2s = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    giv = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    per0s = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    di = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    de = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    dg = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
-    gl = models.JSONField(
-        verbose_name='დღეები, საათები', null=True, blank=True,
-        default=jsonfield_default_value
-    )
 
     class Meta:
         db_table = 'niv_forms'
-        verbose_name = 'Niv 900 შაბლონი'
-        verbose_name_plural = 'Niv 900 შაბლონები'
+        verbose_name = 'დანიშნულება (NIV-300-9/ა)'
+        verbose_name_plural = 'დანიშნულებები (NIV-300-9/ა)'
 
     def __str__(self):
         return self.title
@@ -324,3 +261,75 @@ class NivForm(models.Model):
                 rows.append(n_x)
 
         return "\n".join(rows)
+
+
+    def rows_data(self):
+        """Medicine rows 1..16 as [{'m': .., 'n': .., 'r': {'d1': {..}, ..}}]."""
+        rows = []
+        for i in range(1, ROW_COUNT + 1):
+            r = getattr(self, f'r{i}') or {}
+            rows.append({
+                'm': getattr(self, f'm{i}') or '',
+                'n': getattr(self, f'n{i}') or '',
+                'r': {d: dict(r.get(d) or {}) for d in ('d1', 'd2', 'd3')},
+            })
+        return rows
+
+
+def medicine_key(names):
+    """Order-independent key of a set of medicine names (for grouping)."""
+    return tuple(sorted({' '.join(n.lower().split()) for n in names if n and n.strip()}))
+
+
+class StaffProfile(models.Model):
+    """A person shown on the login page (photo + name)."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile'
+    )
+    display_name = models.CharField('სახელი', max_length=50)
+    photo = models.ImageField('ფოტო', upload_to='staff/', blank=True)
+    order = models.PositiveSmallIntegerField('რიგითობა', default=0)
+    show_on_login = models.BooleanField('ჩანს შესვლის გვერდზე', default=True)
+
+    class Meta:
+        db_table = 'staff_profiles'
+        ordering = ('order', 'display_name')
+        verbose_name = 'თანამშრომელი'
+        verbose_name_plural = 'თანამშრომლები'
+
+    def __str__(self):
+        return self.display_name
+
+    @property
+    def initial(self):
+        return (self.display_name or self.user.username)[:1].upper()
+
+
+class PrescriptionTemplate(models.Model):
+    """Reusable set of medicines + hours (e.g. "ანევრიზმა", "ლერიში")."""
+    name = models.CharField('შაბლონის სახელი', max_length=150)
+    rows = models.JSONField('მედიკამენტები', default=list, blank=True)
+    use_count = models.PositiveIntegerField('გამოყენებულია', default=0)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name='შექმნა', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+'
+    )
+    created_at = models.DateTimeField('შეიქმნა', auto_now_add=True)
+    updated_at = models.DateTimeField('განახლდა', auto_now=True)
+
+    class Meta:
+        db_table = 'prescription_templates'
+        ordering = ('name',)
+        verbose_name = 'შაბლონი'
+        verbose_name_plural = 'შაბლონები'
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def medicines(self):
+        return [row.get('m') for row in self.rows if row.get('m')]
+
+    @property
+    def medicine_key(self):
+        return medicine_key(self.medicines)

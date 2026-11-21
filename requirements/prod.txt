@@ -1,6 +1,9 @@
+# Everything here runs on the free PythonAnywhere plan (no extra services).
 # Django 4.2 is the version the site was built on (4.2.3 -> latest 4.2 patch).
 # The code is also tested with Django 5.2 LTS - see README before switching.
 Django==4.2.30
 mysqlclient==2.2.0
 django-docxtpl==0.9.0
 whitenoise==6.12.0
+# staff photos (already installed on PythonAnywhere)
+Pillow>=9.0

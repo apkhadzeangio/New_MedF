@@ -1,43 +1,46 @@
-<nav class="navbar navbar-expand-sm bg-dark navbar-dark d-print-none">
+<nav class="navbar navbar-expand-md bg-dark navbar-dark d-print-none">
     <div class="container">
         <a class="navbar-brand" href="/"></a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
           <span class="navbar-toggler-icon"></span>
         </button>
+        {% with url_name=request.resolver_match.url_name %}
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
-          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <ul class="navbar-nav me-auto mb-2 mb-md-0">
             <li class="nav-item">
-              <a class="nav-link active" aria-current="page" href="/">მთავარი</a>
-            </li>
-            <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                ფორმა Niv 300 9/ა
-              </a>
-              <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                <li><a class="dropdown-item" href="{% url 'niv-cover' %}">წინა მხარე</a></li>
-                <li><a class="dropdown-item" href="{% url 'niv-back' %}">უკანა მხარე</a></li>
-              </ul>
+              <a class="nav-link{% if url_name == 'niv-cover' and not request.GET.t %} active{% endif %}" href="{% url 'niv-cover' %}">ახალი დანიშნულება</a>
             </li>
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'niv-templates' %}">შაბლონები</a>
+              <a class="nav-link{% if url_name == 'niv-templates' %} active{% endif %}" href="{% url 'niv-templates' %}">დანიშნულებები</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link{% if url_name == 'rx-templates' %} active{% endif %}" href="{% url 'rx-templates' %}">შაბლონები</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link{% if url_name == 'rx-frequent' %} active{% endif %}" href="{% url 'rx-frequent' %}">ხშირი დანიშნულებები</a>
             </li>
           </ul>
           {% if request.user.is_authenticated %}
           <ul class="navbar-nav">
             <li class="nav-item dropdown">
-              <a class="nav-link dropdown-toggle" href="#" id="userDrop" data-bs-toggle="dropdown">{{ request.user.get_full_name|default:request.user.username }}</a>
+              <a class="nav-link dropdown-toggle d-flex align-items-center gap-2" href="#" id="userDrop" data-bs-toggle="dropdown">
+                  {% if request.user.profile %}{% include "partials/avatar.html" with profile=request.user.profile size=28 %}{% endif %}
+                  {{ request.user.profile.display_name|default:request.user.get_full_name|default:request.user.username }}
+              </a>
               <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="{% url 'password-change' %}">პაროლის შეცვლა</a></li>
+                <li><a class="dropdown-item" href="{% url 'my-photo' %}">ჩემი ფოტო</a></li>
                 {% if request.user.is_staff %}
-                <li><a class="dropdown-item" href="{% url 'admin:index' %}">ადმინისტრირება (წამლების სია)</a></li>
+                <li><a class="dropdown-item" href="{% url 'admin:mdf_medicine_changelist' %}">მედიკამენტების ბაზა</a></li>
                 {% endif %}
-                <div class="dropdown-divider"></div>
-                <li><a class="dropdown-item" href="{% url 'logout' %}">გამოსვლა</a></li>
+                <li><a class="dropdown-item" href="{% url 'backup-download' %}">ბაზის ასლის ჩამოტვირთვა</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{% url 'logout' %}">გამოსვლა (სხვა მომხმარებელი)</a></li>
               </ul>
             </li>
           </ul>
           {% endif %}
         </div>
+        {% endwith %}
     </div>
 </nav>
 {% include "partials/messages.html" %}

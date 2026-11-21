@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4" style="max-width: 520px;">
+    <h4 class="mb-3">ჩემი ფოტო</h4>
+    <div class="d-flex align-items-center gap-3 mb-4">
+        {% include "partials/avatar.html" with profile=profile size=112 %}
+        <div>
+            <div class="fs-5 fw-semibold">{{ profile.display_name }}</div>
+            <div class="text-muted small">ეს ფოტო ჩანს შესვლის გვერდზე.</div>
+        </div>
+    </div>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {% for e in form.photo.errors %}<div class="alert alert-danger py-2">{{ e }}</div>{% endfor %}
+        <input type="file" name="photo" accept="image/*" class="form-control mb-3" required>
+        <button type="submit" class="btn btn-primary">ატვირთვა</button>
+        <a href="{% url 'niv-cover' %}" class="btn btn-secondary ms-2">გაუქმება</a>
+    </form>
+</div>
+{% endblock %}

@@ -4,13 +4,13 @@
 <div class="container">
     <nav class="navbar bg-body-tertiary w-100">
       <div class="container-fluid justify-content-start">
-        <a class="btn btn-outline-success me-2" href="{% url 'niv-cover' %}">შაბლონის შექმნა</a>
+        <a class="btn btn-outline-success me-2" href="{% url 'niv-cover' %}">ახალი დანიშნულება</a>
       </div>
       <form action="{% url 'niv-templates' %}" class="d-flex w-100" id="search-form" method="get">
         {% csrf_token %}
         <div class="form-group w-100">
           <label for="q"></label>
-          <input type="search" name="q" class="form-control-lg w-100" id="q" value="{{ q }}" placeholder="ძიება... (სახელი, პაციენტი, პირადი N, ისტორიის N, დიაგნოზი, ექიმი)" autocomplete="off" autofocus>
+          <input type="search" name="q" class="form-control-lg w-100" id="q" value="{{ q }}" placeholder="ძიება... (დასახელება, პაციენტი, პირადი N, ისტორიის N, დიაგნოზი)" autocomplete="off" autofocus>
         </div>
       </form>
     </nav>

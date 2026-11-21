@@ -9,10 +9,11 @@ from unittest import skipUnless
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.http import QueryDict
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from .models import Medicine, NivForm
+from .models import Medicine, NivForm, PrescriptionTemplate, StaffProfile
 from .utils import validate_take_medicine
 from .views import NivDocumentView
 
@@ -31,7 +32,7 @@ class ValidateTakeMedicineTests(TestCase):
         data['m1'] = 'Aspirin'
         result, keys = validate_take_medicine(data)
         self.assertEqual(result['r1'], {'d1': {'a': '+', 'c': '+'}, 'd2': {}})
-        self.assertEqual(result['gk'], {'d3': {'l': '+'}})
+        self.assertNotIn('gk', result)  # back side was removed
         self.assertNotIn('m1', result)
 
 
@@ -67,21 +68,28 @@ class LoginTests(TestCase):
 
     def test_wrong_password_shows_message(self):
         r = self.client.post('/', {'username': 'doc', 'password': 'nope'})
-        self.assertContains(r, 'მომხმარებელი ან პაროლი არასწორია')
+        self.assertContains(r, 'პაროლი არასწორია')
 
-    def test_lockout_after_too_many_failures(self):
-        for _ in range(5):
-            self.client.post('/', {'username': 'doc', 'password': 'nope'})
-        r = self.client.post('/', {'username': 'doc', 'password': 'Secret-pass-123'})
-        self.assertContains(r, 'ძალიან ბევრი წარუმატებელი მცდელობა')
-        self.assertNotIn('_auth_user_id', self.client.session)
+    def test_no_lockout_and_simple_passwords(self):
+        User.objects.create_user('ia', password='test-pass-3')
+        for _ in range(10):
+            self.client.post('/', {'username': 'ia', 'password': 'nope'})
+        r = self.client.post('/', {'username': 'ia', 'password': 'test-pass-3'})
+        self.assertRedirects(r, reverse('niv-cover'))
 
-    def test_session_ends_with_browser_unless_remember_me(self):
+    def test_session_is_persistent(self):
         self.client.post('/', {'username': 'doc', 'password': 'Secret-pass-123'})
-        self.assertTrue(self.client.session.get_expire_at_browser_close())
-        self.client.logout()
-        self.client.post('/', {'username': 'doc', 'password': 'Secret-pass-123', 'remember_me': 'on'})
         self.assertFalse(self.client.session.get_expire_at_browser_close())
+        self.assertGreaterEqual(self.client.session.get_expiry_age(), 300 * 24 * 3600)
+
+    def test_login_page_shows_staff_profiles(self):
+        user = User.objects.create_user('ina', password='test-pass-1')
+        StaffProfile.objects.create(user=user, display_name='ინა', order=1)
+        r = self.client.get('/')
+        self.assertContains(r, 'data-username="ina"')
+        self.assertContains(r, 'ინა')
+        r = self.client.post('/', {'username': 'ina', 'password': 'test-pass-1'})
+        self.assertRedirects(r, reverse('niv-cover'))
 
     def test_pages_require_login(self):
         for url in ('/niv-300-9-a/cover/', '/niv-300-9-a/templates/', '/api/medicines/?q=a'):
@@ -139,21 +147,21 @@ class SaveTests(BaseViewTest):
         self.assertEqual(niv.r1['d1'], {})
 
     def test_save_as_keeps_original(self):
-        niv = self.make_niv(gk=dict(d1=hours('c'), d2={}, d3={}))
+        niv = self.make_niv(r16=dict(d1=hours('c'), d2={}, d3={}))
         self.client.post(reverse('niv-create'), self.post_data(
             t=niv.pk, action='save_as', title=niv.title, **{'as-title': 'ასლი', 'm1': 'Changed'}))
         niv.refresh_from_db()
         self.assertEqual(niv.m1, 'Aspirin')
         copy = NivForm.objects.get(title='ასლი')
         self.assertEqual(copy.m1, 'Changed')
-        self.assertEqual(copy.gk['d1'], {'c': '+'})  # back-side data copied too
+        self.assertEqual(copy.r16['d1'], {'c': '+'})
         self.assertEqual(NivForm.objects.count(), 2)
 
     def test_invalid_data_shows_error_and_keeps_record(self):
         niv = self.make_niv()
         r = self.client.post(reverse('niv-create'), self.post_data(
             t=niv.pk, action='save', title=niv.title, person_id='1' * 20), follow=True)
-        self.assertContains(r, 'შაბლონი ვერ შეინახა')
+        self.assertContains(r, 'დანიშნულება ვერ შეინახა')
         niv.refresh_from_db()
         self.assertEqual(niv.m1, 'Aspirin')
 
@@ -241,21 +249,118 @@ class PrintTests(BaseViewTest):
         body = b''.join(r.streaming_content) if r.streaming else r.content
         self.assertTrue(body.startswith(b'%PDF'))
 
-    def test_back_print_page(self):
-        niv = self.make_niv()
-        r = self.client.get(f'/niv-300-9-a/back/print/?t={niv.pk}')
+
+
+class TemplateTests(BaseViewTest):
+
+    def rows(self):
+        return [{'m': 'Heparin', 'n': '5000 ე', 'r': {'d1': {'a': '+', 'zz': '+'}, 'd2': {}, 'd3': {'l': '+'}}}]
+
+    def test_save_template_from_page(self):
+        r = self.client.post(reverse('rx-template-save'), json.dumps({'name': 'ანევრიზმა', 'rows': self.rows()}),
+                             content_type='application/json')
         self.assertEqual(r.status_code, 200)
+        tpl = PrescriptionTemplate.objects.get()
+        self.assertEqual(len(tpl.rows), 16)
+        self.assertEqual(tpl.rows[0]['r']['d1'], {'a': '+'})  # invalid hour dropped
+        self.assertEqual(tpl.created_by, self.user)
+        # same name -> 409, then overwrite
+        r = self.client.post(reverse('rx-template-save'), json.dumps({'name': 'ანევრიზმა', 'rows': self.rows()}),
+                             content_type='application/json')
+        self.assertEqual(r.status_code, 409)
+        rows = self.rows()
+        rows[0]['m'] = 'Clexane'
+        r = self.client.post(reverse('rx-template-save'),
+                             json.dumps({'name': 'ანევრიზმა', 'rows': rows, 'overwrite': True}),
+                             content_type='application/json')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(PrescriptionTemplate.objects.get().rows[0]['m'], 'Clexane')
+
+    def test_empty_template_rejected(self):
+        r = self.client.post(reverse('rx-template-save'), json.dumps({'name': 'x', 'rows': []}),
+                             content_type='application/json')
+        self.assertEqual(r.status_code, 400)
+
+    def test_template_from_prescription_and_cover(self):
+        niv = self.make_niv(title='ლერიში')
+        self.client.post(reverse('rx-template-from', args=[niv.pk]), {'name': 'ლერიში'})
+        tpl = PrescriptionTemplate.objects.get(name='ლერიში')
+        self.assertEqual(tpl.rows[0]['m'], 'Aspirin')
+        self.assertEqual(tpl.rows[0]['r']['d1'], {'a': '+', 'b': '+'})
+        r = self.client.get(reverse('niv-cover') + f'?tpl={tpl.pk}')
+        self.assertContains(r, 'id="rx-templates-data"')
+        self.assertContains(r, 'data-apply="%d"' % tpl.pk)
+        self.client.post(reverse('rx-template-used', args=[tpl.pk]))
+        tpl.refresh_from_db()
+        self.assertEqual(tpl.use_count, 1)
+        self.assertContains(self.client.get(reverse('rx-templates')), 'ლერიში')
+
+    def test_rename_and_delete(self):
+        tpl = PrescriptionTemplate.objects.create(name='a', rows=self.rows())
+        self.client.post(reverse('rx-template-rename', args=[tpl.pk]), {'name': 'ბარძაყ-მუხლქვეშა'})
+        tpl.refresh_from_db()
+        self.assertEqual(tpl.name, 'ბარძაყ-მუხლქვეშა')
+        self.client.post(reverse('rx-template-delete', args=[tpl.pk]))
+        self.assertFalse(PrescriptionTemplate.objects.exists())
+
+    def test_frequent_groups(self):
+        for _ in range(3):
+            self.make_niv(title='ანევრიზმა', m1='Aspirin', m2='Heparin')
+        self.make_niv(title='სხვა', m1='heparin ', m2='ASPIRIN')   # same set, different case/order
+        self.make_niv(title='ერთჯერადი', m1='Rare drug')
+        r = self.client.get(reverse('rx-frequent'))
+        groups = r.context['groups']
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]['count'], 4)
+        self.assertEqual(groups[0]['suggested_name'], 'ანევრიზმა')
+        r = self.client.get(reverse('rx-frequent') + '?min=1&q=rare')
+        self.assertEqual([g['count'] for g in r.context['groups']], [1])
 
 
-@override_settings(DEBUG=False)
-class PasswordChangeTests(BaseViewTest):
+class StaffAndBackupTests(TestCase):
 
-    def test_change_password(self):
-        r = self.client.post(reverse('password-change'), {
-            'old_password': 'Secret-pass-123',
-            'new_password1': 'Another-pass-456',
-            'new_password2': 'Another-pass-456',
-        })
-        self.assertRedirects(r, reverse('niv-cover'))
-        self.user.refresh_from_db()
-        self.assertTrue(self.user.check_password('Another-pass-456'))
+    @override_settings()
+    def test_setup_staff_and_backup(self):
+        import os
+        from io import StringIO
+        os.environ['STAFF_USERS'] = 'ina:ინა:test-pass-1,gurami:გურამი:test-pass-2'
+        try:
+            call_command('setup_staff', stdout=StringIO())
+            call_command('setup_staff', stdout=StringIO())  # repeatable
+        finally:
+            del os.environ['STAFF_USERS']
+        self.assertTrue(self.client.login(username='ina', password='test-pass-1'))
+        ina = User.objects.get(username='ina')
+        self.assertTrue(ina.is_staff)
+        self.assertTrue(ina.has_perm('mdf.change_medicine'))
+        self.assertEqual(ina.profile.display_name, 'ინა')
+        self.assertEqual(list(StaffProfile.objects.values_list('order', flat=True)), [1, 2])
+
+        r = self.client.get(reverse('backup-download'))
+        self.assertEqual(r['Content-Type'], 'application/gzip')
+        import gzip
+        data = json.loads(gzip.decompress(r.content))
+        self.assertTrue(any(o['model'] == 'mdf.staffprofile' for o in data))
+
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as tmp:
+            for _ in range(3):
+                call_command('backup_data', dir=tmp, keep=2, stdout=StringIO())
+            import pathlib
+            self.assertLessEqual(len(list(pathlib.Path(tmp).glob('*.json.gz'))), 2)
+
+    def test_photo_upload(self):
+        from io import BytesIO
+        from tempfile import TemporaryDirectory
+        from PIL import Image
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        user = User.objects.create_user('ia', password='test-pass-3')
+        self.client.force_login(user)
+        buf = BytesIO()
+        Image.new('RGB', (1200, 800), 'red').save(buf, 'PNG')
+        with TemporaryDirectory() as tmp, self.settings(MEDIA_ROOT=tmp):
+            r = self.client.post(reverse('my-photo'), {'photo': SimpleUploadedFile('a.png', buf.getvalue())})
+            self.assertRedirects(r, reverse('niv-cover'))
+            profile = StaffProfile.objects.get(user=user)
+            self.assertEqual(Image.open(profile.photo.path).size, (400, 400))
+            self.assertEqual(self.client.get(profile.photo.url).status_code, 200)

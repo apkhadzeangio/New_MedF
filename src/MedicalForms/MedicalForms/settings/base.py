@@ -125,20 +125,8 @@ DATABASES = {
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
 
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
-]
+# Internal clinic program: simple passwords are allowed on purpose.
+AUTH_PASSWORD_VALIDATORS = []
 
 
 # Internationalization
@@ -166,7 +154,8 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 
-MEDIA_ROOT = BASE_DIR / 'media'
+# Staff photos. Kept outside the code folder so updates don't delete them.
+MEDIA_ROOT = Path(env('MEDIA_ROOT', str(Path.home() / 'medf-media')))
 
 STORAGES = {
     'default': {
@@ -191,15 +180,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_URL = '/'
 
 
-# Sessions: "დამახსოვრება" (remember me) keeps the user logged in for
-# SESSION_COOKIE_AGE seconds, otherwise the session ends with the browser.
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 14  # 14 days
+# Stay logged in on the clinic computers: the session lasts a year and is
+# renewed on every visit, so the prescription page is always open.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 365
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 SESSION_COOKIE_HTTPONLY = True
-
-# Login brute-force protection: lock a username/IP pair after this many
-# failed attempts for LOGIN_LOCKOUT_SECONDS.
-LOGIN_MAX_FAILED_ATTEMPTS = 5
-LOGIN_LOCKOUT_SECONDS = 15 * 60
 
 # HTTPS hardening. Turn on (DJANGO_HTTPS=1) once the site is always opened
 # with https:// (PythonAnywhere: Web tab -> "Force HTTPS").
