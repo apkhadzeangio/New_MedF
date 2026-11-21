@@ -35,6 +35,13 @@ from .utils import validate_take_medicine, clean_template_rows, resize_photo
 logger = logging.getLogger(__name__)
 
 
+def csrf_failure(request, reason=''):
+    """Shown instead of Django's English "CSRF verification failed" page."""
+    from django.shortcuts import render
+    logger.warning('CSRF failure on %s: %s', request.path, reason)
+    return render(request, 'mdf/csrf-failure.html', status=403)
+
+
 # --------------------------------------------------------------------------
 # Login / logout / profile photo
 # --------------------------------------------------------------------------
@@ -476,33 +483,32 @@ class TemplateUsedView(LoginRequiredMixin, generic.View):
 
 
 class NosologyAnalysisView(LoginRequiredMixin, generic.TemplateView):
-    """Which medicines are prescribed for which nosology (diagnosis)."""
+    """Which medicines are prescribed for which nosology (by the written diagnosis)."""
     template_name = 'mdf/rx-analysis.html'
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         get = self.request.GET
-        group_by = get.get('by', 'diagnosis')
-        if group_by not in analysis.FIELDS:
-            group_by = 'diagnosis'
+        mode = get.get('by', 'terms')
+        if mode not in analysis.MODES:
+            mode = 'terms'
         search = get.get('s', '').strip()
         nosology = get.get('q', '').strip()
-        match_in = get.get('in', 'both')
+        match_in = get.get('in', 'diagnosis')
         if match_in not in ('diagnosis', 'title', 'both'):
-            match_in = 'both'
+            match_in = 'diagnosis'
         ctx.update({
-            'group_by': group_by, 'fields': analysis.FIELDS, 'search': search,
+            'mode': mode, 'modes': analysis.MODES, 'search': search,
             'q': nosology, 'match_in': match_in,
             'total_prescriptions': NivForm.objects.count(),
         })
         if nosology:
             total, medicines = analysis.medicines_for(nosology, match_in)
             label = get.get('l', '').strip() or nosology
-            name = analysis.ICD_RE.sub('', label).strip(' -—,.') or label
             ctx.update({'matched': total, 'medicines': medicines, 'label': label,
-                        'suggested_name': name[:150]})
+                        'suggested_name': label[:150]})
         else:
-            ctx['groups'], ctx['groups_total'] = analysis.overview(group_by, search)
+            ctx['groups'], ctx['groups_total'] = analysis.overview(mode, search)
         return ctx
 
 
@@ -512,7 +518,7 @@ class TemplateFromAnalysisView(LoginRequiredMixin, generic.View):
 
     def post(self, request, *args, **kwargs):
         nosology = request.POST.get('q', '').strip()
-        match_in = request.POST.get('in', 'both')
+        match_in = request.POST.get('in', 'diagnosis')
         chosen = set(request.POST.getlist('med'))
         _, medicines = analysis.medicines_for(nosology, match_in)
         selected = [m for m in medicines if m['key'] in chosen]

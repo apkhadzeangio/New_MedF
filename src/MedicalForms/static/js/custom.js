@@ -42,9 +42,22 @@ $(document).ready(function () {
         }
         isSubmitting = true;
         isDirty = false;
+        // Use the browser's current security token: logging in (in this or
+        // another tab) renews it and an older page would otherwise be rejected.
+        var fresh = getCookie('csrftoken');
+        if (fresh) {
+            $saveForm.find('input[name="csrfmiddlewaretoken"]').val(fresh);
+        }
         $('#updateBtn, #updateAndNewBtn, #saveModalBtn, #saveAndNewModalBtn, #saveAsModalBtn').prop('disabled', true);
         $saveForm.submit();
     }
+
+    $(document).on('submit', 'form[method="post"], form[method="POST"]', function () {
+        var fresh = getCookie('csrftoken');
+        if (fresh) {
+            $(this).find('input[name="csrfmiddlewaretoken"]').val(fresh);
+        }
+    });
 
     /* ------------------------------------------------------------------ */
     /* Dates                                                               */

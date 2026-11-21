@@ -11,10 +11,19 @@ from .models import NivForm, ROW_COUNT
 
 ICD_RE = re.compile(r'\b([A-TV-Z]\d{2}(?:\.\d{1,2})?)\b', re.IGNORECASE)
 
-FIELDS = {
-    'diagnosis': 'დიაგნოზი',
-    'title': 'დასახელება',
+# Georgian case endings, longest first: "ანევრიზმის", "ანევრიზმით" -> "ანევრიზმ"
+SUFFIXES = ('ებისთვის', 'ისთვის', 'ებიდან', 'იდან', 'ებით', 'ების', 'ებში', 'ებს', 'ები',
+            'ით', 'ის', 'ად', 'ს', 'ა', 'ი', 'ო', 'ე')
+
+# Frequent words that describe *where* or *how*, not the disease itself.
+STOPWORDS = {
+    'და', 'ან', 'თუ', 'შემდეგ', 'გარეშე', 'მიერ', 'გამო', 'მდგომარეობა', 'სხვა',
+    'მარცხენა', 'მარჯვენა', 'ორმხრივი', 'ქვედა', 'ზედა', 'კიდურის', 'კიდურების',
+    'მწვავე', 'ქრონიკული', 'დაუზუსტებელი', 'გართულებით', 'გართულების', 'სტადია',
+    'ხარისხის', 'ტიპის', 'ფორმა', 'პაციენტი', 'დიაგნოზი', 'ძირითადი', 'თანმხლები',
 }
+
+WORD_RE = re.compile(r'[^\W\d_]+(?:-[^\W\d_]+)*', re.UNICODE)
 
 
 def normalize(text):
@@ -26,31 +35,66 @@ def icd_code(text):
     return match.group(1).upper() if match else ''
 
 
-def nosology_key(text):
-    """ICD-10 code if the text has one, otherwise the normalised text."""
-    code = icd_code(text)
-    return code or normalize(text)[:120]
+def disease_text(text):
+    """The disease name as written, without ICD codes and extra punctuation."""
+    text = ICD_RE.sub(' ', text or '')
+    text = re.sub(r'[\s,.;:()\[\]/"“”„-]+', ' ', text)
+    return normalize(text)
 
 
-def overview(field='diagnosis', q='', limit=200):
-    """List nosologies (grouped diagnoses or titles) with prescription counts."""
-    field = field if field in FIELDS else 'diagnosis'
+def stem(word):
+    word = word.lower()
+    for suffix in SUFFIXES:
+        if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+            return word[:-len(suffix)]
+    return word
+
+
+def terms(text):
+    """Distinct stems of the meaningful words in a diagnosis."""
+    found = {}
+    for word in WORD_RE.findall(ICD_RE.sub(' ', text or '')):
+        if len(word) < 4 or word.lower() in STOPWORDS:
+            continue
+        found.setdefault(stem(word), word.lower())
+    return found
+
+
+MODES = {
+    'terms': 'სიტყვებით (დაავადება)',
+    'full': 'სრული დიაგნოზით',
+}
+
+
+def overview(mode='terms', q='', limit=300):
+    """Nosologies found in the "დიაგნოზი" field, with prescription counts.
+
+    mode="terms": each meaningful word of the diagnosis (ანევრიზმა, ლერიში,
+    სტენოზი...) counted once per prescription, word forms merged.
+    mode="full": the whole diagnosis text (without ICD code).
+    """
+    mode = mode if mode in MODES else 'terms'
     q = normalize(q)
     groups = {}
-    for value in NivForm.objects.values_list(field, flat=True).iterator():
+    for value in NivForm.objects.values_list('diagnosis', flat=True).iterator():
         if not value or not value.strip():
             continue
-        key = nosology_key(value) if field == 'diagnosis' else normalize(value)[:120]
-        group = groups.get(key)
-        if group is None:
-            group = groups[key] = {'key': key, 'count': 0, 'labels': Counter()}
-        group['count'] += 1
-        group['labels'][value.strip()] += 1
+        if mode == 'terms':
+            items = terms(value).items()
+        else:
+            text = disease_text(value)
+            items = [(text, text)] if text else []
+        for key, form in items:
+            group = groups.get(key)
+            if group is None:
+                group = groups[key] = {'key': key, 'count': 0, 'labels': Counter()}
+            group['count'] += 1
+            group['labels'][form] += 1
 
     result = []
     for group in groups.values():
         labels = [label for label, _ in group['labels'].most_common(3)]
-        if q and q not in group['key'] and not any(q in normalize(lb) for lb in labels):
+        if q and q not in group['key'] and not any(q in lb for lb in labels):
             continue
         group['label'] = labels[0]
         group['other_labels'] = labels[1:]
@@ -60,18 +104,30 @@ def overview(field='diagnosis', q='', limit=200):
     return result[:limit], len(result)
 
 
-def matching_prescriptions(q, field='both'):
-    """Prescriptions whose diagnosis and/or title contain ``q`` (or its ICD code)."""
-    q = (q or '').strip()
-    if not q:
-        return NivForm.objects.none()
-    from django.db.models import Q
-    cond = Q()
-    if field in ('diagnosis', 'both'):
-        cond |= Q(diagnosis__icontains=q)
-    if field in ('title', 'both'):
-        cond |= Q(title__icontains=q)
-    return NivForm.objects.filter(cond)
+def matcher(q):
+    """Function telling whether a diagnosis/title text belongs to nosology ``q``.
+
+    Compares the written disease names (ICD codes and punctuation ignored).
+    A single word also matches its other forms: ანევრიზმა ~ ანევრიზმის.
+    """
+    needle = disease_text(q)
+    words = needle.split()
+    if len(words) == 1:
+        needle = stem(words[0])
+    if not needle:
+        return lambda text: False
+    return lambda text: needle in disease_text(text)
+
+
+def matching_prescriptions(q, field='diagnosis'):
+    """Ids of prescriptions whose diagnosis (and/or title) match nosology ``q``."""
+    match = matcher(q)
+    ids = []
+    for pk, diagnosis, title in NivForm.objects.values_list('id', 'diagnosis', 'title').iterator():
+        if (field in ('diagnosis', 'both') and match(diagnosis)) or \
+                (field in ('title', 'both') and match(title)):
+            ids.append(pk)
+    return ids
 
 
 CLOCK = {
@@ -97,13 +153,14 @@ def _hours_key(r):
     return json.dumps(clean, sort_keys=True)
 
 
-def medicines_for(q, field='both'):
+def medicines_for(q, field='diagnosis'):
     """Medicines prescribed for the nosology ``q``, most frequent first.
 
     Returns (total_prescriptions, [ {name, count, percent, note, notes, hours,
     hours_share, avg_row}, ... ]).
     """
-    qs = matching_prescriptions(q, field)
+    ids = matching_prescriptions(q, field)
+    qs = NivForm.objects.filter(id__in=ids) if ids else NivForm.objects.none()
     total = 0
     stats = defaultdict(lambda: {'count': 0, 'names': Counter(), 'notes': Counter(),
                                  'hours': Counter(), 'rows': []})

@@ -305,29 +305,41 @@ class TemplateTests(BaseViewTest):
 
     def test_nosology_analysis(self):
         aneurysm = dict(d1=hours('a', 'i'), d2={}, d3={})
-        for i in range(4):
-            self.make_niv(title=f'პაციენტი {i}', diagnosis='I71.4 მუცლის აორტის ანევრიზმა',
+        diagnoses = ['I71.4 მუცლის აორტის ანევრიზმა', 'მუცლის აორტის ანევრიზმა',
+                     'Z95.8 ანევრიზმის მდგომარეობა', 'I72.4 ქვედა კიდურის არტერიის ანევრიზმით']
+        for i, dx in enumerate(diagnoses):
+            self.make_niv(title=f'პაციენტი {i}', diagnosis=dx,
                           m1='Heparin 5000', n1='კანქვეშ', r1=aneurysm,
                           m2='Aspirin' if i < 2 else 'Clopidogrel', n2='', r2={})
         self.make_niv(title='ლერიში', diagnosis='I74.0 ლერიშის სინდრომი', m1='Pentoxifylline')
-        self.make_niv(title='x', diagnosis='i71.4 ანევრიზმა (განმეორებითი)', m1='Heparin 5000', m2='heparin 5000')
+        self.make_niv(title='x', diagnosis='ლერიში', m1='Heparin 5000', m2='heparin 5000')
 
+        # words from the written diagnosis, word forms merged, ICD ignored
         r = self.client.get(reverse('rx-analysis'))
         groups = {g['key']: g for g in r.context['groups']}
-        self.assertEqual(groups['I71.4']['count'], 5)     # grouped by ICD-10 code
-        self.assertEqual(groups['I71.4']['variants'], 2)
-        self.assertEqual(groups['I74.0']['count'], 1)
+        self.assertEqual(groups['ანევრიზმ']['count'], 4)
+        self.assertEqual(groups['ლერიშ']['count'], 2)
+        self.assertNotIn('მდგომარეობ', groups)     # stop word
+        self.assertFalse(any(k.startswith('i7') for k in groups))
 
-        r = self.client.get(reverse('rx-analysis') + '?q=ანევრიზმა&in=diagnosis')
-        self.assertEqual(r.context['matched'], 5)
+        r = self.client.get(reverse('rx-analysis') + '?by=full')
+        labels = [g['label'] for g in r.context['groups']]
+        self.assertIn('მუცლის აორტის ანევრიზმა', labels)
+        self.assertEqual(r.context['groups'][0]['count'], 2)   # with and without ICD code
+
+        r = self.client.get(reverse('rx-analysis') + '?q=ანევრიზმა')
+        self.assertEqual(r.context['matched'], 4)
         meds = {m['name']: m for m in r.context['medicines']}
-        self.assertEqual(meds['Heparin 5000']['count'], 5)    # counted once per prescription
+        self.assertEqual(meds['Heparin 5000']['count'], 4)
         self.assertEqual(meds['Heparin 5000']['percent'], 100)
         self.assertEqual(meds['Heparin 5000']['note'], 'კანქვეშ')
         self.assertEqual(meds['Heparin 5000']['hours_text'], 'დღე 1: 8, 24')
-        self.assertEqual(meds['Aspirin']['percent'], 40)
-        self.assertEqual(r.context['medicines'][0]['name'], 'Heparin 5000')
+        self.assertEqual(meds['Aspirin']['percent'], 50)
         self.assertContains(r, 'value="heparin 5000" checked')
+
+        r = self.client.get(reverse('rx-analysis') + '?q=ლერიშის')
+        self.assertEqual(r.context['matched'], 2)
+        self.assertEqual(r.context['medicines'][0]['count'], 1)   # counted once per prescription
 
         r = self.client.post(reverse('rx-template-from-analysis'), {
             'q': 'ანევრიზმა', 'in': 'diagnosis', 'name': 'ანევრიზმა',
@@ -335,11 +347,15 @@ class TemplateTests(BaseViewTest):
         self.assertRedirects(r, reverse('rx-templates'))
         tpl = PrescriptionTemplate.objects.get(name='ანევრიზმა')
         self.assertEqual([row['m'] for row in tpl.rows if row['m']], ['Heparin 5000', 'Aspirin'])
-        self.assertEqual(tpl.rows[0]['n'], 'კანქვეშ')
         self.assertEqual(tpl.rows[0]['r']['d1'], {'a': '+', 'i': '+'})
 
-        r = self.client.get(reverse('rx-analysis') + '?by=title&s=ლერ')
-        self.assertEqual([g['label'] for g in r.context['groups']], ['ლერიში'])
+    def test_csrf_failure_page(self):
+        from django.test import Client
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+        r = client.post(reverse('niv-create'), {'title': 'x'})
+        self.assertEqual(r.status_code, 403)
+        self.assertContains(r, 'გვერდი მოძველდა', status_code=403)
 
 
 class StaffAndBackupTests(TestCase):

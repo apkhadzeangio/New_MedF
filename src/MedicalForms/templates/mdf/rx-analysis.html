@@ -7,13 +7,12 @@
     <a href="{% url 'rx-analysis' %}" class="small">← ყველა ნოზოლოგია</a>
     <form method="get" class="row g-2 align-items-center my-2">
         <div class="col-md-6">
-            <input type="search" name="q" value="{{ q }}" class="form-control form-control-lg" placeholder="ნოზოლოგია: ანევრიზმა, I70.2, ლერიში..." autocomplete="off">
+            <input type="search" name="q" value="{{ label }}" class="form-control form-control-lg" placeholder="დაავადება: ანევრიზმა, ლერიში, სტენოზი..." autocomplete="off">
         </div>
         <div class="col-auto">
             <select name="in" class="form-select form-select-lg">
+                <option value="diagnosis"{% if match_in == 'diagnosis' %} selected{% endif %}>დიაგნოზში</option>
                 <option value="both"{% if match_in == 'both' %} selected{% endif %}>დიაგნოზში ან დასახელებაში</option>
-                <option value="diagnosis"{% if match_in == 'diagnosis' %} selected{% endif %}>მხოლოდ დიაგნოზში</option>
-                <option value="title"{% if match_in == 'title' %} selected{% endif %}>მხოლოდ დასახელებაში</option>
             </select>
         </div>
         <div class="col-auto"><button class="btn btn-primary btn-lg">ანალიზი</button></div>
@@ -79,29 +78,31 @@
     {# ---------------- overview: list of nosologies ---------------- #}
     <h4 class="mb-1">ნოზოლოგიების ანალიზი</h4>
     <p class="text-muted">
-        აირჩიეთ ნოზოლოგია და ნახავთ, რომელი პრეპარატები ენიშნებათ ამ პაციენტებს და რა სიხშირით
-        ({{ total_prescriptions }} დანიშნულების მიხედვით). დიაგნოზები ICD-10 კოდით ჯგუფდება.
+        დაავადებები აღებულია ფორმაში ჩაწერილი <b>დიაგნოზის ტექსტიდან</b> (ICD კოდი არ გამოიყენება) —
+        {{ total_prescriptions }} დანიშნულება. აირჩიეთ დაავადება და ნახავთ, რომელი პრეპარატები ენიშნებათ და რა სიხშირით.
+        სიტყვის ფორმები ერთიანდება (ანევრიზმა = ანევრიზმის = ანევრიზმით).
     </p>
     <ul class="nav nav-tabs mb-3">
-        <li class="nav-item"><a class="nav-link{% if group_by == 'diagnosis' %} active{% endif %}" href="?by=diagnosis{% if search %}&s={{ search|urlencode }}{% endif %}">დიაგნოზით</a></li>
-        <li class="nav-item"><a class="nav-link{% if group_by == 'title' %} active{% endif %}" href="?by=title{% if search %}&s={{ search|urlencode }}{% endif %}">დასახელებით</a></li>
+        {% for key, label in modes.items %}
+        <li class="nav-item"><a class="nav-link{% if mode == key %} active{% endif %}" href="?by={{ key }}{% if search %}&s={{ search|urlencode }}{% endif %}">{{ label }}</a></li>
+        {% endfor %}
     </ul>
     <form method="get" class="row g-2 mb-3">
-        <input type="hidden" name="by" value="{{ group_by }}">
-        <div class="col-md-8"><input type="search" name="s" value="{{ search }}" class="form-control form-control-lg" placeholder="ფილტრი: ანევრიზმა, I70, ლერიში..." autocomplete="off" autofocus></div>
+        <input type="hidden" name="by" value="{{ mode }}">
+        <div class="col-md-7"><input type="search" name="s" value="{{ search }}" class="form-control form-control-lg" placeholder="ფილტრი: ანევრიზმა, ლერიში, სტენოზი..." autocomplete="off" autofocus></div>
         <div class="col-auto"><button class="btn btn-outline-primary btn-lg">ფილტრი</button></div>
-        <div class="col-auto"><a class="btn btn-link btn-lg" href="?q=&in=both" onclick="var v=prompt('ნოზოლოგია ან სიტყვა (მაგ. ანევრიზმა):'); if(v){location.href='?in=both&q='+encodeURIComponent(v);} return false;">თავისუფალი ძიება…</a></div>
+        <div class="col-auto"><a class="btn btn-link btn-lg" href="#" onclick="var v=prompt('დაავადება ან რამდენიმე სიტყვა (მაგ. მუცლის აორტის ანევრიზმა):'); if(v){location.href='?in=diagnosis&q='+encodeURIComponent(v);} return false;">თავისუფალი ძიება…</a></div>
     </form>
     {% if groups %}
-    <div class="small text-muted mb-2">{{ groups|length }}{% if groups_total > groups|length %} / {{ groups_total }}{% endif %} ნოზოლოგია</div>
+    <div class="small text-muted mb-2">{{ groups|length }}{% if groups_total > groups|length %} / {{ groups_total }}{% endif %} ჩანაწერი</div>
     <table class="table table-hover align-middle">
-        <thead class="table-light"><tr><th>{% if group_by == 'diagnosis' %}დიაგნოზი{% else %}დასახელება{% endif %}</th><th class="text-end">დანიშნულება</th></tr></thead>
+        <thead class="table-light"><tr><th>{% if mode == 'terms' %}დაავადება (სიტყვა დიაგნოზიდან){% else %}დიაგნოზი (როგორც ჩაწერილია){% endif %}</th><th class="text-end">დანიშნულება</th></tr></thead>
         <tbody>
         {% for g in groups %}
             <tr>
                 <td>
-                    <a href="?q={% if group_by == 'diagnosis' and g.key|length <= 6 %}{{ g.key|urlencode }}{% else %}{{ g.label|urlencode }}{% endif %}&in={{ group_by }}&l={{ g.label|urlencode }}" class="fw-semibold text-decoration-none">{{ g.label }}</a>
-                    {% if g.variants > 1 %}<div class="small text-muted">{{ g.variants }} ჩაწერის ვარიანტი{% if g.other_labels %}: {{ g.other_labels|join:"; " }}{% endif %}</div>{% endif %}
+                    <a href="?q={{ g.key|urlencode }}&in=diagnosis&l={{ g.label|urlencode }}" class="fw-semibold text-decoration-none">{{ g.label }}</a>
+                    {% if g.variants > 1 %}<div class="small text-muted">{{ g.variants }} ფორმა{% if g.other_labels %}: {{ g.other_labels|join:"; " }}{% endif %}</div>{% endif %}
                 </td>
                 <td class="text-end fw-semibold">{{ g.count }}</td>
             </tr>

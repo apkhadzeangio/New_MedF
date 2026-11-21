@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5" style="max-width: 640px;">
+    <div class="alert alert-warning">
+        <h5 class="alert-heading">გვერდი მოძველდა — მონაცემები ჯერ არ შენახულა</h5>
+        <p class="mb-2">ეს ხდება, როცა გვერდი დიდი ხნის წინ იყო გახსნილი ან სხვა ჩანართში თავიდან შეხვედით სისტემაში.</p>
+        <ol class="mb-3">
+            <li>დააჭირეთ <b>„უკან“</b> — შევსებული მონაცემები უმეტესად ადგილზე რჩება;</li>
+            <li>კიდევ ერთხელ დააჭირეთ <b>შენახვას</b>.</li>
+        </ol>
+        <button class="btn btn-primary" onclick="history.back()">← უკან</button>
+        <a class="btn btn-link" href="{% url 'niv-cover' %}">ახალი დანიშნულება</a>
+    </div>
+</div>
+{% endblock %}

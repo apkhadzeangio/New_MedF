@@ -59,6 +59,9 @@ DEBUG = env_bool('DJANGO_DEBUG', False)
 
 ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', ['localhost', '127.0.0.1'])
 
+# Friendly page (in Georgian) when a form's security token is out of date.
+CSRF_FAILURE_VIEW = 'apps.mdf.views.csrf_failure'
+
 
 # Application definition
 

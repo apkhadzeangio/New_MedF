@@ -11,6 +11,7 @@ from .base import env, env_bool, env_list
 DEBUG = env_bool('DJANGO_DEBUG', False)
 
 ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', ['medf.pythonanywhere.com'])
+CSRF_TRUSTED_ORIGINS = [f'{scheme}://{host}' for host in ALLOWED_HOSTS for scheme in ('https', 'http')]
 
 if not env('DJANGO_SECRET_KEY'):
     raise ImproperlyConfigured(
