@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import blood, board, duty, medicines, pwa, views
+from . import blood, board, consent, duty, medicines, pwa, views
 
 urlpatterns = [
     path('', views.LoginView.as_view(), name='login'),
@@ -28,6 +28,13 @@ urlpatterns = [
     path('templates/<int:pk>/used/', views.TemplateUsedView.as_view(), name='rx-template-used'),
 
     path('medicines/duplicates/', medicines.DuplicatesView.as_view(), name='medicine-duplicates'),
+
+    # Informed consent sheets for operations (NIV-300-12/a)
+    path('consent/', consent.ConsentListView.as_view(), name='consent-list'),
+    path('consent/new/', consent.ConsentCreateView.as_view(), name='consent-new'),
+    path('consent/<int:pk>/', consent.ConsentSheetView.as_view(), name='consent-sheet'),
+    path('consent/<int:pk>/save/', consent.ConsentSaveView.as_view(), name='consent-save'),
+    path('consent/<int:pk>/delete/', consent.ConsentDeleteView.as_view(), name='consent-delete'),
 
     # Blood order blank
     path('blood/', blood.BloodOrderView.as_view(), name='blood-order'),

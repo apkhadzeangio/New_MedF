@@ -1042,3 +1042,97 @@ class SeasonalTests(BaseViewTest):
         self.assertIn('pointer-events:none', source)
         self.assertIn('@media print', source)
         self.assertIn('prefers-reduced-motion', source)
+
+
+class ConsentTests(BaseViewTest):
+    """Informed consent sheets (NIV-300-12/a)."""
+
+    def docx(self, paragraphs):
+        """A tiny .docx with (text, bold) paragraphs."""
+        import io, zipfile
+        from html import escape
+        body = ''.join(
+            f'<w:p><w:r>{"<w:rPr><w:b/></w:rPr>" if bold else ""}<w:t xml:space="preserve">{escape(t)}</w:t></w:r></w:p>'
+            for t, bold in paragraphs)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w') as z:
+            z.writestr('word/document.xml', f'<w:document><w:body>{body}</w:body></w:document>')
+        buf.seek(0)
+        buf.name = 'form.docx'
+        return buf
+
+    def test_seeded_sheet_and_list_order(self):
+        from .models import ConsentForm
+        first = ConsentForm.objects.get()
+        self.assertEqual(first.blocks[0]['left'][0], 'სისხლდენა')
+        other = ConsentForm.objects.create(name='კაროტიდული ენდარტერექტომია', blocks=[])
+        for _ in range(3):
+            self.client.get(reverse('consent-sheet', args=[other.pk]))
+        page = self.client.get(reverse('consent-list'))
+        self.assertEqual([f.pk for f in page.context['forms']], [other.pk, first.pk])   # most used first
+        self.assertContains(page, 'კაროტიდული ენდარტერექტომია')
+
+    def test_sheet_has_fixed_page_one_and_editable_parts(self):
+        from .models import ConsentForm
+        form = ConsentForm.objects.get()
+        page = self.client.get(reverse('consent-sheet', args=[form.pk]))
+        self.assertContains(page, 'სამედიცინო დოკუმენტაციის ფორმა NIV-300-12/ა')
+        self.assertContains(page, 'პაციენტის წერილობითი ინფორმირებული თანხმობა სამედიცინო')
+        self.assertContains(page, 'ასევე ჩემთვის ცნობილია სამედიცინო მომსახურებაზე უარის შემთხვევაში')
+        self.assertContains(page, 'id="cs-patient"')
+        self.assertContains(page, f'value="{page.context["today"]}"')          # today's date, editable
+        self.assertContains(page, 'id="cs-data"')
+
+    def test_save_keeps_last_edit_and_is_cleaned(self):
+        import json as _json
+        from .models import ConsentForm
+        form = ConsentForm.objects.get()
+        data = {'name': 'ბარძაყ-მუხლქვეშა შუნტირება 🙂',
+                'blocks': [{'title': '<b>გართულებები</b> შუნტირების დროს:', 'left': ['სისხლდენა', '  ', 'ინფექცია'],
+                            'right': ['თრომბოზი</script>']}, 'junk']}
+        r = self.client.post(reverse('consent-save', args=[form.pk]), _json.dumps(data), content_type='application/json')
+        self.assertEqual(r.status_code, 200)
+        form.refresh_from_db()
+        self.assertEqual(form.name, 'ბარძაყ-მუხლქვეშა შუნტირება')
+        self.assertEqual(form.blocks, [{'title': '<b>გართულებები</b> შუნტირების დროს:',
+                                        'left': ['სისხლდენა', 'ინფექცია'], 'right': ['თრომბოზი</script>']}])
+        page = self.client.get(reverse('consent-sheet', args=[form.pk]))
+        self.assertNotContains(page, 'თრომბოზი</script>')                      # json_script escapes it
+        self.assertEqual(self.client.post(reverse('consent-save', args=[form.pk]), 'x',
+                                          content_type='application/json').status_code, 400)
+
+    def test_import_from_word_takes_only_complications(self):
+        from .models import ConsentForm
+        f = self.docx([
+            ('მე              პაციენტის სახელი                 მივიღე ინფორმაცია', False),
+            ('ასევე ჩემთვის ცნობილია სამედიცინო მომსახურებაზე უარის შემთხვევაში მოსალოდნელი შედეგების შესახებ.', False),
+            ('გართულებები  საძილე არტერიის   ოპერაციის დროს:', True),
+            ('სისხლდენა                         ინსულტი', False),
+            ('ინფექცია', False),
+            ('მკურნალი ექიმი______', False),
+        ])
+        r = self.client.post(reverse('consent-new'), {'docx': f})
+        new = ConsentForm.objects.latest('id')
+        self.assertRedirects(r, reverse('consent-sheet', args=[new.pk]), fetch_redirect_response=False)
+        self.assertEqual(new.blocks, [{'title': 'გართულებები საძილე არტერიის ოპერაციის დროს:',
+                                       'left': ['სისხლდენა', 'ინფექცია'], 'right': ['ინსულტი']}])
+        self.assertEqual(new.name, 'საძილე არტერიის ოპერაციის დროს')
+        self.assertNotIn('პაციენტის სახელი', str(new.blocks))
+        # not the right form -> a message, nothing created
+        count = ConsentForm.objects.count()
+        self.client.post(reverse('consent-new'), {'docx': self.docx([('სხვა ტექსტი', False)])})
+        self.assertEqual(ConsentForm.objects.count(), count)
+
+    def test_copy_and_delete(self):
+        from .models import ConsentForm
+        form = ConsentForm.objects.get()
+        self.client.post(reverse('consent-new'), {'copy': form.pk})
+        copy = ConsentForm.objects.latest('id')
+        self.assertEqual(copy.blocks, form.blocks)
+        self.assertTrue(copy.name.endswith('(ასლი)'))
+        self.client.post(reverse('consent-delete', args=[copy.pk]))
+        self.assertFalse(ConsentForm.objects.filter(pk=copy.pk).exists())
+
+    def test_login_required(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('consent-list')).status_code, 302)

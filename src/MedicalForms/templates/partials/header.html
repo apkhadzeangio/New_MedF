@@ -9,6 +9,7 @@
             <a href="{% url 'rx-templates' %}" class="{% if url_name == 'rx-templates' %}active{% endif %}">შაბლონები</a>
             <a href="{% url 'rx-analysis' %}" class="{% if url_name == 'rx-analysis' %}active{% endif %}">ნოზოლოგიების ანალიზი</a>
             <a href="{% url 'blood-order' %}" class="{% if url_name == 'blood-order' %}active{% endif %}">სისხლის შეკვეთა</a>
+            <a href="{% url 'consent-list' %}" class="{% if url_name|slice:':7' == 'consent' %}active{% endif %}">თანხმობა</a>
             <a href="{% url 'board' %}" class="{% if url_name|slice:':5' == 'board' %}active{% endif %}">პაციენტების დაფა</a>
         </div>
         {% endwith %}

@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block title %}თანხმობის ფურცლები{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="page-head">
+        <h1>თანხმობის ფურცლები <span class="count">· {{ forms|length }}</span></h1>
+        <form method="post" action="{% url 'consent-new' %}" enctype="multipart/form-data" class="m-0" id="cs-upload">
+            {% csrf_token %}
+            <label class="x-btn" title="ამავე ფორმის Word ფაილიდან გართულებები თავისით გადმოვა">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M4 15v5h16v-5"/></svg>Word ფაილიდან
+                <input type="file" name="docx" accept=".docx" hidden onchange="this.form.submit()">
+            </label>
+        </form>
+        <form method="post" action="{% url 'consent-new' %}" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="x-btn primary">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>ახალი ფურცელი</button>
+        </form>
+    </div>
+
+    <form class="search-box" method="get" role="search">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" name="q" value="{{ q }}" placeholder="რომელი ოპერაცია? მაგ. აორტა, კაროტიდი, ბარძაყ…" aria-label="ძებნა" autofocus id="cs-q">
+    </form>
+
+    <div class="cs-grid" id="cs-grid">
+        {% for f in forms %}
+        <a class="cs-card" href="{% url 'consent-sheet' f.pk %}" data-text="{{ f.name|lower }} {{ f.subtitle|lower }}">
+            <span class="cs-card-name">{{ f.name }}</span>
+            {% if f.subtitle %}<span class="cs-card-sub">{{ f.subtitle }}</span>{% endif %}
+            <span class="cs-card-meta">{% if forloop.first and f.use_count and not q %}ყველაზე ხშირი · {% endif %}გამოყენებულია {{ f.use_count }}-ჯერ</span>
+        </a>
+        {% empty %}
+        <div class="x-card text-muted">{% if q %}ვერაფერი მოიძებნა.{% else %}ფურცელი ჯერ არ არის. დაამატეთ Word ფაილიდან.{% endif %}</div>
+        {% endfor %}
+    </div>
+    <p class="hints">ყველაზე ხშირად გახსნილი ფურცლები სიის თავშია. სახელი იცვლება ფურცლის გვერდზე, ზემოთ.</p>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// filter while typing (the search form still works without it)
+(function () {
+    var q = document.getElementById('cs-q');
+    q.addEventListener('input', function () {
+        var v = q.value.trim().toLowerCase();
+        document.querySelectorAll('#cs-grid .cs-card').forEach(function (c) {
+            c.hidden = v && c.dataset.text.indexOf(v) < 0;
+        });
+    });
+})();
+</script>
+{% endblock %}

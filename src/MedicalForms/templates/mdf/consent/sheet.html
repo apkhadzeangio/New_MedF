@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ form.name }} — თანხმობის ფურცელი{% endblock %}
+{% block body_class %}cs-body{% endblock %}
+{% block extra_styles %}
+<style>@media print { @page { size: A4 portrait; margin: 12.7mm 12.7mm 12.7mm 25.4mm; } }</style>
+{% endblock %}
+
+{% block content %}
+<div class="app-main cs-tools-wrap d-print-none">
+    <div class="toolbar cs-tools">
+        <a class="x-btn" href="{% url 'consent-list' %}">← ფურცლები</a>
+        <label class="cs-name">
+            <span>სახელი სიაში</span>
+            <input type="text" id="cs-name" class="x-input" maxlength="200" value="{{ form.name }}" autocomplete="off">
+        </label>
+        <span class="grow"></span>
+        <span class="duty-status" id="cs-status" aria-live="polite">შენახულია</span>
+        <button type="button" class="x-btn" id="cs-save">შენახვა</button>
+        <button type="button" class="x-btn primary" id="cs-print">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>ბეჭდვა</button>
+    </div>
+    <p class="hints m-0">
+        <span><span class="cs-mark">ფერადი</span> ადგილები იცვლება — დააწკაპეთ და წერეთ.</span>
+        <span>გართულებები: თითო სტრიქონზე ერთი.</span>
+        <span>ცვლილებები (სახელი, გართულებები) თავისით ინახება. პაციენტის სახელი, ექიმი და თარიღი არ ინახება.</span>
+    </p>
+</div>
+
+<div class="cs-sheet">
+    {# ---------------- page 1: the same for every operation ---------------- #}
+    <section class="cs-page">
+        <div class="cs-head">
+            <div>ნ. ბოხუას სახელობის<br>კარდიოვასკულური ცენტრი</div>
+            <div class="r">სამედიცინო დოკუმენტაციის ფორმა NIV-300-12/ა<br>საქართველოს შრომის, ჯანმრთელობისა და<br>სოციალური დაცვის მინისტრის<br>2009 წლის , 19, მარტის&nbsp; N108/ნ&nbsp; ბრძანებით შესაბამისად</div>
+        </div>
+        <p class="cs-empty"></p><p class="cs-empty"></p>
+        <h1 class="cs-title">პაციენტის წერილობითი ინფორმირებული თანხმობა სამედიცინო<br>მომსახურების გაწევაზე</h1>
+        <p class="cs-empty"></p>
+        <p class="cs-sig">მე <span class="cs-fill" style="width:100mm"><input type="text" class="cs-input" id="cs-patient" maxlength="120" autocomplete="off" aria-label="პაციენტის სახელი, გვარი"><small><b>(სახელი, გვარი)</b></small></span> მივიღე ინფორმაცია</p>
+        <p class="cs-empty"></p>
+        <p>სამედიცინო მომსახურების გაწევის შესახებ.</p>
+        <p class="cs-empty"></p>
+        <p>მკურნალმა ექიმმა მომაწოდა შემდეგი ინფორმაცია:</p>
+        <p class="j">სამედიცინო მომსახურების არსისა და საჭიროების შესახებ, ჩემი ავადმყოფობის მიმდინარეობის, კლინიკო-ლაბორატორიული და ინსტრუმენტული გამოკვლევის შედეგების, დადგენილი დიაგნოზის, მკურნალობის შესაძლო მეთოდებისა და პროგნოზის შესახებ, სამედიცინო მომსახურების მოსალოდნელი შედეგების შესახებ, ჩემი ჯანმრთელობისა და სიცოცხლისათვის ამ მომსახურებასთან დაკავშირებული რისკის შესახებ, განზრახული სამედიცინო მომსახურების, სხვა ალტერნატიული ვარიანტებისა, მათი თანმხლები რისკისა და შესაძლო ეფექტიანობის შესახებ.</p>
+        <p class="j">მე ვალდებული ვარ ვაცნობო ექიმს: ჩემი ჯანმრთელობის ყველა პრობლემის, ალერგიული გამოვლინების, მედიკამენტური ინდივიდუალური შეუთავსებლობის, ინფექციური ჰეპატიტის, სიფილისის, შიდსის არსებობის ალკოჰოლისა და ნარკოტიკების მოხმარების შესახებ, აგრეთვე გადატანილ ონკოდაავადებაზე.</p>
+        <p class="j">მე ინფორმირებული ვარ და მესმის, რომ სამედიცინო პერსონალის მიერ, მიღებული იქნება ყველა აუცილებელი ზომა ჩემი გამოჯანმრთელებისთვის, მაგრამ არანაირი გარანტიები მკურნალობის შედეგებზე არ შეიძლება იქნეს მოცემული.</p>
+        <p class="j">მე მესმის, რომ მკურნალობის ყველა მეთოდი, მათ შორის ოპერაციაც დაკავშირებულია გაუთვალისწინებელი შესაძლო გართულებების გარკვეულ რისკთან და შეგნებულად ვღებულობ ამ გადაწყვეტილებას.</p>
+        <p class="j">ოპერაციის დროს გაუთვალისწინებელი გართულებების წარმოქმნისას ვიძლევი თანხმობას ოპერაციის მოცულობის ცვლილებაზე, მათ შორის ოპერაციის შეწყვეტაზე.</p>
+        <p class="j">თუ ოპერაციის დროს დადგინდა, რომ ჩემი ჯანმრთელობის ინტერესებიდან გამომდინარე საჭირო გახდა ოპერაციის მოცულობის გაზრდა, სისხლის და სისხლის კომპონენტების გადასხმა და ა.შ. თანხმობას ვიძლევი მედპერსონალის მიერ ამ გადაწყვეტილების თაობაზე.</p>
+        <p class="j">ჩემთვის ცნობილია, ზემოთ ჩამოთვლილი სამედიცინო ღონისძიებების შინაარსი, მათთან დაკავშირებული რისკი და&nbsp; შესაძლო გართულებები.</p>
+        <p class="j">ასევე ჩემთვის ცნობილია სამედიცინო მომსახურებაზე უარის შემთხვევაში მოსალოდნელი შედეგების შესახებ.</p>
+    </section>
+
+    {# ---------------- page 2: complications of this operation + signatures ---------------- #}
+    <section class="cs-page">
+        <div id="cs-blocks"></div>
+        <button type="button" class="cs-add d-print-none" id="cs-add-block">+ გართულებების ბლოკი</button>
+
+        <p class="cs-empty"></p><p class="cs-empty"></p><p class="cs-empty"></p>
+        <p class="cs-sig">მკურნალი ექიმი <span class="cs-fill" style="width:72mm"><input type="text" class="cs-input" id="cs-doctor" maxlength="120" value="{{ doctor }}" autocomplete="off" aria-label="მკურნალი ექიმი"><small>(სახელი, გვარი)</small></span> ხელმოწერა <span class="cs-line" style="width:36mm"></span></p>
+        <p>პაციენტი <b>თანახმაა</b> შეთავაზებულ მკურნალობაზე რაზედაც პირადად აწერს ხელს <span class="cs-line" style="width:15mm"></span></p>
+        <p class="cs-empty"></p>
+        <p class="cs-sig">ნათესავის ან კანონიერი წარმომადგენელის <span class="cs-fill" style="width:80mm"><span class="cs-line"></span><small>(სახელი, გვარი, ნათესაური კავშირი)</small></span></p>
+        <p>ხელმოწერა <span class="cs-line" style="width:40mm"></span>&nbsp;&nbsp; (თუ პაციენტი კონტაქტში ვერ შედის)</p>
+        <p class="cs-empty"></p>
+        <p>პაციენტი <b>არ არის თანახმა</b> შეთავაზებულ მკურნალობაზე, რასაც ადასტურებს საკუთარი&nbsp; ხელის მოწერით <span class="cs-line" style="width:52mm"></span></p>
+        <p class="cs-empty"></p>
+        <p class="cs-sig">ნათესავის ან კანონიერი წარმომადგენელის <span class="cs-fill" style="width:80mm"><span class="cs-line"></span><small>(სახელი, გვარი, ნათესაური კავშირი)</small></span></p>
+        <p>ხელმოწერა <span class="cs-line" style="width:40mm"></span>&nbsp;&nbsp; (თუ პაციენტი კონტაქტში ვერ შედის)</p>
+        <p class="cs-empty"></p><p class="cs-empty"></p><p class="cs-empty"></p>
+        <div class="cs-date"><input type="text" class="cs-input" id="cs-date" maxlength="40" value="{{ today }}" autocomplete="off" aria-label="თარიღი"> წ.</div>
+    </section>
+</div>
+
+<div class="app-main d-print-none cs-foot">
+    <form method="post" action="{% url 'consent-new' %}" class="m-0">
+        {% csrf_token %}<input type="hidden" name="copy" value="{{ form.pk }}">
+        <button type="submit" class="x-btn sm">ასლის გაკეთება (სხვა ოპერაციისთვის)</button>
+    </form>
+    <form method="post" action="{% url 'consent-delete' form.pk %}" class="m-0"
+          onsubmit="return confirm('„{{ form.name|escapejs }}“ — წავშალო ეს ფურცელი სიიდან?');">
+        {% csrf_token %}<button type="submit" class="x-btn sm danger">ფურცლის წაშლა</button>
+    </form>
+</div>
+
+{{ form.blocks|json_script:"cs-data" }}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    var blocks = [];
+    try { blocks = JSON.parse(document.getElementById('cs-data').textContent) || []; } catch (e) {}
+    var box = document.getElementById('cs-blocks');
+    var nameInput = document.getElementById('cs-name');
+    var status = document.getElementById('cs-status');
+    var saveUrl = '{% url "consent-save" form.pk %}';
+    var timer = null, dirty = false, saving = null;
+
+    function editable(cls, text, label) {
+        var d = document.createElement('div');
+        d.className = cls;
+        d.contentEditable = 'true';
+        d.spellcheck = false;
+        d.setAttribute('role', 'textbox');
+        d.setAttribute('aria-label', label);
+        d.textContent = text;
+        d.addEventListener('input', changed);
+        d.addEventListener('paste', function (e) {       // keep the words, not outside formatting
+            var t = (e.clipboardData || window.clipboardData).getData('text/plain');
+            e.preventDefault();
+            document.execCommand('insertText', false, t);
+        });
+        return d;
+    }
+
+    function render() {
+        box.innerHTML = '';
+        blocks.forEach(function (b, i) {
+            var wrap = document.createElement('div');
+            wrap.className = 'cs-block';
+            wrap.appendChild(editable('cs-btitle cs-edit', b.title || '', 'ბლოკის სათაური (ოპერაცია)'));
+            var cols = document.createElement('div');
+            cols.className = 'cs-cols';
+            cols.appendChild(editable('cs-col cs-edit', (b.left || []).join('\n'), 'გართულებები — მარცხენა სვეტი'));
+            cols.appendChild(editable('cs-col cs-edit', (b.right || []).join('\n'), 'გართულებები — მარჯვენა სვეტი'));
+            wrap.appendChild(cols);
+            var del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'cs-del d-print-none';
+            del.textContent = '✕ ბლოკის წაშლა';
+            del.addEventListener('click', function () {
+                collect();
+                if (confirm('წავშალო ეს ბლოკი?')) { blocks.splice(i, 1); render(); changed(); }
+            });
+            wrap.appendChild(del);
+            if (i < blocks.length - 1) { var gap = document.createElement('p'); gap.className = 'cs-empty'; wrap.appendChild(gap); }
+            box.appendChild(wrap);
+        });
+    }
+
+    function lines(el) {
+        return el.innerText.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    }
+
+    function collect() {
+        blocks = Array.prototype.map.call(box.querySelectorAll('.cs-block'), function (w) {
+            var cols = w.querySelectorAll('.cs-col');
+            return {title: w.querySelector('.cs-btitle').innerText.replace(/\s+/g, ' ').trim(),
+                    left: lines(cols[0]), right: lines(cols[1])};
+        });
+        return blocks;
+    }
+
+    function getCookie(name) {
+        var m = document.cookie.match('(^|;)\\s*' + name + '=([^;]*)');
+        return m ? decodeURIComponent(m[2]) : '';
+    }
+
+    function save() {
+        clearTimeout(timer);
+        if (!dirty && saving) { return saving; }
+        dirty = false;
+        status.textContent = 'ინახება…';
+        saving = fetch(saveUrl, {
+            method: 'POST', credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+            body: JSON.stringify({name: nameInput.value, blocks: collect()})
+        }).then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.json(); })
+          .then(function (d) {
+              status.textContent = 'შენახულია ' + d.saved;
+              status.classList.remove('unsaved');
+              document.title = d.name + ' — თანხმობის ფურცელი';
+          })
+          .catch(function () { dirty = true; status.textContent = 'ვერ შეინახა — სცადეთ თავიდან'; status.classList.add('unsaved'); });
+        return saving;
+    }
+
+    function changed() {
+        dirty = true;
+        status.textContent = 'შეუნახავი ცვლილებები';
+        status.classList.add('unsaved');
+        clearTimeout(timer);
+        timer = setTimeout(save, 1200);
+    }
+
+    nameInput.addEventListener('input', changed);
+    document.getElementById('cs-save').addEventListener('click', save);
+    document.getElementById('cs-add-block').addEventListener('click', function () {
+        collect();
+        blocks.push({title: 'გართულებები:', left: [], right: []});
+        render(); changed();
+        var t = box.querySelectorAll('.cs-btitle'); t[t.length - 1].focus();
+    });
+    document.getElementById('cs-print').addEventListener('click', function () {
+        var go = function () { window.print(); };
+        (dirty ? save() : Promise.resolve()).then(go, go);
+    });
+    document.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S' || e.key === 'ს')) { e.preventDefault(); save(); }
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) { if (dirty) { save(); } }
+    });
+    window.addEventListener('beforeunload', function (e) {
+        if (dirty) { save(); e.preventDefault(); e.returnValue = ''; }
+    });
+    render();
+    var patient = document.getElementById('cs-patient');
+    if (patient) { patient.focus(); }
+})();
+</script>
+{% endblock %}

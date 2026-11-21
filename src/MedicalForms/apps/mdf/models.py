@@ -508,3 +508,28 @@ class SiteState(models.Model):
     @classmethod
     def touch(cls, key, value=''):
         cls.objects.update_or_create(key=key, defaults={'value': value})
+
+
+class ConsentForm(models.Model):
+    """Patient's informed consent to an operation (form NIV-300-12/a).
+
+    Page 1 is the same for every operation. What changes per operation is kept
+    here: the name in the list and the complications on page 2 (blocks: a bold
+    title and two columns of complications).
+    """
+    name = models.CharField('სახელი სიაში', max_length=200)
+    blocks = models.JSONField('გართულებები', default=list, blank=True)
+    use_count = models.PositiveIntegerField('გამოყენებულია', default=0)
+    created_at = models.DateTimeField('შეიქმნა', default=timezone.now)
+    updated_at = models.DateTimeField('შეიცვალა', auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+
+    class Meta:
+        db_table = 'consent_forms'
+        ordering = ('-use_count', 'name')
+        verbose_name = 'თანხმობის ფურცელი'
+        verbose_name_plural = 'თანხმობის ფურცლები'
+
+    def __str__(self):
+        return self.name

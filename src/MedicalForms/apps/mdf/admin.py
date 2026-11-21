@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import (BoardEntry, BoardPatient, DutyNote, DutyReport, Medicine, NivForm,
+from .models import (BoardEntry, BoardPatient, ConsentForm, DutyNote, DutyReport, Medicine, NivForm,
                      PrescriptionTemplate, StaffProfile)
 
 admin.site.site_header = 'Medical Forms - ადმინისტრირება'
@@ -79,3 +79,9 @@ class BoardPatientAdmin(admin.ModelAdmin):
 class DutyReportAdmin(admin.ModelAdmin):
     list_display = ['duty_date', 'created_at', 'created_by']
     readonly_fields = ('duty_date', 'data', 'created_at', 'created_by')
+
+
+@admin.register(ConsentForm)
+class ConsentFormAdmin(admin.ModelAdmin):
+    list_display = ['name', 'use_count', 'updated_at', 'updated_by']
+    search_fields = ('name',)

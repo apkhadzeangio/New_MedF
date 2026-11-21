@@ -602,3 +602,72 @@ body.login-page { background: var(--page); }
 .st-table th small { font-weight: 400; }
 .st-table td { font-size: 15px; }
 .st-table td:not(:first-child), .st-table th:not(:first-child) { text-align: right; }
+
+/* =====================================================================
+   Informed consent sheets (NIV-300-12/a): list + the sheet itself
+   ===================================================================== */
+.cs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.cs-card {
+    background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; text-decoration: none; color: var(--ink);
+    display: flex; flex-direction: column; gap: 6px; border-left: 5px solid var(--accent); transition: transform .15s, box-shadow .15s;
+}
+.cs-card[hidden] { display: none; }
+.cs-card:hover { color: var(--ink); transform: translateY(-2px); box-shadow: 0 10px 24px rgba(27, 36, 55, .10); }
+.cs-card-name { font-size: 18px; font-weight: 700; line-height: 1.35; }
+.cs-card-sub { font-size: 13.5px; color: var(--muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cs-card-meta { font-size: 12.5px; color: #8A93A6; margin-top: auto; }
+
+.cs-tools-wrap { padding-bottom: 0; gap: 8px; }
+.cs-name { display: flex; align-items: center; gap: 8px; margin: 0; flex: 1 1 360px; min-width: 0; }
+.cs-name span { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.cs-name .x-input { flex: 1 1 auto; height: 42px; font-weight: 600; }
+.cs-mark { background: #FFF6C7; border-radius: 4px; padding: 0 4px; }
+.cs-foot { flex-direction: row; flex-wrap: wrap; gap: 10px; padding-top: 0; }
+
+/* the sheet: A4, the same margins as the Word form */
+.cs-sheet { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 16px 12px 30px; }
+.cs-page {
+    width: 210mm; min-height: 297mm; padding: 12.7mm 12.7mm 12.7mm 25.4mm; background: #fff; color: #000;
+    box-shadow: 0 6px 24px rgba(27, 36, 55, .14); font-family: Sylfaen, 'Noto Sans Georgian', sans-serif; font-size: 11pt; line-height: 1.16;
+}
+.cs-page p { margin: 0; }
+.cs-page p.j { text-align: justify; }
+.cs-empty { height: 1.16em; }
+.cs-head { display: flex; justify-content: space-between; gap: 6mm; font-size: 9pt; line-height: 12.8pt; }
+.cs-head .r { text-align: right; }
+.cs-title { font-size: 11pt; font-weight: 700; text-align: center; margin: 0; line-height: 1.16; }
+.cs-page p.cs-sig { margin-bottom: 1.05em; }
+.cs-fill { display: inline-block; position: relative; vertical-align: baseline; }
+.cs-fill small { position: absolute; left: 0; right: 0; top: 100%; font-size: 8pt; text-align: center; line-height: 1.1; white-space: nowrap; }
+.cs-line { display: inline-block; border-bottom: 1px solid #000; height: 1em; vertical-align: baseline; }
+.cs-fill .cs-line { width: 100%; }
+.cs-input {
+    font: inherit; color: #000; border: 0; border-bottom: 1px solid #000; background: #FFF6C7; padding: 0 2mm; width: 100%;
+    height: 1.3em; outline: none; border-radius: 0; vertical-align: baseline;
+}
+.cs-input:focus { background: #FFEB99; }
+.cs-date { font-size: 12pt; font-weight: 700; display: flex; align-items: baseline; gap: 1mm; }
+.cs-date .cs-input { width: 23mm; padding: 0; font-weight: 700; text-align: left; border-bottom: 0; }
+.cs-edit { background: #FFF6C7; outline: none; border-radius: 2px; min-height: 1.16em; cursor: text; }
+.cs-edit:focus { background: #FFEB99; box-shadow: 0 0 0 2px #F5D08A; }
+.cs-btitle { font-weight: 700; }
+.cs-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8mm; margin-top: 1.16em; }
+.cs-col { white-space: pre-wrap; text-decoration: underline; text-underline-offset: 2px; min-height: 2.4em; }
+.cs-block { position: relative; }
+.cs-del { position: absolute; right: -2mm; top: -2px; transform: translateX(100%); border: 0; background: none; color: #B42318; font-size: 12px; cursor: pointer; white-space: nowrap; padding: 2px 6px; }
+.cs-add { margin-top: 10px; border: 1px dashed #C9A227; background: #FFFBEA; color: #7A5B00; border-radius: 8px; padding: 6px 12px; font: 13px 'Noto Sans Georgian', sans-serif; cursor: pointer; }
+@media (max-width: 900px) {
+    .cs-page { width: 100%; min-height: 0; padding: 16px; }
+    .cs-del { position: static; transform: none; }
+}
+
+@media print {
+    body.cs-body { background: #fff; }
+    body.cs-body #flash-messages, body.cs-body .cs-tools-wrap, body.cs-body .cs-foot { display: none !important; }
+    .cs-sheet { display: block; padding: 0; }
+    .cs-page { width: auto; min-height: 0; padding: 0; box-shadow: none; }
+    .cs-page + .cs-page { break-before: page; page-break-before: always; }
+    .cs-input, .cs-edit, .cs-edit:focus, .cs-input:focus { background: none !important; box-shadow: none !important; }
+    .cs-input::placeholder { color: transparent; }
+    .cs-del, .cs-add { display: none !important; }
+}
