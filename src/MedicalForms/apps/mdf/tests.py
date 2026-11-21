@@ -605,3 +605,212 @@ class DutyNoteTests(BaseViewTest):
         self.create('21.11.2026 10:00', patient='x', body='y')
         data = json.loads(gzip.decompress(self.client.get(reverse('backup-download')).content))
         self.assertTrue(any(o['model'] == 'mdf.dutynote' for o in data))
+
+
+class BoardTests(BaseViewTest):
+    """Patients board: ICU / ward, tasks, state, duty report (kept one month)."""
+
+    def setUp(self):
+        super().setUp()
+        StaffProfile.objects.create(user=self.user, display_name='რამაზი', full_name='აფხაძე რამაზი')
+        self.duty = User.objects.create_user('duty', password='x')
+        StaffProfile.objects.create(user=self.duty, display_name='ია', full_name='ფარულავა ია')
+
+    @staticmethod
+    def at(text):
+        import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.datetime.strptime(text, '%d.%m.%Y %H:%M').replace(tzinfo=ZoneInfo('Asia/Tbilisi'))
+
+    def add_patient(self, **kw):
+        data = {'name': 'ბერიძე ნინო', 'bed': '4', 'diagnosis': 'მუცლის აორტის ანევრიზმა',
+                'unit': 'icu', 'doctor': self.user.pk}
+        data.update(kw)
+        self.client.post(reverse('board-patient-new'), data)
+        from .models import BoardPatient
+        return BoardPatient.objects.get(name=data['name'])
+
+    def test_login_required(self):
+        self.client.logout()
+        for name in ('board', 'board-patient-new', 'board-discharged', 'board-report', 'board-reports'):
+            response = self.client.get(reverse(name))
+            self.assertEqual(response.status_code, 302, name)
+            self.assertIn('?next=', response['Location'])
+
+    def test_add_patient_shows_on_board_in_its_unit(self):
+        from .models import BoardEntry
+        p = self.add_patient()
+        self.add_patient(name='კაპანაძე გიორგი', bed='12', unit='ward')
+        self.assertEqual(p.unit, 'icu')
+        self.assertEqual(p.doctor, self.user)
+        self.assertTrue(BoardEntry.objects.filter(patient=p, kind='event').exists())
+        page = self.client.get(reverse('board'))
+        self.assertContains(page, 'ბერიძე ნინო')
+        self.assertContains(page, 'კაპანაძე გიორგი')
+        icu, ward = page.context['columns']
+        self.assertEqual([x.name for x in icu['patients']], ['ბერიძე ნინო'])
+        self.assertEqual([x.name for x in ward['patients']], ['კაპანაძე გიორგი'])
+        # name is required
+        response = self.client.post(reverse('board-patient-new'), {'name': '  ', 'unit': 'ward'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'ჩაწერეთ პაციენტის სახელი')
+
+    def test_beds_in_natural_order(self):
+        for bed in ('10', '2', '', '1ა'):
+            self.add_patient(name=f'პაციენტი {bed or "უსაწოლო"}', bed=bed, unit='ward')
+        ward = self.client.get(reverse('board')).context['columns'][1]
+        self.assertEqual([x.bed for x in ward['patients']], ['1ა', '2', '10', ''])
+
+    def test_attending_gives_task_duty_marks_done(self):
+        from .models import BoardEntry
+        p = self.add_patient()
+        # the attending doctor gets "task" preselected
+        self.assertEqual(self.client.get(reverse('board-patient', args=[p.pk])).context['kind'], 'task')
+        self.client.post(reverse('board-entry-add', args=[p.pk]), {'kind': 'task', 'text': '22:00 სისხლის ანალიზი'})
+        self.client.post(reverse('board-entry-add', args=[p.pk]), {'kind': 'comment', 'text': 'ხვალ ოპერაცია'})
+        task = BoardEntry.objects.get(kind='task')
+        self.assertEqual(task.created_by, self.user)
+        self.assertIsNotNone(task.created_at)
+        self.assertContains(self.client.get(reverse('board')), '22:00 სისხლის ანალიზი')
+
+        # the duty doctor: "state" preselected, writes state, marks the task done
+        self.client.force_login(self.duty)
+        self.assertEqual(self.client.get(reverse('board-patient', args=[p.pk])).context['kind'], 'status')
+        self.client.post(reverse('board-entry-add', args=[p.pk]), {'kind': 'status', 'text': 'სტაბილური\nAD 130/80'})
+        self.client.post(reverse('board-task-done', args=[task.pk]), {'next': reverse('board')})
+        task.refresh_from_db()
+        self.assertEqual(task.done_by, self.duty)
+        self.assertIsNotNone(task.done_at)
+        board = self.client.get(reverse('board'))
+        self.assertNotContains(board, '22:00 სისხლის ანალიზი')         # done tasks leave the card
+        self.assertContains(board, 'სტაბილური<br>AD 130/80')
+        # undo (clicked by mistake)
+        self.client.post(reverse('board-task-done', args=[task.pk]), {'undo': '1'})
+        task.refresh_from_db()
+        self.assertIsNone(task.done_at)
+
+    def test_only_author_updates_entry_and_change_time_is_kept(self):
+        from .models import BoardEntry
+        p = self.add_patient()
+        self.client.force_login(self.duty)
+        self.client.post(reverse('board-entry-add', args=[p.pk]), {'kind': 'status', 'text': 'ძველი'})
+        entry = BoardEntry.objects.get(kind='status')
+        created = entry.created_at
+        self.client.post(reverse('board-entry-edit', args=[entry.pk]), {'text': 'ახალი 🙂'})
+        entry.refresh_from_db()
+        self.assertEqual(entry.text, 'ახალი')                          # emoji dropped (old MySQL)
+        self.assertEqual(entry.created_at, created)
+        self.assertEqual(entry.updated_by, self.duty)
+        self.assertIsNotNone(entry.updated_at)
+        self.client.force_login(self.user)                               # not the author
+        self.client.post(reverse('board-entry-edit', args=[entry.pk]), {'text': 'სხვისი'})
+        entry.refresh_from_db()
+        self.assertEqual(entry.text, 'ახალი')
+
+    def test_text_is_escaped_and_empty_text_not_saved(self):
+        from .models import BoardEntry
+        p = self.add_patient()
+        self.client.post(reverse('board-entry-add', args=[p.pk]), {'kind': 'status', 'text': '   '})
+        self.assertFalse(BoardEntry.objects.filter(kind='status').exists())
+        self.client.post(reverse('board-entry-add', args=[p.pk]), {'kind': 'status', 'text': '<script>alert(1)</script>'})
+        page = self.client.get(reverse('board-patient', args=[p.pk]))
+        self.assertNotContains(page, '<script>alert(1)')
+        self.assertContains(page, '&lt;script&gt;')
+
+    def test_transfer_discharge_restore(self):
+        from .models import BoardEntry
+        p = self.add_patient()
+        self.client.post(reverse('board-patient-move', args=[p.pk, 'transfer']))
+        p.refresh_from_db()
+        self.assertEqual(p.unit, 'ward')
+        self.assertTrue(BoardEntry.objects.filter(patient=p, kind='event', text__contains='→ სტაციონარი').exists())
+        self.client.post(reverse('board-patient-move', args=[p.pk, 'discharge']))
+        p.refresh_from_db()
+        self.assertIsNotNone(p.discharged_at)
+        self.client.get(reverse('board'))                                  # shows the flash message
+        self.assertNotContains(self.client.get(reverse('board')), 'ბერიძე ნინო')
+        self.assertContains(self.client.get(reverse('board-discharged') + '?q=ბერიძე'), 'ბერიძე ნინო')
+        # nothing can be written on a discharged patient
+        self.client.post(reverse('board-entry-add', args=[p.pk]), {'kind': 'status', 'text': 'x'})
+        self.assertFalse(BoardEntry.objects.filter(patient=p, kind='status').exists())
+        self.client.post(reverse('board-patient-move', args=[p.pk, 'restore']))
+        p.refresh_from_db()
+        self.assertIsNone(p.discharged_at)
+        self.assertContains(self.client.get(reverse('board')), 'ბერიძე ნინო')
+
+    def test_report_takes_only_this_duty_and_is_frozen(self):
+        import datetime
+        from unittest import mock
+        from .board import build_report
+        from .models import BoardEntry, DutyReport
+        with mock.patch('django.utils.timezone.now', return_value=self.at('20.11.2026 10:00')):
+            p = self.add_patient()
+            BoardEntry.objects.create(patient=p, kind='status', text='წინა მორიგეობის', created_by=self.duty,
+                                      created_at=self.at('20.11.2026 10:00'))
+            old_task = BoardEntry.objects.create(patient=p, kind='task', text='ძველი დავალება', created_by=self.user,
+                                                 created_at=self.at('20.11.2026 10:05'))
+            self.add_patient(name='კაპანაძე გიორგი', bed='12', unit='ward')
+        # duty 21.11: 20.11 17:00 ... 21.11 16:59
+        BoardEntry.objects.create(patient=p, kind='status', text='ღამით სტაბილური',
+                                  created_by=self.duty, created_at=self.at('20.11.2026 23:10'))
+        BoardEntry.objects.create(patient=p, kind='task', text='დილით ანალიზი', created_by=self.user,
+                                  created_at=self.at('20.11.2026 18:00'), done_by=self.duty,
+                                  done_at=self.at('21.11.2026 08:00'))
+        BoardEntry.objects.create(patient=p, kind='status', text='შემდეგი მორიგეობის',
+                                  created_by=self.duty, created_at=self.at('21.11.2026 17:30'))
+        r = build_report(datetime.date(2026, 11, 21), self.duty)
+        icu, ward = r['units']
+        row = icu['patients'][0]
+        self.assertEqual([s['text'] for s in row['status']], ['ღამით სტაბილური'])
+        self.assertEqual(row['status'][0]['by'], 'ფარულავა ია')
+        self.assertEqual({t['text']: t['done'] for t in row['tasks']}, {'ძველი დავალება': False, 'დილით ანალიზი': True})
+        self.assertEqual(ward['patients'][0]['status'], [])
+        self.assertEqual(r['totals'], {'patients': 2, 'tasks': 2, 'tasks_done': 1, 'without_status': 1})
+        self.assertEqual(r['duty_doctors'], ['ფარულავა ია'])
+
+        # saving freezes it: later changes do not touch the saved report
+        with mock.patch('django.utils.timezone.now', return_value=self.at('21.11.2026 09:00')):
+            response = self.client.post(reverse('board-report'), {'date': '2026-11-21'})
+            report = DutyReport.objects.get()
+            self.assertRedirects(response, reverse('board-report-saved', args=[report.pk]), fetch_redirect_response=False)
+            old_task.done_at, old_task.done_by = self.at('21.11.2026 09:30'), self.duty
+            old_task.save()
+            page = self.client.get(reverse('board-report-saved', args=[report.pk]))
+            self.assertContains(page, 'ღამით სტაბილური')
+            self.assertContains(page, 'არ შესრულებულა')
+            self.assertNotContains(page, 'შემდეგი მორიგეობის')
+            printed = self.client.get(reverse('board-report-print', args=[report.pk]))
+            self.assertContains(printed, 'მორიგეობის შემაჯამებელი რეპორტი')
+            self.assertContains(printed, 'window.print()')
+            # making it again refreshes the same report, no duplicate
+            self.client.post(reverse('board-report'), {'date': '2026-11-21'})
+            self.assertEqual(DutyReport.objects.count(), 1)
+
+    def test_reports_are_deleted_after_a_month(self):
+        import datetime
+        from unittest import mock
+        from .models import DutyReport
+        keep = DutyReport.objects.create(duty_date=datetime.date(2026, 11, 1), data={})
+        DutyReport.objects.create(duty_date=datetime.date(2026, 10, 21), data={})
+        with mock.patch('django.utils.timezone.now', return_value=self.at('21.11.2026 10:00')):
+            self.client.get(reverse('board-reports'))
+        self.assertEqual(list(DutyReport.objects.all()), [keep])
+        self.assertEqual(keep.expires_on, datetime.date(2026, 12, 1))
+
+    def test_mine_filter_and_backup(self):
+        self.add_patient()
+        self.add_patient(name='სხვისი პაციენტი', doctor=self.duty.pk)
+        self.client.get(reverse('board'))                                  # shows the flash message
+        page = self.client.get(reverse('board') + '?show=mine')
+        self.assertContains(page, 'ბერიძე ნინო')
+        self.assertNotContains(page, 'სხვისი პაციენტი')
+        from .views import BACKUP_MODELS
+        self.assertIn('mdf.boardpatient', BACKUP_MODELS)
+        self.assertIn('mdf.boardentry', BACKUP_MODELS)
+        self.assertNotIn('mdf.dutyreport', BACKUP_MODELS)
+
+    def test_menu_and_prescription_page_unchanged(self):
+        page = self.client.get(reverse('niv-cover'))
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, reverse('board'))
+        self.assertContains(page, 'პაციენტების დაფა')

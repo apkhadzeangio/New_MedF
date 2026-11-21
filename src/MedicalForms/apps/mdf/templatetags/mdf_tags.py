@@ -41,3 +41,10 @@ def duty_html(value):
     from django.utils.safestring import mark_safe
     from apps.mdf.duty import clean_html
     return mark_safe(clean_html(value))
+
+
+@register.filter
+def who(user):
+    """Short name of a person (ინა, რამაზი …); '—' when unknown."""
+    from apps.mdf.board import person_name
+    return person_name(user) or '—'

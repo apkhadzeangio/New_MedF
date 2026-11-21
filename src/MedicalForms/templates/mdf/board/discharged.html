@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% load mdf_tags %}
+
+{% block title %}გაწერილი პაციენტები{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <a href="{% url 'board' %}" class="small">← დაფა</a>
+    <div class="page-head"><h1>გაწერილი პაციენტები <span class="count">· {{ paginator.count }}</span></h1></div>
+    <form class="search-box" method="get" role="search">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" name="q" value="{{ q }}" placeholder="ძებნა: სახელი, გვარი, დიაგნოზი" aria-label="ძებნა">
+    </form>
+    <div class="x-card p-0 dc-list">
+        {% for p in patients %}
+        <a class="dc-row" href="{% url 'board-patient' p.pk %}">
+            <span class="bd-bed">{{ p.bed|default:"—" }}</span>
+            <span class="dc-main"><b>{{ p.name }}</b><small>{{ p.diagnosis|default:"" }}</small></span>
+            <span class="unit-pill {{ p.unit }}">{{ p.get_unit_display }}</span>
+            <span class="dc-meta">{{ p.admitted_at|date:"d.m.Y" }} — {{ p.discharged_at|date:"d.m.Y" }}<small>ჩანაწერი: {{ p.n }}{% if p.doctor %} · {{ p.doctor|who }}{% endif %}</small></span>
+        </a>
+        {% empty %}
+        <p class="text-muted m-0 p-3">{% if q %}ვერაფერი მოიძებნა.{% else %}გაწერილი პაციენტი ჯერ არ არის.{% endif %}</p>
+        {% endfor %}
+    </div>
+    {% if is_paginated %}
+    <nav class="d-flex justify-content-between">
+        {% if page_obj.has_previous %}<a class="x-btn" href="?page={{ page_obj.previous_page_number }}&q={{ q|urlencode }}">← წინა</a>{% else %}<span></span>{% endif %}
+        {% if page_obj.has_next %}<a class="x-btn" href="?page={{ page_obj.next_page_number }}&q={{ q|urlencode }}">შემდეგი →</a>{% endif %}
+    </nav>
+    {% endif %}
+</div>
+{% endblock %}

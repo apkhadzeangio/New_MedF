@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if patient %}{{ patient.name }} — მონაცემები{% else %}პაციენტის დამატება{% endif %}{% endblock %}
+
+{% block content %}
+<div class="app-main pf-wrap">
+    <a href="{% if patient %}{% url 'board-patient' patient.pk %}{% else %}{% url 'board' %}{% endif %}" class="small">← {% if patient %}{{ patient.name }}{% else %}დაფა{% endif %}</a>
+    <div class="page-head"><h1>{% if patient %}პაციენტის მონაცემები{% else %}პაციენტის დამატება დაფაზე{% endif %}</h1></div>
+
+    <form method="post" class="x-card pf-card" autocomplete="off">
+        {% csrf_token %}
+        <div class="pf-units" role="radiogroup" aria-label="განყოფილება">
+            {% for key, label in units %}
+            <label class="unit-opt {{ key }}">
+                <input type="radio" name="unit" value="{{ key }}" {% if values.unit == key %}checked{% endif %}>
+                <span>{{ label }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <div class="pf-row">
+            <label class="fld pf-bed">პალატა / საწოლი
+                <input type="text" name="bed" class="form-control" maxlength="20" value="{{ values.bed }}" placeholder="მაგ. 4">
+            </label>
+            <label class="fld pf-name">პაციენტი — სახელი, გვარი
+                <input type="text" name="name" class="form-control" maxlength="150" value="{{ values.name }}" required {% if not patient %}autofocus{% endif %}>
+            </label>
+        </div>
+        <label class="fld">დიაგნოზი
+            <input type="text" name="diagnosis" class="form-control" maxlength="255" value="{{ values.diagnosis }}">
+        </label>
+        <label class="fld">მკურნალი ექიმი
+            <select name="doctor" class="form-select">
+                <option value="">—</option>
+                {% for pk, name in doctors %}
+                <option value="{{ pk }}" {% if values.doctor == pk %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="submit" class="x-btn primary">{% if patient %}შენახვა{% else %}დაფაზე დამატება{% endif %}</button>
+            <a class="x-btn" href="{% if patient %}{% url 'board-patient' patient.pk %}{% else %}{% url 'board' %}{% endif %}">გაუქმება</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

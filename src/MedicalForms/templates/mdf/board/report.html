@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block title %}მორიგეობის რეპორტი {{ day.short }}{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="toolbar">
+        <a class="x-btn" href="{% url 'board' %}">← დაფა</a>
+        <span class="sep" aria-hidden="true"></span>
+        <a class="x-btn x-icon" href="?date={{ prev.iso }}" title="წინა მორიგეობა — {{ prev.short }}" aria-label="წინა მორიგეობა">‹</a>
+        <span class="rp-daylabel">მორიგეობა <b>{{ day.short }}</b> {{ day.weekday }}{% if is_current %} <span class="duty-badge">მიმდინარე</span>{% endif %}</span>
+        {% if next %}<a class="x-btn x-icon" href="?date={{ next.iso }}" title="შემდეგი — {{ next.short }}" aria-label="შემდეგი მორიგეობა">›</a>{% endif %}
+        <span class="grow"></span>
+        <a class="x-btn" href="{% url 'board-reports' %}">შენახული რეპორტები</a>
+        {% if not too_old %}
+        <form method="post" class="m-0">
+            {% csrf_token %}<input type="hidden" name="date" value="{{ day.iso }}">
+            <button type="submit" class="x-btn primary">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3"/><path d="M8 21v-7h8v7"/></svg>{% if saved %}რეპორტის განახლება{% else %}რეპორტის შექმნა{% endif %}</button>
+        </form>
+        {% endif %}
+    </div>
+    <p class="lead-muted">
+        რეპორტი იკრიბება იმისგან, რაც ამ მორიგეობაში ჩაიწერა ({{ r.from }} — {{ r.to }}). ქვემოთ მისი გადახედვაა;
+        „{% if saved %}რეპორტის განახლება{% else %}რეპორტის შექმნა{% endif %}“ მას შეინახავს და დაბეჭდავთ. რეპორტი ინახება 1 თვე, შემდეგ თავისით იშლება.
+        {% if saved %}<br>ამ მორიგეობის რეპორტი უკვე შენახულია ({{ saved.created_at|date:"d.m H:i" }}) — <a href="{% url 'board-report-saved' saved.pk %}">გახსნა</a>.{% endif %}
+    </p>
+    <div class="rp-paper">{% include "mdf/board/_report.html" %}</div>
+</div>
+{% endblock %}

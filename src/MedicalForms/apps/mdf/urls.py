@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import blood, duty, views
+from . import blood, board, duty, views
 
 urlpatterns = [
     path('', views.LoginView.as_view(), name='login'),
@@ -29,7 +29,22 @@ urlpatterns = [
     path('blood/', blood.BloodOrderView.as_view(), name='blood-order'),
     path('blood/print/', blood.BloodOrderPrintView.as_view(), name='blood-order-print'),
 
-    # On-duty doctor's notes
+    # Patients board (ICU + ward) and duty reports
+    path('board/', board.BoardView.as_view(), name='board'),
+    path('board/patient/new/', board.PatientFormView.as_view(), name='board-patient-new'),
+    path('board/patient/<int:pk>/', board.PatientView.as_view(), name='board-patient'),
+    path('board/patient/<int:pk>/edit/', board.PatientFormView.as_view(), name='board-patient-edit'),
+    path('board/patient/<int:pk>/write/', board.EntryAddView.as_view(), name='board-entry-add'),
+    path('board/patient/<int:pk>/<str:action>/', board.PatientMoveView.as_view(), name='board-patient-move'),
+    path('board/entry/<int:pk>/edit/', board.EntryEditView.as_view(), name='board-entry-edit'),
+    path('board/task/<int:pk>/done/', board.TaskDoneView.as_view(), name='board-task-done'),
+    path('board/discharged/', board.DischargedView.as_view(), name='board-discharged'),
+    path('board/report/', board.ReportView.as_view(), name='board-report'),
+    path('board/reports/', board.ReportListView.as_view(), name='board-reports'),
+    path('board/reports/<int:pk>/', board.SavedReportView.as_view(), name='board-report-saved'),
+    path('board/reports/<int:pk>/print/', board.ReportPrintView.as_view(), name='board-report-print'),
+
+    # Old on-duty doctor's notes (kept readable, no longer in the menu)
     path('duty/', duty.DutyIndexView.as_view(), name='duty-index'),
     path('duty/new/', duty.DutyNoteEditView.as_view(), name='duty-new'),
     path('duty/note/<int:pk>/', duty.DutyNoteEditView.as_view(), name='duty-note'),

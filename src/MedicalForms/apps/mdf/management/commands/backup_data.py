@@ -30,6 +30,9 @@ class Command(BaseCommand):
             write_backup(fh)
         self.stdout.write(self.style.SUCCESS(f'Saved {path} ({path.stat().st_size // 1024} KB)'))
 
+        from apps.mdf.board import purge_old_reports
+        purge_old_reports()                     # duty reports live one month
+
         backups = sorted(folder.glob('medf-*.json.gz'))
         for old in backups[:-options['keep']] if options['keep'] > 0 else []:
             old.unlink()

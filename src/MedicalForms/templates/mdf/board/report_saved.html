@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block title %}რეპორტი — მორიგეობა {{ day.short }}{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="toolbar">
+        <a class="x-btn" href="{% url 'board-reports' %}">← შენახული რეპორტები</a>
+        <a class="x-btn" href="{% url 'board' %}">დაფა</a>
+        <span class="grow"></span>
+        <span class="duty-status">შეინახა {{ report.created_at|date:"d.m.Y H:i" }} · წაიშლება {{ report.expires_on|date:"d.m.Y" }}</span>
+        <a class="x-btn primary js-print-page" href="{% url 'board-report-print' report.pk %}" target="_blank">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>ბეჭდვა</a>
+    </div>
+    <div class="rp-paper">{% include "mdf/board/_report.html" %}</div>
+</div>
+{% endblock %}

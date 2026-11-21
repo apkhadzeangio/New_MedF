@@ -1,7 +1,8 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
+from .models import (BoardEntry, BoardPatient, DutyNote, DutyReport, Medicine, NivForm,
+                     PrescriptionTemplate, StaffProfile)
 
 admin.site.site_header = 'Medical Forms - ადმინისტრირება'
 admin.site.site_title = 'Medical Forms'
@@ -57,3 +58,24 @@ class DutyNoteAdmin(admin.ModelAdmin):
     search_fields = ('patient', 'body')
     date_hierarchy = 'duty_date'
     readonly_fields = ('duty_date', 'created_at', 'updated_at', 'created_by', 'updated_by')
+
+
+class BoardEntryInline(admin.TabularInline):
+    model = BoardEntry
+    extra = 0
+    fields = ('created_at', 'kind', 'text', 'created_by', 'done_at', 'done_by')
+    readonly_fields = ('created_at', 'created_by', 'done_at', 'done_by')
+
+
+@admin.register(BoardPatient)
+class BoardPatientAdmin(admin.ModelAdmin):
+    list_display = ['name', 'bed', 'unit', 'diagnosis', 'doctor', 'admitted_at', 'discharged_at']
+    list_filter = ['unit', ('discharged_at', admin.EmptyFieldListFilter)]
+    search_fields = ('name', 'diagnosis', 'bed')
+    inlines = [BoardEntryInline]
+
+
+@admin.register(DutyReport)
+class DutyReportAdmin(admin.ModelAdmin):
+    list_display = ['duty_date', 'created_at', 'created_by']
+    readonly_fields = ('duty_date', 'data', 'created_at', 'created_by')

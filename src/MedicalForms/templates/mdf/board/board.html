@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% load mdf_tags %}
+
+{% block title %}პაციენტების დაფა{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="page-head bd-head">
+        <h1>პაციენტების დაფა <span class="count">· {{ total }}</span></h1>
+        <span class="bd-duty" title="17:00-დან იწყება მომდევნო დღის მორიგეობა">მორიგეობა <b>{{ day.short }}</b> {{ day.weekday }}</span>
+        <div class="seg bd-filter" role="group" aria-label="ჩვენება">
+            <a href="{% url 'board' %}" class="{% if not mine %}on{% endif %}">ყველა</a>
+            <a href="{% url 'board' %}?show=mine" class="{% if mine %}on{% endif %}">ჩემი პაციენტები</a>
+        </div>
+        <a class="x-btn" href="{% url 'board-report' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>მორიგეობის რეპორტი</a>
+        <a class="x-btn primary" href="{% url 'board-patient-new' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>პაციენტის დამატება</a>
+    </div>
+
+    <div class="bd-columns">
+        {% for col in columns %}
+        <section class="bd-col bd-{{ col.unit }}" aria-labelledby="col-{{ col.unit }}">
+            <header class="bd-col-head">
+                <h2 id="col-{{ col.unit }}">{{ col.label }}</h2>
+                <span class="bd-n">{{ col.patients|length }}</span>
+                {% if col.tasks %}<span class="bd-pill task">{{ col.tasks }} ღია დავალება</span>{% endif %}
+                {% if col.missing and col.patients %}<span class="bd-pill wait" title="ამ მორიგეობაში მდგომარეობა ჯერ არ ჩაწერილა">{{ col.missing }} ჩასაწერი</span>{% endif %}
+                <a class="bd-col-add" href="{% url 'board-patient-new' %}?unit={{ col.unit }}" title="პაციენტის დამატება — {{ col.label }}" aria-label="პაციენტის დამატება — {{ col.label }}">+</a>
+            </header>
+
+            <div class="bd-cards">
+            {% for p in col.patients %}
+                <article class="bd-card{% if p.open_tasks %} has-tasks{% endif %}">
+                    <a class="bd-card-top" href="{% url 'board-patient' p.pk %}">
+                        <span class="bd-bed" title="პალატა / საწოლი">{{ p.bed|default:"—" }}</span>
+                        <span class="bd-who">
+                            <b>{{ p.name }}</b>
+                            {% if p.diagnosis %}<small>{{ p.diagnosis }}</small>{% endif %}
+                            {% if p.doctor %}
+                            <span class="bd-doc" title="მკურნალი ექიმი">
+                                {% if p.doctor.profile %}{% include "partials/avatar.html" with profile=p.doctor.profile size=26 %}{% endif %}
+                                {{ p.doctor|who }}
+                            </span>
+                            {% endif %}
+                        </span>
+                    </a>
+
+                    <div class="bd-state{% if not p.status_this_duty %} stale{% endif %}">
+                        {% if p.last_status %}
+                            <div class="bd-state-meta">
+                                {% if not p.status_this_duty %}<span class="bd-wait" title="ამ მორიგეობაში მდგომარეობა ჯერ არ ჩაწერილა">წინა მორიგეობიდან</span> · {% endif %}
+                                {{ p.last_status.created_at|date:"d.m H:i" }} · {{ p.last_status.created_by|who }}
+                            </div>
+                            <p>{{ p.last_status.text|truncatechars:260|linebreaksbr }}</p>
+                        {% else %}
+                            <p class="bd-none">მდგომარეობა ჯერ არ ჩაწერილა</p>
+                        {% endif %}
+                    </div>
+
+                    {% if p.open_tasks %}
+                    <ul class="bd-tasks" aria-label="ღია დავალებები">
+                        {% for t in p.open_tasks %}
+                        <li>
+                            <form method="post" action="{% url 'board-task-done' t.pk %}">
+                                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                <button type="submit" class="bd-check" title="შესრულებულად მონიშვნა" aria-label="შესრულებულად მონიშვნა: {{ t.text|truncatechars:60 }}"></button>
+                            </form>
+                            <span>{{ t.text|linebreaksbr }}<small>{{ t.created_by|who }} · {{ t.created_at|date:"d.m H:i" }}</small></span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+
+                    <div class="bd-card-foot">
+                        <a href="{% url 'board-patient' p.pk %}?kind=status#write">+ მდგომარეობა</a>
+                        <a href="{% url 'board-patient' p.pk %}?kind=task#write">+ დავალება</a>
+                        <a href="{% url 'board-patient' p.pk %}?kind=comment#write">+ კომენტარი</a>
+                    </div>
+                </article>
+            {% empty %}
+                <div class="bd-empty">{% if mine %}თქვენი პაციენტი აქ არ არის{% else %}პაციენტი არ არის{% endif %}</div>
+            {% endfor %}
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+
+    <div class="bd-links">
+        <a href="{% url 'board-discharged' %}">გაწერილი პაციენტები</a>
+        <a href="{% url 'board-reports' %}">შენახული რეპორტები{% if reports %} ({{ reports }}){% endif %}</a>
+        {% if old_notes %}<a href="{% url 'duty-index' %}">ძველი მორიგეობის ჩანაწერები ({{ old_notes }})</a>{% endif %}
+        <span class="bd-refresh">დაფა თავისით ახლდება ყოველ 2 წუთში</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// several computers look at the same board: reload it now and then,
+// but never while someone is typing or pressing a button
+(function () {
+    var last = Date.now();
+    ['keydown', 'mousedown', 'touchstart'].forEach(function (ev) {
+        document.addEventListener(ev, function () { last = Date.now(); }, true);
+    });
+    setInterval(function () {
+        if (document.visibilityState === 'visible' && Date.now() - last > 30000) { location.reload(); }
+    }, 120000);
+})();
+</script>
+{% endblock %}

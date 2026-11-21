@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+{% load mdf_tags %}
+
+{% block title %}შენახული რეპორტები{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <a href="{% url 'board' %}" class="small">← დაფა</a>
+    <div class="page-head">
+        <h1>მორიგეობის რეპორტები <span class="count">· {{ reports|length }}</span></h1>
+        <a class="x-btn primary" href="{% url 'board-report' %}">მიმდინარე მორიგეობის რეპორტი</a>
+    </div>
+    <p class="lead-muted">რეპორტი ინახება {{ keep_days }} დღე, შემდეგ თავისით იშლება.</p>
+    <div class="rp-list">
+        {% for rep in reports %}
+        <article class="x-card rp-card">
+            <a class="rp-card-date" href="{% url 'board-report-saved' rep.pk %}">
+                <b>{{ rep.label.short }}</b><span>{{ rep.label.weekday }}</span>
+            </a>
+            <div class="rp-card-facts">
+                <span>პაციენტი: <b>{{ rep.totals.patients|default:0 }}</b></span>
+                <span>დავალება: <b>{{ rep.totals.tasks_done|default:0 }} / {{ rep.totals.tasks|default:0 }}</b></span>
+                <span class="text-muted">შეადგინა {{ rep.created_by|who }}, {{ rep.created_at|date:"d.m H:i" }} · წაიშლება {{ rep.expires_on|date:"d.m.Y" }}</span>
+            </div>
+            <div class="d-flex gap-2">
+                <a class="x-btn sm" href="{% url 'board-report-saved' rep.pk %}">გახსნა</a>
+                <a class="x-btn sm js-print-page" href="{% url 'board-report-print' rep.pk %}" target="_blank">ბეჭდვა</a>
+            </div>
+        </article>
+        {% empty %}
+        <div class="x-card text-muted">შენახული რეპორტი ჯერ არ არის. მორიგეობის ბოლოს დააჭირეთ „რეპორტის შექმნა“.</div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

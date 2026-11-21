@@ -1,0 +1,69 @@
+{% load static %}{# report body; r = plain data from board.build_report (saved or live) #}
+<div class="rp">
+    <div class="rp-head">
+        <img src="{% static 'img/logo.jpg' %}" alt="">
+        <div class="rp-t">
+            <h1>მორიგეობის შემაჯამებელი რეპორტი</h1>
+            <div>მორიგეობა <b>{{ r.day }}</b>, {{ r.weekday }} · {{ r.from }} — {{ r.to }}</div>
+        </div>
+    </div>
+    <div class="rp-sum">
+        <span>პაციენტი: <b>{{ r.totals.patients }}</b></span>
+        <span>დავალება: <b>{{ r.totals.tasks_done }} / {{ r.totals.tasks }}</b> შესრულდა</span>
+        {% if r.totals.without_status %}<span class="rp-warn">მდგომარეობა არ ჩაწერილა: <b>{{ r.totals.without_status }}</b></span>{% endif %}
+        <span>მორიგე ექიმი: <b>{{ r.duty_doctors|join:", "|default:"—" }}</b></span>
+    </div>
+
+    {% for u in r.units %}
+    <h2 class="rp-unit {{ u.key }}">{{ u.label }} <span>{{ u.patients|length }}</span></h2>
+    {% for p in u.patients %}
+    <section class="rp-pt">
+        <div class="rp-pt-head">
+            <span class="rp-bed">{{ p.bed|default:"—" }}</span>
+            <b>{{ p.name }}</b>
+            {% if p.diagnosis %}<span class="rp-dx">{{ p.diagnosis }}</span>{% endif %}
+            {% if p.doctor %}<span class="rp-doc">მკურნალი ექიმი: {{ p.doctor }}</span>{% endif %}
+        </div>
+        {% for ev in p.events %}<div class="rp-ev">{{ ev.at }} — {{ ev.text }}</div>{% endfor %}
+        {% if p.discharged %}<div class="rp-ev">გაწერილია {{ p.discharged }}</div>{% endif %}
+        <div class="rp-block">
+            <div class="rp-label">მდგომარეობა</div>
+            <div>
+            {% for s in p.status %}
+                <p class="rp-item"><span class="rp-time">{{ s.at }}</span>{{ s.text|linebreaksbr }}{% if s.by %} <span class="rp-by">— {{ s.by }}</span>{% endif %}</p>
+            {% empty %}
+                <p class="rp-item rp-none">ამ მორიგეობაში არ ჩაწერილა</p>
+            {% endfor %}
+            </div>
+        </div>
+        {% if p.tasks %}
+        <div class="rp-block">
+            <div class="rp-label">დავალებები</div>
+            <div>
+            {% for t in p.tasks %}
+                <p class="rp-item rp-task{% if t.done %} done{% endif %}"><span class="rp-box">{% if t.done %}✓{% endif %}</span>{{ t.text|linebreaksbr }} <span class="rp-by">— {{ t.by }}, {{ t.at }}{% if t.done %}; შეასრულა {{ t.done_by }}, {{ t.done_at }}{% else %}; <b>არ შესრულებულა</b>{% endif %}</span></p>
+            {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% if p.comments %}
+        <div class="rp-block">
+            <div class="rp-label">კომენტარი</div>
+            <div>
+            {% for c in p.comments %}
+                <p class="rp-item"><span class="rp-time">{{ c.at }}</span>{{ c.text|linebreaksbr }} <span class="rp-by">— {{ c.by }}</span></p>
+            {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </section>
+    {% empty %}
+    <p class="rp-item rp-none">პაციენტი არ იყო.</p>
+    {% endfor %}
+    {% endfor %}
+
+    <div class="rp-foot">
+        <span>რეპორტი შეადგინა: <b>{{ r.made_by|default:"—" }}</b>, {{ r.made_at }}</span>
+        <span class="rp-sign">ხელმოწერა: <i></i></span>
+    </div>
+</div>
