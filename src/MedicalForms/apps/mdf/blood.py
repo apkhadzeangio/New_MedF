@@ -73,13 +73,26 @@ def print_context(data):
     return ctx
 
 
+def board_patient(request):
+    """The board patient of ?board=<id>, or None."""
+    from .models import BoardPatient
+    try:
+        return BoardPatient.objects.get(pk=int(request.GET.get('board', '')))
+    except (TypeError, ValueError, BoardPatient.DoesNotExist):
+        return None
+
+
 class BloodOrderView(LoginRequiredMixin, GetObjectMixin, generic.FormView):
     """The fillable page: empty (menu) or filled from a prescription (?t=id)."""
     template_name = 'mdf/blood-order.html'
     form_class = BloodOrderForm
 
     def get_initial(self):
-        return initial_values(self.request, self.get_object())
+        values = initial_values(self.request, self.get_object())
+        board = board_patient(self.request)
+        if board and not self.get_object():
+            values.update(patient_name=board.name, diagnosis=board.diagnosis)
+        return values
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)

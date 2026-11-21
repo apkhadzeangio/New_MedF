@@ -139,6 +139,16 @@ def templates_for_page():
     ]
 
 
+def board_prefill(request):
+    """A new, unsaved prescription with the patient's data from the board (?board=<id>)."""
+    from .models import BoardPatient
+    try:
+        p = BoardPatient.objects.get(pk=int(request.GET.get('board', '')))
+    except (TypeError, ValueError, BoardPatient.DoesNotExist):
+        return None
+    return NivForm(title=p.name, patient_name=p.name, chamber_number=p.bed, diagnosis=p.diagnosis)
+
+
 class NivFormCoverView(LoginRequiredMixin, GetObjectMixin, generic.TemplateView):
     template_name = 'mdf/niv.html'
 
@@ -150,6 +160,8 @@ class NivFormCoverView(LoginRequiredMixin, GetObjectMixin, generic.TemplateView)
             ctx['can_update'] = False
         else:
             ctx['can_update'] = True
+        if not ctx['niv']:
+            ctx['niv'] = board_prefill(self.request)
         ctx['rx_templates'] = templates_for_page()
         ctx['apply_template'] = self.request.GET.get('tpl', '')
         return ctx

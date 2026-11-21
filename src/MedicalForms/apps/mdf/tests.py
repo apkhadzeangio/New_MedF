@@ -607,8 +607,8 @@ class DutyNoteTests(BaseViewTest):
         self.assertTrue(any(o['model'] == 'mdf.dutynote' for o in data))
 
 
-class BoardTests(BaseViewTest):
-    """Patients board: ICU / ward, tasks, state, duty report (kept one month)."""
+class BoardBase(BaseViewTest):
+    """Two doctors with profiles and a helper to put a patient on the board."""
 
     def setUp(self):
         super().setUp()
@@ -629,6 +629,11 @@ class BoardTests(BaseViewTest):
         self.client.post(reverse('board-patient-new'), data)
         from .models import BoardPatient
         return BoardPatient.objects.get(name=data['name'])
+
+
+
+class BoardTests(BoardBase):
+    """Patients board: ICU / ward, tasks, state, duty report (kept one month)."""
 
     def test_login_required(self):
         self.client.logout()
@@ -814,3 +819,50 @@ class BoardTests(BaseViewTest):
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, reverse('board'))
         self.assertContains(page, 'პაციენტების დაფა')
+
+
+class BoardLinksTests(BoardBase):
+    """Board -> prescription / blood order, "new" marks, A4 board print."""
+
+    def test_prescription_and_blood_are_prefilled_from_the_board(self):
+        p = self.add_patient()
+        page = self.client.get(reverse('niv-cover') + f'?board={p.pk}')
+        self.assertEqual(page.status_code, 200)
+        self.assertIsNone(page.context['niv'].pk)                     # new, nothing saved yet
+        self.assertContains(page, 'value="ბერიძე ნინო"')
+        self.assertContains(page, 'value="მუცლის აორტის ანევრიზმა"')
+        self.assertNotContains(page, reverse('print-niv-cover') + '?t=')
+        self.assertEqual(NivForm.objects.count(), 0)
+        blood = self.client.get(reverse('blood-order') + f'?board={p.pk}')
+        self.assertEqual(blood.context['form'].initial['patient_name'], 'ბერიძე ნინო')
+        self.assertEqual(blood.context['form'].initial['diagnosis'], 'მუცლის აორტის ანევრიზმა')
+        # a wrong id is ignored
+        self.assertIsNone(self.client.get(reverse('niv-cover') + '?board=999').context['niv'])
+
+    def test_new_marks_until_the_patient_is_opened(self):
+        p = self.add_patient()
+        self.client.force_login(self.duty)
+        self.client.post(reverse('board-entry-add', args=[p.pk]), {'kind': 'status', 'text': 'ღამით სტაბილური'})
+        self.client.force_login(self.user)
+        card = self.client.get(reverse('board')).context['columns'][0]['patients'][0]
+        self.assertEqual(card.new_count, 1)                             # own texts never count
+        page = self.client.get(reverse('board-patient', args=[p.pk]))
+        self.assertTrue([e for g in page.context['groups'] for e in g['entries'] if e.is_new])
+        card = self.client.get(reverse('board')).context['columns'][0]['patients'][0]
+        self.assertEqual(card.new_count, 0)
+        # "all seen" button
+        self.client.force_login(self.duty)
+        self.client.post(reverse('board-entry-add', args=[p.pk]), {'kind': 'status', 'text': 'კიდევ'})
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(reverse('board')).context['new_total'], 1)
+        self.client.post(reverse('board-seen'))
+        self.assertEqual(self.client.get(reverse('board')).context['new_total'], 0)
+
+    def test_board_print(self):
+        p = self.add_patient()
+        self.client.post(reverse('board-entry-add', args=[p.pk]), {'kind': 'task', 'text': 'ანალიზი 22:00'})
+        page = self.client.get(reverse('board-print'))
+        self.assertContains(page, 'A4 landscape')
+        self.assertContains(page, 'ბერიძე ნინო')
+        self.assertContains(page, 'ანალიზი 22:00')
+        self.assertContains(page, 'window.print()')

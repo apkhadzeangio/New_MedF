@@ -1,0 +1,77 @@
+{% load static mdf_tags %}<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>პაციენტების დაფა — {{ printed_at|date:"d.m.Y H:i" }}</title>
+<link rel="stylesheet" href="{% static 'css/theme.css' %}?v=8">
+<style>
+@page { size: A4 landscape; margin: 10mm 10mm; }
+html, body { margin: 0; padding: 0; }
+body { font-family: 'Noto Sans Georgian', 'Sylfaen', sans-serif; background: #e9ecef; color: #111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.sheet { width: 297mm; min-height: 210mm; margin: 12mm auto; padding: 10mm; background: #fff; box-shadow: 0 4px 18px rgba(0, 0, 0, .15); }
+.ptools { max-width: 297mm; margin: 12mm auto 0; display: flex; gap: 8px; font-family: system-ui, sans-serif; }
+.ptools button, .ptools a { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 6px; border: 1px solid #0d6efd; background: #0d6efd; color: #fff; cursor: pointer; text-decoration: none; }
+.ptools a { background: #fff; color: #0d6efd; }
+.bp-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 0.5mm solid #1f2a44; padding-bottom: 2mm; margin-bottom: 3mm; }
+.bp-head img { height: 11mm; }
+.bp-head h1 { margin: 0; font-size: 15pt; }
+.bp-head div { text-align: right; font-size: 9.5pt; color: #333; }
+table { width: 100%; border-collapse: collapse; font-size: 9pt; line-height: 1.35; margin-bottom: 4mm; }
+caption { text-align: left; font-weight: 700; font-size: 11pt; padding: 1.5mm 2mm; background: #EAF1FB; color: #1F3F78; caption-side: top; }
+table.icu caption { background: #FCEEF3; color: #8E1F49; }
+th { text-align: left; font-size: 8pt; color: #555; font-weight: 600; border-bottom: 0.3mm solid #999; padding: 1mm 1.5mm; }
+td { border-bottom: 0.2mm solid #ccc; padding: 1.5mm; vertical-align: top; overflow-wrap: anywhere; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+td.bed { font-weight: 700; font-size: 10.5pt; text-align: center; width: 9mm; }
+td.who b { font-size: 10pt; }
+td.who small, .t small, .st small { display: block; color: #555; font-size: 8pt; }
+.t { margin-bottom: 1mm; }
+.t::before { content: "☐ "; }
+.empty { color: #777; font-style: italic; }
+@media print {
+    body { background: #fff; }
+    .ptools { display: none; }
+    .sheet { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
+}
+</style>
+</head>
+<body>
+<div class="ptools">
+    <button type="button" onclick="window.print()">🖨 ბეჭდვა</button>
+    <a href="javascript:window.close()">დახურვა</a>
+</div>
+<div class="sheet">
+    <div class="bp-head">
+        <img src="{% static 'img/logo.jpg' %}" alt="">
+        <h1>პაციენტების დაფა</h1>
+        <div>მორიგეობა <b>{{ day.short }}</b>, {{ day.weekday }}<br>დაიბეჭდა {{ printed_at|date:"d.m.Y H:i" }} · პაციენტი: {{ total }}</div>
+    </div>
+    {% for col in columns %}
+    <table class="{{ col.unit }}">
+        <caption>{{ col.label }} — {{ col.patients|length }}</caption>
+        <colgroup><col style="width:9mm"><col style="width:24%"><col style="width:9%"><col><col style="width:27%"></colgroup>
+        <thead><tr><th>საწ.</th><th>პაციენტი, დიაგნოზი</th><th>ექიმი</th><th>ბოლო მდგომარეობა</th><th>ღია დავალებები</th></tr></thead>
+        <tbody>
+        {% for p in col.patients %}
+        <tr>
+            <td class="bed">{{ p.bed|default:"—" }}</td>
+            <td class="who"><b>{{ p.name }}</b>{% if p.diagnosis %}<small>{{ p.diagnosis }}</small>{% endif %}</td>
+            <td>{% if p.doctor %}{{ p.doctor|who }}{% endif %}</td>
+            <td class="st">{% if p.last_status %}{{ p.last_status.text|linebreaksbr }}<small>{{ p.last_status.created_at|date:"d.m H:i" }} · {{ p.last_status.created_by|who }}</small>{% else %}<span class="empty">არ ჩაწერილა</span>{% endif %}</td>
+            <td>{% for t in p.open_tasks %}<div class="t">{{ t.text|linebreaksbr }}<small>{{ t.created_by|who }} · {{ t.created_at|date:"d.m H:i" }}</small></div>{% empty %}—{% endfor %}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="empty">პაციენტი არ არის</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+</div>
+<script>
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () {
+    setTimeout(function () { window.print(); }, 150);
+});
+</script>
+</body>
+</html>

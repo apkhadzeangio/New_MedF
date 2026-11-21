@@ -483,3 +483,14 @@ class DutyReport(models.Model):
     def expires_on(self):
         import datetime
         return self.duty_date + datetime.timedelta(days=self.KEEP_DAYS)
+
+
+class BoardSeen(models.Model):
+    """When a doctor last opened a patient (for the "new" marks on the board)."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='+')
+    patient = models.ForeignKey(BoardPatient, on_delete=models.CASCADE, related_name='+')
+    seen_at = models.DateTimeField()
+
+    class Meta:
+        db_table = 'board_seen'
+        unique_together = ('user', 'patient')

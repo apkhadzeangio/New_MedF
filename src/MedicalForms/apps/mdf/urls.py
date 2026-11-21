@@ -31,6 +31,8 @@ urlpatterns = [
 
     # Patients board (ICU + ward) and duty reports
     path('board/', board.BoardView.as_view(), name='board'),
+    path('board/print/', board.BoardPrintView.as_view(), name='board-print'),
+    path('board/seen/', board.SeenAllView.as_view(), name='board-seen'),
     path('board/patient/new/', board.PatientFormView.as_view(), name='board-patient-new'),
     path('board/patient/<int:pk>/', board.PatientView.as_view(), name='board-patient'),
     path('board/patient/<int:pk>/edit/', board.PatientFormView.as_view(), name='board-patient-edit'),

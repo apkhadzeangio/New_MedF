@@ -12,6 +12,14 @@
             <a href="{% url 'board' %}" class="{% if not mine %}on{% endif %}">ყველა</a>
             <a href="{% url 'board' %}?show=mine" class="{% if mine %}on{% endif %}">ჩემი პაციენტები</a>
         </div>
+        {% if new_total %}
+        <form method="post" action="{% url 'board-seen' %}" class="m-0">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button type="submit" class="x-btn" title="ყველა ახალი ჩანაწერი ნანახად მოინიშნება">✓ ყველა ნანახია <span class="bd-new">{{ new_total }}</span></button>
+        </form>
+        {% endif %}
+        <a class="x-btn x-icon js-print-page" href="{% url 'board-print' %}{% if mine %}?show=mine{% endif %}" target="_blank" title="დაფის ბეჭდვა (A4)" aria-label="დაფის ბეჭდვა">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg></a>
         <a class="x-btn" href="{% url 'board-report' %}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>მორიგეობის რეპორტი</a>
         <a class="x-btn primary" href="{% url 'board-patient-new' %}">
@@ -35,7 +43,7 @@
                     <a class="bd-card-top" href="{% url 'board-patient' p.pk %}">
                         <span class="bd-bed" title="პალატა / საწოლი">{{ p.bed|default:"—" }}</span>
                         <span class="bd-who">
-                            <b>{{ p.name }}</b>
+                            <b>{{ p.name }}{% if p.new_count %} <span class="bd-new" title="ახალი ჩანაწერი მას შემდეგ, რაც ბოლოს ნახეთ">{{ p.new_count }} ახალი</span>{% endif %}</b>
                             {% if p.diagnosis %}<small>{{ p.diagnosis }}</small>{% endif %}
                             {% if p.doctor %}
                             <span class="bd-doc" title="მკურნალი ექიმი">

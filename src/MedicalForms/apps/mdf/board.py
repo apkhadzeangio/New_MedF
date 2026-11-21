@@ -18,7 +18,7 @@ import re
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -26,7 +26,7 @@ from django.utils import timezone
 from django.views import generic
 
 from .duty import DUTY_CHANGE_HOUR, TBILISI, _parse_day, day_label, duty_date_for, strip_astral
-from .models import BoardEntry, BoardPatient, DutyNote, DutyReport
+from .models import BoardEntry, BoardPatient, BoardSeen, DutyNote, DutyReport
 
 TEXT_LIMIT = 4000
 UNIT_ORDER = [BoardPatient.ICU, BoardPatient.WARD]
@@ -113,6 +113,57 @@ USER_FIELDS = ('created_by__profile', 'updated_by__profile', 'done_by__profile')
 # board
 # --------------------------------------------------------------------------
 
+def seen_baseline():
+    """Without a "seen" mark, only texts of the last two duties count as new."""
+    return duty_window(duty_date_for())[0] - datetime.timedelta(days=1)
+
+
+def board_data(user, mine=False):
+    """Active patients grouped by unit, with open tasks, last state and "new" counts."""
+    day = duty_date_for()
+    start, _end = duty_window(day)
+    patients = BoardPatient.objects.filter(discharged_at__isnull=True).select_related('doctor__profile')
+    if mine:
+        patients = patients.filter(doctor=user)
+    patients = sorted(patients, key=bed_key)
+    ids = [p.pk for p in patients]
+
+    open_tasks = {}
+    for task in (BoardEntry.objects.filter(patient_id__in=ids, kind=BoardEntry.TASK, done_at__isnull=True)
+                 .select_related('created_by__profile').order_by('created_at', 'id')):
+        open_tasks.setdefault(task.patient_id, []).append(task)
+    # only the newest state of each patient is read (the board reloads often)
+    last_ids = (BoardEntry.objects.filter(patient_id__in=ids, kind=BoardEntry.STATUS)
+                .values('patient_id').annotate(last=Max('id')).values_list('last', flat=True))
+    last_status = {e.patient_id: e for e in
+                   BoardEntry.objects.filter(id__in=list(last_ids)).select_related('created_by__profile')}
+
+    seen = dict(BoardSeen.objects.filter(user=user, patient_id__in=ids).values_list('patient_id', 'seen_at'))
+    baseline = seen_baseline()
+    new_counts = {}
+    for pid, created in (BoardEntry.objects.filter(patient_id__in=ids, created_at__gte=min([baseline, *seen.values()]))
+                         .exclude(created_by=user).values_list('patient_id', 'created_at')):
+        if created > seen.get(pid, baseline):
+            new_counts[pid] = new_counts.get(pid, 0) + 1
+
+    columns = []
+    for unit in UNIT_ORDER:
+        cards = []
+        for p in patients:
+            if p.unit != unit:
+                continue
+            p.open_tasks = open_tasks.get(p.pk, [])
+            p.last_status = last_status.get(p.pk)
+            p.status_this_duty = bool(p.last_status and p.last_status.created_at >= start)
+            p.new_count = new_counts.get(p.pk, 0)
+            cards.append(p)
+        columns.append({'unit': unit, 'label': UNIT_LABELS[unit], 'patients': cards,
+                        'tasks': sum(len(p.open_tasks) for p in cards),
+                        'missing': sum(1 for p in cards if not p.status_this_duty)})
+    return {'columns': columns, 'day': day_label(day), 'total': len(patients),
+            'open_total': sum(c['tasks'] for c in columns), 'new_total': sum(new_counts.values())}
+
+
 class BoardView(LoginRequiredMixin, generic.TemplateView):
     """The whiteboard: two columns (ICU, ward), one card per patient."""
     template_name = 'mdf/board/board.html'
@@ -121,47 +172,44 @@ class BoardView(LoginRequiredMixin, generic.TemplateView):
         ctx = super().get_context_data(**kwargs)
         purge_old_reports()
         mine = self.request.GET.get('show') == 'mine'
-        day = duty_date_for()
-        start, end = duty_window(day)
-
-        patients = BoardPatient.objects.filter(discharged_at__isnull=True).select_related('doctor__profile')
-        if mine:
-            patients = patients.filter(doctor=self.request.user)
-        patients = sorted(patients, key=bed_key)
-        ids = [p.pk for p in patients]
-
-        open_tasks, last_status, duty_status = {}, {}, set()
-        for task in (BoardEntry.objects.filter(patient_id__in=ids, kind=BoardEntry.TASK, done_at__isnull=True)
-                     .select_related('created_by__profile').order_by('created_at')):
-            open_tasks.setdefault(task.patient_id, []).append(task)
-        for entry in (BoardEntry.objects.filter(patient_id__in=ids, kind=BoardEntry.STATUS)
-                      .select_related('created_by__profile').order_by('-created_at')):
-            last_status.setdefault(entry.patient_id, entry)
-            if entry.created_at >= start:
-                duty_status.add(entry.patient_id)
-
-        columns = []
-        for unit in UNIT_ORDER:
-            cards = []
-            for p in patients:
-                if p.unit != unit:
-                    continue
-                p.open_tasks = open_tasks.get(p.pk, [])
-                p.last_status = last_status.get(p.pk)
-                p.status_this_duty = p.pk in duty_status
-                cards.append(p)
-            columns.append({'unit': unit, 'label': UNIT_LABELS[unit], 'patients': cards,
-                            'tasks': sum(len(p.open_tasks) for p in cards),
-                            'missing': sum(1 for p in cards if not p.status_this_duty)})
-
-        ctx.update({
-            'columns': columns, 'mine': mine, 'day': day_label(day),
-            'total': len(patients), 'open_total': sum(c['tasks'] for c in columns),
-            'old_notes': DutyNote.objects.count(),
-            'reports': DutyReport.objects.count(),
-            'refresh': True,
-        })
+        ctx.update(board_data(self.request.user, mine))
+        ctx.update({'mine': mine, 'old_notes': DutyNote.objects.count(),
+                    'reports': DutyReport.objects.count()})
         return ctx
+
+
+class BoardPrintView(LoginRequiredMixin, generic.TemplateView):
+    """The whole board on A4 (landscape) for the morning meeting."""
+    template_name = 'mdf/board/board_print.html'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx.update(board_data(self.request.user, self.request.GET.get('show') == 'mine'))
+        ctx['printed_at'] = timezone.localtime()
+        return ctx
+
+
+class SeenAllView(LoginRequiredMixin, generic.View):
+    """Mark every patient on the board as seen by me."""
+
+    def post(self, request):
+        now = timezone.now()
+        for pid in BoardPatient.objects.filter(discharged_at__isnull=True).values_list('id', flat=True):
+            mark_seen(request.user, pid, now)
+        return HttpResponseRedirect(back_to(request, reverse('board')))
+
+
+def mark_seen(user, patient_id, when=None):
+    """Remember when ``user`` last looked at a patient; return the previous time."""
+    when = when or timezone.now()
+    row = BoardSeen.objects.filter(user=user, patient_id=patient_id).first()
+    if row:
+        previous = row.seen_at
+        row.seen_at = when
+        row.save(update_fields=['seen_at'])
+        return previous
+    BoardSeen.objects.create(user=user, patient_id=patient_id, seen_at=when)
+    return None
 
 
 class PatientFormView(LoginRequiredMixin, generic.TemplateView):
@@ -228,6 +276,9 @@ class PatientView(LoginRequiredMixin, generic.TemplateView):
         ctx = super().get_context_data(**kwargs)
         patient = get_object_or_404(BoardPatient.objects.select_related('doctor__profile'), pk=kwargs['pk'])
         entries = list(patient.entries.select_related(*USER_FIELDS))
+        previous = mark_seen(self.request.user, patient.pk) or seen_baseline()
+        for entry in entries:
+            entry.is_new = entry.created_at > previous and entry.created_by_id != self.request.user.pk
         groups = []
         for entry in entries:
             day = duty_date_for(entry.created_at)
