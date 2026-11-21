@@ -1065,7 +1065,7 @@ class ConsentTests(BaseViewTest):
         from .models import ConsentForm
         first = ConsentForm.objects.get(name__startswith='აორტა-ბარძაყის')
         self.assertEqual(first.blocks[0]['left'][0], 'სისხლდენა')
-        self.assertEqual(ConsentForm.objects.count(), 27)                      # + 26 from the Word files
+        self.assertEqual(ConsentForm.objects.count(), 29)                      # + 28 from the Word files
         other = ConsentForm.objects.create(name='კაროტიდული ენდარტერექტომია', blocks=[])
         for _ in range(3):
             self.client.get(reverse('consent-sheet', args=[other.pk]))
