@@ -244,6 +244,17 @@ $(document).ready(function () {
         markDirty();
     }
 
+    // Put text into $el with the typed part wrapped in <mark> (safe: no HTML parsing).
+    function highlight($el, text, q) {
+        var i = text.toLowerCase().indexOf(q.toLowerCase());
+        if (!q || i < 0) {
+            return $el.text(text);
+        }
+        return $el.append(document.createTextNode(text.slice(0, i)))
+                  .append($('<mark></mark>').text(text.slice(i, i + q.length)))
+                  .append(document.createTextNode(text.slice(i + q.length)));
+    }
+
     var searchMedicines = debounce(function (input) {
         var q = input.value.trim();
         if (!q) {
@@ -268,9 +279,9 @@ $(document).ready(function () {
                     .attr('data-inid', input.id)
                     .attr('data-name', name)
                     .attr('data-note', note === null ? '' : note);
-                $li.append($('<span class="ac-name"></span>').text(name));
+                $li.append(highlight($('<span class="ac-name"></span>'), name, q));
                 if (note) {
-                    $li.append(' ').append($('<span class="ac-note"></span>').text('- ' + note));
+                    $li.append($('<span class="ac-note"></span>').text(note));
                 }
                 $dd.append($li);
             });
