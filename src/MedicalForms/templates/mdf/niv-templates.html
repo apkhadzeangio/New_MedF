@@ -1,21 +1,24 @@
 {% extends 'base.html' %}
 
+{% block title %}დანიშნულებები{% endblock %}
+
 {% block content %}
-<div class="container">
-    <nav class="navbar bg-body-tertiary w-100">
-      <div class="container-fluid justify-content-start">
-        <a class="btn btn-outline-success me-2" href="{% url 'niv-cover' %}">ახალი დანიშნულება</a>
-      </div>
-      <form action="{% url 'niv-templates' %}" class="d-flex w-100" id="search-form" method="get">
+<div class="app-main">
+    <div class="page-head">
+        <h1>დანიშნულებები {% if paginator %}<span class="count">· {{ paginator.count }}</span>{% endif %}</h1>
+        <a class="x-btn primary" href="{% url 'niv-cover' %}">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>ახალი დანიშნულება</a>
+    </div>
+    <form action="{% url 'niv-templates' %}" id="search-form" method="get">
         {% csrf_token %}
-        <div class="form-group w-100">
-          <label for="q"></label>
-          <input type="search" name="q" class="form-control-lg w-100" id="q" value="{{ q }}" placeholder="ძიება... (დასახელება, პაციენტი, პირადი N, ისტორიის N, დიაგნოზი)" autocomplete="off" autofocus>
-        </div>
-      </form>
-    </nav>
-</div>
-    <div class="container text-center" id="niv-forms">
+        <label class="search-box" for="q">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5A6478" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <span class="visually-hidden">ძიება</span>
+            <input type="search" name="q" id="q" value="{{ q }}" placeholder="ძიება — დასახელება, პაციენტი, პირადი N, ისტორიის N, დიაგნოზი…" autocomplete="off" autofocus>
+        </label>
+    </form>
+    <div id="niv-forms">
         {% include 'mdf/niv-form-search.html' %}
     </div>
+</div>
 {% endblock %}

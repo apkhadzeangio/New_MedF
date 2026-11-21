@@ -4,206 +4,106 @@
 {% block content %}
 
     {% block inner_nav %}
-        <div class="container">
-            <nav class="navbar bg-body-tertiary">
-              <div class="justify-content-start">
-                  {% if niv and can_update %}
-                      <button type="button" class="btn btn-primary" id="updateBtn">Save</button>
-                      ან
-                      <button type="button" class="btn btn-primary" id="updateAndNewBtn">Save And New</button>
-                      ან
-                      <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#saveAsModal">
-                            Save As
-                      </button>
-                    {% else %}
-                      <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#saveModal">
-                            Save
-                      </button>
-                      ან
-                      <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#saveAndNewModal">
-                            Save And New
-                      </button>
-{#                      ან#}
-{#                      <button type="button" class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#saveAsModal">#}
-{#                            Save As#}
-{#                      </button>#}
-                  {% endif %}
-              </div>
-              <div class="d-flex align-items-center gap-2 flex-wrap" id="tpl-tools">
-                  <select class="form-select" id="tpl-select" style="width: 260px" title="შაბლონის ჩასმა">
-                      <option value="">📋 შაბლონის ჩასმა...</option>
-                      {% for t in rx_templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
-                  </select>
-                  <button type="button" class="btn btn-outline-primary" id="tplSaveOpen" title="მიმდინარე მედიკამენტები შაბლონად">შაბლონად შენახვა</button>
-              </div>
-              <div class="justify-content-end">
-                  {% if niv %}
-                    <a class="btn btn-info me-2" href="{% url 'print-niv-cover' %}?t={{ niv.pk }}" target="_blank">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-printer" viewBox="0 0 16 16">
-                          <path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/>
-                          <path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/>
-                        </svg> &nbsp;&nbsp;ბეჭდვა
-                    </a>
-                      <button class="btn btn-info me-2 copy-btn" data-clipboard-text="{{ niv.rows_as_string }}" data-clipboard-action="copy" style="align-items: center; display: inline-flex">
-                         {% include 'partials/clipboard-svg-icon.html' %} &nbsp;&nbsp;
-                          კოპირება
-                      </button>
-                  {% endif %}
-              </div>
-            </nav>
-            <div class="small text-muted px-2 pb-1 user-select-none d-print-none" id="niv-hint">
-                <kbd>Ctrl</kbd>+<kbd>S</kbd> — შენახვა &nbsp;·&nbsp;
-                <kbd>Shift</kbd>+დაწკაპუნება საათზე — იგივე საათი სამივე დღეში &nbsp;·&nbsp;
-                ჯერადობა (2X, 3X, 4X) — პირველ საათზე დაწკაპებით დანარჩენი ავტომატურად &nbsp;·&nbsp;
-                წამლის ძებნისას <kbd>↑</kbd><kbd>↓</kbd> და <kbd>Enter</kbd> — არჩევა
-            </div>
+    <div class="app-main" style="padding-bottom: 0">
+        <div class="toolbar">
+            {% if niv and can_update %}
+                <button type="button" class="x-btn primary" id="updateBtn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3"/><path d="M8 21v-7h8v7"/></svg>შენახვა</button>
+                <button type="button" class="x-btn" id="updateAndNewBtn">შენახვა და ახალი</button>
+                <button type="button" class="x-btn" data-bs-toggle="modal" data-bs-target="#saveAsModal">ასლით შენახვა</button>
+            {% else %}
+                <button type="button" class="x-btn primary" data-bs-toggle="modal" data-bs-target="#saveModal">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3"/><path d="M8 21v-7h8v7"/></svg>შენახვა</button>
+                <button type="button" class="x-btn" data-bs-toggle="modal" data-bs-target="#saveAndNewModal">შენახვა და ახალი</button>
+            {% endif %}
+            <span class="sep" aria-hidden="true"></span>
+            <label class="m-0" id="tpl-tools"><span class="visually-hidden">შაბლონის ჩასმა</span>
+                <select class="form-select" id="tpl-select">
+                    <option value="">შაბლონის ჩასმა…</option>
+                    {% for t in rx_templates %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+                </select>
+            </label>
+            <button type="button" class="x-btn" id="tplSaveOpen" title="მიმდინარე მედიკამენტები შაბლონად">შაბლონად შენახვა</button>
+            <span class="grow"></span>
+            {% if niv %}
+                <a class="x-btn" href="{% url 'print-niv-cover' %}?t={{ niv.pk }}" target="_blank">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>ბეჭდვა</a>
+                <button type="button" class="x-btn x-icon copy-btn" data-clipboard-text="{{ niv.rows_as_string }}" data-clipboard-action="copy" aria-label="მედიკამენტების კოპირება" title="მედიკამენტების კოპირება">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>
+                <a class="x-btn blood" href="{% url 'blood-order' %}?t={{ niv.pk }}">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>სისხლის შეკვეთა</a>
+            {% endif %}
         </div>
+        <div class="hints user-select-none d-print-none" id="niv-hint">
+            <span><kbd>Ctrl</kbd> + <kbd>S</kbd> შენახვა</span>
+            <span><kbd>Shift</kbd> + დაწკაპება — იგივე საათი სამივე დღეს</span>
+            <span>2X · 3X · 4X — პირველ საათზე დაწკაპებით დანარჩენი თავისით</span>
+            <span><kbd>↑</kbd><kbd>↓</kbd> <kbd>Enter</kbd> წამლის არჩევა</span>
+        </div>
+    </div>
     {% endblock %}
 
-    <div class="container-fluid">
-        <div class="d-flex" style="justify-content: space-between; align-items: center; margin-left: 100px; margin-right: 100px">
-            <div class="p-2" style="max-width: 300px; max-height: 96px;">
-                <img src="{% static 'img/logo.jpg' %}" height="96"/>
-            </div>
-            <div class="ms-auto p-2 flex-shrink-1" style="max-width: 401px; text-align: right">
-                სამედიცინოდოკუმენტაციისფორმა NIV-300-9/ა
-                საქართველოსშრომის, ჯანმრთელობისა და
-                სოციალური დაცვის მინისტრის
-                2009 წლის, 19 მარტის N108/ნ ბრძანებით შესაბამისად
-            </div>
+    <div class="app-main">
+        <div class="rx-head">
+            <img src="{% static 'img/logo.jpg' %}" alt="">
+            <h1>პაციენტის დანიშნულების ფურცელი</h1>
+            <div class="legal">სამედიცინო დოკუმენტაციის ფორმა NIV-300-9/ა საქართველოს შრომის, ჯანმრთელობისა და სოციალური დაცვის მინისტრის 2009 წლის, 19 მარტის N108/ნ ბრძანებით შესაბამისად</div>
         </div>
-        <div class="p-2 justify-content-center text-center" style="display:inherit;font-weight: bold; font-size: 18px; margin-left: 100px">პაციენტის დანიშნულების ფურცელი</div>
-    </div>
 
-    <div class="container-fluid mt-4">
-      <div class="row justify-content-center">
-        <div class="col-lg-10 col-sm-12 col-md-10">
-            <div class="card mb-1">
-              <div class="card-header">
-                  რეგისტრაცია
-              </div>
-              <div class="card-body">
-                  <div class="row g-3">
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="doe" class="form-label user-select-none">შემოსვლის თარიღი</label>
-                        <input id="doe" maxlength="50" type="text" class="form-control" value="{{ niv.doe|default:'' }}" autocomplete="off">
-                      </div>
+        <div class="rx-cards">
+            <section class="x-card">
+                <h2><span class="dot"></span>რეგისტრაცია</h2>
+                <div class="grid-2">
+                    <label class="fld" for="doe">შემოსვლის თარიღი
+                        <input id="doe" maxlength="50" type="text" class="form-control" value="{{ niv.doe|default:'' }}" autocomplete="off"></label>
+                    <label class="fld" for="card_number">ბარათის (ისტორია) N
+                        <input id="card_number" maxlength="50" type="text" class="form-control" value="{{ niv.card_number|default:'' }}"></label>
+                    <label class="fld" for="department">განყოფილება
+                        <input id="department" maxlength="50" type="text" class="form-control" value="{{ niv.department|default:'' }}"></label>
+                    <label class="fld" for="chamber_number">პალატის N
+                        <input id="chamber_number" maxlength="50" type="text" class="form-control" value="{{ niv.chamber_number|default:'' }}"></label>
+                </div>
+                <label class="fld" for="diagnosis">დიაგნოზი
+                    <input id="diagnosis" maxlength="512" class="form-control" value="{{ niv.diagnosis|default:'' }}"></label>
+            </section>
 
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="card_number" class="form-label user-select-none">ბარათის <span class="small fw-bold">(ისტორია)</span> N</label>
-                        <input id="card_number" maxlength="50" type="text" class="form-control" value="{{ niv.card_number|default:'' }}">
-                      </div>
-
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="department" class="form-label user-select-none">განყოფილება</label>
-                        <input id="department" maxlength="50" type="text" class="form-control" value="{{ niv.department|default:'' }}">
-                      </div>
-
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="chamber_number" class="form-label user-select-none">პალატის N</label>
-                        <input id="chamber_number" maxlength="50" type="text" class="form-control" value="{{ niv.chamber_number|default:'' }}">
-                      </div>
-                    </div>
-
-
-                  <div class="row g-3 mt-2">
-                      <div class="col-md-12 col-sm-12 col-lg-12">
-                        <label for="diagnosis" class="form-label user-select-none">დიაგნოზი</label>
-                        <input id="diagnosis" maxlength="512" class="form-control" value="{{ niv.diagnosis|default:'' }}">
-                      </div>
-                    </div>
-              </div>
-            </div>
-            <div class="card mb-4">
-              <div class="card-header">
-                  პაციენტის მონაცემები
-              </div>
-              <div class="card-body">
-                  <div class="row g-3">
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="patient_name" class="form-label user-select-none">პაციენტი <span class="small fw-bold">(სახელი, გვარი)</span></label>
-                        <input id="patient_name" maxlength="150" type="text" class="form-control" value="{{ niv.patient_name|default:'' }}">
-                      </div>
-
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="dob" class="form-label user-select-none">დაბ. თარიღი</label>
-                        <input id="dob" maxlength="50" type="text" class="form-control" value="{{ niv.dob|default:'' }}" autocomplete="off">
-                      </div>
-
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="person_id" class="form-label user-select-none">პირადი ნომერი</label>
-                        <input id="person_id" maxlength="11" type="text" class="form-control" value="{{ niv.person_id|default:'' }}">
-                      </div>
-
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="radial_pulse" class="form-label user-select-none">რადიალური პულსი</label>
-                        <select class="form-control text-center" id="radial_pulse">
-                            <option value="">   --------    </option>
+            <section class="x-card">
+                <h2><span class="dot" style="background: #2D5BD7"></span>პაციენტის მონაცემები</h2>
+                <div class="grid-2">
+                    <label class="fld" for="patient_name">პაციენტი (სახელი, გვარი)
+                        <input id="patient_name" maxlength="150" type="text" class="form-control" value="{{ niv.patient_name|default:'' }}"></label>
+                    <label class="fld" for="dob">დაბ. თარიღი
+                        <input id="dob" maxlength="50" type="text" class="form-control" value="{{ niv.dob|default:'' }}" autocomplete="off"></label>
+                    <label class="fld" for="person_id">პირადი ნომერი
+                        <input id="person_id" maxlength="11" type="text" class="form-control" value="{{ niv.person_id|default:'' }}"></label>
+                    <label class="fld" for="radial_pulse">რადიალური პულსი
+                        <select class="form-select" id="radial_pulse">
+                            <option value="">—</option>
                             <option value="რეგულარული" {% if niv.radial_pulse == 'რეგულარული' %}selected{% endif %}>რეგულარული</option>
                             <option value="არარეგულარული" {% if niv.radial_pulse == 'არარეგულარული' %}selected{% endif %}>არარეგულარული</option>
                             <option value="სუსტი" {% if niv.radial_pulse == 'სუსტი' %}selected{% endif %}>სუსტი</option>
-                        </select>
-                      </div>
-                    </div>
-
-                  <div class="row mt-3">
-                      <div class="col-md-12 col-sm-12 col-lg-12">
-
-                        <div class="d-flex gap-4 flex-wrap">
-
-                          <div class="form-check">
-                            <label for="allergy" class="form-check-label user-select-none">
-                                <input id="allergy" class="form-check-input" type="checkbox" style="width: 20px;height: 20px;" {% if niv.allergy %} checked {% endif %}>
-                                ალერგია
-                            </label>
-                          </div>
-
-                          <div class="form-check">
-                            <label for="diabetes" class="form-check-label user-select-none">
-                              <input id="diabetes" class="form-check-input" type="checkbox" style="width: 20px;height: 20px;" {% if niv.diabetes %} checked {% endif %}>
-                                დიაბეტი
-                            </label>
-                          </div>
-
-                          <div class="form-check">
-                            <label for="neuro" class="form-check-label user-select-none">
-                                <input id="neuro" class="form-check-input" type="checkbox" style="width: 20px;height: 20px;" {% if niv.neuro %} checked {% endif %}>
-                                Neuro <span class="small fw-bold">(მღვიძარე, ორიენტირებული)</span>
-                            </label>
-                          </div>
-
-                        </div>
-                      </div>
-                    </div>
-
-                  <div class="row g-3 mt-2">
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="bmi_score" class="form-label user-select-none">BMI (kg/m<sup>2</sup>)</label>
-                        <input id="bmi_score" maxlength="11" class="form-control" value="{{ niv.bmi_score|default:'' }}">
-                      </div>
-
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="gcs_score" class="form-label user-select-none">GCS ქულა</label>
-                        <input id="gcs_score" maxlength="11" class="form-control" value="{{ niv.gcs_score|default:'' }}">
-                      </div>
-
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="mews_score" class="form-label user-select-none">MEWS ქულა</label>
-                        <input id="mews_score" maxlength="11" class="form-control" value="{{ niv.mews_score|default:'' }}">
-                      </div>
-
-                      <div class="col-md-3 col-sm-6 col-lg-3">
-                        <label for="risk_falling" class="form-label user-select-none">დაცემის რისკის ქულა</label>
-                        <input id="risk_falling" maxlength="11" class="form-control" value="{{ niv.risk_falling|default:'' }}">
-                      </div>
-                    </div>
-              </div>
-            </div>
+                        </select></label>
+                </div>
+                <div class="grid-4">
+                    <label class="fld" for="bmi_score"><span>BMI (kg/m<sup>2</sup>)</span>
+                        <input id="bmi_score" maxlength="11" class="form-control" value="{{ niv.bmi_score|default:'' }}"></label>
+                    <label class="fld" for="gcs_score">GCS ქულა
+                        <input id="gcs_score" maxlength="11" class="form-control" value="{{ niv.gcs_score|default:'' }}"></label>
+                    <label class="fld" for="mews_score">MEWS ქულა
+                        <input id="mews_score" maxlength="11" class="form-control" value="{{ niv.mews_score|default:'' }}"></label>
+                    <label class="fld" for="risk_falling">დაცემის რისკი
+                        <input id="risk_falling" maxlength="11" class="form-control" value="{{ niv.risk_falling|default:'' }}"></label>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <label class="chip-check" for="allergy"><input id="allergy" type="checkbox" {% if niv.allergy %}checked{% endif %}>ალერგია</label>
+                    <label class="chip-check" for="diabetes"><input id="diabetes" type="checkbox" {% if niv.diabetes %}checked{% endif %}>დიაბეტი</label>
+                    <label class="chip-check" for="neuro"><input id="neuro" type="checkbox" {% if niv.neuro %}checked{% endif %}>Neuro (მღვიძარე, ორიენტირებული)</label>
+                </div>
+            </section>
         </div>
-      </div>
     </div>
 
-    <div class="container-fluid">
+    <div class="rx-table-card">
       <table class="table table-bordered cf table-hover table-responsive">
         <thead>
           <tr style="height: 25px">

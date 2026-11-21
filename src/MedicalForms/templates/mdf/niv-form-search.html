@@ -1,59 +1,37 @@
-{% load mdf_tags %}
 {% if object_list %}
-  <table class="table align-middle">
-    <thead>
-      <tr>
-        <th scope="col">#</th>
-        <th scope="col">დასახელება</th>
-        <th scope="col"></th>
-        <th scope="col"></th>
-        <th scope="col"></th>
-        <th scope="col"></th>
-      </tr>
-    </thead>
-    <tbody>
-        {% for object in object_list %}
-          <tr>
-            <th scope="row">{% if page_obj %}{{ page_obj.start_index|add:forloop.counter0 }}{% else %}{{ forloop.counter }}{% endif %}</th>
-              <td>
-                  <a href="{% url 'niv-cover' %}?t={{ object.pk }}">
-                      {{ object.title }}
-                  </a>
-              </td>
-            <td>
-                <button class="btn btn-info me-2 copy-btn" data-clipboard-text="{{ object.rows_as_string }}" data-clipboard-action="copy" style="display: inline-flex; align-items: center">
-                        {% include 'partials/clipboard-svg-icon.html' %} &nbsp;&nbsp;
-                    კოპირება
-                </button>
-            </td>
-            <td>
-                <a class="btn btn-info me-2" href="{% url 'niv-cover' %}?as={{ object.pk }}" style="display: inline-flex; align-items: center">
-                    ასლით ახალი
-                </a>
-            </td>
-            <td>
-                <a class="btn btn-secondary" href="{% url 'print-niv-cover' %}?t={{ object.pk }}" target="_blank">ბეჭდვა</a>
-                <a class="btn btn-outline-danger ms-1" href="{% url 'blood-order' %}?t={{ object.pk }}" title="სისხლის შეკვეთა ამ პაციენტზე">🩸 სისხლის შეკვეთა</a>
-            </td>
-            <td>
-                <div class="dropdown">
-                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                      ქმედებები
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li><a class="dropdown-item niv-edit-btn" href="{% url 'niv-cover' %}?t={{ object.pk }}">რედაქტირება</a></li>
-                        <li><a class="dropdown-item niv-to-tpl-btn" href="#" data-href="{% url 'rx-template-from' object.pk %}" data-title="{{ object.title }}">შაბლონად გადატანა</a></li>
-                        <li><a class="dropdown-item text-danger niv-del-btn" href="#" data-href="{% url 'niv-delete' object.pk %}" data-title="{{ object.title }}">წაშლა</a></li>
-                    </ul>
-                  </div>
-            </td>
-          </tr>
-        {% endfor %}
-    </tbody>
-  </table>
-  <div class="row">
-  {% include 'partials/pagination.html' %}
+  <div class="x-list">
+    <div class="row-grid head" role="row">
+      <span>#</span><span>დასახელება / პაციენტი</span><span>დიაგნოზი</span><span>შემოსვლა</span><span class="text-end">ქმედებები</span>
+    </div>
+    {% for object in object_list %}
+    <div class="row-grid" role="row">
+      <span class="num">{% if page_obj %}{{ page_obj.start_index|add:forloop.counter0 }}{% else %}{{ forloop.counter }}{% endif %}</span>
+      <a class="title" href="{% url 'niv-cover' %}?t={{ object.pk }}">{{ object.title }}{% if object.patient_name and object.patient_name != object.title %}<small>{{ object.patient_name }}</small>{% elif object.card_number %}<small>ისტორია {{ object.card_number }}</small>{% endif %}</a>
+      <span class="dx">{{ object.diagnosis|default:"—"|truncatechars:90 }}</span>
+      <span class="date">{{ object.doe|default:"—" }}</span>
+      <span class="acts">
+        <button type="button" class="x-btn sm x-icon copy-btn" data-clipboard-text="{{ object.rows_as_string }}" data-clipboard-action="copy" aria-label="მედიკამენტების კოპირება" title="კოპირება">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>
+        <a class="x-btn sm" href="{% url 'niv-cover' %}?as={{ object.pk }}">ასლით ახალი</a>
+        <a class="x-btn sm" href="{% url 'print-niv-cover' %}?t={{ object.pk }}" target="_blank">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>ბეჭდვა</a>
+        <a class="x-btn sm blood" href="{% url 'blood-order' %}?t={{ object.pk }}" title="სისხლის შეკვეთა ამ პაციენტზე">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>სისხლის შეკვეთა</a>
+        <span class="dropdown">
+          <button type="button" class="x-btn sm x-icon" data-bs-toggle="dropdown" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" aria-label="სხვა ქმედებები">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item niv-edit-btn" href="{% url 'niv-cover' %}?t={{ object.pk }}">რედაქტირება</a></li>
+            <li><a class="dropdown-item niv-to-tpl-btn" href="#" data-href="{% url 'rx-template-from' object.pk %}" data-title="{{ object.title }}">შაბლონად გადატანა</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger niv-del-btn" href="#" data-href="{% url 'niv-delete' object.pk %}" data-title="{{ object.title }}">წაშლა</a></li>
+          </ul>
+        </span>
+      </span>
+    </div>
+    {% endfor %}
   </div>
+  {% include 'partials/pagination.html' %}
 {% else %}
-  <div class="p-2">დანიშნულებები არ მოიძებნა.</div>
+  <div class="x-card text-center text-muted">დანიშნულებები არ მოიძებნა.</div>
 {% endif %}

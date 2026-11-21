@@ -214,7 +214,7 @@ class NivTemplateListView(LoginRequiredMixin, generic.ListView):
         ).strip()
 
     def get_queryset(self):
-        qs = NivForm.objects.only(*_row_columns(), 'diagnosis').order_by('-id')
+        qs = NivForm.objects.only(*_row_columns(), 'diagnosis', 'doe', 'patient_name', 'card_number').order_by('-id')
         q = self.get_search_term()
         if q:
             qs = qs.filter(
@@ -509,13 +509,20 @@ class NosologyAnalysisView(LoginRequiredMixin, generic.TemplateView):
             'q': nosology, 'match_in': match_in,
             'total_prescriptions': NivForm.objects.count(),
         })
+        # list on the left, the chosen nosology on the right (the first one by default)
+        groups, groups_total = analysis.overview(mode, search)
+        max_count = groups[0]['count'] if groups else 1
+        for group in groups:
+            group['width'] = round(100 * group['count'] / max_count)
+        label = get.get('l', '').strip()
+        if not nosology and groups:
+            nosology, label, match_in = groups[0]['key'], groups[0]['label'], 'diagnosis'
+        ctx.update({'groups': groups, 'groups_total': groups_total, 'q': nosology, 'match_in': match_in})
         if nosology:
             total, medicines = analysis.medicines_for(nosology, match_in)
-            label = get.get('l', '').strip() or nosology
+            label = label or nosology
             ctx.update({'matched': total, 'medicines': medicines, 'label': label,
                         'suggested_name': label[:150]})
-        else:
-            ctx['groups'], ctx['groups_total'] = analysis.overview(mode, search)
         return ctx
 
 

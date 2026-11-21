@@ -1,118 +1,93 @@
 {% extends 'base.html' %}
-{% load mdf_tags %}
+
+{% block title %}ნოზოლოგიების ანალიზი{% endblock %}
 
 {% block content %}
-<div class="container mt-3 mb-5">
-{% if q %}
-    {# ---------------- one nosology: which medicines ---------------- #}
-    <a href="{% url 'rx-analysis' %}" class="small">← ყველა ნოზოლოგია</a>
-    <form method="get" class="row g-2 align-items-center my-2">
-        <div class="col-md-6">
-            <input type="search" name="q" value="{{ label }}" class="form-control form-control-lg" placeholder="დაავადება: ანევრიზმა, ლერიში, სტენოზი..." autocomplete="off">
-        </div>
-        <div class="col-auto">
-            <select name="in" class="form-select form-select-lg">
-                <option value="diagnosis"{% if match_in == 'diagnosis' %} selected{% endif %}>დიაგნოზში</option>
-                <option value="both"{% if match_in == 'both' %} selected{% endif %}>დიაგნოზში ან დასახელებაში</option>
-            </select>
-        </div>
-        <div class="col-auto"><button class="btn btn-primary btn-lg">ანალიზი</button></div>
-    </form>
-    <h4 class="mt-3">{{ label }} — {{ matched }} დანიშნულება <span class="text-muted fs-6">(სულ ბაზაში {{ total_prescriptions }})</span></h4>
+<div class="app-main">
+    <div>
+        <div class="page-head"><h1>ნოზოლოგიების ანალიზი</h1></div>
+        <p class="lead-muted">რომელი პრეპარატები ენიშნებათ ამა თუ იმ დაავადებას — ფორმაში ჩაწერილი <b>დიაგნოზის ტექსტის</b> მიხედვით ({{ total_prescriptions }} დანიშნულება). სიტყვის ფორმები ერთიანდება: ანევრიზმა = ანევრიზმის = ანევრიზმით.</p>
+    </div>
 
-    {% if medicines %}
-    <p class="text-muted small mb-2">
-        % — რამდენ დანიშნულებაში (ამ ნოზოლოგიიდან) გვხვდება პრეპარატი. „ჩვეული დანიშნულება“ და „საათები“ — ყველაზე ხშირი ვარიანტი.
-    </p>
-    <form method="post" action="{% url 'rx-template-from-analysis' %}">
-        {% csrf_token %}
-        <input type="hidden" name="q" value="{{ q }}">
-        <input type="hidden" name="in" value="{{ match_in }}">
-        <input type="hidden" name="l" value="{{ label }}">
-        <div class="table-responsive">
-        <table class="table table-sm align-middle analysis-table">
-            <thead class="table-light">
-                <tr>
-                    <th style="width: 32px"><input type="checkbox" class="form-check-input" id="check-all" title="ყველა"></th>
-                    <th>პრეპარატი</th>
-                    <th style="min-width: 180px">სიხშირე</th>
-                    <th>ჩვეული დანიშნულება</th>
-                    <th>საათები</th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for m in medicines %}
-                <tr>
-                    <td><input type="checkbox" class="form-check-input med-check" name="med" value="{{ m.key }}"{% if m.percent >= 50 %} checked{% endif %}></td>
-                    <td class="fw-semibold">{{ m.name }}</td>
-                    <td>
-                        <div class="d-flex align-items-center gap-2">
-                            <div class="progress flex-grow-1" style="height: 10px" role="progressbar" aria-valuenow="{{ m.percent }}" aria-valuemin="0" aria-valuemax="100">
-                                <div class="progress-bar{% if m.percent >= 50 %} bg-success{% elif m.percent < 20 %} bg-secondary{% endif %}" style="width: {{ m.percent }}%"></div>
-                            </div>
-                            <span class="text-nowrap small"><b>{{ m.percent }}%</b> ({{ m.count }})</span>
-                        </div>
-                    </td>
-                    <td class="small">{{ m.note|default:"—" }}{% if m.notes|length > 1 %}<div class="text-muted">ასევე: {{ m.notes|slice:"1:"|join:"; " }}</div>{% endif %}</td>
-                    <td class="small text-nowrap">{{ m.hours_text|default:"—" }}{% if m.hours_text %} <span class="text-muted">({{ m.hours_share }}%)</span>{% endif %}</td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-        </div>
-        <div class="card bg-light border-0">
-            <div class="card-body d-flex flex-wrap align-items-center gap-2">
-                <span class="fw-semibold">შაბლონის შექმნა მონიშნულიდან (<span id="checked-count">0</span>):</span>
-                <input type="text" name="name" value="{{ suggested_name }}" maxlength="150" class="form-control" style="max-width: 320px" required placeholder="შაბლონის სახელი">
-                <label class="form-check-label small"><input type="checkbox" name="overwrite" value="1" class="form-check-input me-1">ჩანაცვლება, თუ უკვე არსებობს</label>
-                <button class="btn btn-success">შაბლონის შექმნა</button>
-                <span class="small text-muted w-100">შაბლონში ჩაიწერება ჩვეული დანიშნულება და საათები; შემდეგ შეგიძლიათ ჩასვათ დანიშნულებაში და შეცვალოთ.</span>
+    <div class="an-layout">
+        <aside class="an-side">
+            <form method="get" class="m-0">
+                <input type="hidden" name="by" value="{{ mode }}">
+                <label class="search-box" style="height: 44px; box-shadow: none" for="an-s">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5A6478" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <span class="visually-hidden">ფილტრი</span>
+                    <input type="search" id="an-s" name="s" value="{{ search }}" placeholder="ფილტრი: ანევრიზმა, ლერიში…" autocomplete="off" style="font-size: 15px">
+                </label>
+            </form>
+            <nav class="seg" aria-label="დაჯგუფება">
+                {% for key, name in modes.items %}
+                <a href="?by={{ key }}{% if search %}&s={{ search|urlencode }}{% endif %}" class="{% if mode == key %}on{% endif %}">{% if key == 'terms' %}დაავადებით{% else %}სრული დიაგნოზით{% endif %}</a>
+                {% endfor %}
+            </nav>
+            <div class="small text-muted px-1">{{ groups|length }}{% if groups_total > groups|length %} / {{ groups_total }}{% endif %} ჩანაწერი</div>
+            <div class="an-scroll">
+                {% for g in groups %}
+                <a class="an-group{% if g.key == q %} on{% endif %}" href="?by={{ mode }}{% if search %}&s={{ search|urlencode }}{% endif %}&q={{ g.key|urlencode }}&in=diagnosis&l={{ g.label|urlencode }}">
+                    <span class="top"><span>{{ g.label }}</span><span>{{ g.count }}</span></span>
+                    <span class="bar"><span style="width: {{ g.width }}%"></span></span>
+                    {% if g.other_labels %}<span class="sub">ასევე: {{ g.other_labels|join:"; " }}</span>{% endif %}
+                </a>
+                {% empty %}
+                <div class="text-muted p-2">ვერაფერი მოიძებნა.</div>
+                {% endfor %}
             </div>
-        </div>
-    </form>
-    {% else %}
-        <div class="alert alert-light border">ამ ნოზოლოგიით დანიშნულება ვერ მოიძებნა.</div>
-    {% endif %}
+            <form method="get" class="d-flex gap-2 m-0">
+                <input type="hidden" name="by" value="{{ mode }}">
+                <input type="hidden" name="in" value="diagnosis">
+                <label class="visually-hidden" for="free-q">თავისუფალი ძიება</label>
+                <input type="search" id="free-q" name="q" class="x-input flex-grow-1" placeholder="თავისუფალი ძიება: სიტყვა ან ფრაზა" style="height: 40px">
+                <button class="x-btn sm">ძიება</button>
+            </form>
+        </aside>
 
-{% else %}
-    {# ---------------- overview: list of nosologies ---------------- #}
-    <h4 class="mb-1">ნოზოლოგიების ანალიზი</h4>
-    <p class="text-muted">
-        დაავადებები აღებულია ფორმაში ჩაწერილი <b>დიაგნოზის ტექსტიდან</b> (ICD კოდი არ გამოიყენება) —
-        {{ total_prescriptions }} დანიშნულება. აირჩიეთ დაავადება და ნახავთ, რომელი პრეპარატები ენიშნებათ და რა სიხშირით.
-        სიტყვის ფორმები ერთიანდება (ანევრიზმა = ანევრიზმის = ანევრიზმით).
-    </p>
-    <ul class="nav nav-tabs mb-3">
-        {% for key, label in modes.items %}
-        <li class="nav-item"><a class="nav-link{% if mode == key %} active{% endif %}" href="?by={{ key }}{% if search %}&s={{ search|urlencode }}{% endif %}">{{ label }}</a></li>
-        {% endfor %}
-    </ul>
-    <form method="get" class="row g-2 mb-3">
-        <input type="hidden" name="by" value="{{ mode }}">
-        <div class="col-md-7"><input type="search" name="s" value="{{ search }}" class="form-control form-control-lg" placeholder="ფილტრი: ანევრიზმა, ლერიში, სტენოზი..." autocomplete="off" autofocus></div>
-        <div class="col-auto"><button class="btn btn-outline-primary btn-lg">ფილტრი</button></div>
-        <div class="col-auto"><a class="btn btn-link btn-lg" href="#" onclick="var v=prompt('დაავადება ან რამდენიმე სიტყვა (მაგ. მუცლის აორტის ანევრიზმა):'); if(v){location.href='?in=diagnosis&q='+encodeURIComponent(v);} return false;">თავისუფალი ძიება…</a></div>
-    </form>
-    {% if groups %}
-    <div class="small text-muted mb-2">{{ groups|length }}{% if groups_total > groups|length %} / {{ groups_total }}{% endif %} ჩანაწერი</div>
-    <table class="table table-hover align-middle">
-        <thead class="table-light"><tr><th>{% if mode == 'terms' %}დაავადება (სიტყვა დიაგნოზიდან){% else %}დიაგნოზი (როგორც ჩაწერილია){% endif %}</th><th class="text-end">დანიშნულება</th></tr></thead>
-        <tbody>
-        {% for g in groups %}
-            <tr>
-                <td>
-                    <a href="?q={{ g.key|urlencode }}&in=diagnosis&l={{ g.label|urlencode }}" class="fw-semibold text-decoration-none">{{ g.label }}</a>
-                    {% if g.variants > 1 %}<div class="small text-muted">{{ g.variants }} ფორმა{% if g.other_labels %}: {{ g.other_labels|join:"; " }}{% endif %}</div>{% endif %}
-                </td>
-                <td class="text-end fw-semibold">{{ g.count }}</td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-        <div class="alert alert-light border">ვერაფერი მოიძებნა.</div>
-    {% endif %}
-{% endif %}
+        <section class="an-main">
+        {% if q %}
+            <div class="x-card">
+                <div class="d-flex flex-wrap align-items-baseline gap-3">
+                    <h2 style="margin: 0; font-size: 22px; font-weight: 700">{{ label }}</h2>
+                    <span class="text-muted">{{ matched }} დანიშნულება{% if match_in != 'diagnosis' %} · დიაგნოზში ან დასახელებაში{% endif %}</span>
+                </div>
+                {% if medicines %}
+                <form method="post" action="{% url 'rx-template-from-analysis' %}" class="d-flex flex-column gap-2 m-0">
+                    {% csrf_token %}
+                    <input type="hidden" name="q" value="{{ q }}">
+                    <input type="hidden" name="in" value="{{ match_in }}">
+                    <input type="hidden" name="l" value="{{ label }}">
+                    <div class="med-row head">
+                        <span><input type="checkbox" id="check-all" aria-label="ყველას მონიშვნა"></span>
+                        <span>პრეპარატი</span><span>სიხშირე</span><span>ჩვეული დანიშნულება</span><span>საათები</span>
+                    </div>
+                    {% for m in medicines %}
+                    <label class="med-row">
+                        <input type="checkbox" class="med-check" name="med" value="{{ m.key }}"{% if m.percent >= 50 %} checked{% endif %}>
+                        <span class="fw-semibold">{{ m.name }}</span>
+                        <span class="freq"><span class="bar"><span class="{% if m.percent >= 50 %}hi{% endif %}" style="width: {{ m.percent }}%"></span></span><b>{{ m.percent }}% <span class="fw-normal text-muted">({{ m.count }})</span></b></span>
+                        <span class="small">{{ m.note|default:"—" }}{% if m.notes|length > 1 %}<span class="d-block text-muted">ასევე: {{ m.notes|slice:"1:"|join:"; " }}</span>{% endif %}</span>
+                        <span class="small">{{ m.hours_text|default:"—" }}{% if m.hours_text %} <span class="text-muted">({{ m.hours_share }}%)</span>{% endif %}</span>
+                    </label>
+                    {% endfor %}
+                    <div class="tpl-make mt-2">
+                        <span class="fw-semibold">შაბლონი მონიშნულიდან (<span id="checked-count">0</span>):</span>
+                        <label class="visually-hidden" for="tpl-name">შაბლონის სახელი</label>
+                        <input type="text" id="tpl-name" name="name" value="{{ suggested_name }}" maxlength="150" class="x-input" required>
+                        <label class="small d-inline-flex align-items-center gap-1 m-0"><input type="checkbox" name="overwrite" value="1">ჩანაცვლება, თუ არსებობს</label>
+                        <button class="x-btn primary">შაბლონის შექმნა</button>
+                    </div>
+                </form>
+                {% else %}
+                    <p class="text-muted m-0">ამ ნოზოლოგიით დანიშნულება ვერ მოიძებნა.</p>
+                {% endif %}
+            </div>
+        {% else %}
+            <div class="x-card text-muted">დიაგნოზები ჯერ არ არის.</div>
+        {% endif %}
+        </section>
+    </div>
 </div>
 {% endblock %}
 

@@ -5,58 +5,65 @@
 {% block body_class %}login-page{% endblock %}
 
 {% block content %}
-<main class="login-wrap">
-    <div class="login-card">
-        <div class="login-head">
-            <img src="{% static 'img/logo.jpg' %}" alt="" class="login-logo">
-            <div>
-                <h1 class="login-title">პაციენტის დანიშნულების ფურცელი</h1>
-                <div class="login-sub">ფორმა NIV-300-9/ა</div>
-            </div>
+<main class="lg-wrap">
+    <section class="lg-brand">
+        <div class="lg-logo"><img src="{% static 'img/logo.jpg' %}" alt="ბოხუას სახელობის კარდიოვასკულარული ცენტრი"></div>
+        <div class="lg-claim">
+            <div class="lg-kicker">ფორმა NIV-300-9/ა</div>
+            <h1>პაციენტის დანიშნულების ფურცელი</h1>
+            <p>ანგიოლოგიური სტაციონარი — დანიშნულებები, შაბლონები და სისხლის შეკვეთა ერთ სივრცეში.</p>
         </div>
+        <div class="lg-foot">ჩაჩავას ქ. 1 · 032 2 51 70 08</div>
+    </section>
 
-        <form method="post" action="" id="login-form" autocomplete="off">
+    <section class="lg-panel">
+        <form method="post" action="" id="login-form" autocomplete="off" class="lg-box">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ next }}">
             <input type="hidden" name="username" id="username" value="{{ form.username.value|default:'' }}">
+            <div>
+                <h2>მოგესალმებით</h2>
+                <p class="lead-muted">აირჩიეთ თქვენი სახელი და შეიყვანეთ პაროლი</p>
+            </div>
 
             {% if profiles %}
             <section id="pick-step"{% if form.username.value %} hidden{% endif %}>
-                <p class="login-hint">აირჩიეთ თქვენი სახელი</p>
                 <div class="people">
                     {% for p in profiles %}
                     <button type="button" class="person" data-username="{{ p.user.username }}" data-name="{{ p.display_name }}">
-                        <span class="person-photo">{% include "partials/avatar.html" with profile=p size=112 %}</span>
+                        <span class="person-photo">{% include "partials/avatar.html" with profile=p size=104 %}</span>
                         <span class="person-name">{{ p.display_name }}</span>
                     </button>
                     {% endfor %}
                 </div>
             </section>
 
-            <section id="password-step"{% if not form.username.value %} hidden{% endif %}>
-                <div class="chosen">
-                    {% for p in profiles %}
-                    <div class="chosen-person" data-username="{{ p.user.username }}"{% if form.username.value != p.user.username %} hidden{% endif %}>
-                        {% include "partials/avatar.html" with profile=p size=128 %}
-                        <div class="chosen-name">{{ p.display_name }}</div>
-                    </div>
-                    {% endfor %}
+            <section id="password-step" class="lg-pass"{% if not form.username.value %} hidden{% endif %}>
+                {% for p in profiles %}
+                <div class="chosen-person" data-username="{{ p.user.username }}"{% if form.username.value != p.user.username %} hidden{% endif %}>
+                    {% include "partials/avatar.html" with profile=p size=96 %}
+                    <div class="chosen-name">{{ p.display_name }}</div>
                 </div>
-                {% if message %}<div class="alert alert-danger py-2 text-center" role="alert">{{ message }}</div>{% endif %}
-                <input type="password" name="password" id="password" class="form-control form-control-lg text-center" placeholder="პაროლი" autocomplete="current-password">
-                <button type="submit" class="btn btn-primary btn-lg w-100 mt-3">შესვლა</button>
-                <button type="button" class="btn btn-link w-100 mt-1" id="back-to-people">← სხვა სახელი</button>
+                {% endfor %}
+                {% if message %}<div class="alert alert-danger py-2 mb-0 text-center" role="alert">{{ message }}</div>{% endif %}
+                <label class="fld" for="password">პაროლი
+                    <input type="password" name="password" id="password" class="x-input" autocomplete="current-password">
+                </label>
+                <button type="submit" class="x-btn primary lg w-100 justify-content-center">შესვლა</button>
+                <button type="button" class="x-btn w-100 justify-content-center" id="back-to-people">← სხვა სახელი</button>
             </section>
             {% else %}
-            {# No staff profiles yet (before "manage.py setup_staff"): plain login #}
             {% if message %}<div class="alert alert-danger py-2" role="alert">{{ message }}</div>{% endif %}
-            <input type="text" class="form-control form-control-lg mb-2" placeholder="მომხმარებელი" autocomplete="username"
-                   oninput="document.getElementById('username').value=this.value" value="{{ form.username.value|default:'' }}">
-            <input type="password" name="password" class="form-control form-control-lg" placeholder="პაროლი" autocomplete="current-password">
-            <button type="submit" class="btn btn-primary btn-lg w-100 mt-3">შესვლა</button>
+            <label class="fld">მომხმარებელი
+                <input type="text" class="x-input" autocomplete="username" oninput="document.getElementById('username').value=this.value" value="{{ form.username.value|default:'' }}">
+            </label>
+            <label class="fld">პაროლი
+                <input type="password" name="password" class="x-input" autocomplete="current-password">
+            </label>
+            <button type="submit" class="x-btn primary lg justify-content-center">შესვლა</button>
             {% endif %}
         </form>
-    </div>
+    </section>
 </main>
 {% endblock %}
 

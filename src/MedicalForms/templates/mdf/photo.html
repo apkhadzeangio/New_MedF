@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="container mt-4" style="max-width: 560px;">
-    <h4 class="mb-3">ჩემი პროფილი</h4>
+<div class="app-main" style="max-width: 640px">
+  <div class="x-card">
+    <h2>ჩემი პროფილი</h2>
     <div class="d-flex align-items-center gap-3 mb-4">
         {% include "partials/avatar.html" with profile=profile size=112 %}
         <div>
@@ -15,7 +16,7 @@
         {% for e in form.non_field_errors %}<div class="alert alert-danger py-2">{{ e }}</div>{% endfor %}
         <div class="mb-3">
             <label class="form-label" for="id_full_name">სახელი და გვარი <span class="small text-muted">(ბლანკებისთვის, მაგ. „შეროზია ინა“)</span></label>
-            <input type="text" name="full_name" id="id_full_name" class="form-control" maxlength="150" value="{{ form.full_name.value|default:'' }}">
+            <input type="text" name="full_name" id="id_full_name" class="x-input" maxlength="150" value="{{ form.full_name.value|default:'' }}">
             <div class="form-text">ავტომატურად ჩაიწერება სისხლის შეკვეთის ბლანკზე „ექიმი“-ს ველში.</div>
         </div>
         <div class="mb-3">
@@ -23,8 +24,9 @@
             {% for e in form.photo.errors %}<div class="alert alert-danger py-2">{{ e }}</div>{% endfor %}
             <input type="file" name="photo" id="id_photo" accept="image/*" class="form-control">
         </div>
-        <button type="submit" class="btn btn-primary">შენახვა</button>
-        <a href="{% url 'niv-cover' %}" class="btn btn-secondary ms-2">გაუქმება</a>
+        <div class="d-flex gap-2"><button type="submit" class="x-btn primary">შენახვა</button>
+        <a href="{% url 'niv-cover' %}" class="x-btn">გაუქმება</a></div>
     </form>
+  </div>
 </div>
 {% endblock %}

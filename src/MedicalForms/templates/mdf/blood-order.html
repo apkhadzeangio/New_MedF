@@ -1,112 +1,82 @@
 {% extends 'base.html' %}
+{% load static %}
+
+{% block title %}სისხლის შეკვეთა{% endblock %}
 
 {% block content %}
-<div class="container mt-3 mb-5" style="max-width: 980px;">
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <h4 class="mb-0 me-auto">🩸 სისხლის შეკვეთა</h4>
+<div class="app-main">
+    <div class="page-head">
+        <h1><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#A61E4D" stroke-width="2" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>სისხლის შეკვეთა</h1>
         {% if niv %}
-            <a class="btn btn-outline-secondary btn-sm" href="{% url 'niv-cover' %}?t={{ niv.pk }}">← დანიშნულება: {{ niv.title }}</a>
-            <a class="btn btn-outline-secondary btn-sm" href="{% url 'blood-order' %}">ცარიელი ფორმა</a>
+            <span class="pill-info">მონაცემები დანიშნულებიდან: {{ niv.title }}</span>
+            <a class="x-btn sm" href="{% url 'niv-cover' %}?t={{ niv.pk }}">← დანიშნულება</a>
+            <a class="x-btn sm" href="{% url 'blood-order' %}">ცარიელი ფორმა</a>
         {% endif %}
     </div>
-    {% if niv %}
-        <div class="alert alert-info py-2 small">პაციენტის მონაცემები გადმოტანილია დანიშნულებიდან. ყველა ველი შეგიძლიათ შეცვალოთ.</div>
-    {% endif %}
 
-    <form method="post" action="{% url 'blood-order-print' %}" target="_blank" id="blood-form" autocomplete="off">
+    <form method="post" action="{% url 'blood-order-print' %}" target="_blank" id="blood-form" autocomplete="off" class="bo-layout m-0">
         {% csrf_token %}
+        <div class="bo-form">
+            <section class="x-card">
+                <h2><span class="num">1</span>პაციენტი</h2>
+                <div class="grid-2">
+                    <label class="fld" for="id_patient_name">პაციენტი (გვარი, სახელი)<input class="x-input" id="id_patient_name" name="patient_name" value="{{ form.patient_name.value|default:'' }}" maxlength="150"></label>
+                    <label class="fld" for="id_person_id">პირადი N<input class="x-input" id="id_person_id" name="person_id" value="{{ form.person_id.value|default:'' }}" maxlength="20"></label>
+                    <label class="fld" for="id_dob">დაბადების თარიღი<input class="x-input" id="id_dob" name="dob" value="{{ form.dob.value|default:'' }}" maxlength="20" placeholder="დდ.თთ.წწწწ"></label>
+                    <label class="fld" for="id_blood_group">ჯგუფი და რეზუს კუთვნილება<input class="x-input" id="id_blood_group" name="blood_group" value="{{ form.blood_group.value|default:'' }}" maxlength="30" list="blood-groups" placeholder="აირჩიეთ ან ჩაწერეთ"></label>
+                    <label class="fld" for="id_card_number">ისტორიის #<input class="x-input" id="id_card_number" name="card_number" value="{{ form.card_number.value|default:'' }}" maxlength="50"></label>
+                    <label class="fld" for="id_phone">პაციენტის ტელ. ნომერი<input class="x-input" id="id_phone" name="phone" value="{{ form.phone.value|default:'' }}" maxlength="30" inputmode="tel"></label>
+                </div>
+                <datalist id="blood-groups">{% for g in blood_groups %}<option value="{{ g }}">{% endfor %}</datalist>
+                <label class="fld" for="id_diagnosis">დიაგნოზი<input class="x-input" id="id_diagnosis" name="diagnosis" value="{{ form.diagnosis.value|default:'' }}" maxlength="512"></label>
+            </section>
 
-        <div class="card mb-3">
-            <div class="card-header">პაციენტი</div>
-            <div class="card-body row g-3">
-                <div class="col-md-6">
-                    <label class="form-label" for="id_patient_name">პაციენტი <span class="small text-muted">(გვარი, სახელი)</span></label>
-                    <input class="form-control" id="id_patient_name" name="patient_name" value="{{ form.patient_name.value|default:'' }}" maxlength="150">
+            <section class="x-card">
+                <h2><span class="num">2</span>გადასხმა</h2>
+                <div class="grid-2">
+                    <label class="fld" for="id_indication">გადასხმის ჩვენება<input class="x-input" id="id_indication" name="indication" value="{{ form.indication.value|default:'' }}" maxlength="200"></label>
+                    <label class="fld" for="id_receiver">მიმღები დაწესებულება<input class="x-input" id="id_receiver" name="receiver" value="{{ form.receiver.value|default:'' }}" maxlength="150"></label>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label" for="id_person_id">პირადი N</label>
-                    <input class="form-control" id="id_person_id" name="person_id" value="{{ form.person_id.value|default:'' }}" maxlength="20">
+                <div class="grid-3">
+                    <label class="fld" for="id_rbc">ერით მასა (დოზა)<input class="x-input text-center fw-semibold" id="id_rbc" name="rbc" value="{{ form.rbc.value|default:'' }}" maxlength="20" inputmode="decimal"></label>
+                    <label class="fld" for="id_cryo">კრიოპლაზმა (დოზა)<input class="x-input text-center fw-semibold" id="id_cryo" name="cryo" value="{{ form.cryo.value|default:'' }}" maxlength="20" inputmode="decimal"></label>
+                    <label class="fld" for="id_platelets">თრომბოც მასა (დოზა)<input class="x-input text-center fw-semibold" id="id_platelets" name="platelets" value="{{ form.platelets.value|default:'' }}" maxlength="20" inputmode="decimal"></label>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label" for="id_dob">დაბადების თარიღი</label>
-                    <input class="form-control" id="id_dob" name="dob" value="{{ form.dob.value|default:'' }}" maxlength="20" placeholder="დდ.თთ.წწწწ">
+            </section>
+
+            <section class="x-card">
+                <h2><span class="num">3</span>გამომგზავნი</h2>
+                <div class="grid-2">
+                    <label class="fld" for="id_sender">გამომგზავნი განყოფილება<input class="x-input" id="id_sender" name="sender" value="{{ form.sender.value|default:'' }}" maxlength="150"></label>
+                    <label class="fld" for="id_doctor">ექიმი<input class="x-input" id="id_doctor" name="doctor" value="{{ form.doctor.value|default:'' }}" maxlength="150"></label>
+                    <label class="fld" for="id_nurse">მედდა<input class="x-input" id="id_nurse" name="nurse" value="{{ form.nurse.value|default:'' }}" maxlength="150"></label>
+                    <div class="grid-2">
+                        <label class="fld" for="id_date">თარიღი<input class="x-input" id="id_date" name="date" value="{{ form.date.value|default:'' }}" maxlength="10" placeholder="დდ.თთ.წწწწ"></label>
+                        <label class="fld" for="id_time"><span>დრო <a href="#" class="ms-1" id="now-btn">ახლა</a></span><input class="x-input" id="id_time" name="time" value="{{ form.time.value|default:'' }}" maxlength="5" placeholder="სს:წწ" inputmode="numeric"></label>
+                    </div>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label" for="id_blood_group">ჯგუფი და რეზუსი</label>
-                    <input class="form-control" id="id_blood_group" name="blood_group" value="{{ form.blood_group.value|default:'' }}" maxlength="30" list="blood-groups" placeholder="აირჩიეთ ან ჩაწერეთ">
-                    <datalist id="blood-groups">{% for g in blood_groups %}<option value="{{ g }}">{% endfor %}</datalist>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label" for="id_card_number">ისტორიის #</label>
-                    <input class="form-control" id="id_card_number" name="card_number" value="{{ form.card_number.value|default:'' }}" maxlength="50">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" for="id_phone">პაციენტის ტელ. ნომერი</label>
-                    <input class="form-control" id="id_phone" name="phone" value="{{ form.phone.value|default:'' }}" maxlength="30" inputmode="tel">
-                </div>
-                <div class="col-12">
-                    <label class="form-label" for="id_diagnosis">დიაგნოზი</label>
-                    <input class="form-control" id="id_diagnosis" name="diagnosis" value="{{ form.diagnosis.value|default:'' }}" maxlength="512">
-                </div>
+            </section>
+        </div>
+
+        <aside class="bo-side">
+            <div class="small fw-semibold text-muted">ბლანკის გადახედვა (A4-ის ზედა ნახევარი)</div>
+            <div class="bo-preview" role="img" aria-label="ბლანკის მინიატურა">
+                <div class="ph"><img src="{% static 'img/logo.jpg' %}" alt=""><span>ჩაჩავას ქ. 1<br>032 2 51 70 08</span></div>
+                <div class="r"><span class="pv" style="flex: 1.35 1 0">პაციენტი: <b data-pv="patient_name"></b></span><span class="pv" style="flex: .65 1 0">პირ N: <b data-pv="person_id"></b></span></div>
+                <div class="r"><span class="pv">დაბ. თარიღი: <b data-pv="dob"></b></span><span class="pv">ჯგუფი: <b data-pv="blood_group"></b></span></div>
+                <div class="r"><span class="pv" style="flex: 1.35 1 0">დიაგნოზი: <b data-pv="diagnosis"></b></span><span class="pv" style="flex: .65 1 0">ისტ. #: <b data-pv="card_number"></b></span></div>
+                <div class="r"><span class="pv">ტელ.: <b data-pv="phone"></b></span><span class="pv">ჩვენება: <b data-pv="indication"></b></span></div>
+                <div class="r"><span class="pv">ერით მასა: <b data-pv="rbc" style="text-align: center"></b></span><span class="pv">კრიო: <b data-pv="cryo" style="text-align: center"></b></span><span class="pv">თრომბ.: <b data-pv="platelets" style="text-align: center"></b></span></div>
+                <div class="r"><span class="pv">მიმღები: <b data-pv="receiver"></b></span></div>
+                <div class="r"><span class="pv">გამომგზავნი: <b data-pv="sender"></b></span></div>
+                <div class="r"><span class="pv">ექიმი: <b data-pv="doctor"></b></span><span class="pv">ხელმოწერა: <b></b></span></div>
+                <div class="r"><span class="pv">მედდა: <b data-pv="nurse"></b></span><span class="pv">ხელმოწერა: <b></b></span></div>
+                <div class="r"><span class="pv">თარიღი/დრო: <b data-pv="datetime"></b></span></div>
             </div>
-        </div>
-
-        <div class="card mb-3">
-            <div class="card-header">გადასხმა</div>
-            <div class="card-body row g-3">
-                <div class="col-md-6">
-                    <label class="form-label" for="id_indication">გადასხმის ჩვენება</label>
-                    <input class="form-control" id="id_indication" name="indication" value="{{ form.indication.value|default:'' }}" maxlength="200">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" for="id_receiver">მიმღები დაწესებულება</label>
-                    <input class="form-control" id="id_receiver" name="receiver" value="{{ form.receiver.value|default:'' }}" maxlength="150">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="id_rbc">ერით მასა <span class="small text-muted">(დოზა)</span></label>
-                    <input class="form-control" id="id_rbc" name="rbc" value="{{ form.rbc.value|default:'' }}" maxlength="20" inputmode="decimal">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="id_cryo">კრიოპლაზმა <span class="small text-muted">(დოზა)</span></label>
-                    <input class="form-control" id="id_cryo" name="cryo" value="{{ form.cryo.value|default:'' }}" maxlength="20" inputmode="decimal">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label" for="id_platelets">თრომბოც მასა <span class="small text-muted">(დოზა)</span></label>
-                    <input class="form-control" id="id_platelets" name="platelets" value="{{ form.platelets.value|default:'' }}" maxlength="20" inputmode="decimal">
-                </div>
-            </div>
-        </div>
-
-        <div class="card mb-3">
-            <div class="card-header">გამომგზავნი</div>
-            <div class="card-body row g-3">
-                <div class="col-md-6">
-                    <label class="form-label" for="id_sender">გამომგზავნი განყოფილება</label>
-                    <input class="form-control" id="id_sender" name="sender" value="{{ form.sender.value|default:'' }}" maxlength="150">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" for="id_doctor">ექიმი</label>
-                    <input class="form-control" id="id_doctor" name="doctor" value="{{ form.doctor.value|default:'' }}" maxlength="150">
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label" for="id_nurse">მედდა</label>
-                    <input class="form-control" id="id_nurse" name="nurse" value="{{ form.nurse.value|default:'' }}" maxlength="150">
-                </div>
-                <div class="col-md-3 col-6">
-                    <label class="form-label" for="id_date">თარიღი</label>
-                    <input class="form-control" id="id_date" name="date" value="{{ form.date.value|default:'' }}" maxlength="10" placeholder="დდ.თთ.წწწწ">
-                </div>
-                <div class="col-md-3 col-6">
-                    <label class="form-label" for="id_time">დრო <a href="#" class="small ms-1" id="now-btn">ახლა</a></label>
-                    <input class="form-control" id="id_time" name="time" value="{{ form.time.value|default:'' }}" maxlength="5" placeholder="სს:წწ" inputmode="numeric">
-                </div>
-            </div>
-        </div>
-
-        <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary btn-lg">🖨 ბეჭდვა</button>
-        </div>
-        <div class="small text-muted mt-2">ბეჭდვისას იხსნება ბლანკი ახალ ფანჯარაში და ავტომატურად ჩნდება ბეჭდვის ფანჯარა (A4, ზედა ნახევარი). ეს ფორმა ბაზაში არ ინახება.</div>
+            <button type="submit" class="x-btn primary lg justify-content-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>ბეჭდვა</button>
+            <p class="small text-muted m-0">ბლანკი იხსნება ახალ ფანჯარაში, ბეჭდვის ფანჯარა თავისით ჩნდება (A4, ზედა ნახევარი). ბაზაში არ ინახება.</p>
+        </aside>
     </form>
 </div>
 {% endblock %}
@@ -117,12 +87,24 @@ $(function () {
     $('#id_date').datepicker({dateFormat: 'dd.mm.yy'});
     $('#id_dob').datepicker({dateFormat: 'dd.mm.yy', changeYear: true, changeMonth: true, yearRange: '-110:+0'});
     function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function refresh() {
+        $('[data-pv]').each(function () {
+            var key = this.getAttribute('data-pv');
+            var text = key === 'datetime'
+                ? [$('#id_date').val(), $('#id_time').val()].filter(Boolean).join(' · ')
+                : ($('#id_' + key).val() || '');
+            this.textContent = text;
+        });
+    }
     $('#now-btn').on('click', function (e) {
         e.preventDefault();
         var d = new Date();
         $('#id_date').val(pad(d.getDate()) + '.' + pad(d.getMonth() + 1) + '.' + d.getFullYear());
         $('#id_time').val(pad(d.getHours()) + ':' + pad(d.getMinutes()));
+        refresh();
     });
+    $('#blood-form').on('input change', 'input', refresh);
+    refresh();
 });
 </script>
 {% endblock %}
