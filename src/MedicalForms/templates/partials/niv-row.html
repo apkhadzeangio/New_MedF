@@ -1,0 +1,20 @@
+{% load mdf_tags %}
+          <tr>
+            <td scope="col" class="n-field input_container">
+              <div class="row">
+                <div class="col">
+                    <input type="text" class="m-input-url" style="border: none;" value="{{ row.m|default:'' }}" id="m{{ row.i }}" maxlength="512" autocomplete="off"/>
+                </div>
+                <div class="w-100"></div>
+                <div class="col">
+                  <input type="text" class="n-input-url" style="border: none;" value="{{ row.n|default:'' }}" id="n{{ row.i }}" maxlength="512" autocomplete="off"/>
+                </div>
+              </div>
+            </td>
+            {% for h in "abcdefghijklm" %}<td scope="col" class="hour" id="r{{ row.i }}-d1-{{ h }}"{% if forloop.last %} style="border-right: 5px solid black !important;"{% endif %}>{{ row.r.d1|get_item:h|default:'' }}</td>
+            {% endfor %}<!-- end block 1 -->
+            {% for h in "abcdefghijkl" %}<td scope="col" class="hour" id="r{{ row.i }}-d2-{{ h }}"{% if forloop.last %} style="border-right: 5px solid black !important;"{% endif %}>{{ row.r.d2|get_item:h|default:'' }}</td>
+            {% endfor %}<!-- end block 2 -->
+            {% for h in "abcdefghijkl" %}<td scope="col" class="hour" id="r{{ row.i }}-d3-{{ h }}">{{ row.r.d3|get_item:h|default:'' }}</td>
+            {% endfor %}<!-- end block 3 -->
+          </tr>

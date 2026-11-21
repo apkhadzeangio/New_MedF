@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% load static %}
+{% load static mdf_tags %}
 
 {% block content %}
 
@@ -50,6 +50,11 @@
                   {% endif %}
               </div>
             </nav>
+            <div class="small text-muted px-2 pb-1 user-select-none d-print-none" id="niv-hint">
+                <kbd>Ctrl</kbd>+<kbd>S</kbd> — შენახვა &nbsp;·&nbsp;
+                <kbd>Shift</kbd>+დაწკაპუნება საათზე — იგივე საათი სამივე დღეში &nbsp;·&nbsp;
+                წამლის ძებნისას <kbd>↑</kbd><kbd>↓</kbd> და <kbd>Enter</kbd> — არჩევა
+            </div>
         </div>
     {% endblock %}
 
@@ -79,22 +84,22 @@
                   <div class="row g-3">
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="doe" class="form-label user-select-none">შემოსვლის თარიღი</label>
-                        <input id="doe" type="text" class="form-control" value="{{ niv.doe|default:'' }}" autocomplete="off">
+                        <input id="doe" maxlength="50" type="text" class="form-control" value="{{ niv.doe|default:'' }}" autocomplete="off">
                       </div>
 
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="card_number" class="form-label user-select-none">ბარათის <span class="small fw-bold">(ისტორია)</span> N</label>
-                        <input id="card_number" type="text" class="form-control" value="{{ niv.card_number|default:'' }}">
+                        <input id="card_number" maxlength="50" type="text" class="form-control" value="{{ niv.card_number|default:'' }}">
                       </div>
 
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="department" class="form-label user-select-none">განყოფილება</label>
-                        <input id="department" type="text" class="form-control" value="{{ niv.department|default:'' }}">
+                        <input id="department" maxlength="50" type="text" class="form-control" value="{{ niv.department|default:'' }}">
                       </div>
 
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="chamber_number" class="form-label user-select-none">პალატის N</label>
-                        <input id="chamber_number" type="text" class="form-control" value="{{ niv.chamber_number|default:'' }}">
+                        <input id="chamber_number" maxlength="50" type="text" class="form-control" value="{{ niv.chamber_number|default:'' }}">
                       </div>
                     </div>
 
@@ -102,7 +107,7 @@
                   <div class="row g-3 mt-2">
                       <div class="col-md-12 col-sm-12 col-lg-12">
                         <label for="diagnosis" class="form-label user-select-none">დიაგნოზი</label>
-                        <input id="diagnosis" class="form-control" value="{{ niv.diagnosis|default:'' }}">
+                        <input id="diagnosis" maxlength="512" class="form-control" value="{{ niv.diagnosis|default:'' }}">
                       </div>
                     </div>
               </div>
@@ -115,17 +120,17 @@
                   <div class="row g-3">
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="patient_name" class="form-label user-select-none">პაციენტი <span class="small fw-bold">(სახელი, გვარი)</span></label>
-                        <input id="patient_name" type="text" class="form-control" value="{{ niv.patient_name|default:'' }}">
+                        <input id="patient_name" maxlength="150" type="text" class="form-control" value="{{ niv.patient_name|default:'' }}">
                       </div>
 
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="dob" class="form-label user-select-none">დაბ. თარიღი</label>
-                        <input id="dob" type="text" class="form-control" value="{{ niv.dob|default:'' }}" autocomplete="off">
+                        <input id="dob" maxlength="50" type="text" class="form-control" value="{{ niv.dob|default:'' }}" autocomplete="off">
                       </div>
 
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="person_id" class="form-label user-select-none">პირადი ნომერი</label>
-                        <input id="person_id" type="text" class="form-control" value="{{ niv.person_id|default:'' }}">
+                        <input id="person_id" maxlength="11" type="text" class="form-control" value="{{ niv.person_id|default:'' }}">
                       </div>
 
                       <div class="col-md-3 col-sm-6 col-lg-3">
@@ -172,22 +177,22 @@
                   <div class="row g-3 mt-2">
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="bmi_score" class="form-label user-select-none">BMI (kg/m<sup>2</sup>)</label>
-                        <input id="bmi_score" class="form-control" value="{{ niv.bmi_score|default:'' }}">
+                        <input id="bmi_score" maxlength="11" class="form-control" value="{{ niv.bmi_score|default:'' }}">
                       </div>
 
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="gcs_score" class="form-label user-select-none">GCS ქულა</label>
-                        <input id="gcs_score" class="form-control" value="{{ niv.gcs_score|default:'' }}">
+                        <input id="gcs_score" maxlength="11" class="form-control" value="{{ niv.gcs_score|default:'' }}">
                       </div>
 
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="mews_score" class="form-label user-select-none">MEWS ქულა</label>
-                        <input id="mews_score" class="form-control" value="{{ niv.mews_score|default:'' }}">
+                        <input id="mews_score" maxlength="11" class="form-control" value="{{ niv.mews_score|default:'' }}">
                       </div>
 
                       <div class="col-md-3 col-sm-6 col-lg-3">
                         <label for="risk_falling" class="form-label user-select-none">დაცემის რისკის ქულა</label>
-                        <input id="risk_falling" class="form-control" value="{{ niv.risk_falling|default:'' }}">
+                        <input id="risk_falling" maxlength="11" class="form-control" value="{{ niv.risk_falling|default:'' }}">
                       </div>
                     </div>
               </div>
@@ -202,13 +207,13 @@
           <tr style="height: 25px">
             <th scope="col" class="n-field" style="font-size: 20px">რიცხვი</th>
             <th scope="col" colspan="13" class="field-date" style="border-right: 5px solid black !important;">
-                <input type="text" class="fdate1" style="text-align: center; font-weight: bold; border: none; padding: 0 !important; width: 100%;height: 54px" value="{{ niv.day1|default:''|safe }}">
+                <input type="text" class="fdate1" maxlength="15" autocomplete="off" style="text-align: center; font-weight: bold; border: none; padding: 0 !important; width: 100%;height: 54px" value="{{ niv.day1|default:'' }}">
             </th>
             <th scope="col" colspan="12" class="field-date" style="border-right: 5px solid black !important;">
-                <input type="text" class="fdate2" style="text-align: center; font-weight: bold; border: none; padding: 0 !important; width: 100%;height: 54px" value="{{ niv.day2|default:''|safe }}">
+                <input type="text" class="fdate2" maxlength="15" autocomplete="off" style="text-align: center; font-weight: bold; border: none; padding: 0 !important; width: 100%;height: 54px" value="{{ niv.day2|default:'' }}">
             </th>
             <th scope="col" colspan="12" class="field-date">
-                <input type="text" class="fdate3" style="text-align: center; font-weight: bold; border: none; padding: 0 !important; width: 100%;height: 54px" value="{{ niv.day3|default:''|safe }}">
+                <input type="text" class="fdate3" maxlength="15" autocomplete="off" style="text-align: center; font-weight: bold; border: none; padding: 0 !important; width: 100%;height: 54px" value="{{ niv.day3|default:'' }}">
             </th>
           </tr>
           <tr style="height: 30px">
@@ -253,840 +258,9 @@
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m1|default:'' }}" id="m1"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n1|default:'' }}" id="n1"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r1-d1-a">{{ niv.r1.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-b">{{ niv.r1.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-c">{{ niv.r1.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-d">{{ niv.r1.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-e">{{ niv.r1.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-f">{{ niv.r1.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-g">{{ niv.r1.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-h">{{ niv.r1.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-i">{{ niv.r1.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-j">{{ niv.r1.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-k">{{ niv.r1.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-l">{{ niv.r1.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d1-m" style="border-right: 5px solid black !important;">{{ niv.r1.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r1-d2-a">{{ niv.r1.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-b">{{ niv.r1.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-c">{{ niv.r1.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-d">{{ niv.r1.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-e">{{ niv.r1.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-f">{{ niv.r1.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-g">{{ niv.r1.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-h">{{ niv.r1.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-i">{{ niv.r1.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-j">{{ niv.r1.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-k">{{ niv.r1.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d2-l" style="border-right: 5px solid black !important;">{{ niv.r1.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r1-d3-a">{{ niv.r1.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-b">{{ niv.r1.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-c">{{ niv.r1.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-d">{{ niv.r1.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-e">{{ niv.r1.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-f">{{ niv.r1.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-g">{{ niv.r1.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-h">{{ niv.r1.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-i">{{ niv.r1.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-j">{{ niv.r1.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-k">{{ niv.r1.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r1-d3-l">{{ niv.r1.d3.l|safe|default:'' }}</td>
-              <!-- end block 3 -->
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m2|default:'' }}" id="m2"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n2|default:'' }}" id="n2"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r2-d1-a">{{ niv.r2.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-b">{{ niv.r2.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-c">{{ niv.r2.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-d">{{ niv.r2.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-e">{{ niv.r2.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-f">{{ niv.r2.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-g">{{ niv.r2.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-h">{{ niv.r2.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-i">{{ niv.r2.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-j">{{ niv.r2.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-k">{{ niv.r2.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-l">{{ niv.r2.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d1-m" style="border-right: 5px solid black !important;">{{ niv.r2.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r2-d2-a">{{ niv.r2.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-b">{{ niv.r2.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-c">{{ niv.r2.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-d">{{ niv.r2.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-e">{{ niv.r2.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-f">{{ niv.r2.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-g">{{ niv.r2.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-h">{{ niv.r2.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-i">{{ niv.r2.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-j">{{ niv.r2.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-k">{{ niv.r2.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d2-l" style="border-right: 5px solid black !important;">{{ niv.r2.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r2-d3-a">{{ niv.r2.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-b">{{ niv.r2.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-c">{{ niv.r2.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-d">{{ niv.r2.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-e">{{ niv.r2.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-f">{{ niv.r2.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-g">{{ niv.r2.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-h">{{ niv.r2.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-i">{{ niv.r2.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-j">{{ niv.r2.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-k">{{ niv.r2.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r2-d3-l">{{ niv.r2.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m3|default:'' }}" id="m3"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n3|default:'' }}" id="n3"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r3-d1-a">{{ niv.r3.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-b">{{ niv.r3.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-c">{{ niv.r3.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-d">{{ niv.r3.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-e">{{ niv.r3.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-f">{{ niv.r3.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-g">{{ niv.r3.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-h">{{ niv.r3.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-i">{{ niv.r3.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-j">{{ niv.r3.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-k">{{ niv.r3.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-l">{{ niv.r3.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d1-m" style="border-right: 5px solid black !important;">{{ niv.r3.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r3-d2-a">{{ niv.r3.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-b">{{ niv.r3.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-c">{{ niv.r3.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-d">{{ niv.r3.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-e">{{ niv.r3.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-f">{{ niv.r3.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-g">{{ niv.r3.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-h">{{ niv.r3.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-i">{{ niv.r3.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-j">{{ niv.r3.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-k">{{ niv.r3.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d2-l" style="border-right: 5px solid black !important;">{{ niv.r3.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r3-d3-a">{{ niv.r3.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-b">{{ niv.r3.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-c">{{ niv.r3.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-d">{{ niv.r3.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-e">{{ niv.r3.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-f">{{ niv.r3.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-g">{{ niv.r3.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-h">{{ niv.r3.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-i">{{ niv.r3.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-j">{{ niv.r3.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-k">{{ niv.r3.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r3-d3-l">{{ niv.r3.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m4|default:'' }}" id="m4"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n4|default:'' }}" id="n4"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r4-d1-a">{{ niv.r4.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-b">{{ niv.r4.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-c">{{ niv.r4.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-d">{{ niv.r4.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-e">{{ niv.r4.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-f">{{ niv.r4.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-g">{{ niv.r4.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-h">{{ niv.r4.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-i">{{ niv.r4.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-j">{{ niv.r4.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-k">{{ niv.r4.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-l">{{ niv.r4.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d1-m" style="border-right: 5px solid black !important;">{{ niv.r4.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r4-d2-a">{{ niv.r4.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-b">{{ niv.r4.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-c">{{ niv.r4.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-d">{{ niv.r4.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-e">{{ niv.r4.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-f">{{ niv.r4.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-g">{{ niv.r4.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-h">{{ niv.r4.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-i">{{ niv.r4.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-j">{{ niv.r4.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-k">{{ niv.r4.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d2-l" style="border-right: 5px solid black !important;">{{ niv.r4.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r4-d3-a">{{ niv.r4.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-b">{{ niv.r4.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-c">{{ niv.r4.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-d">{{ niv.r4.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-e">{{ niv.r4.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-f">{{ niv.r4.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-g">{{ niv.r4.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-h">{{ niv.r4.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-i">{{ niv.r4.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-j">{{ niv.r4.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-k">{{ niv.r4.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r4-d3-l">{{ niv.r4.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m5|default:'' }}" id="m5"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n5|default:'' }}" id="n5"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r5-d1-a">{{ niv.r5.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-b">{{ niv.r5.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-c">{{ niv.r5.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-d">{{ niv.r5.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-e">{{ niv.r5.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-f">{{ niv.r5.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-g">{{ niv.r5.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-h">{{ niv.r5.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-i">{{ niv.r5.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-j">{{ niv.r5.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-k">{{ niv.r5.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-l">{{ niv.r5.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d1-m" style="border-right: 5px solid black !important;">{{ niv.r5.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r5-d2-a">{{ niv.r5.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-b">{{ niv.r5.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-c">{{ niv.r5.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-d">{{ niv.r5.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-e">{{ niv.r5.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-f">{{ niv.r5.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-g">{{ niv.r5.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-h">{{ niv.r5.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-i">{{ niv.r5.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-j">{{ niv.r5.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-k">{{ niv.r5.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d2-l" style="border-right: 5px solid black !important;">{{ niv.r5.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r5-d3-a">{{ niv.r5.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-b">{{ niv.r5.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-c">{{ niv.r5.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-d">{{ niv.r5.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-e">{{ niv.r5.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-f">{{ niv.r5.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-g">{{ niv.r5.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-h">{{ niv.r5.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-i">{{ niv.r5.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-j">{{ niv.r5.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-k">{{ niv.r5.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r5-d3-l">{{ niv.r5.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m6|default:'' }}" id="m6"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n6|default:'' }}" id="n6"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r6-d1-a">{{ niv.r6.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-b">{{ niv.r6.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-c">{{ niv.r6.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-d">{{ niv.r6.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-e">{{ niv.r6.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-f">{{ niv.r6.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-g">{{ niv.r6.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-h">{{ niv.r6.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-i">{{ niv.r6.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-j">{{ niv.r6.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-k">{{ niv.r6.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-l">{{ niv.r6.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d1-m" style="border-right: 5px solid black !important;">{{ niv.r6.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r6-d2-a">{{ niv.r6.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-b">{{ niv.r6.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-c">{{ niv.r6.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-d">{{ niv.r6.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-e">{{ niv.r6.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-f">{{ niv.r6.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-g">{{ niv.r6.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-h">{{ niv.r6.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-i">{{ niv.r6.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-j">{{ niv.r6.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-k">{{ niv.r6.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d2-l" style="border-right: 5px solid black !important;">{{ niv.r6.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r6-d3-a">{{ niv.r6.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-b">{{ niv.r6.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-c">{{ niv.r6.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-d">{{ niv.r6.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-e">{{ niv.r6.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-f">{{ niv.r6.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-g">{{ niv.r6.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-h">{{ niv.r6.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-i">{{ niv.r6.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-j">{{ niv.r6.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-k">{{ niv.r6.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r6-d3-l">{{ niv.r6.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m7|default:'' }}" id="m7"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n7|default:'' }}" id="n7"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r7-d1-a">{{ niv.r7.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-b">{{ niv.r7.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-c">{{ niv.r7.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-d">{{ niv.r7.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-e">{{ niv.r7.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-f">{{ niv.r7.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-g">{{ niv.r7.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-h">{{ niv.r7.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-i">{{ niv.r7.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-j">{{ niv.r7.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-k">{{ niv.r7.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-l">{{ niv.r7.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d1-m" style="border-right: 5px solid black !important;">{{ niv.r7.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r7-d2-a">{{ niv.r7.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-b">{{ niv.r7.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-c">{{ niv.r7.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-d">{{ niv.r7.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-e">{{ niv.r7.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-f">{{ niv.r7.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-g">{{ niv.r7.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-h">{{ niv.r7.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-i">{{ niv.r7.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-j">{{ niv.r7.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-k">{{ niv.r7.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d2-l" style="border-right: 5px solid black !important;">{{ niv.r7.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r7-d3-a">{{ niv.r7.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-b">{{ niv.r7.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-c">{{ niv.r7.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-d">{{ niv.r7.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-e">{{ niv.r7.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-f">{{ niv.r7.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-g">{{ niv.r7.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-h">{{ niv.r7.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-i">{{ niv.r7.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-j">{{ niv.r7.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-k">{{ niv.r7.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r7-d3-l">{{ niv.r7.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m8|default:'' }}" id="m8"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n8|default:'' }}" id="n8"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r8-d1-a">{{ niv.r8.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-b">{{ niv.r8.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-c">{{ niv.r8.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-d">{{ niv.r8.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-e">{{ niv.r8.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-f">{{ niv.r8.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-g">{{ niv.r8.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-h">{{ niv.r8.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-i">{{ niv.r8.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-j">{{ niv.r8.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-k">{{ niv.r8.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-l">{{ niv.r8.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d1-m" style="border-right: 5px solid black !important;">{{ niv.r8.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r8-d2-a">{{ niv.r8.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-b">{{ niv.r8.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-c">{{ niv.r8.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-d">{{ niv.r8.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-e">{{ niv.r8.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-f">{{ niv.r8.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-g">{{ niv.r8.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-h">{{ niv.r8.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-i">{{ niv.r8.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-j">{{ niv.r8.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-k">{{ niv.r8.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d2-l" style="border-right: 5px solid black !important;">{{ niv.r8.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r8-d3-a">{{ niv.r8.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-b">{{ niv.r8.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-c">{{ niv.r8.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-d">{{ niv.r8.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-e">{{ niv.r8.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-f">{{ niv.r8.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-g">{{ niv.r8.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-h">{{ niv.r8.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-i">{{ niv.r8.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-j">{{ niv.r8.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-k">{{ niv.r8.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r8-d3-l">{{ niv.r8.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m9|default:'' }}" id="m9"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n9|default:'' }}" id="n9"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r9-d1-a">{{ niv.r9.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-b">{{ niv.r9.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-c">{{ niv.r9.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-d">{{ niv.r9.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-e">{{ niv.r9.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-f">{{ niv.r9.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-g">{{ niv.r9.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-h">{{ niv.r9.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-i">{{ niv.r9.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-j">{{ niv.r9.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-k">{{ niv.r9.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-l">{{ niv.r9.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d1-m" style="border-right: 5px solid black !important;">{{ niv.r9.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r9-d2-a">{{ niv.r9.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-b">{{ niv.r9.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-c">{{ niv.r9.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-d">{{ niv.r9.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-e">{{ niv.r9.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-f">{{ niv.r9.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-g">{{ niv.r9.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-h">{{ niv.r9.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-i">{{ niv.r9.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-j">{{ niv.r9.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-k">{{ niv.r9.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d2-l" style="border-right: 5px solid black !important;">{{ niv.r9.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r9-d3-a">{{ niv.r9.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-b">{{ niv.r9.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-c">{{ niv.r9.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-d">{{ niv.r9.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-e">{{ niv.r9.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-f">{{ niv.r9.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-g">{{ niv.r9.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-h">{{ niv.r9.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-i">{{ niv.r9.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-j">{{ niv.r9.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-k">{{ niv.r9.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r9-d3-l">{{ niv.r9.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m10|default:'' }}" id="m10"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n10|default:'' }}" id="n10"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r10-d1-a">{{ niv.r10.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-b">{{ niv.r10.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-c">{{ niv.r10.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-d">{{ niv.r10.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-e">{{ niv.r10.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-f">{{ niv.r10.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-g">{{ niv.r10.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-h">{{ niv.r10.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-i">{{ niv.r10.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-j">{{ niv.r10.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-k">{{ niv.r10.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-l">{{ niv.r10.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d1-m" style="border-right: 5px solid black !important;">{{ niv.r10.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r10-d2-a">{{ niv.r10.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-b">{{ niv.r10.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-c">{{ niv.r10.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-d">{{ niv.r10.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-e">{{ niv.r10.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-f">{{ niv.r10.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-g">{{ niv.r10.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-h">{{ niv.r10.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-i">{{ niv.r10.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-j">{{ niv.r10.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-k">{{ niv.r10.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d2-l" style="border-right: 5px solid black !important;">{{ niv.r10.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r10-d3-a">{{ niv.r10.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-b">{{ niv.r10.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-c">{{ niv.r10.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-d">{{ niv.r10.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-e">{{ niv.r10.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-f">{{ niv.r10.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-g">{{ niv.r10.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-h">{{ niv.r10.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-i">{{ niv.r10.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-j">{{ niv.r10.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-k">{{ niv.r10.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r10-d3-l">{{ niv.r10.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m11|default:'' }}" id="m11"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n11|default:'' }}" id="n11"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r11-d1-a">{{ niv.r11.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-b">{{ niv.r11.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-c">{{ niv.r11.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-d">{{ niv.r11.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-e">{{ niv.r11.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-f">{{ niv.r11.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-g">{{ niv.r11.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-h">{{ niv.r11.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-i">{{ niv.r11.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-j">{{ niv.r11.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-k">{{ niv.r11.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-l">{{ niv.r11.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d1-m" style="border-right: 5px solid black !important;">{{ niv.r11.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r11-d2-a">{{ niv.r11.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-b">{{ niv.r11.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-c">{{ niv.r11.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-d">{{ niv.r11.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-e">{{ niv.r11.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-f">{{ niv.r11.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-g">{{ niv.r11.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-h">{{ niv.r11.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-i">{{ niv.r11.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-j">{{ niv.r11.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-k">{{ niv.r11.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d2-l" style="border-right: 5px solid black !important;">{{ niv.r11.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r11-d3-a">{{ niv.r11.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-b">{{ niv.r11.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-c">{{ niv.r11.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-d">{{ niv.r11.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-e">{{ niv.r11.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-f">{{ niv.r11.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-g">{{ niv.r11.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-h">{{ niv.r11.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-i">{{ niv.r11.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-j">{{ niv.r11.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-k">{{ niv.r11.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r11-d3-l">{{ niv.r11.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m12|default:'' }}" id="m12"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n12|default:'' }}" id="n12"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r12-d1-a">{{ niv.r12.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-b">{{ niv.r12.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-c">{{ niv.r12.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-d">{{ niv.r12.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-e">{{ niv.r12.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-f">{{ niv.r12.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-g">{{ niv.r12.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-h">{{ niv.r12.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-i">{{ niv.r12.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-j">{{ niv.r12.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-k">{{ niv.r12.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-l">{{ niv.r12.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d1-m" style="border-right: 5px solid black !important;">{{ niv.r12.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r12-d2-a">{{ niv.r12.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-b">{{ niv.r12.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-c">{{ niv.r12.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-d">{{ niv.r12.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-e">{{ niv.r12.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-f">{{ niv.r12.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-g">{{ niv.r12.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-h">{{ niv.r12.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-i">{{ niv.r12.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-j">{{ niv.r12.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-k">{{ niv.r12.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d2-l" style="border-right: 5px solid black !important;">{{ niv.r12.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r12-d3-a">{{ niv.r12.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-b">{{ niv.r12.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-c">{{ niv.r12.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-d">{{ niv.r12.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-e">{{ niv.r12.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-f">{{ niv.r12.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-g">{{ niv.r12.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-h">{{ niv.r12.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-i">{{ niv.r12.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-j">{{ niv.r12.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-k">{{ niv.r12.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r12-d3-l">{{ niv.r12.d3.l|safe|default:'' }}</td>
-          </tr>
+        {% for row in niv|niv_rows:"1-12" %}{% include "partials/niv-row.html" %}{% endfor %}
         {% block niv_back %}
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m13|default:'' }}" id="m13"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n13|default:'' }}" id="n13"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r13-d1-a">{{ niv.r13.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-b">{{ niv.r13.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-c">{{ niv.r13.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-d">{{ niv.r13.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-e">{{ niv.r13.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-f">{{ niv.r13.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-g">{{ niv.r13.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-h">{{ niv.r13.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-i">{{ niv.r13.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-j">{{ niv.r13.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-k">{{ niv.r13.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-l">{{ niv.r13.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d1-m" style="border-right: 5px solid black !important;">{{ niv.r13.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r13-d2-a">{{ niv.r13.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-b">{{ niv.r13.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-c">{{ niv.r13.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-d">{{ niv.r13.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-e">{{ niv.r13.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-f">{{ niv.r13.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-g">{{ niv.r13.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-h">{{ niv.r13.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-i">{{ niv.r13.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-j">{{ niv.r13.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-k">{{ niv.r13.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d2-l" style="border-right: 5px solid black !important;">{{ niv.r13.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r13-d3-a">{{ niv.r13.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-b">{{ niv.r13.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-c">{{ niv.r13.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-d">{{ niv.r13.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-e">{{ niv.r13.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-f">{{ niv.r13.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-g">{{ niv.r13.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-h">{{ niv.r13.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-i">{{ niv.r13.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-j">{{ niv.r13.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-k">{{ niv.r13.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r13-d3-l">{{ niv.r13.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m14|default:'' }}" id="m14"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n14|default:'' }}" id="n14"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r14-d1-a">{{ niv.r14.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-b">{{ niv.r14.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-c">{{ niv.r14.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-d">{{ niv.r14.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-e">{{ niv.r14.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-f">{{ niv.r14.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-g">{{ niv.r14.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-h">{{ niv.r14.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-i">{{ niv.r14.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-j">{{ niv.r14.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-k">{{ niv.r14.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-l">{{ niv.r14.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d1-m" style="border-right: 5px solid black !important;">{{ niv.r14.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r14-d2-a">{{ niv.r14.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-b">{{ niv.r14.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-c">{{ niv.r14.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-d">{{ niv.r14.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-e">{{ niv.r14.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-f">{{ niv.r14.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-g">{{ niv.r14.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-h">{{ niv.r14.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-i">{{ niv.r14.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-j">{{ niv.r14.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-k">{{ niv.r14.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d2-l" style="border-right: 5px solid black !important;">{{ niv.r14.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r14-d3-a">{{ niv.r14.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-b">{{ niv.r14.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-c">{{ niv.r14.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-d">{{ niv.r14.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-e">{{ niv.r14.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-f">{{ niv.r14.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-g">{{ niv.r14.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-h">{{ niv.r14.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-i">{{ niv.r14.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-j">{{ niv.r14.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-k">{{ niv.r14.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r14-d3-l">{{ niv.r14.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m15|default:'' }}" id="m15"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n15|default:'' }}" id="n15"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r15-d1-a">{{ niv.r15.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-b">{{ niv.r15.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-c">{{ niv.r15.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-d">{{ niv.r15.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-e">{{ niv.r15.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-f">{{ niv.r15.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-g">{{ niv.r15.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-h">{{ niv.r15.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-i">{{ niv.r15.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-j">{{ niv.r15.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-k">{{ niv.r15.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-l">{{ niv.r15.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d1-m" style="border-right: 5px solid black !important;">{{ niv.r15.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r15-d2-a">{{ niv.r15.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-b">{{ niv.r15.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-c">{{ niv.r15.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-d">{{ niv.r15.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-e">{{ niv.r15.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-f">{{ niv.r15.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-g">{{ niv.r15.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-h">{{ niv.r15.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-i">{{ niv.r15.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-j">{{ niv.r15.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-k">{{ niv.r15.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d2-l" style="border-right: 5px solid black !important;">{{ niv.r15.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r15-d3-a">{{ niv.r15.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-b">{{ niv.r15.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-c">{{ niv.r15.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-d">{{ niv.r15.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-e">{{ niv.r15.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-f">{{ niv.r15.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-g">{{ niv.r15.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-h">{{ niv.r15.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-i">{{ niv.r15.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-j">{{ niv.r15.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-k">{{ niv.r15.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r15-d3-l">{{ niv.r15.d3.l|safe|default:'' }}</td>
-          </tr>
-          <tr>
-            <td scope="col" class="n-field input_container">
-              <div class="row">
-                <div class="col">
-                    <input type="text" class="m-input-url" style="border: none;" value="{{ niv.m16|default:'' }}" id="m16"/>
-                </div>
-                <div class="w-100"></div>
-                <div class="col">
-                  <input type="text" class="n-input-url" style="border: none;" value="{{ niv.n16|default:'' }}" id="n16"/>
-                </div>
-              </div>
-            </td>
-            <td scope="col" class="hour" id="r16-d1-a">{{ niv.r16.d1.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-b">{{ niv.r16.d1.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-c">{{ niv.r16.d1.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-d">{{ niv.r16.d1.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-e">{{ niv.r16.d1.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-f">{{ niv.r16.d1.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-g">{{ niv.r16.d1.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-h">{{ niv.r16.d1.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-i">{{ niv.r16.d1.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-j">{{ niv.r16.d1.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-k">{{ niv.r16.d1.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-l">{{ niv.r16.d1.l|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d1-m" style="border-right: 5px solid black !important;">{{ niv.r16.d1.m|safe|default:'' }}</td>
-            <!-- end block 1 -->
-            <td scope="col" class="hour" id="r16-d2-a">{{ niv.r16.d2.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-b">{{ niv.r16.d2.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-c">{{ niv.r16.d2.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-d">{{ niv.r16.d2.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-e">{{ niv.r16.d2.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-f">{{ niv.r16.d2.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-g">{{ niv.r16.d2.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-h">{{ niv.r16.d2.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-i">{{ niv.r16.d2.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-j">{{ niv.r16.d2.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-k">{{ niv.r16.d2.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d2-l" style="border-right: 5px solid black !important;">{{ niv.r16.d2.l|safe|default:'' }}</td>
-              <!-- end block 2 -->
-            <td scope="col" class="hour" id="r16-d3-a">{{ niv.r16.d3.a|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-b">{{ niv.r16.d3.b|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-c">{{ niv.r16.d3.c|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-d">{{ niv.r16.d3.d|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-e">{{ niv.r16.d3.e|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-f">{{ niv.r16.d3.f|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-g">{{ niv.r16.d3.g|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-h">{{ niv.r16.d3.h|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-i">{{ niv.r16.d3.i|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-j">{{ niv.r16.d3.j|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-k">{{ niv.r16.d3.k|safe|default:'' }}</td>
-            <td scope="col" class="hour" id="r16-d3-l">{{ niv.r16.d3.l|safe|default:'' }}</td>
-          </tr>
+        {% for row in niv|niv_rows:"13-16" %}{% include "partials/niv-row.html" %}{% endfor %}
         {% endblock %}
         </tbody>
       </table>
@@ -1098,158 +272,42 @@
         {% if niv and can_update %}
             <input type="hidden" value="{{ niv.pk }}" name="t">
         {% endif %}
-        <input type="hidden" id="form-title" name="title" value="{{ niv.title|default:''|safe }}">
+        <input type="hidden" id="form-title" name="title" value="{{ niv.title|default:'' }}">
         <input type="hidden" id="form-as-title" name="as-title">
-        <input type="hidden" id="form-doe" name="doe" value="{{ niv.doe|default:''|safe }}">
-        <input type="hidden" id="form-dob" name="dob" value="{{ niv.dob|default:''|safe }}">
-        <input type="hidden" id="form-person_id" name="person_id" value="{{ niv.person_id|default:''|safe }}">
-        <input type="hidden" id="form-patient_name" name="patient_name" value="{{ niv.patient_name|default:''|safe }}">
-        <input type="hidden" id="form-card_number" name="card_number" value="{{ niv.card_number|default:''|safe }}">
-        <input type="hidden" id="form-department" name="department" value="{{ niv.department|default:''|safe }}">
-        <input type="hidden" id="form-chamber_number" name="chamber_number" value="{{ niv.chamber_number|default:''|safe }}">
-        <input type="hidden" id="form-doctor" name="doctor" value="{{ niv.doctor|default:''|safe }}">
-        <input type="hidden" id="form-nurse" name="nurse" value="{{ niv.nurse|default:''|safe }}">
-        <input type="hidden" id="form-diagnosis" name="diagnosis" value="{{ niv.diagnosis|default:''|safe }}">
-        <input type="hidden" id="form-mews_score" name="mews_score" value="{{ niv.mews_score|default:''|safe }}">
-        <input type="hidden" id="form-bmi_score" name="bmi_score" value="{{ niv.bmi_score|default:''|safe }}">
-        <input type="hidden" id="form-gcs_score" name="gcs_score" value="{{ niv.gcs_score|default:''|safe }}">
-        <input type="hidden" id="form-risk_falling" name="risk_falling" value="{{ niv.risk_falling|default:''|safe }}">
-        <input type="hidden" id="form-radial_pulse" name="radial_pulse" value="{{ niv.radial_pulse|default:''|safe }}">
+        <input type="hidden" id="form-doe" name="doe" value="{{ niv.doe|default:'' }}">
+        <input type="hidden" id="form-dob" name="dob" value="{{ niv.dob|default:'' }}">
+        <input type="hidden" id="form-person_id" name="person_id" value="{{ niv.person_id|default:'' }}">
+        <input type="hidden" id="form-patient_name" name="patient_name" value="{{ niv.patient_name|default:'' }}">
+        <input type="hidden" id="form-card_number" name="card_number" value="{{ niv.card_number|default:'' }}">
+        <input type="hidden" id="form-department" name="department" value="{{ niv.department|default:'' }}">
+        <input type="hidden" id="form-chamber_number" name="chamber_number" value="{{ niv.chamber_number|default:'' }}">
+        <input type="hidden" id="form-doctor" name="doctor" value="{{ niv.doctor|default:'' }}">
+        <input type="hidden" id="form-nurse" name="nurse" value="{{ niv.nurse|default:'' }}">
+        <input type="hidden" id="form-diagnosis" name="diagnosis" value="{{ niv.diagnosis|default:'' }}">
+        <input type="hidden" id="form-mews_score" name="mews_score" value="{{ niv.mews_score|default:'' }}">
+        <input type="hidden" id="form-bmi_score" name="bmi_score" value="{{ niv.bmi_score|default:'' }}">
+        <input type="hidden" id="form-gcs_score" name="gcs_score" value="{{ niv.gcs_score|default:'' }}">
+        <input type="hidden" id="form-risk_falling" name="risk_falling" value="{{ niv.risk_falling|default:'' }}">
+        <input type="hidden" id="form-radial_pulse" name="radial_pulse" value="{{ niv.radial_pulse|default:'' }}">
         <input type="hidden" id="form-neuro" name="neuro" value="{% if niv.neuro %}on{% endif %}">
         <input type="hidden" id="form-diabetes" name="diabetes" value="{% if niv.diabetes %}on{% endif %}">
         <input type="hidden" id="form-allergy" name="allergy" value="{% if niv.allergy %}on{% endif %}">
 
-        <input type="hidden" id="form-day1" name="day1" value="{{ niv.day1|default:''|safe }}">
-        <input type="hidden" id="form-day2" name="day2" value="{{ niv.day2|default:''|safe }}">
-        <input type="hidden" id="form-day3" name="day3" value="{{ niv.day3|default:''|safe }}">
+        <input type="hidden" id="form-day1" name="day1" value="{{ niv.day1|default:'' }}">
+        <input type="hidden" id="form-day2" name="day2" value="{{ niv.day2|default:'' }}">
+        <input type="hidden" id="form-day3" name="day3" value="{{ niv.day3|default:'' }}">
 
-        <input type="hidden" id="form-m1" name="m1" value="{{ niv.m1|default:''|safe }}">
-        <input type="hidden" id="form-n1" name="n1" value="{{ niv.n1|default:''|safe }}">
-        <input type="hidden" id="form-m2" name="m2" value="{{ niv.m2|default:''|safe }}">
-        <input type="hidden" id="form-n2" name="n2" value="{{ niv.n2|default:''|safe }}">
-        <input type="hidden" id="form-m3" name="m3" value="{{ niv.m3|default:''|safe }}">
-        <input type="hidden" id="form-n3" name="n3" value="{{ niv.n3|default:''|safe }}">
-        <input type="hidden" id="form-m4" name="m4" value="{{ niv.m4|default:''|safe }}">
-        <input type="hidden" id="form-n4" name="n4" value="{{ niv.n4|default:''|safe }}">
-        <input type="hidden" id="form-m5" name="m5" value="{{ niv.m5|default:''|safe }}">
-        <input type="hidden" id="form-n5" name="n5" value="{{ niv.n5|default:''|safe }}">
-        <input type="hidden" id="form-m6" name="m6" value="{{ niv.m6|default:''|safe }}">
-        <input type="hidden" id="form-n6" name="n6" value="{{ niv.n6|default:''|safe }}">
-        <input type="hidden" id="form-m7" name="m7" value="{{ niv.m7|default:''|safe }}">
-        <input type="hidden" id="form-n7" name="n7" value="{{ niv.n7|default:''|safe }}">
-        <input type="hidden" id="form-m8" name="m8" value="{{ niv.m8|default:''|safe }}">
-        <input type="hidden" id="form-n8" name="n8" value="{{ niv.n8|default:''|safe }}">
-        <input type="hidden" id="form-m9" name="m9" value="{{ niv.m9|default:''|safe }}">
-        <input type="hidden" id="form-n9" name="n9" value="{{ niv.n9|default:''|safe }}">
-        <input type="hidden" id="form-m10" name="m10" value="{{ niv.m10|default:''|safe }}">
-        <input type="hidden" id="form-n10" name="n10" value="{{ niv.n10|default:''|safe }}">
-        <input type="hidden" id="form-m11" name="m11" value="{{ niv.m11|default:''|safe }}">
-        <input type="hidden" id="form-n11" name="n11" value="{{ niv.n11|default:''|safe }}">
-        <input type="hidden" id="form-m12" name="m12" value="{{ niv.m12|default:''|safe }}">
-        <input type="hidden" id="form-n12" name="n12" value="{{ niv.n12|default:''|safe }}">
-        <input type="hidden" id="form-m13" name="m13" value="{{ niv.m13|default:''|safe }}">
-        <input type="hidden" id="form-n13" name="n13" value="{{ niv.n13|default:''|safe }}">
-        <input type="hidden" id="form-m14" name="m14" value="{{ niv.m14|default:''|safe }}">
-        <input type="hidden" id="form-n14" name="n14" value="{{ niv.n14|default:''|safe }}">
-        <input type="hidden" id="form-m15" name="m15" value="{{ niv.m15|default:''|safe }}">
-        <input type="hidden" id="form-n15" name="n15" value="{{ niv.n15|default:''|safe }}">
-        <input type="hidden" id="form-m16" name="m16" value="{{ niv.m16|default:''|safe }}">
-        <input type="hidden" id="form-n16" name="n16" value="{{ niv.n16|default:''|safe }}">
-
-        {% for day, value in niv.r1.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r1-{{ day }}-{{ hour }}" name="r1-{{ day }}" value="{{ hour }}">
-            {% endfor %}
+        {% for row in niv|niv_rows %}
+        <input type="hidden" id="form-m{{ row.i }}" name="m{{ row.i }}" value="{{ row.m|default:'' }}">
+        <input type="hidden" id="form-n{{ row.i }}" name="n{{ row.i }}" value="{{ row.n|default:'' }}">
         {% endfor %}
 
-        {% for day, value in niv.r2.items %}
+        {% for row in niv|niv_rows %}
+        {% for day, value in row.r.items %}
             {% for hour in value %}
-                <input type="hidden" id="form-r2-{{ day }}-{{ hour }}" name="r2-{{ day }}" value="{{ hour }}">
+                <input type="hidden" id="form-r{{ row.i }}-{{ day }}-{{ hour }}" name="r{{ row.i }}-{{ day }}" value="{{ hour }}">
             {% endfor %}
         {% endfor %}
-
-        {% for day, value in niv.r3.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r3-{{ day }}-{{ hour }}" name="r3-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r4.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r4-{{ day }}-{{ hour }}" name="r4-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r5.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r5-{{ day }}-{{ hour }}" name="r5-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r6.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r6-{{ day }}-{{ hour }}" name="r6-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r7.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r7-{{ day }}-{{ hour }}" name="r7-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r8.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r8-{{ day }}-{{ hour }}" name="r8-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r9.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r9-{{ day }}-{{ hour }}" name="r9-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r10.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r10-{{ day }}-{{ hour }}" name="r10-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r11.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r11-{{ day }}-{{ hour }}" name="r11-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r12.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r12-{{ day }}-{{ hour }}" name="r12-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r13.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r13-{{ day }}-{{ hour }}" name="r13-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r14.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r14-{{ day }}-{{ hour }}" name="r14-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r15.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r15-{{ day }}-{{ hour }}" name="r15-{{ day }}" value="{{ hour }}">
-            {% endfor %}
-        {% endfor %}
-
-        {% for day, value in niv.r16.items %}
-            {% for hour in value %}
-                <input type="hidden" id="form-r16-{{ day }}-{{ hour }}" name="r16-{{ day }}" value="{{ hour }}">
-            {% endfor %}
         {% endfor %}
 
     </form>
@@ -1267,7 +325,7 @@
               შაბლონის სახელი აუცილებელია!
             </div>
           <label for="title">* შაბლონის სახელი</label>
-          <input type="text" class="form-control" id="title" required>
+          <input type="text" class="form-control" id="title" maxlength="255" autocomplete="off" required>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">გაუქმება</button>
@@ -1289,7 +347,7 @@
               შაბლონის სახელი აუცილებელია!
             </div>
           <label for="titleNew">* შაბლონის სახელი</label>
-          <input type="text" class="form-control" id="titleNew" required>
+          <input type="text" class="form-control" id="titleNew" maxlength="255" autocomplete="off" required>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">გაუქმება</button>
@@ -1312,7 +370,7 @@
               შაბლონის სახელი აუცილებელია!
             </div>
           <label for="titleAs">* შაბლონის სახელი</label>
-          <input type="text" class="form-control" id="titleAs" required>
+          <input type="text" class="form-control" id="titleAs" maxlength="255" autocomplete="off" required>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">გაუქმება</button>

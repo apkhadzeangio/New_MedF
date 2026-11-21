@@ -1,8 +1,5 @@
-from django.contrib.auth.mixins import AccessMixin
 from django.http import HttpResponseRedirect
 from django.urls import reverse_lazy
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
 
 from .models import NivForm
 
@@ -10,12 +7,12 @@ from .models import NivForm
 class GetObjectMixin(object):
 
     def get_object(self, kwarg='t'):
+        """Return the NivForm whose id is in ?<kwarg>=..., or None."""
+        tid = self.request.GET.get(kwarg, self.request.POST.get(kwarg))
         try:
-            tid = self.request.GET.get(kwarg, self.request.POST.get(kwarg))
-            return NivForm.objects.get(id=tid)
-        except (ValueError, NivForm.DoesNotExist):
-            pass
-        return NivForm.objects.none()
+            return NivForm.objects.get(id=int(tid))
+        except (TypeError, ValueError, NivForm.DoesNotExist):
+            return None
 
 
 class LoginRedirectMixin(object):
@@ -24,13 +21,6 @@ class LoginRedirectMixin(object):
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:
             return HttpResponseRedirect(reverse_lazy('niv-cover'))
-        return super().dispatch(request, *args, **kwargs)
-
-
-class CsrfExemptMixin(object):
-
-    @method_decorator(csrf_exempt)
-    def dispatch(self, request, *args, **kwargs):
         return super().dispatch(request, *args, **kwargs)
 
 

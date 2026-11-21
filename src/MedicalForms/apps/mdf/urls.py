@@ -13,12 +13,15 @@ from .views import (
     PrintNivFormCoverView,
     PrintNivFormBackView,
     AssignmentSheetView,
-    NivDocumentView
+    NivDocumentView,
+    PasswordChangeView,
 )
+
 
 urlpatterns = [
     path('', LoginView.as_view(), name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),
+    path('password/change/', PasswordChangeView.as_view(), name='password-change'),
     path('assignment-sheet/', AssignmentSheetView.as_view(), name='assigment-sheet'),
     path('niv-300-9-a/cover/', NivFormCoverView.as_view(), name='niv-cover'),
     # path('niv-300-9-a/cover/print/', PrintNivFormCoverView.as_view(), name='print-niv-cover'),

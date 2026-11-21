@@ -1,9 +1,9 @@
-{% if page_obj %}
+{% if page_obj and page_obj.has_other_pages %}
 <nav aria-label="Page navigation" style="padding-bottom: 50px;">
   <ul class="pagination flex-wrap">
     {% if page_obj.has_previous %}
       <li class="page-item">
-        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Previous">
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}" aria-label="Previous">
             <span aria-hidden="true">&laquo;</span>
         </a>
       </li>
@@ -15,13 +15,13 @@
             </li>
         {% else %}
             <li class="page-item">
-                <a class="page-link" href="?page={{ pn }}{% if c %}&c={{ c }}{% endif %}{% if q %}&q={{ q }}{% endif %}">{{ pn }}</a>
+                <a class="page-link" href="?page={{ pn }}{% if c %}&c={{ c|urlencode }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}">{{ pn }}</a>
             </li>
         {% endif %}
     {% endfor %}
     {% if page_obj.has_next %}
       <li class="page-item">
-        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q }}{% endif %}" aria-label="Next">
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if q %}&q={{ q|urlencode }}{% endif %}" aria-label="Next">
           <span aria-hidden="true">&raquo;</span>
         </a>
       </li>

@@ -4,6 +4,9 @@ from django.utils.functional import cached_property
 from .enums import RadialPulse, YesNo
 from .utils import jsonfield_default_value
 
+# Number of medicine rows on the printed NIV-300-9/a form.
+ROW_COUNT = 16
+
 
 class Medicine(models.Model):
     name = models.CharField(verbose_name='დასახელება', max_length=255)
@@ -312,7 +315,7 @@ class NivForm(models.Model):
     @cached_property
     def rows_as_string(self):
         rows = list()
-        for i in range(1, 17):
+        for i in range(1, ROW_COUNT + 1):
             m_x = self.serializable_value(f'm{i}')
             n_x = self.serializable_value(f'n{i}')
             if m_x:

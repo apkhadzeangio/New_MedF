@@ -4,12 +4,10 @@ from .models import NivForm
 
 
 class LoginForm(forms.Form):
-    username = forms.CharField(required=True)
-    password = forms.CharField(required=True)
+    username = forms.CharField(required=True, max_length=150)
+    password = forms.CharField(required=True, max_length=128)
+    remember_me = forms.BooleanField(required=False)
     next = forms.CharField(required=False)
-
-    class Meta:
-        fields = ('username', 'password', 'next')
 
 
 class NivFormFrom(forms.ModelForm):

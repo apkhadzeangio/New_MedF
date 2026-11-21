@@ -1,5 +1,5 @@
 {% if object_list %}
-  <table class="table">
+  <table class="table align-middle">
     <thead>
       <tr>
         <th scope="col">#</th>
@@ -13,7 +13,7 @@
     <tbody>
         {% for object in object_list %}
           <tr>
-            <th scope="row">{{ forloop.counter }}</th>
+            <th scope="row">{% if page_obj %}{{ page_obj.start_index|add:forloop.counter0 }}{% else %}{{ forloop.counter }}{% endif %}</th>
               <td>
                   <a href="{% url 'niv-cover' %}?t={{ object.pk }}">
                       {{ object.title }}
@@ -26,30 +26,30 @@
                 </button>
             </td>
             <td>
-                <a class="btn btn-info me-2 copy-btn" href="{% url 'niv-cover' %}?as={{ object.pk }}" style="display: inline-flex; align-items: center">
+                <a class="btn btn-info me-2" href="{% url 'niv-cover' %}?as={{ object.pk }}" style="display: inline-flex; align-items: center">
                     Save As
                 </a>
             </td>
             <td>
                 <div class="dropdown">
-                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                       ბეჭდვა
                     </button>
-                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
-                      <a class="dropdown-item" href="{% url 'print-niv-cover' %}?t={{ object.pk }}" target="_blank">წინა მხარე</a>
-                      <a class="dropdown-item" href="{% url 'print-niv-back' %}?t={{ object.pk }}" target="_blank">უკანა მხარე</a>
-                    </div>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="{% url 'print-niv-cover' %}?t={{ object.pk }}" target="_blank">წინა მხარე</a></li>
+                        <li><a class="dropdown-item" href="{% url 'print-niv-back' %}?t={{ object.pk }}" target="_blank">უკანა მხარე</a></li>
+                    </ul>
                   </div>
             </td>
             <td>
                 <div class="dropdown">
-                    <button class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton1" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                       ქმედებები
                     </button>
-                    <div class="dropdown-menu" aria-labelledby="dropdownMenuButton1">
-                        <a class="dropdown-item" id="niv-edit-btn" href="{% url 'niv-cover' %}?t={{ object.pk }}">შაბლონის რედაქტირება</a>
-                        <a class="dropdown-item" id="niv-del-btn" href="#" data-href="{% url 'niv-delete' object.pk %}">შაბლონის წაშლა</a>
-                    </div>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item niv-edit-btn" href="{% url 'niv-cover' %}?t={{ object.pk }}">შაბლონის რედაქტირება</a></li>
+                        <li><a class="dropdown-item text-danger niv-del-btn" href="#" data-href="{% url 'niv-delete' object.pk %}" data-title="{{ object.title }}">შაბლონის წაშლა</a></li>
+                    </ul>
                   </div>
             </td>
           </tr>

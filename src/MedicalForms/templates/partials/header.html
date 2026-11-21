@@ -1,5 +1,4 @@
-
-<nav class="navbar navbar-expand-sm bg-dark navbar-dark">
+<nav class="navbar navbar-expand-sm bg-dark navbar-dark d-print-none">
     <div class="container">
         <a class="navbar-brand" href="/"></a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
@@ -23,17 +22,22 @@
                 <a class="nav-link" href="{% url 'niv-templates' %}">შაბლონები</a>
             </li>
           </ul>
+          {% if request.user.is_authenticated %}
           <ul class="navbar-nav">
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" id="userDrop" data-bs-toggle="dropdown">{{ request.user.get_full_name|default:request.user.username }}</a>
               <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="#">პაროლის შეცვლა</a></li>
-                <li><a class="dropdown-item" href="#">პარამეტრები</a></li>
+                <li><a class="dropdown-item" href="{% url 'password-change' %}">პაროლის შეცვლა</a></li>
+                {% if request.user.is_staff %}
+                <li><a class="dropdown-item" href="{% url 'admin:index' %}">ადმინისტრირება (წამლების სია)</a></li>
+                {% endif %}
                 <div class="dropdown-divider"></div>
                 <li><a class="dropdown-item" href="{% url 'logout' %}">გამოსვლა</a></li>
               </ul>
             </li>
           </ul>
+          {% endif %}
         </div>
     </div>
 </nav>
+{% include "partials/messages.html" %}
