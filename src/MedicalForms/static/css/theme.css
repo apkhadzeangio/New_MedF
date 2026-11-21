@@ -275,3 +275,6 @@ body.login-page { background: var(--page); }
     .lg-claim h1 { font-size: 26px; }
     .people { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 }
+
+/* print button while the document is being prepared */
+.is-busy { cursor: progress !important; opacity: .65; pointer-events: none; }

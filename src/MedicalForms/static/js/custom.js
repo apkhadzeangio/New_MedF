@@ -493,11 +493,111 @@ $(document).ready(function () {
         }
     });
 
-    // Printing shows the last *saved* version - warn if there are unsaved edits.
-    $('a[href*="/print/"]').on('click', function (e) {
-        if (isDirty && !confirm('ცვლილებები ჯერ არ არის შენახული.\nდაიბეჭდება ბოლოს შენახული ვერსია.\n\nგავაგრძელო ბეჭდვა?')) {
-            e.preventDefault();
+    /* ------------------------------------------------------------------ */
+    /* Print without leaving the page                                      */
+    /* ------------------------------------------------------------------ */
+    // The document is prepared in a hidden frame and the browser's print
+    // dialog opens right here. Ctrl/Shift+click still opens it in a tab.
+
+    var printFrame = null;
+    var printBusy = false;
+
+    function hiddenPrintFrame() {
+        if (printFrame) {
+            document.body.removeChild(printFrame);
         }
+        printFrame = document.createElement('iframe');
+        printFrame.setAttribute('aria-hidden', 'true');
+        printFrame.setAttribute('tabindex', '-1');
+        printFrame.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(printFrame);
+        return printFrame;
+    }
+
+    function printStart(el) {
+        printBusy = true;
+        $(el).addClass('is-busy').attr('aria-busy', 'true');
+        if ($.notify) {
+            $.notify('ბლანკი მზადდება ბეჭდვისთვის…', 'info');
+        }
+    }
+
+    function printEnd(el) {
+        printBusy = false;
+        $(el).removeClass('is-busy').removeAttr('aria-busy');
+    }
+
+    function printFailed(el) {
+        printEnd(el);
+        alert('ბეჭდვისთვის მომზადება ვერ მოხერხდა. განაახლეთ გვერდი და სცადეთ თავიდან.');
+    }
+
+    // PDF (prescription): fetch it, show it in the hidden frame, print.
+    function printPdf(url, el) {
+        printStart(el);
+        fetch(url, {credentials: 'same-origin'}).then(function (r) {
+            if (!r.ok || (r.headers.get('content-type') || '').indexOf('pdf') < 0) {
+                throw new Error('bad response');
+            }
+            return r.blob();
+        }).then(function (blob) {
+            var frame = hiddenPrintFrame();
+            frame.onload = function () {
+                setTimeout(function () {
+                    try {
+                        frame.contentWindow.focus();
+                        frame.contentWindow.print();
+                    } catch (err) {
+                        window.open(url, '_blank');    // fallback: the old way
+                    }
+                    printEnd(el);
+                }, 300);
+            };
+            frame.src = URL.createObjectURL(blob);
+        }).catch(function () { printFailed(el); });
+    }
+
+    $(document).on('click', 'a[href*="/cover/print/"]', function (e) {
+        if (e.ctrlKey || e.metaKey || e.shiftKey || !window.fetch) {
+            return;
+        }
+        e.preventDefault();
+        // Printing shows the last *saved* version - warn if there are unsaved edits.
+        if (isDirty && !confirm('ცვლილებები ჯერ არ არის შენახული.\nდაიბეჭდება ბოლოს შენახული ვერსია.\n\nგავაგრძელო ბეჭდვა?')) {
+            return;
+        }
+        if (!printBusy) {
+            printPdf(this.href, this);
+        }
+    });
+
+    // Blood order blank (HTML): it opens the print dialog by itself once loaded.
+    $('#blood-form').on('submit', function (e) {
+        if (!window.fetch) {
+            return;                         // old browser: new tab as before
+        }
+        e.preventDefault();
+        if (printBusy) {
+            return;
+        }
+        var form = this;
+        var button = $(form).find('[type="submit"]').get(0);
+        var fresh = getCookie('csrftoken');
+        if (fresh) {
+            $(form).find('input[name="csrfmiddlewaretoken"]').val(fresh);
+        }
+        printStart(button);
+        fetch(form.action, {method: 'POST', body: new FormData(form), credentials: 'same-origin'})
+            .then(function (r) {
+                if (!r.ok) {
+                    throw new Error('bad response');
+                }
+                return r.text();
+            }).then(function (html) {
+                var frame = hiddenPrintFrame();
+                frame.onload = function () { setTimeout(function () { printEnd(button); }, 500); };
+                frame.srcdoc = html;
+            }).catch(function () { printFailed(button); });
     });
 
 
