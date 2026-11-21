@@ -302,7 +302,8 @@ class StaffProfile(models.Model):
 
     @property
     def initial(self):
-        return (self.display_name or self.user.username)[:1].upper()
+        # no .upper(): it turns Georgian letters into Mtavruli (Ი instead of ი)
+        return (self.display_name or self.user.username)[:1]
 
     @property
     def avatar_url(self):
