@@ -1063,18 +1063,19 @@ class ConsentTests(BaseViewTest):
 
     def test_seeded_sheet_and_list_order(self):
         from .models import ConsentForm
-        first = ConsentForm.objects.get()
+        first = ConsentForm.objects.get(name__startswith='აორტა-ბარძაყის')
         self.assertEqual(first.blocks[0]['left'][0], 'სისხლდენა')
+        self.assertEqual(ConsentForm.objects.count(), 4)                       # + the three from Word files
         other = ConsentForm.objects.create(name='კაროტიდული ენდარტერექტომია', blocks=[])
         for _ in range(3):
             self.client.get(reverse('consent-sheet', args=[other.pk]))
         page = self.client.get(reverse('consent-list'))
-        self.assertEqual([f.pk for f in page.context['forms']], [other.pk, first.pk])   # most used first
+        self.assertEqual(page.context['forms'][0].pk, other.pk)                      # most used first
         self.assertContains(page, 'კაროტიდული ენდარტერექტომია')
 
     def test_sheet_has_fixed_page_one_and_editable_parts(self):
         from .models import ConsentForm
-        form = ConsentForm.objects.get()
+        form = ConsentForm.objects.order_by('id').first()
         page = self.client.get(reverse('consent-sheet', args=[form.pk]))
         self.assertContains(page, 'სამედიცინო დოკუმენტაციის ფორმა NIV-300-12/ა')
         self.assertContains(page, 'პაციენტის წერილობითი ინფორმირებული თანხმობა სამედიცინო')
@@ -1086,7 +1087,7 @@ class ConsentTests(BaseViewTest):
     def test_save_keeps_last_edit_and_is_cleaned(self):
         import json as _json
         from .models import ConsentForm
-        form = ConsentForm.objects.get()
+        form = ConsentForm.objects.order_by('id').first()
         data = {'name': 'ბარძაყ-მუხლქვეშა შუნტირება 🙂',
                 'blocks': [{'title': '<b>გართულებები</b> შუნტირების დროს:', 'left': ['სისხლდენა', '  ', 'ინფექცია'],
                             'right': ['თრომბოზი</script>']}, 'junk']}
@@ -1109,6 +1110,8 @@ class ConsentTests(BaseViewTest):
             ('გართულებები  საძილე არტერიის   ოპერაციის დროს:', True),
             ('სისხლდენა                         ინსულტი', False),
             ('ინფექცია', False),
+            ('პაციენტს აეხსნა ფინანსური და სოციალური საკითხები, ეცნობა ღირებულების შესახებ.', False),
+            ('პაციენტს პასუხი გაეცა ყველა სხვა საინტერესო შეკითხვაზე.', False),
             ('მკურნალი ექიმი______', False),
         ])
         r = self.client.post(reverse('consent-new'), {'docx': f})
@@ -1125,7 +1128,7 @@ class ConsentTests(BaseViewTest):
 
     def test_copy_and_delete(self):
         from .models import ConsentForm
-        form = ConsentForm.objects.get()
+        form = ConsentForm.objects.order_by('id').first()
         self.client.post(reverse('consent-new'), {'copy': form.pk})
         copy = ConsentForm.objects.latest('id')
         self.assertEqual(copy.blocks, form.blocks)

@@ -68,6 +68,8 @@ _R = re.compile(r'<w:r[ >].*?</w:r>', re.S)
 _T = re.compile(r'<w:t(?: [^>]*)?>(.*?)</w:t>', re.S)
 _BOLD = re.compile(r'<w:b/>|<w:b w:val="(?:1|true|on)"/>')
 START_MARK = 'ასევე ჩემთვის ცნობილია'      # the last paragraph of page 1
+# sentences that some older sheets have near the complications: not complications
+NOT_COMPLICATIONS = ('პაციენტს აეხსნა ფინანსური', 'პაციენტს პასუხი გაეცა')
 END_MARK = 'მკურნალი ექიმი'                  # the signatures start
 
 
@@ -97,7 +99,7 @@ def parse_docx(fileobj):
         raise ValueError('ფაილში ვერ ვიპოვე გართულებების ნაწილი (უნდა იყოს ამავე ფორმის თანხმობის ფურცელი).')
     blocks = []
     for text, bold in paras[start + 1:end]:
-        if not text.strip():
+        if not text.strip() or any(m in text for m in NOT_COMPLICATIONS):
             continue
         if bold or not blocks:
             blocks.append({'title': text, 'left': [], 'right': []})

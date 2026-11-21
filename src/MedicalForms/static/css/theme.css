@@ -670,4 +670,5 @@ body.login-page { background: var(--page); }
     .cs-input, .cs-edit, .cs-edit:focus, .cs-input:focus { background: none !important; box-shadow: none !important; }
     .cs-input::placeholder { color: transparent; }
     .cs-del, .cs-add { display: none !important; }
+    .cs-col:empty { display: none; }
 }
