@@ -1007,3 +1007,27 @@ class StatsAndAppTests(BoardBase):
         sw = self.client.get(reverse('pwa-sw'))
         self.assertEqual(sw['Content-Type'], 'application/javascript')
         self.assertNotIn('caches', sw.content.decode())          # nothing is stored on the phone
+
+
+class PrescriptionToBoardTests(BoardBase):
+    """"დაფაზე" on the prescription page: only name, bed and diagnosis go over."""
+
+    def test_form_is_prefilled_with_three_fields_only(self):
+        page = self.client.get(reverse('board-patient-new'),
+                               {'name': ' ბერიძე ნინო ', 'bed': '4', 'diagnosis': 'ანევრიზმა', 'm1': 'Aspirin'})
+        self.assertEqual(page.context['values']['name'], 'ბერიძე ნინო')
+        self.assertEqual(page.context['values']['bed'], '4')
+        self.assertEqual(page.context['values']['diagnosis'], 'ანევრიზმა')
+        self.assertEqual(page.context['values']['doctor'], self.user.pk)
+        self.assertNotContains(page, 'Aspirin')
+        self.assertContains(page, 'მხოლოდ სახელი, პალატა და დიაგნოზი')
+        self.assertIsNone(page.context['same'])
+
+    def test_warns_when_already_on_board(self):
+        p = self.add_patient()
+        page = self.client.get(reverse('board-patient-new'), {'name': 'ბერიძე ნინო'})
+        self.assertEqual(page.context['same'], p)
+        self.assertContains(page, 'უკვე დაფაზეა')
+
+    def test_button_on_prescription_page(self):
+        self.assertContains(self.client.get(reverse('niv-cover')), 'id="to-board"')

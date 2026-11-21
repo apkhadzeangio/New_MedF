@@ -424,6 +424,19 @@ $(document).ready(function () {
         submitSaveForm();
     });
 
+    // "დაფაზე": open the board form with only what the board needs
+    $('#to-board').on('click', function (e) {
+        var params = [];
+        [['name', 'patient_name'], ['bed', 'chamber_number'], ['diagnosis', 'diagnosis']].forEach(function (pair) {
+            var value = $.trim($('input[id="' + pair[1] + '"]').val() || '');
+            if (value) { params.push(pair[0] + '=' + encodeURIComponent(value)); }
+        });
+        if (params.length) {
+            e.preventDefault();
+            window.location.href = this.href.split('?')[0] + '?' + params.join('&');
+        }
+    });
+
     // Ctrl+S / Cmd+S saves the template.
     $(document).on('keydown', function (e) {
         if (!hasSaveForm || !(e.ctrlKey || e.metaKey) || (e.key !== 's' && e.key !== 'S' && e.key !== 'ს')) {

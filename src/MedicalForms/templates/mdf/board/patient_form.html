@@ -7,6 +7,15 @@
     <a href="{% if patient %}{% url 'board-patient' patient.pk %}{% else %}{% url 'board' %}{% endif %}" class="small">← {% if patient %}{{ patient.name }}{% else %}დაფა{% endif %}</a>
     <div class="page-head"><h1>{% if patient %}პაციენტის მონაცემები{% else %}პაციენტის დამატება დაფაზე{% endif %}</h1></div>
 
+    {% if same %}
+    <div class="bd-banner">
+        <span><b>{{ same.name }}</b> უკვე დაფაზეა ({{ same.get_unit_display }}{% if same.bed %}, საწოლი {{ same.bed }}{% endif %}).</span>
+        <a class="x-btn sm" href="{% url 'board-patient' same.pk %}">გახსნა</a>
+    </div>
+    {% elif from_rx %}
+    <p class="lead-muted m-0">დანიშნულებიდან გადმოვიდა მხოლოდ სახელი, პალატა და დიაგნოზი. აირჩიეთ განყოფილება და დაამატეთ.</p>
+    {% endif %}
+
     <form method="post" class="x-card pf-card" autocomplete="off">
         {% csrf_token %}
         <div class="pf-units" role="radiogroup" aria-label="განყოფილება">

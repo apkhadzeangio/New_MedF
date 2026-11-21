@@ -226,10 +226,18 @@ class PatientFormView(LoginRequiredMixin, generic.TemplateView):
         values = kwargs.get('values') or (
             {'name': patient.name, 'bed': patient.bed, 'diagnosis': patient.diagnosis,
              'unit': patient.unit, 'doctor': patient.doctor_id} if patient else
-            {'name': '', 'bed': '', 'diagnosis': '',
+            {'name': clean_text(self.request.GET.get('name'), 150).replace('\n', ' '),
+             'bed': clean_text(self.request.GET.get('bed'), 20).replace('\n', ' '),
+             'diagnosis': clean_text(self.request.GET.get('diagnosis'), 255).replace('\n', ' '),
              'unit': self.request.GET.get('unit') if self.request.GET.get('unit') in UNIT_LABELS else BoardPatient.WARD,
              'doctor': self.request.user.pk})
-        ctx.update({'patient': patient, 'values': values, 'units': BoardPatient.UNITS, 'doctors': doctors()})
+        # from a prescription: is this patient already on the board?
+        same = None
+        if not patient and values.get('name'):
+            same = (BoardPatient.objects.filter(discharged_at__isnull=True, name__iexact=values['name'])
+                    .order_by('-admitted_at').first())
+        ctx.update({'patient': patient, 'values': values, 'units': BoardPatient.UNITS, 'doctors': doctors(),
+                    'same': same, 'from_rx': bool(self.request.GET.get('name'))})
         return ctx
 
     def post(self, request, *args, **kwargs):

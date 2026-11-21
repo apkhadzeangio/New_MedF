@@ -29,6 +29,8 @@
                 <a class="x-btn blood" href="{% url 'blood-order' %}?t={{ niv.pk }}">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>სისხლის შეკვეთა</a>
             {% endif %}
+            <a class="x-btn" id="to-board" href="{% url 'board-patient-new' %}" title="პაციენტის დამატება დაფაზე (სახელი, პალატა, დიაგნოზი)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3M12 8v6M9 11h6"/></svg>დაფაზე</a>
         </div>
         <div class="hints user-select-none d-print-none" id="niv-hint">
             <span><kbd>Ctrl</kbd> + <kbd>S</kbd> შენახვა</span>
