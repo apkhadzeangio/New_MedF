@@ -1031,3 +1031,14 @@ class PrescriptionToBoardTests(BoardBase):
 
     def test_button_on_prescription_page(self):
         self.assertContains(self.client.get(reverse('niv-cover')), 'id="to-board"')
+
+
+class SeasonalTests(BaseViewTest):
+
+    def test_script_is_loaded_and_never_blocks_clicks(self):
+        from django.contrib.staticfiles import finders
+        self.assertContains(self.client.get(reverse('niv-cover')), 'js/seasonal.js')
+        source = open(finders.find('js/seasonal.js'), encoding='utf-8').read()
+        self.assertIn('pointer-events:none', source)
+        self.assertIn('@media print', source)
+        self.assertIn('prefers-reduced-motion', source)

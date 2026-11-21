@@ -46,6 +46,7 @@
 <script src="{% static 'js/notify.min.js' %}"></script>
 <script src="{% static 'js/clipboard.min.js' %}"></script>
 <script src="{% static 'js/custom.js' %}?v=33"></script>
+<script src="{% static 'js/seasonal.js' %}?v=1" defer></script>
 
 <script>
 if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('{% url "pwa-sw" %}').catch(function () {}); }); }
