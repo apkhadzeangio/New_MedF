@@ -1,0 +1,259 @@
+{% load static %}<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<title>სისხლის შეკვეთა{% if d.patient_name %} — {{ d.patient_name }}{% endif %}</title>
+<style>
+/* Noto Sans Georgian (SIL Open Font License, static/fonts/NotoSansGeorgian-OFL.txt) */
+@font-face { font-family: 'Noto Sans Georgian'; font-weight: 400; font-style: normal;
+  src: url("{% static 'fonts/noto-sans-georgian-georgian-400-normal.woff2' %}") format('woff2');
+  unicode-range: U+0589,U+10A0-10FF,U+1C90-1CBA,U+1CBD-1CBF,U+205A,U+2D00-2D2F,U+2E31; }
+@font-face { font-family: 'Noto Sans Georgian'; font-weight: 600; font-style: normal;
+  src: url("{% static 'fonts/noto-sans-georgian-georgian-600-normal.woff2' %}") format('woff2');
+  unicode-range: U+0589,U+10A0-10FF,U+1C90-1CBA,U+1CBD-1CBF,U+205A,U+2D00-2D2F,U+2E31; }
+@font-face { font-family: 'Noto Sans Georgian'; font-weight: 700; font-style: normal;
+  src: url("{% static 'fonts/noto-sans-georgian-georgian-700-normal.woff2' %}") format('woff2');
+  unicode-range: U+0589,U+10A0-10FF,U+1C90-1CBA,U+1CBD-1CBF,U+205A,U+2D00-2D2F,U+2E31; }
+@font-face { font-family: 'Noto Sans Georgian'; font-weight: 400; font-style: normal;
+  src: url("{% static 'fonts/noto-sans-georgian-latin-400-normal.woff2' %}") format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Noto Sans Georgian'; font-weight: 600; font-style: normal;
+  src: url("{% static 'fonts/noto-sans-georgian-latin-600-normal.woff2' %}") format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Noto Sans Georgian'; font-weight: 700; font-style: normal;
+  src: url("{% static 'fonts/noto-sans-georgian-latin-700-normal.woff2' %}") format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+
+@page { size: A4 portrait; margin: 0; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+    font-family: 'Noto Sans Georgian', 'Sylfaen', sans-serif;
+    color: #111;
+    background: #e9ecef;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+
+/* the sheet = top half of an A4 page */
+.sheet {
+    width: 210mm;
+    height: 148.5mm;
+    margin: 12mm auto;
+    padding: 11mm 16mm 0;
+    background: #fff;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, .15);
+    font-size: 9.6pt;
+    position: relative;
+}
+
+/* header: logo left, contacts right, one thin rule below */
+.head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 3mm;
+    border-bottom: 0.4mm solid #1f2a44;
+    margin-bottom: 5mm;
+}
+.head img { height: 17mm; width: auto; display: block; }
+.contacts {
+    text-align: right;
+    font-size: 8.4pt;
+    line-height: 1.45;
+    color: #333;
+}
+
+/* rows of "label: value" — every line ends on the same right edge */
+.row { display: flex; gap: 8mm; margin-bottom: 4.6mm; }
+.half { flex: 1 1 0; min-width: 0; }
+.field { display: flex; align-items: flex-end; gap: 2mm; min-width: 0; }
+.label { white-space: nowrap; color: #222; }
+.line {
+    flex: 1 1 auto;
+    min-width: 8mm;
+    border-bottom: 0.25mm solid #111;
+    padding: 0 1.5mm 0.4mm;
+    min-height: 5.6mm;
+    font-size: 10.8pt;
+    font-weight: 600;
+    line-height: 1.25;
+    overflow-wrap: anywhere;        /* long text wraps, never cut off */
+}
+.caption {
+    position: absolute;
+    left: 0; right: 0; top: 100%;
+    display: flex;
+    justify-content: space-around;
+    font-size: 7.2pt;
+    color: #555;
+    margin-top: 0.5mm;
+}
+.with-caption { flex: 1 1 auto; min-width: 0; position: relative; display: flex; }
+.with-caption .line { flex: 1 1 auto; }
+.row.captioned { margin-bottom: 7.6mm; }
+
+/* "საჭიროა" — three equal blocks */
+.need {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin: 1.4mm 0 4.6mm;
+}
+.need > .label { font-weight: 600; }
+.need .item { display: flex; align-items: flex-end; gap: 2mm; }
+.need .item .line { flex: none; width: 15mm; text-align: center; }
+
+/* date / time */
+.dt { display: inline-flex; align-items: flex-end; gap: 1.6mm; }
+.dt .line { flex: none; text-align: center; }
+.w-dd { width: 10mm; } .w-yy { width: 15mm; } .w-tt { width: 15mm; }
+
+/* screen-only toolbar */
+.toolbar {
+    max-width: 210mm; margin: 12mm auto 0; display: flex; gap: 8px;
+    font-family: system-ui, sans-serif;
+}
+.toolbar button, .toolbar a {
+    font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 6px; border: 1px solid #0d6efd;
+    background: #0d6efd; color: #fff; cursor: pointer; text-decoration: none;
+}
+.toolbar a { background: #fff; color: #0d6efd; }
+
+@media print {
+    body { background: #fff; }
+    .toolbar { display: none; }
+    .sheet { margin: 0; box-shadow: none; }
+}
+</style>
+</head>
+<body>
+<div class="toolbar">
+    <button type="button" onclick="window.print()">🖨 ბეჭდვა</button>
+    <a href="javascript:window.close()">დახურვა</a>
+</div>
+
+<div class="sheet">
+    <div class="head">
+        <img src="{% static 'img/logo.jpg' %}" alt="">
+        <div class="contacts">
+            ჩაჩავას ქ. 1<br>
+            032 2 51 70 08<br>
+            info@angio.ge<br>
+            www.angio.ge
+        </div>
+    </div>
+
+    <div class="row captioned">
+        <div class="half field" style="flex: 1.35 1 0">
+            <span class="label">პაციენტი:</span>
+            <div class="with-caption">
+                <div class="line">{{ d.patient_name }}</div>
+                <div class="caption"><span>გვარი</span><span>სახელი</span></div>
+            </div>
+        </div>
+        <div class="half field" style="flex: 0.65 1 0">
+            <span class="label">პირ N:</span>
+            <div class="line">{{ d.person_id }}</div>
+        </div>
+    </div>
+
+    <div class="row captioned">
+        <div class="half field">
+            <span class="label">დაბადების თარიღი:</span>
+            <div class="with-caption">
+                <div class="line">{{ d.dob }}</div>
+                <div class="caption"><span>(დღე/თვე/წელი)</span></div>
+            </div>
+        </div>
+        <div class="half field">
+            <span class="label">ჯგუფი და რეზუს კუთვნილება:</span>
+            <div class="line">{{ d.blood_group }}</div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="half field" style="flex: 1.35 1 0">
+            <span class="label">დიაგნოზი:</span>
+            <div class="line">{{ d.diagnosis }}</div>
+        </div>
+        <div class="half field" style="flex: 0.65 1 0">
+            <span class="label">ისტორიის #</span>
+            <div class="line">{{ d.card_number }}</div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="half field">
+            <span class="label">პაციენტის ტელ.ნომერი</span>
+            <div class="line">{{ d.phone }}</div>
+        </div>
+        <div class="half field">
+            <span class="label">გადასხმის ჩვენება:</span>
+            <div class="line">{{ d.indication }}</div>
+        </div>
+    </div>
+
+    <div class="need">
+        <span class="label">საჭიროა:</span>
+        <div class="item"><span class="label">ერით მასა:</span><div class="line">{{ d.rbc }}</div><span class="label">დოზა</span></div>
+        <div class="item"><span class="label">კრიოპლაზმა:</span><div class="line">{{ d.cryo }}</div><span class="label">დოზა</span></div>
+        <div class="item"><span class="label">თრომბოც მასა:</span><div class="line">{{ d.platelets }}</div><span class="label">დოზა</span></div>
+    </div>
+
+    <div class="row">
+        <div class="half field">
+            <span class="label">მიმღები დაწესებულება:</span>
+            <div class="line">{{ d.receiver }}</div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="half field">
+            <span class="label">გამომგზავნი განყოფილება:</span>
+            <div class="line">{{ d.sender }}</div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="half field">
+            <span class="label">ექიმი:</span>
+            <div class="line">{{ d.doctor }}</div>
+        </div>
+        <div class="half field">
+            <span class="label">ხელმოწერა:</span>
+            <div class="line"></div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="half field">
+            <span class="label">მედდა:</span>
+            <div class="line">{{ d.nurse }}</div>
+        </div>
+        <div class="half field">
+            <span class="label">ხელმოწერა:</span>
+            <div class="line"></div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="field">
+            <span class="label">თარიღი/დრო:</span>
+            <span class="dt">
+                <span class="line w-dd">{{ d.day }}</span>/
+                <span class="line w-dd">{{ d.month }}</span>/
+                <span class="line w-yy">{{ d.year }}</span>წ
+                <span class="line w-tt" style="margin-left: 3mm">{{ d.time }}</span>
+            </span>
+        </div>
+    </div>
+</div>
+
+<script>
+// open the print dialog as soon as the fonts are ready
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () {
+    setTimeout(function () { window.print(); }, 150);
+});
+</script>
+</body>
+</html>

@@ -33,9 +33,3 @@ def niv_rows(niv, bounds=None):
         })
     return rows
 
-
-@register.filter
-def disease_avatar(text):
-    """{{ niv.diagnosis|disease_avatar }} -> static URL of the patient avatar or ''."""
-    from apps.mdf.avatars import disease_avatar as find
-    return find(text)[0] or ''

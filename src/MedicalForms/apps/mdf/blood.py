@@ -1,4 +1,5 @@
-"""Blood order (სისხლის შეკვეთა): fillable form, printed from BloodOrder.docx.
+"""Blood order (სისხლის შეკვეთა): fillable form, printed as an A4 half-page
+(templates/mdf/blood-print.html, printed from the browser).
 
 Orders are not stored in the database: the page is filled (from a
 prescription or empty) and printed as PDF.
@@ -7,7 +8,6 @@ from django import forms
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.utils import timezone
 from django.views import generic
-from django_docxtpl import DocxTemplateView
 
 from .mixins import GetObjectMixin
 from .models import StaffProfile
@@ -62,19 +62,14 @@ def initial_values(request, niv=None):
 
 
 def print_context(data):
-    """Values for BloodOrder.docx (keeps the blank form's line lengths)."""
+    """Values for the printed blank."""
     ctx = {key: (data.get(key) or '').strip() for key in BloodOrderForm.base_fields}
-    nurse = ctx['nurse']
-    # the nurse line is 51 spaces wide on the blank; a letter is ~2.3 spaces
-    ctx['nurse_padded'] = nurse + ' ' * max(2, 51 - int(len(nurse) * 2.3))
     day = month = ''
     year = str(timezone.localtime().year)
     parts = ctx['date'].replace('/', '.').replace('-', '.').split('.')
     if len(parts) == 3 and all(p.strip() for p in parts):
         day, month, year = (p.strip() for p in parts)
-    ctx['day'] = day or '    '
-    ctx['month'] = month or '    '
-    ctx['year'] = year
+    ctx.update(day=day, month=month, year=year)
     return ctx
 
 
@@ -93,23 +88,16 @@ class BloodOrderView(LoginRequiredMixin, GetObjectMixin, generic.FormView):
         return ctx
 
 
-class BloodOrderPrintView(LoginRequiredMixin, DocxTemplateView):
-    """POST the form -> PDF of the clinic's blood order blank."""
-    template_name = 'BloodOrder.docx'
-    filename = 'blood-order'
-    output_format = 'pdf'
-    autoescape = True
+class BloodOrderPrintView(LoginRequiredMixin, generic.TemplateView):
+    """POST the form -> the printable blank (opens the print dialog)."""
+    template_name = 'mdf/blood-print.html'
     http_method_names = ['post']
 
     def post(self, request, *args, **kwargs):
         form = BloodOrderForm(request.POST)
         form.is_valid()
-        self.form_data = form.cleaned_data
-        self._remember_doctor_name(self.form_data.get('doctor', ''))
-        response = super().get(request, *args, **kwargs)
-        response['Content-Type'] = 'application/pdf'
-        response['Content-Disposition'] = f'inline; filename="{self.filename}.pdf"'
-        return response
+        self._remember_doctor_name(form.cleaned_data.get('doctor', ''))
+        return self.render_to_response({'d': print_context(form.cleaned_data)})
 
     def _remember_doctor_name(self, name):
         # First time a doctor prints, keep the typed full name for next time.
@@ -118,6 +106,3 @@ class BloodOrderPrintView(LoginRequiredMixin, DocxTemplateView):
         if profile and name and not profile.full_name and name != profile.display_name:
             profile.full_name = name[:150]
             profile.save(update_fields=['full_name'])
-
-    def get_context_data(self, **kwargs):
-        return print_context(self.form_data)

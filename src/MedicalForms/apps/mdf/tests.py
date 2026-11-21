@@ -410,21 +410,13 @@ class StaffAndBackupTests(TestCase):
 
 class AvatarTests(BaseViewTest):
 
-    def test_disease_and_staff_avatars(self):
-        from django.test import override_settings
+    def test_staff_avatar(self):
         from apps.mdf import avatars
         avatars._static_file.cache_clear()
-        url, key = avatars.disease_avatar('I71.4 მუცლის აორტის ანევრიზმით')
-        if not url:
-            self.skipTest('no test image in static/img/patients')
-        self.assertEqual(key, 'aneurysm')
-        self.assertEqual(avatars.disease_avatar('ჰიპერტენზია'), (None, None))
-        self.make_niv(title='ბ', diagnosis='აორტის ანევრიზმა')
-        self.assertContains(self.client.get(reverse('niv-templates')), 'img/patients/aneurysm.')
-        self.assertContains(self.client.get(reverse('rx-analysis')), 'img/patients/aneurysm.')
         ina = User.objects.create_user('ina', password='x')
         profile = StaffProfile.objects.create(user=ina, display_name='ინა')
-        self.assertTrue('img/staff/ina.' in profile.avatar_url)
+        self.assertIn('img/staff/ina.', profile.avatar_url)
+        self.assertContains(self.client.get('/logout/', follow=True), 'img/staff/ina.')
 
 
 class BloodOrderTests(BaseViewTest):
@@ -448,20 +440,20 @@ class BloodOrderTests(BaseViewTest):
 
     def test_print_context(self):
         from .blood import print_context
-        ctx = print_context({'patient_name': ' ბერიძე ', 'date': '21.11.2026', 'time': '15:40', 'nurse': ''})
+        ctx = print_context({'patient_name': ' ბერიძე ', 'date': '21.11.2026', 'time': '15:40'})
         self.assertEqual(ctx['patient_name'], 'ბერიძე')
         self.assertEqual((ctx['day'], ctx['month'], ctx['year'], ctx['time']), ('21', '11', '2026', '15:40'))
-        self.assertEqual(ctx['nurse_padded'], ' ' * 51)
 
-    @skipUnless(shutil.which('soffice') or shutil.which('libreoffice'), 'LibreOffice not installed')
-    def test_print_pdf_and_remember_doctor(self):
+    def test_print_page_and_remember_doctor(self):
         StaffProfile.objects.create(user=self.user, display_name='ინა')
         r = self.client.post(reverse('blood-order-print'), {
             'patient_name': 'ბერიძე ნინო', 'diagnosis': 'A & B <C>', 'doctor': 'შეროზია ინა',
-            'date': '21.11.2026', 'time': '15:40'})
+            'rbc': '2', 'date': '21.11.2026', 'time': '15:40'})
         self.assertEqual(r.status_code, 200)
-        body = b''.join(r.streaming_content) if r.streaming else r.content
-        self.assertTrue(body.startswith(b'%PDF'))
+        self.assertContains(r, 'ბერიძე ნინო')
+        self.assertContains(r, 'A &amp; B &lt;C&gt;')
+        self.assertContains(r, 'size: A4 portrait')
+        self.assertContains(r, '>21</span>')
         self.assertEqual(StaffProfile.objects.get(user=self.user).full_name, 'შეროზია ინა')
 
     def test_print_requires_post(self):
