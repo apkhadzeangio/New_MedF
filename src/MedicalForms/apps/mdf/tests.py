@@ -367,7 +367,8 @@ class StaffAndBackupTests(TestCase):
         os.environ['STAFF_USERS'] = 'ina:ინა:test-pass-1,gurami:გურამი:test-pass-2'
         try:
             call_command('setup_staff', stdout=StringIO())
-            call_command('setup_staff', stdout=StringIO())  # repeatable
+            StaffProfile.objects.filter(user__username='gurami').update(order=0)  # changed in admin
+            call_command('setup_staff', stdout=StringIO())  # repeatable, keeps the order
         finally:
             del os.environ['STAFF_USERS']
         self.assertTrue(self.client.login(username='ina', password='test-pass-1'))
@@ -375,7 +376,7 @@ class StaffAndBackupTests(TestCase):
         self.assertTrue(ina.is_staff)
         self.assertTrue(ina.has_perm('mdf.change_medicine'))
         self.assertEqual(ina.profile.display_name, 'ინა')
-        self.assertEqual(list(StaffProfile.objects.values_list('order', flat=True)), [1, 2])
+        self.assertEqual(list(StaffProfile.objects.values_list('user__username', flat=True)), ['gurami', 'ina'])
 
         r = self.client.get(reverse('backup-download'))
         self.assertEqual(r['Content-Type'], 'application/gzip')

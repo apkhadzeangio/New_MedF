@@ -68,11 +68,12 @@ class Command(BaseCommand):
             user.is_staff = True
             user.save()
             user.groups.add(group)
+            # Order on the login page: set only for new people, so a change
+            # made in /admin/ (column "რიგითობა") is kept.
             profile, _ = StaffProfile.objects.get_or_create(
-                user=user, defaults={'display_name': display_name})
+                user=user, defaults={'display_name': display_name, 'order': order})
             profile.display_name = display_name
-            profile.order = order
-            profile.save()
+            profile.save(update_fields=['display_name'])
             state = 'created' if created else ('password reset' if options['reset_passwords'] else 'kept password')
             self.stdout.write(f'{username} ({display_name}): {state}')
         self.stdout.write(self.style.SUCCESS(f'{len(staff)} staff accounts ready.'))
