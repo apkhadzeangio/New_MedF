@@ -164,9 +164,72 @@ $(document).ready(function () {
                   .filter(function (el) { return el; });
     }
 
+    /* Dosing frequency ("2X", "3 X", "4x", "2-ჯერ" in the dose note or the
+       medicine name): the first click on an empty row also marks the next
+       doses every 24/N hours until the end of day 3. */
+
+    // All 37 hour columns of a row as one time line, 2 hours apart:
+    // day 1 a..m (08:00 .. next 08:00), day 2 a..l, day 3 a..l.
+    function timeline(row) {
+        var ids = [];
+        ['d1', 'd2', 'd3'].forEach(function (day) {
+            DAY_LETTERS[day].split('').forEach(function (h) { ids.push(row + '-' + day + '-' + h); });
+        });
+        return ids;
+    }
+
+    var FREQ_RE = [/(\d{1,2})\s*[xX\u0445\u0425\u00d7](?![a-zA-Z])/, /(\d{1,2})\s*-?\s*\u10ef\u10d4\u10e0/];
+    var FREQ_OK = {1: true, 2: true, 3: true, 4: true, 6: true, 12: true};
+
+    function rowFrequency(row) {
+        var i = row.slice(1);
+        var texts = [$('#n' + i).val() || '', $('#m' + i).val() || ''];
+        for (var t = 0; t < texts.length; t++) {
+            for (var r = 0; r < FREQ_RE.length; r++) {
+                var m = texts[t].match(FREQ_RE[r]);
+                if (m && FREQ_OK[parseInt(m[1], 10)]) {
+                    return parseInt(m[1], 10);
+                }
+            }
+        }
+        return 0;
+    }
+
+    function rowIsEmpty(row) {
+        return !$('td.hour[id^="' + row + '-"]').filter(function () {
+            return $(this).text().trim() === '+';
+        }).length;
+    }
+
+    function frequencyCells(cell, freq) {
+        var row = cell.id.split('-')[0];
+        var ids = timeline(row);
+        var step = 12 / freq;                     // columns are 2 hours apart
+        var cells = [];
+        for (var p = ids.indexOf(cell.id); p >= 0 && p < ids.length; p += step) {
+            var el = document.getElementById(ids[p]);
+            if (el) {
+                cells.push(el);
+            }
+        }
+        return cells;
+    }
+
     $('td.hour').on('click', function (e) {
         var turnOn = $(this).text().trim() !== '+';
-        var cells = e.shiftKey ? sameHourCells(this) : [this];
+        var cells = [this];
+        var row = this.id.split('-')[0];
+        if (e.shiftKey) {
+            cells = sameHourCells(this);
+        } else if (turnOn && /^r\d+$/.test(row) && rowIsEmpty(row)) {
+            var freq = rowFrequency(row);
+            if (freq) {
+                cells = frequencyCells(this, freq);
+                if (cells.length > 1 && $.notify) {
+                    $.notify(freq + 'X — ყოველ ' + (24 / freq) + ' საათში', 'info');
+                }
+            }
+        }
         cells.forEach(function (cell) { setHour(cell, turnOn); });
         markDirty();
     }).on('mousedown', function (e) {
