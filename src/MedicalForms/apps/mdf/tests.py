@@ -1065,7 +1065,7 @@ class ConsentTests(BaseViewTest):
         from .models import ConsentForm
         first = ConsentForm.objects.get(name__startswith='აორტა-ბარძაყის')
         self.assertEqual(first.blocks[0]['left'][0], 'სისხლდენა')
-        self.assertEqual(ConsentForm.objects.count(), 22)                      # + 21 from the Word files
+        self.assertEqual(ConsentForm.objects.count(), 26)                      # + 25 from the Word files
         other = ConsentForm.objects.create(name='კაროტიდული ენდარტერექტომია', blocks=[])
         for _ in range(3):
             self.client.get(reverse('consent-sheet', args=[other.pk]))
@@ -1144,6 +1144,19 @@ class ConsentTests(BaseViewTest):
         self.assertEqual([b['title'] for b in ConsentForm.objects.latest('id').blocks],
                          ['გართულებები ბარძაყის ღრმა არტერიის პლასტიკის დროს:',
                           'ადრეული პოსტოპერაციული გართულებები:', 'შორეული პოსტოპერაციული გართულებები:'])
+
+    def test_import_ends_at_surgeon_signature(self):
+        from .models import ConsentForm
+        f = self.docx([
+            ('ასევე ჩემთვის ცნობილია სამედიცინო მომსახურებაზე უარის შემთხვევაში.', False),
+            ('გართულებები ტრაქეოსტომიის დროს:', True),
+            ('სისხლდენა', False),
+            ('ექიმი ქირურგი: ______ ხელმოწერა ____', False),
+            ('ექიმი, რეანიმატოლოგი: ______', False),
+        ])
+        self.client.post(reverse('consent-new'), {'docx': f})
+        self.assertEqual(ConsentForm.objects.latest('id').blocks,
+                         [{'title': 'გართულებები ტრაქეოსტომიის დროს:', 'left': ['სისხლდენა'], 'right': []}])
 
     def test_copy_and_delete(self):
         from .models import ConsentForm

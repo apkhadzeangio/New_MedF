@@ -99,7 +99,9 @@ def parse_docx(fileobj):
         xml = z.read('word/document.xml').decode('utf-8')
     paras = list(_paragraphs(xml))
     start = next((i for i, (t, _) in enumerate(paras) if START_MARK in t), None)
-    end = next((i for i, (t, _) in enumerate(paras) if END_MARK in t and (start is None or i > start)), None)
+    # the signatures start: "მკურნალი ექიმი …", or e.g. "ექიმი ქირურგი: …"
+    end = next((i for i, (t, _) in enumerate(paras)
+                if (END_MARK in t or t.strip().startswith('ექიმი')) and (start is None or i > start)), None)
     if start is None or end is None:
         raise ValueError('ფაილში ვერ ვიპოვე გართულებების ნაწილი (უნდა იყოს ამავე ფორმის თანხმობის ფურცელი).')
     blocks = []
