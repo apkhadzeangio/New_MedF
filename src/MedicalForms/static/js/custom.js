@@ -40,6 +40,13 @@ $(document).ready(function () {
         if (isSubmitting) {
             return;
         }
+        // the prescription is known by the patient's name: ask before saving without it
+        var $name = $('input[id="patient_name"]');
+        if ($name.length && !$.trim($name.val()) &&
+                !confirm('პაციენტის სახელი და გვარი არ წერია. მაინც შევინახო?')) {
+            $name.trigger('focus');
+            return;
+        }
         isSubmitting = true;
         isDirty = false;
         // Use the browser's current security token: logging in (in this or
@@ -48,7 +55,7 @@ $(document).ready(function () {
         if (fresh) {
             $saveForm.find('input[name="csrfmiddlewaretoken"]').val(fresh);
         }
-        $('#updateBtn, #updateAndNewBtn, #saveModalBtn, #saveAndNewModalBtn, #saveAsModalBtn').prop('disabled', true);
+        $('#updateBtn, #updateAndNewBtn, #saveAsBtn').prop('disabled', true);
         $saveForm.submit();
     }
 
@@ -402,47 +409,6 @@ $(document).ready(function () {
     /* Save buttons and dialogs                                            */
     /* ------------------------------------------------------------------ */
 
-    $('input[id="title"]').on('input', function () {
-        $('input[id="form-title"]').val(this.value);
-        $('#saveNot').hide();
-    });
-
-    $('input[id="titleNew"]').on('input', function () {
-        $('input[id="form-title"]').val(this.value);
-        $('#saveAndNewNot').hide();
-    });
-
-    $('input[id="titleAs"]').on('input', function () {
-        $('input[id="form-as-title"]').val(this.value);
-        $('#saveAsNot').hide();
-    });
-
-    $('#saveModalBtn').on('click', function () {
-        if (!$('input[id="title"]').val().trim()) {
-            $('#saveNot').show();
-        } else {
-            submitSaveForm();
-        }
-    });
-
-    $('#saveAndNewModalBtn').on('click', function () {
-        $('input[name="action"]').val('save_and_new');
-        if (!$('input[id="titleNew"]').val().trim()) {
-            $('#saveAndNewNot').show();
-        } else {
-            submitSaveForm();
-        }
-    });
-
-    $('#saveAsModalBtn').on('click', function () {
-        $('input[name="action"]').val('save_as');
-        if (!$('input[id="titleAs"]').val().trim()) {
-            $('#saveAsNot').show();
-        } else {
-            submitSaveForm();
-        }
-    });
-
     $('#updateBtn').on('click', function () {
         $('input[name="action"]').val('save');
         submitSaveForm();
@@ -458,17 +424,6 @@ $(document).ready(function () {
         submitSaveForm();
     });
 
-    // Focus the name field when a dialog opens; Enter = save.
-    $('.modal').on('shown.bs.modal', function () {
-        $(this).find('input[type="text"]').first().trigger('focus').trigger('select');
-    });
-    $('#title, #titleNew, #titleAs').on('keydown', function (e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            $(this).closest('.modal').find('.modal-footer .btn-primary').trigger('click');
-        }
-    });
-
     // Ctrl+S / Cmd+S saves the template.
     $(document).on('keydown', function (e) {
         if (!hasSaveForm || !(e.ctrlKey || e.metaKey) || (e.key !== 's' && e.key !== 'S' && e.key !== 'ს')) {
@@ -479,8 +434,6 @@ $(document).ready(function () {
             $('.modal.show .modal-footer .btn-primary').first().trigger('click');
         } else if ($('#updateBtn').length) {
             $('#updateBtn').trigger('click');
-        } else if ($('#saveModal').length && window.bootstrap) {
-            bootstrap.Modal.getOrCreateInstance(document.getElementById('saveModal')).show();
         }
     });
 

@@ -6,15 +6,11 @@
     {% block inner_nav %}
     <div class="app-main" style="padding-bottom: 0">
         <div class="toolbar">
-            {% if niv and can_update %}
-                <button type="button" class="x-btn primary" id="updateBtn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3"/><path d="M8 21v-7h8v7"/></svg>შენახვა</button>
-                <button type="button" class="x-btn" id="updateAndNewBtn">შენახვა და ახალი</button>
-                <button type="button" class="x-btn" data-bs-toggle="modal" data-bs-target="#saveAsModal">ასლით შენახვა</button>
-            {% else %}
-                <button type="button" class="x-btn primary" data-bs-toggle="modal" data-bs-target="#saveModal">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3"/><path d="M8 21v-7h8v7"/></svg>შენახვა</button>
-                <button type="button" class="x-btn" data-bs-toggle="modal" data-bs-target="#saveAndNewModal">შენახვა და ახალი</button>
+            <button type="button" class="x-btn primary" id="updateBtn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3"/><path d="M8 21v-7h8v7"/></svg>შენახვა</button>
+            <button type="button" class="x-btn" id="updateAndNewBtn">შენახვა და ახალი</button>
+            {% if niv.pk and can_update %}
+                <button type="button" class="x-btn" id="saveAsBtn" title="ცვლილებები შეინახება ახალ დანიშნულებად, ეს დარჩება როგორც იყო">ასლით შენახვა</button>
             {% endif %}
             <span class="sep" aria-hidden="true"></span>
             <label class="m-0" id="tpl-tools"><span class="visually-hidden">შაბლონის ჩასმა</span>
@@ -174,8 +170,6 @@
         {% if niv and can_update %}
             <input type="hidden" value="{{ niv.pk }}" name="t">
         {% endif %}
-        <input type="hidden" id="form-title" name="title" value="{{ niv.title|default:'' }}">
-        <input type="hidden" id="form-as-title" name="as-title">
         <input type="hidden" id="form-doe" name="doe" value="{{ niv.doe|default:'' }}">
         <input type="hidden" id="form-dob" name="dob" value="{{ niv.dob|default:'' }}">
         <input type="hidden" id="form-person_id" name="person_id" value="{{ niv.person_id|default:'' }}">
@@ -211,74 +205,6 @@
         {% endfor %}
 
     </form>
-{% if not niv or not can_update %}
-    <!-- Modal -->
-<div class="modal fade" id="saveModal" tabindex="-1" role="dialog" aria-labelledby="saveModalLabel" aria-hidden="true">
-  <div class="modal-dialog" role="document">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="saveModalLabel">დანიშნულების შენახვა</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-          <div id="saveNot" class="alert alert-danger" role="alert" style="display: none">
-              დასახელება აუცილებელია!
-            </div>
-          <label for="title">* დასახელება <span class="small text-muted">(მაგ. პაციენტის სახელი, გვარი)</span></label>
-          <input type="text" class="form-control" id="title" maxlength="255" autocomplete="off" required value="{% if niv and not niv.pk %}{{ niv.title|default:'' }}{% endif %}">
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">გაუქმება</button>
-        <button type="button" class="btn btn-primary" id="saveModalBtn">შენახვა</button>
-      </div>
-    </div>
-  </div>
-</div>
-    <!-- Modal -->
-<div class="modal fade" id="saveAndNewModal" tabindex="-1" role="dialog" aria-labelledby="saveAndNewModalLabel" aria-hidden="true">
-  <div class="modal-dialog" role="document">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="saveAndNewModalLabel">დანიშნულების შენახვა</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-          <div id="saveAndNewNot" class="alert alert-danger" role="alert" style="display: none">
-              დასახელება აუცილებელია!
-            </div>
-          <label for="titleNew">* დასახელება <span class="small text-muted">(მაგ. პაციენტის სახელი, გვარი)</span></label>
-          <input type="text" class="form-control" id="titleNew" maxlength="255" autocomplete="off" required value="{% if niv and not niv.pk %}{{ niv.title|default:'' }}{% endif %}">
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">გაუქმება</button>
-        <button type="button" class="btn btn-primary" id="saveAndNewModalBtn">შენახვა</button>
-      </div>
-    </div>
-  </div>
-</div>
-{% endif %}
-    <!-- Modal -->
-<div class="modal fade" id="saveAsModal" tabindex="-1" role="dialog" aria-labelledby="saveAsModalLabel" aria-hidden="true">
-  <div class="modal-dialog" role="document">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="saveAsModalLabel">დანიშნულების ასლის შენახვა</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-          <div id="saveAsNot" class="alert alert-danger" role="alert" style="display: none">
-              დასახელება აუცილებელია!
-            </div>
-          <label for="titleAs">* დასახელება <span class="small text-muted">(მაგ. პაციენტის სახელი, გვარი)</span></label>
-          <input type="text" class="form-control" id="titleAs" maxlength="255" autocomplete="off" required>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">გაუქმება</button>
-        <button type="button" class="btn btn-primary" id="saveAsModalBtn">შენახვა</button>
-      </div>
-    </div>
-  </div>
-</div>
     <!-- Save current medicines as a template -->
 <div class="modal fade" id="tplSaveModal" tabindex="-1" aria-labelledby="tplSaveModalLabel" aria-hidden="true">
   <div class="modal-dialog">

@@ -149,10 +149,11 @@ class SaveTests(BaseViewTest):
     def test_save_as_keeps_original(self):
         niv = self.make_niv(r16=dict(d1=hours('c'), d2={}, d3={}))
         self.client.post(reverse('niv-create'), self.post_data(
-            t=niv.pk, action='save_as', title=niv.title, **{'as-title': 'ასლი', 'm1': 'Changed'}))
+            t=niv.pk, action='save_as', **{'patient_name': 'ბერიძე ნინო', 'm1': 'Changed'}))
         niv.refresh_from_db()
         self.assertEqual(niv.m1, 'Aspirin')
-        copy = NivForm.objects.get(title='ასლი')
+        copy = NivForm.objects.exclude(pk=niv.pk).get()
+        self.assertEqual(copy.title, 'ბერიძე ნინო')
         self.assertEqual(copy.m1, 'Changed')
         self.assertEqual(copy.r16['d1'], {'c': '+'})
         self.assertEqual(NivForm.objects.count(), 2)
@@ -167,6 +168,32 @@ class SaveTests(BaseViewTest):
 
     def test_get_not_allowed(self):
         self.assertEqual(self.client.get(reverse('niv-create')).status_code, 405)
+
+    def test_no_separate_name_patient_name_is_used(self):
+        data = self.post_data(patient_name='  ბერიძე   ნინო ', diagnosis='ანევრიზმა')
+        del data['title']
+        self.client.post(reverse('niv-create'), data)
+        niv = NivForm.objects.get()
+        self.assertEqual(niv.title, 'ბერიძე ნინო')
+        # renaming the patient renames the prescription
+        self.client.post(reverse('niv-create'), dict(data, t=niv.pk, action='save', patient_name='კაპანაძე გიორგი'))
+        niv.refresh_from_db()
+        self.assertEqual(niv.title, 'კაპანაძე გიორგი')
+        # no name: the diagnosis, then the old name, then a dated name
+        self.client.post(reverse('niv-create'), dict(data, t=niv.pk, action='save', patient_name=''))
+        niv.refresh_from_db()
+        self.assertEqual(niv.title, 'ანევრიზმა')
+        self.client.post(reverse('niv-create'), dict(data, patient_name='', diagnosis=''))
+        self.assertTrue(NivForm.objects.latest('id').title.startswith('დანიშნულება '))
+
+    def test_page_has_no_name_dialogs(self):
+        page = self.client.get(reverse('niv-cover'))
+        self.assertNotContains(page, 'id="saveModal"')
+        self.assertNotContains(page, 'დასახელება აუცილებელია')
+        self.assertContains(page, 'id="updateBtn"')
+        self.assertNotContains(page, 'id="saveAsBtn"')                 # nothing to copy yet
+        niv = self.make_niv()
+        self.assertContains(self.client.get(reverse('niv-cover') + f'?t={niv.pk}'), 'id="saveAsBtn"')
 
 
 class DeleteTests(BaseViewTest):

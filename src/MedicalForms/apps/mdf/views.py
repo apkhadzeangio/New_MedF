@@ -258,6 +258,17 @@ class NivTemplateListView(LoginRequiredMixin, generic.ListView):
         return ['mdf/niv-templates.html']
 
 
+def prescription_title(data, instance=None):
+    """Internal name of a prescription = the patient's name (or diagnosis)."""
+    for field in ('patient_name', 'diagnosis'):
+        value = ' '.join((data.get(field) or '').split())
+        if value:
+            return value[:255]
+    if instance and instance.title:
+        return instance.title
+    return f'დანიშნულება {timezone.localtime():%d.%m.%Y %H:%M}'
+
+
 class NivTemplateCreateView(LoginRequiredMixin, GetObjectMixin, generic.View):
     """Save a prescription (new, update, or "Save As" copy)."""
     http_method_names = ['post']
@@ -268,16 +279,16 @@ class NivTemplateCreateView(LoginRequiredMixin, GetObjectMixin, generic.View):
         data.update(validated_data)
 
         action = request.POST.get('action')
-        save_as_title = (request.POST.get('as-title') or '').strip()
         instance = self.get_object()
+        # no separate name: the prescription is known by the patient (and diagnosis)
+        data['title'] = prescription_title(data, instance)
 
-        if instance and save_as_title:
+        if instance and action == 'save_as':
             # "Save As": create a copy with the edits, leave the original as it was.
             for name, value in model_to_dict(instance).items():
                 if name == 'id' or name in data or value in (None, False):
                     continue
                 data[name] = json.dumps(value) if isinstance(value, (dict, list)) else value
-            data['title'] = save_as_title
             form = NivFormFrom(data=data)
         elif instance:
             form = NivFormFrom(instance=instance, data=data)
