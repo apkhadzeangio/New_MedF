@@ -1387,6 +1387,12 @@ class RosterBorderTests(BaseViewTest):
 class QuoteTests(BaseViewTest):
     """Quote of the day on the prescription page."""
 
+    def setUp(self):
+        super().setUp()
+        from .models import Quote
+        self.assertEqual(Quote.objects.count(), 50)      # the first 50 come with the site
+        Quote.objects.all().delete()
+
     LINES = ('1 | პირველი ციტატის ტექსტი | ავტორი ერთი | https://example.ge/a\n'
              '2 | „მეორე ციტატის ტექსტი“ | ავტორი ორი | https://example.ge/b\n'
              'ეს სტრიქონი არ გაირჩევა\n'
