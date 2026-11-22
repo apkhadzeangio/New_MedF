@@ -58,7 +58,9 @@ def site_reminders(request):
     month = f'{today:%Y-%m}'
     items = []
 
-    expiry = web_app_expiry(request.get_host().split(':')[0])
+    host = request.get_host().split(':')[0]
+    on_pythonanywhere = host.endswith('.pythonanywhere.com')   # elsewhere (own server) there is no expiry
+    expiry = web_app_expiry(host) if on_pythonanywhere else None
     if expiry:
         days = (expiry - today).days
         if days <= EXPIRY_WARN_DAYS:
@@ -68,7 +70,7 @@ def site_reminders(request):
                         + (f' ({days} დღეში)' if days > 0 else '')
                         + '. PythonAnywhere → Web → „Run until 1 month from today“.',
             })
-    elif today.day >= MONTH_END_DAY:
+    elif on_pythonanywhere and today.day >= MONTH_END_DAY:
         items.append({
             'key': f'expiry-{month}', 'level': 'info',
             'text': 'თვის ბოლოა: შეამოწმეთ საიტის ვადა — PythonAnywhere → Web → „Run until 1 month from today“.',

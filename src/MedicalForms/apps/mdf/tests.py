@@ -914,7 +914,8 @@ class RemindersAndMedicinesTests(BaseViewTest):
         from unittest import mock
         self.client.get(reverse('backup-download'))
         with mock.patch('django.utils.timezone.localdate', return_value=datetime.date(2026, 11, 26)):
-            self.assertEqual(self.reminders(), ['expiry'])
+            page = self.client.get(reverse('board'), HTTP_HOST='medf.pythonanywhere.com')
+            self.assertEqual([r['key'].split('-')[0] for r in page.context['reminders']], ['expiry'])
 
     def test_expiry_from_api_when_available(self):
         import datetime, io, json
@@ -933,6 +934,14 @@ class RemindersAndMedicinesTests(BaseViewTest):
             self.client.get(reverse('board'), HTTP_HOST='medf.pythonanywhere.com')
             self.assertEqual(urlopen.call_count, 1)                    # cached
         cache.clear()
+
+    def test_no_site_expiry_reminder_on_own_server(self):
+        import datetime
+        from unittest import mock
+        self.client.get(reverse('backup-download'))
+        with mock.patch('django.utils.timezone.localdate', return_value=datetime.date(2026, 11, 26)):
+            page = self.client.get(reverse('board'), HTTP_HOST='ramaz.ge')
+        self.assertEqual(page.context['reminders'], [])
 
     def test_api_failure_never_breaks_a_page(self):
         from unittest import mock

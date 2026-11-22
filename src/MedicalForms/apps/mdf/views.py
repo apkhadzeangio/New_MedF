@@ -2,6 +2,8 @@ import gzip
 import io
 import json
 import logging
+import os
+import tempfile
 from urllib.parse import quote
 from typing import Any
 
@@ -337,6 +339,28 @@ class NivTemplateDeleteView(LoginRequiredMixin, generic.View):
     delete = post
 
 
+class soffice_lock:
+    """A file lock around LibreOffice (no-op where file locks are unavailable)."""
+    path = os.path.join(tempfile.gettempdir(), 'medf-soffice.lock')
+
+    def __enter__(self):
+        self.fh = open(self.path, 'a')
+        try:
+            import fcntl
+            fcntl.flock(self.fh, fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            pass
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            import fcntl
+            fcntl.flock(self.fh, fcntl.LOCK_UN)
+        except (ImportError, OSError):
+            pass
+        self.fh.close()
+
+
 class NivDocumentView(LoginRequiredMixin, DocxTemplateView):
     # NOTE: the printed form (MDFNew.docx) is the officially approved layout.
     # Do not change the template or the context keys below.
@@ -345,7 +369,10 @@ class NivDocumentView(LoginRequiredMixin, DocxTemplateView):
     output_format = 'pdf'
 
     def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        response = super().get(request, *args, **kwargs)
+        # LibreOffice converts one document at a time: with several server
+        # processes (own server) two prints at once would disturb each other.
+        with soffice_lock():
+            response = super().get(request, *args, **kwargs)
         response['Content-Type'] = 'application/pdf'
         response['Content-Disposition'] = f'inline; filename="{self.filename}.pdf"'
         return response
