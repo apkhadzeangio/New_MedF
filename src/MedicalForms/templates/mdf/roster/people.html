@@ -6,19 +6,22 @@
 <div class="app-main">
     <a href="{% url 'roster' %}" class="small">← მორიგეობის განრიგი</a>
     <div class="page-head"><h1>მორიგეები</h1></div>
-    <p class="lead-muted">„რიგი“ — მორიგეობის თანმიმდევრობა. ვინც რიგით არ მორიგეობს, ფიქსირებულ დღეებზე დგას: მაგ. პარასკევი, კვირები „2,4“ = თვის მე-2 და მე-4 პარასკევი.
+    <p class="lead-muted">„თანაბრად ნაწილდება“ — ამ ექიმებზე თანაბრად იყოფა მორიგეობები და შაბათ-კვირა. ვისაც ეს არ აქვს მონიშნული, მორიგეობს
+        ან „თვეში შემთხვევით“ დღეებზე (მაგ. მიშა: 2 დღე, ერთმანეთს შორის მინიმუმ 10 დღე), ან ფიქსირებულ დღეებზე (მაგ. პარასკევი, კვირები „2,4“ = მე-2 და მე-4 პარასკევი).
         ცვლილება აისახება შემდეგ ავტომატურ განაწილებაზე; უკვე შენახული დღეები არ იცვლება.</p>
     <form method="post" class="x-card p-0">
         {% csrf_token %}
         <div class="rs-table-wrap">
         <table class="rs-table rs-people">
-            <thead><tr><th>რიგი</th><th>სახელი</th><th>რიგით მორიგეობს</th><th>ფიქსირებული დღე</th><th>კვირები</th><th>აქტიური</th></tr></thead>
+            <thead><tr><th>რიგი</th><th>სახელი</th><th>თანაბრად ნაწილდება</th><th>თვეში შემთხვევით</th><th>მინ. დაშორება</th><th>ფიქსირებული დღე</th><th>კვირები</th><th>აქტიური</th></tr></thead>
             <tbody>
             {% for p in people %}
             <tr class="{% if not p.is_active %}off{% endif %}">
                 <td><input type="number" name="p{{ p.pk }}-order" value="{{ p.order }}" min="0" max="99" class="form-control rs-order" aria-label="რიგი — {{ p.name }}"></td>
                 <td><input type="text" name="p{{ p.pk }}-name" value="{{ p.name }}" maxlength="100" class="form-control" required aria-label="სახელი"></td>
                 <td><input type="checkbox" name="p{{ p.pk }}-rotation" {% if p.in_rotation %}checked{% endif %} aria-label="რიგით მორიგეობს — {{ p.name }}"></td>
+                <td><input type="number" name="p{{ p.pk }}-per_month" value="{{ p.per_month|default_if_none:'' }}" min="0" max="15" class="form-control rs-order" aria-label="თვეში შემთხვევით — {{ p.name }}"></td>
+                <td><input type="number" name="p{{ p.pk }}-min_gap" value="{{ p.min_gap }}" min="1" max="20" class="form-control rs-order" aria-label="მინიმალური დაშორება — {{ p.name }}"></td>
                 <td><select name="p{{ p.pk }}-weekday" class="form-select" aria-label="ფიქსირებული დღე — {{ p.name }}">
                     <option value="">—</option>
                     {% for n, label in weekdays %}<option value="{{ n }}" {% if p.fixed_weekday == n %}selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -27,7 +30,7 @@
                 <td><input type="checkbox" name="p{{ p.pk }}-active" {% if p.is_active %}checked{% endif %} aria-label="აქტიური — {{ p.name }}"></td>
             </tr>
             {% endfor %}
-            <tr><td></td><td colspan="5"><input type="text" name="new-name" maxlength="100" class="form-control" placeholder="+ ახალი ექიმი (სახელი) — დაემატება რიგის ბოლოს"></td></tr>
+            <tr><td></td><td colspan="7"><input type="text" name="new-name" maxlength="100" class="form-control" placeholder="+ ახალი ექიმი (სახელი) — დაემატება რიგის ბოლოს"></td></tr>
             </tbody>
         </table>
         </div>

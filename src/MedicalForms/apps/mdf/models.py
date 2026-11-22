@@ -549,6 +549,8 @@ class RosterPerson(models.Model):
     in_rotation = models.BooleanField('რიგით მორიგეობს', default=True)
     fixed_weekday = models.PositiveSmallIntegerField('ფიქსირებული დღე', choices=WEEKDAYS, null=True, blank=True)
     fixed_weeks = models.CharField('რომელი კვირები (მაგ. 2,4)', max_length=20, blank=True)
+    per_month = models.PositiveSmallIntegerField('თვეში (შემთხვევით დღეებზე)', null=True, blank=True)
+    min_gap = models.PositiveSmallIntegerField('მინიმალური დაშორება (დღე)', default=10)
     is_active = models.BooleanField('აქტიური', default=True)
 
     class Meta:

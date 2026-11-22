@@ -64,7 +64,6 @@
                     <span class="rs-none">მორიგე არ არის</span>
                 {% endif %}
                 <span class="rs-flags">
-                    {% if d.source == 'fixed' %}<span title="ფიქსირებული დღე">ფიქს.</span>{% endif %}
                     {% if d.locked %}<span title="ხელით დასმული — ავტომატური განაწილება არ შეცვლის">🔒</span>{% endif %}
                 </span>
             </button>
@@ -87,7 +86,7 @@
                         {% if d.person and not d.person.is_active %}<option value="{{ d.person.pk }}" selected>{{ d.person.name }}</option>{% endif %}
                     </select>
                 </td>
-                <td class="d-none d-md-table-cell rs-flags-cell">{% if d.source == 'fixed' %}ფიქს.{% endif %}{% if d.locked %} 🔒{% endif %}</td>
+                <td class="d-none d-md-table-cell rs-flags-cell">{% if d.locked %}🔒{% endif %}</td>
             </tr>
             {% endfor %}
             </tbody>
@@ -99,15 +98,15 @@
         <section class="x-card">
             <h2><span class="dot"></span>თვის შეჯამება</h2>
             <table class="rs-stats">
-                <thead><tr><th>ექიმი</th><th>მორიგეობა</th><th>შაბ-კვი</th><th>დღესასწაული</th></tr></thead>
+                <thead><tr><th>ექიმი</th><th>მორიგეობა</th><th title="შაბათი, კვირა და დღესასწაულები">შაბ-კვი, დღესასწ.</th><th title="შაბათ-კვირა და დღესასწაული წინა 6 თვეში">წინა 6 თვე</th></tr></thead>
                 <tbody>
                 {% for r in stats.people %}
-                <tr><td><span class="rs-dot c{{ colors|get_item:r.person.pk }}"></span>{{ r.person.name }}{% if not r.person.in_rotation %} <small>(ფიქს.)</small>{% endif %}</td>
-                    <td>{{ r.total }}</td><td>{{ r.weekend }}</td><td>{{ r.holiday }}</td></tr>
+                <tr><td><span class="rs-dot c{{ colors|get_item:r.person.pk }}"></span>{{ r.person.name }}{% if not r.person.in_rotation %} <small>(სპეც. დღეები)</small>{% endif %}</td>
+                    <td>{{ r.total }}</td><td>{{ r.heavy }}</td><td>{% if r.hist_heavy is not None %}{{ r.hist_heavy }}{% else %}—{% endif %}</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
-            <p class="hints m-0"><span>რიგით მორიგეებს შორის სხვაობა თვეში ჩვეულებრივ 0–1 მორიგეობაა; რიგი თვიდან თვეში გრძელდება, ამიტომ წლის განმავლობაში თანაბრდება.</span></p>
+            <p class="hints m-0"><span>მორიგეობების და შაბათ-კვირების სხვაობა ექიმებს შორის თვეში 0–1-ია; ვისაც წინა თვეებში მეტი შაბათ-კვირა ჰქონდა, ახალ განაწილებაში ნაკლები ხვდება.</span></p>
         </section>
         <section class="x-card">
             <h2><span class="dot"></span>ბოლო ცვლილებები</h2>

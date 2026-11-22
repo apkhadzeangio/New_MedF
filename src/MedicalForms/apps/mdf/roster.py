@@ -1,21 +1,22 @@
 """Duty roster ("მორიგეობის განრიგი"): one surgeon on duty per day.
 
 Rules (set by the department):
-* doctors with a fixed rule are on their fixed days (e.g. Misha: 2nd and 4th
-  Friday of the month);
-* everybody else takes turns in a fixed order, one day each;
-* on a fixed day the rotation pauses: whoever's turn it was goes the next day,
-  so nobody loses a duty;
-* the rotation continues from month to month (who starts a month follows
-  the last one of the previous month), so over time everybody gets the same
-  number of duties;
-* changes made by hand are locked: generating again keeps them (the rotation
-  pauses on them as well).
+* some doctors are on a few days a month chosen at random (e.g. Misha: 2 days,
+  at least 10 days apart);
+* doctors with a fixed rule (weekday + which weeks) are on those days;
+* everybody else shares the remaining days evenly, and the weekend load
+  (Saturday, Sunday, public holidays) evenly too: nobody wants weekends.
+  Who had more weekends in the previous months gets fewer now;
+* one doctor never has two days in a row, duties are spread out;
+* changes made by hand are locked: generating again keeps them.
+* a generation is reproducible from its "seed": the preview and the saved
+  schedule are the same; "სხვა ვარიანტი" draws a new one.
 
 Ultrasound on-call is a later stage.
 """
 import calendar
 import datetime
+import random
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -106,55 +107,186 @@ def rotation_people():
     return list(RosterPerson.objects.filter(is_active=True, in_rotation=True).order_by('order', 'id'))
 
 
-def default_start(year, month, rotation):
-    """Who starts the month: the one after the last rotation duty before it."""
-    if not rotation:
-        return None
-    first = datetime.date(year, month, 1)
-    last = (RosterDay.objects.filter(date__lt=first, source=RosterDay.AUTO, person__in=rotation)
-            .order_by('-date').select_related('person').first())
-    if not last:
-        return rotation[0]
-    ids = [p.pk for p in rotation]
-    return rotation[(ids.index(last.person_id) + 1) % len(rotation)]
+def is_heavy(day, holidays):
+    """Saturday, Sunday or a public holiday: the days nobody wants."""
+    return day.weekday() >= 5 or day in holidays
 
 
-def generate(year, month, start=None):
+def _history(people, first, months=6):
+    """Duties and weekend duties of each doctor in the months before ``first``."""
+    since = datetime.date(*shift_month(first.year, first.month, -months), 1)
+    total = {p.pk: 0 for p in people}
+    heavy = {p.pk: 0 for p in people}
+    holidays = {}
+    for rec in RosterDay.objects.filter(date__gte=since, date__lt=first, person__in=people):
+        hol = holidays.setdefault(rec.date.year, georgian_holidays(rec.date.year))
+        total[rec.person_id] += 1
+        heavy[rec.person_id] += is_heavy(rec.date, hol)
+    return total, heavy
+
+
+def _random_days(person, free, taken, rnd):
+    """``person.per_month`` days among ``free``, at least ``min_gap`` apart (also from ``taken``)."""
+    need = max(0, (person.per_month or 0) - len(taken))
+    gap = max(1, person.min_gap or 1)
+    for _ in range(400):
+        chosen = list(taken)
+        for day in rnd.sample(free, len(free)):
+            if len(chosen) - len(taken) == need:
+                break
+            if all(abs((day - other).days) >= gap for other in chosen):
+                chosen.append(day)
+        if len(chosen) - len(taken) == need:
+            return [d for d in chosen if d not in taken], True
+    # cannot keep the gap (e.g. many locked days): as far apart as possible
+    free = sorted(free)
+    step = max(1, len(free) // max(1, need))
+    return free[::step][:need], False
+
+
+def _split(n, people, weight, rnd):
+    """``n`` days among ``people`` as evenly as possible; the extra ones go to the lowest ``weight``."""
+    if not people:
+        return {}
+    base, extra = divmod(n, len(people))
+    order = sorted(people, key=lambda p: (weight(p), rnd.random()))
+    return {p.pk: base + (1 if i < extra else 0) for i, p in enumerate(order)}
+
+
+def _place(days, heavy_days, people, need_heavy, need_light, fixed, rnd):
+    """One randomised pass: a doctor for every free day, keeping the quotas and spreading duties."""
+    left = {'h': dict(need_heavy), 'l': dict(need_light)}
+    last = {}
+    for day, person in fixed.items():
+        if person:
+            last.setdefault(person.pk, []).append(day)
+    result = {}
+    by_pk = {p.pk: p for p in people}
+    for day in days:
+        if day in fixed:
+            continue
+        kind = 'h' if day in heavy_days else 'l'
+        best, best_score = None, None
+        for p in people:
+            if left[kind].get(p.pk, 0) <= 0:
+                continue
+            mine = last.get(p.pk, []) + [d for d, x in result.items() if x == p.pk]
+            gaps = [abs((day - d).days) for d in mine]
+            nearest = min(gaps) if gaps else 99
+            if nearest <= 1:
+                continue                                  # never two days in a row
+            score = min(nearest, 8) + rnd.random()        # prefer whoever has waited longest
+            if best_score is None or score > best_score:
+                best, best_score = p.pk, score
+        if best is None:
+            return None
+        result[day] = best
+        left[kind][best] -= 1
+    return {d: by_pk[pk] for d, pk in result.items()}
+
+
+def _spread_penalty(assign):
+    per = {}
+    for day, person in assign.items():
+        if person:
+            per.setdefault(person.pk, []).append(day)
+    penalty = 0
+    for days in per.values():
+        days.sort()
+        for a, b in zip(days, days[1:]):
+            gap = (b - a).days
+            penalty += {1: 100, 2: 6, 3: 2}.get(gap, 0)
+    return penalty
+
+
+def generate(year, month, seed=None):
     """Proposed duty for every day of the month (nothing is saved here).
 
-    Returns rows: {date, person, source, locked, saved (person saved now), changed}.
+    Returns (rows, seed); rows: {date, person, source, locked, saved, changed}.
     """
-    rotation = rotation_people()
-    fixed = {}
-    for person in RosterPerson.objects.filter(is_active=True, fixed_weekday__isnull=False):
-        for day in fixed_dates(person, year, month):
-            fixed.setdefault(day, person)
+    if seed is None:
+        seed = random.randrange(1, 10 ** 9)
+    rnd = random.Random(seed)
+    days = month_days(year, month)
+    holidays = georgian_holidays(year)
+    heavy_days = {d for d in days if is_heavy(d, holidays)}
     saved = {d.date: d for d in RosterDay.objects.filter(
         date__year=year, date__month=month).select_related('person')}
-    start = start if start in rotation else default_start(year, month, rotation)
-    pointer = rotation.index(start) if start else 0
+
+    assign, source = {}, {}
+    for day, rec in saved.items():
+        if rec.locked:
+            assign[day], source[day] = rec.person, rec.source
+    # doctors on fixed weekdays
+    for person in RosterPerson.objects.filter(is_active=True, fixed_weekday__isnull=False):
+        for day in fixed_dates(person, year, month):
+            if day not in assign:
+                assign[day], source[day] = person, RosterDay.FIXED
+    # doctors on a few random days (Misha)
+    for person in RosterPerson.objects.filter(is_active=True, in_rotation=False, per_month__gt=0):
+        taken = [d for d, p in assign.items() if p and p.pk == person.pk]
+        free = [d for d in days if d not in assign]
+        chosen, _ok = _random_days(person, free, taken, rnd)
+        for day in chosen:
+            assign[day], source[day] = person, RosterDay.FIXED
+
+    # everybody else: equal number of duties and equal weekends
+    people = rotation_people()
+    free = [d for d in days if d not in assign]
+    if people and free:
+        hist_total, hist_heavy = _history(people, days[0])
+        locked_h = {p.pk: sum(1 for d, x in assign.items() if x and x.pk == p.pk and d in heavy_days) for p in people}
+        locked_l = {p.pk: sum(1 for d, x in assign.items() if x and x.pk == p.pk and d not in heavy_days) for p in people}
+        free_h = sum(1 for d in free if d in heavy_days)
+        free_l = len(free) - free_h
+        target_h = _split(free_h + sum(locked_h.values()), people, lambda p: hist_heavy[p.pk] + locked_h[p.pk] * 0, rnd)
+        target_l = _split(free_l + sum(locked_l.values()), people,
+                          lambda p: hist_total[p.pk] + target_h[p.pk] * 10, rnd)
+        need_h = _fit({p.pk: target_h[p.pk] - locked_h[p.pk] for p in people}, free_h)
+        need_l = _fit({p.pk: target_l[p.pk] - locked_l[p.pk] for p in people}, free_l)
+        best, best_pen = None, None
+        for _ in range(120):
+            placed = _place(days, heavy_days, people, need_h, need_l, assign, rnd)
+            if placed is None:
+                continue
+            pen = _spread_penalty({**assign, **placed})
+            if best_pen is None or pen < best_pen:
+                best, best_pen = placed, pen
+                if pen == 0:
+                    break
+        if best is None:
+            # very crowded month (many locked days): fill in turn, two days in a row allowed
+            best = {d: people[i % len(people)] for i, d in enumerate(free)}
+        for day, person in best.items():
+            assign[day], source[day] = person, RosterDay.AUTO
 
     rows = []
-    for day in month_days(year, month):
+    for day in days:
         current = saved.get(day)
-        if current and current.locked:
-            person, source, locked = current.person, current.source, True       # kept as it is
-        elif day in fixed:
-            person, source, locked = fixed[day], RosterDay.FIXED, False          # the rotation pauses
-        elif rotation:
-            person, source, locked = rotation[pointer % len(rotation)], RosterDay.AUTO, False
-            pointer += 1
-        else:
-            person, source, locked = None, RosterDay.AUTO, False
+        person = assign.get(day)
         saved_person = current.person if current else None
-        rows.append({'date': day, 'person': person, 'source': source, 'locked': locked,
-                     'saved': saved_person, 'changed': bool(current) and saved_person != person})
-    return rows, start
+        rows.append({'date': day, 'person': person, 'source': source.get(day, RosterDay.AUTO),
+                     'locked': bool(current and current.locked), 'saved': saved_person,
+                     'changed': bool(current) and saved_person != person})
+    return rows, seed
+
+
+def _fit(need, total):
+    """Make the wanted numbers non-negative and add up to ``total``."""
+    need = {k: max(0, v) for k, v in need.items()}
+    keys = list(need)
+    while sum(need.values()) > total and keys:
+        k = max(keys, key=lambda x: need[x])
+        need[k] -= 1
+    while sum(need.values()) < total and keys:
+        k = min(keys, key=lambda x: need[x])
+        need[k] += 1
+    return need
 
 
 def month_stats(days):
     """Counts per doctor, weekends, holidays, gaps and back-to-back duties."""
-    people = {p.pk: {'person': p, 'total': 0, 'weekend': 0, 'holiday': 0}
+    people = {p.pk: {'person': p, 'total': 0, 'weekend': 0, 'holiday': 0, 'heavy': 0}
               for p in RosterPerson.objects.filter(is_active=True)}
     gaps, repeats = [], []
     previous = None
@@ -163,17 +295,19 @@ def month_stats(days):
         if not person:
             gaps.append(d['date'])
         else:
-            row = people.setdefault(person.pk, {'person': person, 'total': 0, 'weekend': 0, 'holiday': 0})
+            row = people.setdefault(person.pk, {'person': person, 'total': 0, 'weekend': 0, 'holiday': 0, 'heavy': 0})
             row['total'] += 1
             row['weekend'] += d['date'].weekday() >= 5
             row['holiday'] += bool(d.get('holiday'))
+            row['heavy'] += d['date'].weekday() >= 5 or bool(d.get('holiday'))
             if previous and previous.pk == person.pk:
                 repeats.append(d['date'])
         previous = person
     rows = sorted(people.values(), key=lambda r: (r['person'].order, r['person'].pk))
-    rotation_totals = [r['total'] for r in rows if r['person'].in_rotation and r['person'].is_active]
+    rot = [r for r in rows if r['person'].in_rotation and r['person'].is_active]
+    spread = lambda key: (max(r[key] for r in rot) - min(r[key] for r in rot)) if rot else 0
     return {'people': rows, 'gaps': gaps, 'repeats': repeats, 'covered': len(days) - len(gaps),
-            'spread': (max(rotation_totals) - min(rotation_totals)) if rotation_totals else 0}
+            'spread': spread('total'), 'heavy_spread': spread('heavy')}
 
 
 def log(user, text, day=None):
@@ -226,11 +360,15 @@ class RosterMonthView(LoginRequiredMixin, generic.TemplateView):
         for d in days:
             d['color'] = colors.get(d['person'].pk) if d['person'] else None
         view = self.request.GET.get('view', 'calendar')
+        stats = month_stats(days)
+        _total, hist_heavy = _history(rotation_people(), datetime.date(year, month, 1))
+        for row in stats['people']:
+            row['hist_heavy'] = hist_heavy.get(row['person'].pk)
         ctx.update({
             'year': year, 'month': month, 'month_name': MONTHS[month - 1],
             'days': days, 'weeks': weeks, 'weekday_names': WEEKDAYS_SHORT,
             'prev': {'y': py, 'm': pm, 'name': MONTHS[pm - 1]}, 'next': {'y': ny, 'm': nm, 'name': MONTHS[nm - 1]},
-            'people': people, 'colors': colors, 'stats': month_stats(days),
+            'people': people, 'colors': colors, 'stats': stats,
             'has_saved': any(d['saved'] for d in days), 'view': 'table' if view == 'table' else 'calendar',
             'years': range(year - 1, year + 3), 'months': list(enumerate(MONTHS, start=1)),
             'log': RosterLog.objects.filter(date__year=year, date__month=month).select_related('user__profile')[:15],
@@ -245,17 +383,21 @@ class RosterGenerateView(LoginRequiredMixin, generic.TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         year, month = parse_month(self.request.GET)
-        rotation = rotation_people()
-        start = next((p for p in rotation if str(p.pk) == self.request.GET.get('start')), None)
-        rows, start = generate(year, month, start)
+        rows, seed = generate(year, month, _seed(self.request.GET))
         holidays = georgian_holidays(year)
         for r in rows:
             r['weekday'] = WEEKDAYS[r['date'].weekday()]
             r['weekend'] = r['date'].weekday() >= 5
             r['holiday'] = holidays.get(r['date'])
+        people = rotation_people()
+        hist_total, hist_heavy = _history(people, datetime.date(year, month, 1))
+        stats = month_stats(rows)
+        for row in stats['people']:
+            row['hist_heavy'] = hist_heavy.get(row['person'].pk)
         ctx.update({
-            'year': year, 'month': month, 'month_name': MONTHS[month - 1], 'rows': rows,
-            'rotation': rotation, 'start': start, 'stats': month_stats(rows),
+            'year': year, 'month': month, 'month_name': MONTHS[month - 1], 'rows': rows, 'seed': seed,
+            'rotation': people, 'specials': RosterPerson.objects.filter(is_active=True, in_rotation=False),
+            'stats': stats,
             'changed': sum(1 for r in rows if r['changed']),
             'kept': sum(1 for r in rows if r['locked']),
             'has_saved': RosterDay.objects.filter(date__year=year, date__month=month).exists(),
@@ -264,9 +406,7 @@ class RosterGenerateView(LoginRequiredMixin, generic.TemplateView):
 
     def post(self, request, *args, **kwargs):
         year, month = parse_month(request.POST)
-        rotation = rotation_people()
-        start = next((p for p in rotation if str(p.pk) == request.POST.get('start')), None)
-        rows, start = generate(year, month, start)
+        rows, seed = generate(year, month, _seed(request.POST))      # the same as the preview
         with transaction.atomic():
             for r in rows:
                 if r['locked']:
@@ -274,10 +414,24 @@ class RosterGenerateView(LoginRequiredMixin, generic.TemplateView):
                 RosterDay.objects.update_or_create(
                     date=r['date'], defaults={'person': r['person'], 'source': r['source'],
                                               'locked': False, 'updated_by': request.user})
-            log(request.user, f'{MONTHS[month - 1]} {year}: განრიგი განაწილდა ავტომატურად'
-                              + (f' (იწყებს {start.name})' if start else ''), datetime.date(year, month, 1))
+            log(request.user, f'{MONTHS[month - 1]} {year}: განრიგი განაწილდა ავტომატურად', datetime.date(year, month, 1))
         messages.success(request, f'{MONTHS[month - 1]} {year} — განრიგი შენახულია.')
         return HttpResponseRedirect(reverse('roster') + f'?y={year}&m={month}')
+
+
+def _small_int(value, low, high):
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    return n if low <= n <= high else None
+
+
+def _seed(data):
+    try:
+        return int(data.get('seed') or 0) or None
+    except ValueError:
+        return None
 
 
 class RosterDayView(LoginRequiredMixin, generic.View):
@@ -348,6 +502,8 @@ class RosterPeopleView(LoginRequiredMixin, generic.TemplateView):
                 'in_rotation': bool(request.POST.get(p + 'rotation')),
                 'fixed_weekday': int(weekday) if weekday.isdigit() and int(weekday) < 7 else None,
                 'fixed_weeks': ''.join(c for c in request.POST.get(p + 'weeks', '') if c.isdigit() or c == ',')[:20],
+                'per_month': _small_int(request.POST.get(p + 'per_month'), 0, 15),
+                'min_gap': _small_int(request.POST.get(p + 'min_gap'), 1, 20) or 10,
                 'is_active': bool(request.POST.get(p + 'active')),
             }
             if any(getattr(person, k) != v for k, v in new.items()):

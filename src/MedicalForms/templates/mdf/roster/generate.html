@@ -8,20 +8,17 @@
     <div class="page-head"><h1>ავტომატური განაწილება · {{ month_name }} {{ year }}</h1></div>
 
     <div class="x-card">
-        <form method="get" class="d-flex flex-wrap gap-3 align-items-end m-0">
-            <input type="hidden" name="y" value="{{ year }}"><input type="hidden" name="m" value="{{ month }}">
-            <label class="fld">ვინ იწყებს რიგს თვის დასაწყისში
-                <select name="start" class="form-select" onchange="this.form.submit()">
-                    {% for p in rotation %}<option value="{{ p.pk }}" {% if p == start %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
-                </select>
-            </label>
-            <p class="hints m-0"><span>თავისით აირჩევა ის, ვისი რიგიცაა წინა თვის ბოლო მორიგის შემდეგ.</span></p>
-        </form>
         <p class="m-0">
-            რიგი: {% for p in rotation %}<b>{{ p.name }}</b>{% if not forloop.last %} → {% endif %}{% endfor %}.
-            ფიქსირებულ დღეებზე (მაგ. მიშა — მე-2 და მე-4 პარასკევი) რიგი ჩერდება და მომდევნო დღეს გრძელდება.
+            {% for p in specials %}{% if p.per_month %}<b>{{ p.name }}</b> — თვეში {{ p.per_month }} დღე, შემთხვევით, ერთმანეთს შორის მინიმუმ {{ p.min_gap }} დღე.<br>{% endif %}{% endfor %}
+            დანარჩენი დღეები თანაბრად ნაწილდება: {% for p in rotation %}<b>{{ p.name }}</b>{% if not forloop.last %}, {% endif %}{% endfor %}.
+            შაბათ-კვირა და დღესასწაულიც თანაბრად — ვისაც წინა თვეებში მეტი ჰქონდა, ახლა ნაკლები ხვდება. ზედიზედ ორ დღეს ერთი ექიმი არ მორიგეობს.
             {% if kept %}<br>ხელით დასმული <b>{{ kept }}</b> დღე 🔒 რჩება უცვლელი.{% endif %}
         </p>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="x-btn" href="?y={{ year }}&m={{ month }}">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/></svg>სხვა ვარიანტი</a>
+            <span class="hints m-0"><span>ყოველ დაჭერაზე ახალი შემთხვევითი განაწილება. შეინახება ზუსტად ის, რასაც ქვემოთ ხედავთ.</span></span>
+        </div>
     </div>
 
     {% if has_saved and changed %}
@@ -47,15 +44,15 @@
         <aside class="x-card rs-gen-side">
             <h2><span class="dot"></span>შემოწმება</h2>
             <table class="rs-stats">
-                <thead><tr><th>ექიმი</th><th>მორ.</th><th>შაბ-კვი</th></tr></thead>
-                <tbody>{% for s in stats.people %}<tr><td>{{ s.person.name }}</td><td>{{ s.total }}</td><td>{{ s.weekend }}</td></tr>{% endfor %}</tbody>
+                <thead><tr><th>ექიმი</th><th>მორ.</th><th title="შაბათი, კვირა, დღესასწაული">შაბ-კვი</th><th title="წინა 6 თვის შაბათ-კვირა და დღესასწაული">წინა 6 თვე</th></tr></thead>
+                <tbody>{% for s in stats.people %}<tr><td>{{ s.person.name }}</td><td>{{ s.total }}</td><td>{{ s.heavy }}</td><td>{% if s.hist_heavy is not None %}{{ s.hist_heavy }}{% else %}—{% endif %}</td></tr>{% endfor %}</tbody>
             </table>
             <p class="m-0">{% if stats.gaps %}<span class="rs-warn">მორიგე არ არის: {{ stats.gaps|length }} დღე.</span>{% else %}ყველა დღე დაფარულია.{% endif %}
                {% if stats.repeats %}<br><span class="rs-warn">ზედიზედ ორ დღეს ერთი ექიმი: {% for d in stats.repeats %}{{ d|date:"j" }}{% if not forloop.last %}, {% endif %}{% endfor %}.</span>{% endif %}</p>
             <form method="post" class="m-0">
                 {% csrf_token %}
                 <input type="hidden" name="y" value="{{ year }}"><input type="hidden" name="m" value="{{ month }}">
-                <input type="hidden" name="start" value="{{ start.pk|default:'' }}">
+                <input type="hidden" name="seed" value="{{ seed }}">
                 <button type="submit" class="x-btn primary w-100 justify-content-center">განრიგის დადასტურება</button>
             </form>
             <a class="x-btn w-100 justify-content-center" href="{% url 'roster' %}?y={{ year }}&m={{ month }}">გაუქმება</a>

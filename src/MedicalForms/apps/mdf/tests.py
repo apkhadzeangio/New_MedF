@@ -1200,62 +1200,67 @@ class ConsentUploadFormatsTests(BaseViewTest):
 
 
 class RosterTests(BaseViewTest):
-    """Duty roster: Misha on 2nd/4th Friday, the others in turn, rotation carries over."""
+    """Duty roster: Misha on 2 random days (>=10 apart), the rest shared evenly, weekends too."""
 
     ROTATION = ['რამაზი', 'ია', 'თეონა', 'გურამი', 'გიგა', 'დიმიტრი', 'თორნიკე']
 
-    def gen(self, y, m, start=None):
+    def gen(self, y, m, seed=1):
         from .roster import generate
-        rows, _ = generate(y, m, start)
+        rows, _ = generate(y, m, seed)
         return rows
 
-    def save(self, y, m, **extra):
-        return self.client.post(reverse('roster-generate'), dict(y=y, m=m, **extra))
+    def save(self, y, m, seed=1, **extra):
+        return self.client.post(reverse('roster-generate'), dict(y=y, m=m, seed=seed, **extra))
 
     def test_seeded_people(self):
         from .models import RosterPerson
         rotation = [p.name for p in RosterPerson.objects.filter(in_rotation=True)]
         self.assertEqual(rotation, self.ROTATION)
         misha = RosterPerson.objects.get(name='მიშა')
-        self.assertEqual((misha.in_rotation, misha.fixed_weekday, misha.fixed_weeks), (False, 4, '2,4'))
+        self.assertEqual((misha.in_rotation, misha.per_month, misha.min_gap, misha.fixed_weekday), (False, 2, 10, None))
 
-    def test_misha_on_2nd_and_4th_friday_and_rotation_pauses(self):
-        import datetime
-        rows = self.gen(2026, 11)            # Fridays of Nov 2026: 6, 13, 20, 27
-        names = [r['person'].name for r in rows]
-        self.assertEqual([r['date'].day for r in rows if r['person'].name == 'მიშა'], [13, 27])
-        self.assertTrue(all(r['date'].weekday() == 4 for r in rows if r['person'].name == 'მიშა'))
-        # without Misha's days the order never breaks: რამაზი, ია, თეონა ...
-        others = [n for n in names if n != 'მიშა']
-        self.assertEqual(others, [self.ROTATION[i % 7] for i in range(len(others))])
-        # the one whose turn it was on the 13th goes on the 14th
-        self.assertEqual(names[13], self.ROTATION[12 % 7])         # 14th = the 13th rotation turn
-        self.assertEqual(len(rows), 30)
+    def test_misha_two_random_days_at_least_10_apart(self):
+        seen = set()
+        for seed in range(1, 25):
+            days = [r['date'] for r in self.gen(2026, 11, seed) if r['person'].name == 'მიშა']
+            self.assertEqual(len(days), 2, seed)
+            self.assertGreaterEqual((days[1] - days[0]).days, 10, seed)
+            seen.add(tuple(days))
+        self.assertGreater(len(seen), 5)                              # really random
+        self.assertEqual(self.gen(2026, 11, 7), self.gen(2026, 11, 7))  # the same seed -> the same schedule
 
-    def test_every_month_length_and_equal_shares(self):
+    def test_every_month_length_equal_duties_and_weekends(self):
+        from .roster import georgian_holidays, is_heavy
         for y, m, length in ((2027, 2, 28), (2028, 2, 29), (2026, 11, 30), (2026, 12, 31)):
-            rows = self.gen(y, m)
-            self.assertEqual(len(rows), length)
-            self.assertTrue(all(r['person'] for r in rows), (y, m))      # every day has a doctor
-            counts = {}
-            for r in rows:
-                if r['person'].name != 'მიშა':
-                    counts[r['person'].name] = counts.get(r['person'].name, 0) + 1
-            self.assertLessEqual(max(counts.values()) - min(counts.values()), 1, (y, m))
+            for seed in (1, 2, 3):
+                rows = self.gen(y, m, seed)
+                self.assertEqual(len(rows), length)
+                hol = georgian_holidays(y)
+                total, heavy = {}, {}
+                previous = None
+                for r in rows:
+                    p = r['person']
+                    self.assertIsNotNone(p, (y, m, seed))                   # every day has a doctor
+                    self.assertFalse(previous and previous.pk == p.pk, (y, m, seed, r['date']))  # never 2 days in a row
+                    previous = p
+                    if p.name != 'მიშა':
+                        total[p.name] = total.get(p.name, 0) + 1
+                        heavy[p.name] = heavy.get(p.name, 0) + is_heavy(r['date'], hol)
+                self.assertEqual(set(total), set(self.ROTATION))
+                self.assertLessEqual(max(total.values()) - min(total.values()), 1, (y, m, seed))
+                self.assertLessEqual(max(heavy.values()) - min(heavy.values()), 1, (y, m, seed))
 
-    def test_rotation_continues_into_next_month(self):
-        self.save(2026, 11)
-        nov = self.gen(2026, 11)
-        last = [r for r in nov if r['person'].name != 'მიშა'][-1]['person'].name
-        dec = self.gen(2026, 12)
-        first = dec[0]['person'].name
-        self.assertEqual(self.ROTATION.index(first), (self.ROTATION.index(last) + 1) % 7)
-        # over two months nobody is ahead by more than one duty
-        self.save(2026, 12)
-        from .models import RosterDay
+    def test_weekends_even_out_over_months(self):
         from collections import Counter
-        c = Counter(d.person.name for d in RosterDay.objects.filter(date__year=2026) if d.person.name != 'მიშა')
-        self.assertLessEqual(max(c.values()) - min(c.values()), 1)
+        from .models import RosterDay
+        from .roster import georgian_holidays, is_heavy
+        for i, (y, m) in enumerate(((2026, 11), (2026, 12), (2027, 1), (2027, 2), (2027, 3), (2027, 4))):
+            self.save(y, m, seed=100 + i)
+        heavy = Counter()
+        for d in RosterDay.objects.select_related('person'):
+            if d.person.name != 'მიშა':
+                heavy[d.person.name] += is_heavy(d.date, georgian_holidays(d.date.year))
+        self.assertLessEqual(max(heavy.values()) - min(heavy.values()), 1, dict(heavy))
 
     def test_manual_change_is_locked_and_kept(self):
         import datetime
@@ -1268,12 +1273,13 @@ class RosterTests(BaseViewTest):
         self.assertTrue(day.locked)
         self.assertEqual(day.person, gela)
         self.assertTrue(RosterLog.objects.filter(text__contains='05.11').exists())
-        # regenerating keeps it; the rotation pauses on it
-        self.save(2026, 11)
+        # regenerating (any variant) keeps it
+        self.save(2026, 11, seed=2)
         day.refresh_from_db()
         self.assertEqual(day.person, gela)
-        rows = self.gen(2026, 11)
+        rows = self.gen(2026, 11, 3)
         self.assertTrue(rows[4]['locked'])
+        self.assertEqual(rows[4]['person'], gela)
         # unlock -> the automatic distribution may change it again
         self.client.post(reverse('roster-day', args=['2026-11-05']), {'action': 'unlock'})
         day.refresh_from_db()
@@ -1293,9 +1299,13 @@ class RosterTests(BaseViewTest):
         from .models import RosterDay
         page = self.client.get(reverse('roster-generate') + '?y=2026&m=11')
         self.assertContains(page, 'განრიგის დადასტურება')
+        self.assertContains(page, 'სხვა ვარიანტი')
         self.assertFalse(RosterDay.objects.exists())
-        self.save(2026, 11)
-        self.assertEqual(RosterDay.objects.count(), 30)
+        # what is saved is exactly the preview the doctor saw
+        seed = page.context['seed']
+        preview = [(r['date'], r['person'].pk) for r in page.context['rows']]
+        self.save(2026, 11, seed=seed)
+        self.assertEqual([(d.date, d.person_id) for d in RosterDay.objects.order_by('date')], preview)
 
     def test_month_page_and_holidays(self):
         import datetime
