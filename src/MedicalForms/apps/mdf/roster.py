@@ -7,7 +7,8 @@ Rules (set by the department):
 * everybody else shares the remaining days evenly, and the weekend load
   (Saturday, Sunday, public holidays) evenly too: nobody wants weekends.
   Who had more weekends in the previous months gets fewer now;
-* one doctor never has two days in a row, duties are spread out;
+* one doctor never has two days in a row, duties are spread out — also across
+  the border with the previous (and next, if saved) month;
 * changes made by hand are locked: generating again keeps them.
 * a generation is reproducible from its "seed": the preview and the saved
   schedule are the same; "სხვა ვარიანტი" draws a new one.
@@ -125,8 +126,12 @@ def _history(people, first, months=6):
     return total, heavy
 
 
-def _random_days(person, free, taken, rnd):
-    """``person.per_month`` days among ``free``, at least ``min_gap`` apart (also from ``taken``)."""
+def _random_days(person, free, taken, rnd, near=()):
+    """``person.per_month`` days among ``free``, at least ``min_gap`` apart.
+
+    The gap is kept from ``taken`` (this month) and from ``near`` (the end of the
+    previous month / start of the next one), which do not count to the month.
+    """
     need = max(0, (person.per_month or 0) - len(taken))
     gap = max(1, person.min_gap or 1)
     for _ in range(400):
@@ -134,7 +139,7 @@ def _random_days(person, free, taken, rnd):
         for day in rnd.sample(free, len(free)):
             if len(chosen) - len(taken) == need:
                 break
-            if all(abs((day - other).days) >= gap for other in chosen):
+            if all(abs((day - other).days) >= gap for other in list(chosen) + list(near)):
                 chosen.append(day)
         if len(chosen) - len(taken) == need:
             return [d for d in chosen if d not in taken], True
@@ -153,11 +158,14 @@ def _split(n, people, weight, rnd):
     return {p.pk: base + (1 if i < extra else 0) for i, p in enumerate(order)}
 
 
-def _place(days, heavy_days, people, need_heavy, need_light, fixed, rnd):
-    """One randomised pass: a doctor for every free day, keeping the quotas and spreading duties."""
+def _place(days, heavy_days, people, need_heavy, need_light, fixed, rnd, outside=None):
+    """One randomised pass: a doctor for every free day, keeping the quotas and spreading duties.
+
+    ``outside``: duties just before / after the month, so the month border is spaced too.
+    """
     left = {'h': dict(need_heavy), 'l': dict(need_light)}
     last = {}
-    for day, person in fixed.items():
+    for day, person in list((outside or {}).items()) + list(fixed.items()):
         if person:
             last.setdefault(person.pk, []).append(day)
     result = {}
@@ -213,6 +221,13 @@ def generate(year, month, seed=None):
     saved = {d.date: d for d in RosterDay.objects.filter(
         date__year=year, date__month=month).select_related('person')}
 
+    # the neighbouring months (already saved): no two days in a row across the border,
+    # and Misha's gap counts from his last duty of the previous month
+    border = datetime.timedelta(days=14)
+    outside = {d.date: d.person for d in RosterDay.objects.filter(
+        date__gte=days[0] - border, date__lte=days[-1] + border, person__isnull=False).exclude(
+        date__year=year, date__month=month).select_related('person')}
+
     assign, source = {}, {}
     for day, rec in saved.items():
         if rec.locked:
@@ -226,7 +241,8 @@ def generate(year, month, seed=None):
     for person in RosterPerson.objects.filter(is_active=True, in_rotation=False, per_month__gt=0):
         taken = [d for d, p in assign.items() if p and p.pk == person.pk]
         free = [d for d in days if d not in assign]
-        chosen, _ok = _random_days(person, free, taken, rnd)
+        near = [d for d, p in outside.items() if p.pk == person.pk]
+        chosen, _ok = _random_days(person, free, taken, rnd, near)
         for day in chosen:
             assign[day], source[day] = person, RosterDay.FIXED
 
@@ -246,10 +262,10 @@ def generate(year, month, seed=None):
         need_l = _fit({p.pk: target_l[p.pk] - locked_l[p.pk] for p in people}, free_l)
         best, best_pen = None, None
         for _ in range(120):
-            placed = _place(days, heavy_days, people, need_h, need_l, assign, rnd)
+            placed = _place(days, heavy_days, people, need_h, need_l, assign, rnd, outside)
             if placed is None:
                 continue
-            pen = _spread_penalty({**assign, **placed})
+            pen = _spread_penalty({**outside, **assign, **placed})
             if best_pen is None or pen < best_pen:
                 best, best_pen = placed, pen
                 if pen == 0:

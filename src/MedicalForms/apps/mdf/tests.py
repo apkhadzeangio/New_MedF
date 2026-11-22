@@ -1351,3 +1351,34 @@ class RosterTests(BaseViewTest):
         self.assertIn('ლევანი', names)
         self.client.logout()
         self.assertEqual(self.client.get(reverse('roster')).status_code, 302)
+
+
+class RosterBorderTests(BaseViewTest):
+    """The previous month counts: no two days in a row across the border, Misha's gap too."""
+
+    def save(self, y, m, seed):
+        self.client.post(reverse('roster-generate'), {'y': y, 'm': m, 'seed': seed})
+
+    def test_no_back_to_back_across_the_month_border(self):
+        import datetime
+        from .models import RosterDay
+        for seed in range(1, 21):
+            RosterDay.objects.all().delete()
+            self.save(2026, 11, seed)
+            self.save(2026, 12, seed + 100)
+            last_nov = RosterDay.objects.get(date=datetime.date(2026, 11, 30)).person
+            first_dec = RosterDay.objects.get(date=datetime.date(2026, 12, 1)).person
+            self.assertNotEqual(last_nov, first_dec, seed)
+
+    def test_misha_gap_counts_from_previous_month(self):
+        import datetime
+        from .models import RosterDay, RosterPerson
+        misha = RosterPerson.objects.get(name='მიშა')
+        RosterDay.objects.create(date=datetime.date(2026, 11, 28), person=misha, locked=True, source='manual')
+        for seed in range(1, 21):
+            from .roster import generate
+            rows, _ = generate(2026, 12, seed)
+            days = [r['date'] for r in rows if r['person'] == misha]
+            self.assertEqual(len(days), 2, seed)
+            self.assertGreaterEqual((days[0] - datetime.date(2026, 11, 28)).days, 10, seed)   # not before 8 Dec
+            self.assertGreaterEqual((days[1] - days[0]).days, 10, seed)
