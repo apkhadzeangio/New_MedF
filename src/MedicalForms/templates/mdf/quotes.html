@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}დღის ციტატები{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="page-head"><h1>დღის ციტატები <span class="count">· {{ quotes|length }}</span></h1></div>
+    <p class="lead-muted">დანიშნულების გვერდზე ყოველდღე ერთი ციტატა ჩანს, რიგით. {{ active }} ციტატით ერთი და იგივე {{ active }} დღეში ერთხელ განმეორდება.
+        {% if long %}<br><b>{{ long }}</b> ციტატა 220 სიმბოლოზე გრძელია — ჩანს, მაგრამ ბევრ ადგილს იკავებს.{% endif %}</p>
+
+    {% if today %}
+    <div class="rx-quote" style="order:0">
+        <span class="rx-quote-mark" aria-hidden="true">“</span>
+        <p class="rx-quote-text">{{ today.text }}</p>
+        <p class="rx-quote-author">— {{ today.author }}</p>
+        <span class="rx-quote-kicker">დღევანდელი ციტატა</span>
+    </div>
+    {% endif %}
+
+    <form method="post" class="x-card">
+        {% csrf_token %}<input type="hidden" name="action" value="import">
+        <h2><span class="dot"></span>ბევრი ციტატის ერთად დამატება</h2>
+        <p class="m-0 text-muted small">ჩასვით სია, თითო სტრიქონზე ერთი: <code>N | ციტატა | ავტორი | წყაროს ბმული</code> (ნომერი და ბმული არასავალდებულოა). სიაში უკვე არსებული ციტატა გამოტოვდება.</p>
+        <textarea name="lines" rows="6" class="form-control" style="font-size:14px" placeholder="1 | ციტატის ტექსტი | ავტორი | https://..."></textarea>
+        <div><button type="submit" class="x-btn primary">დამატება</button></div>
+    </form>
+
+    {% if top_authors %}<p class="hints m-0"><span>ყველაზე ხშირი ავტორები: {% for a, n in top_authors %}{{ a }} ({{ n }}){% if not forloop.last %}, {% endif %}{% endfor %}</span></p>{% endif %}
+
+    <div class="x-card p-0">
+        {% for q in quotes %}
+        <details class="qt-row{% if not q.is_active %} off{% endif %}{% if today and q.pk == today.pk %} now{% endif %}">
+            <summary><span class="qt-n">{{ forloop.counter }}</span><span class="qt-text">{{ q.text }}</span><span class="qt-author">{{ q.author }}</span></summary>
+            <form method="post" class="qt-edit">
+                {% csrf_token %}<input type="hidden" name="id" value="{{ q.pk }}">
+                <textarea name="text" rows="2" class="form-control" maxlength="400" required>{{ q.text }}</textarea>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <input type="text" name="author" value="{{ q.author }}" class="form-control" style="max-width:260px" maxlength="150" required aria-label="ავტორი">
+                    <input type="url" name="source" value="{{ q.source }}" class="form-control" style="max-width:420px" placeholder="წყაროს ბმული" aria-label="წყარო">
+                    {% if q.source %}<a href="{{ q.source }}" target="_blank" rel="noopener" class="small">წყაროს გახსნა ↗</a>{% endif %}
+                    <label class="chip-check"><input type="checkbox" name="is_active" {% if q.is_active %}checked{% endif %}>ჩანს</label>
+                    <button type="submit" name="action" value="save" class="x-btn sm primary">შენახვა</button>
+                    <button type="submit" name="action" value="delete" class="x-btn sm danger" onclick="return confirm('წავშალო ეს ციტატა?')">წაშლა</button>
+                </div>
+            </form>
+        </details>
+        {% empty %}
+        <p class="text-muted m-0 p-3">ციტატები ჯერ არ არის. ჩასვით სია ზემოთ.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import blood, board, consent, duty, medicines, pwa, roster, views
+from . import blood, board, consent, duty, medicines, pwa, quotes, roster, views
 
 urlpatterns = [
     path('', views.LoginView.as_view(), name='login'),
@@ -42,6 +42,8 @@ urlpatterns = [
     path('roster/people/', roster.RosterPeopleView.as_view(), name='roster-people'),
     path('roster/print/', roster.RosterPrintView.as_view(), name='roster-print'),
     path('roster/day/<str:day>/', roster.RosterDayView.as_view(), name='roster-day'),
+
+    path('quotes/', quotes.QuotesView.as_view(), name='quotes'),
 
     # Blood order blank
     path('blood/', blood.BloodOrderView.as_view(), name='blood-order'),

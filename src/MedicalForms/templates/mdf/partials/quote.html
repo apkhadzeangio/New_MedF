@@ -1,0 +1,47 @@
+{# quote of the day + today's panel, in the empty side spaces on wide screens #}
+{% if quote %}
+{% with n=quote.text|length %}<aside class="rx-quote d-print-none{% if n > 260 %} q-xl{% elif n > 200 %} q-l{% elif n > 120 %} q-m{% endif %}" aria-label="დღის ციტატა">
+    <span class="rx-quote-mark" aria-hidden="true">“</span>
+    <p class="rx-quote-text">{{ quote.text }}</p>
+    <p class="rx-quote-author">— {{ quote.author }}</p>
+    <span class="rx-quote-kicker">დღის ციტატა</span>
+</aside>{% endwith %}
+{% endif %}
+{% if today_panel and quote or today_panel.duty %}
+<aside class="rx-today d-print-none" aria-label="დღეს">
+    <span class="rx-today-kicker">დღეს</span>
+    <span class="rx-today-day">{{ today_panel.date.day }}</span>
+    <span class="rx-today-month">{{ today_panel.month }}, {{ today_panel.weekday }}</span>
+    {% if today_panel.duty %}
+    <span class="rx-today-sep"></span>
+    <span class="rx-today-kicker">მორიგე ქირურგი</span>
+    <a class="rx-today-duty" href="{% url 'roster' %}">{{ today_panel.duty.name }}</a>
+    {% endif %}
+</aside>
+{% endif %}
+{% if quote %}
+<script>
+// wide screens: make the quote fit its side card (never taller than the patient data);
+// if even 14px is too big, show it above the cards instead
+(function () {
+    var q = document.querySelector('.rx-quote');
+    if (!q) { return; }
+    var text = q.querySelector('.rx-quote-text');
+    function fit() {
+        q.classList.remove('q-xl-js');
+        text.style.fontSize = '';
+        if (getComputedStyle(q).position !== 'absolute') { return; }
+        var size = parseFloat(getComputedStyle(text).fontSize);
+        while (q.scrollHeight > q.clientHeight + 1 && size > 14) {
+            size -= 0.5;
+            text.style.fontSize = size + 'px';
+        }
+        if (q.scrollHeight > q.clientHeight + 1) { text.style.fontSize = ''; q.classList.add('q-xl', 'q-xl-js'); }
+    }
+    (document.fonts ? document.fonts.ready : Promise.resolve()).then(fit);
+    window.addEventListener('load', fit);                       // the Georgian font may arrive later
+    if (document.fonts && document.fonts.addEventListener) { document.fonts.addEventListener('loadingdone', fit); }
+    var t; window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(function () { if (q.classList.contains('q-xl-js')) { q.classList.remove('q-xl'); } fit(); }, 150); });
+})();
+</script>
+{% endif %}

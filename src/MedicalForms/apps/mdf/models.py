@@ -591,3 +591,21 @@ class RosterLog(models.Model):
     class Meta:
         db_table = 'roster_log'
         ordering = ('-at', '-id')
+
+
+class Quote(models.Model):
+    """A motivational quote; one is shown on the prescription page each day."""
+    text = models.TextField('ციტატა')
+    author = models.CharField('ავტორი', max_length=150)
+    source = models.URLField('წყარო', max_length=500, blank=True)
+    is_active = models.BooleanField('ჩანს', default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'quotes'
+        ordering = ('id',)
+        verbose_name = 'ციტატა'
+        verbose_name_plural = 'ციტატები'
+
+    def __str__(self):
+        return f'{self.text[:50]} — {self.author}'

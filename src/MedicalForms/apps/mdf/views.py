@@ -163,6 +163,9 @@ class NivFormCoverView(LoginRequiredMixin, GetObjectMixin, generic.TemplateView)
         if not ctx['niv']:
             ctx['niv'] = board_prefill(self.request)
         ctx['rx_templates'] = templates_for_page()
+        from .quotes import quote_of_the_day, today_panel
+        ctx['quote'] = quote_of_the_day()
+        ctx['today_panel'] = today_panel()
         ctx['apply_template'] = self.request.GET.get('tpl', '')
         return ctx
 
@@ -583,7 +586,7 @@ class TemplateFromAnalysisView(LoginRequiredMixin, generic.View):
 # --------------------------------------------------------------------------
 
 BACKUP_MODELS = ['mdf.medicine', 'mdf.note', 'mdf.nivform', 'mdf.prescriptiontemplate',
-                 'mdf.staffprofile', 'mdf.dutynote', 'mdf.boardpatient', 'mdf.boardentry', 'mdf.consentform', 'mdf.rosterperson', 'mdf.rosterday', 'mdf.rosterlog', 'auth.user']
+                 'mdf.staffprofile', 'mdf.dutynote', 'mdf.boardpatient', 'mdf.boardentry', 'mdf.consentform', 'mdf.rosterperson', 'mdf.rosterday', 'mdf.rosterlog', 'mdf.quote', 'auth.user']
 # duty reports are not backed up: they must disappear after a month
 
 

@@ -1382,3 +1382,56 @@ class RosterBorderTests(BaseViewTest):
             self.assertEqual(len(days), 2, seed)
             self.assertGreaterEqual((days[0] - datetime.date(2026, 11, 28)).days, 10, seed)   # not before 8 Dec
             self.assertGreaterEqual((days[1] - days[0]).days, 10, seed)
+
+
+class QuoteTests(BaseViewTest):
+    """Quote of the day on the prescription page."""
+
+    LINES = ('1 | პირველი ციტატის ტექსტი | ავტორი ერთი | https://example.ge/a\n'
+             '2 | „მეორე ციტატის ტექსტი“ | ავტორი ორი | https://example.ge/b\n'
+             'ეს სტრიქონი არ გაირჩევა\n'
+             '3 | პირველი ციტატის ტექსტი | ავტორი ერთი |\n'
+             '| მესამე ციტატა ნომრის გარეშე | ავტორი სამი')
+
+    def test_import_list(self):
+        from .models import Quote
+        r = self.client.post(reverse('quotes'), {'action': 'import', 'lines': self.LINES}, follow=True)
+        self.assertEqual(Quote.objects.count(), 3)                  # the duplicate is skipped
+        q = Quote.objects.get(author='ავტორი ორი')
+        self.assertEqual(q.text, 'მეორე ციტატის ტექსტი')             # Georgian quotation marks removed
+        self.assertEqual(q.source, 'https://example.ge/b')
+        self.assertContains(r, 'დაემატა 3 ციტატა')
+        self.assertContains(r, '1 უკვე იყო')
+        self.assertContains(r, 'ვერ გავარჩიე')
+
+    def test_one_quote_a_day_in_turn(self):
+        import datetime
+        from .models import Quote
+        from .quotes import quote_of_the_day
+        for i in range(5):
+            Quote.objects.create(text=f'ციტატა {i}', author='ავტორი')
+        day = datetime.date(2026, 11, 22)
+        seen = [quote_of_the_day(day + datetime.timedelta(days=k)).pk for k in range(5)]
+        self.assertEqual(len(set(seen)), 5)                          # no repeats within 5 days
+        self.assertEqual(quote_of_the_day(day).pk, quote_of_the_day(day + datetime.timedelta(days=5)).pk)
+
+    def test_shown_on_prescription_page_only_when_there_are_quotes(self):
+        from .models import Quote
+        page = self.client.get(reverse('niv-cover'))
+        self.assertNotContains(page, 'დღის ციტატა')
+        Quote.objects.create(text='ციტატა <b>ტესტი</b>', author='ავტორი')
+        page = self.client.get(reverse('niv-cover'))
+        self.assertContains(page, 'დღის ციტატა')
+        self.assertContains(page, 'ციტატა &lt;b&gt;ტესტი&lt;/b&gt;')    # escaped
+        self.assertContains(page, 'rx-quote d-print-none')
+
+    def test_edit_hide_delete(self):
+        from .models import Quote
+        q = Quote.objects.create(text='ძველი', author='ა')
+        self.client.post(reverse('quotes'), {'action': 'save', 'id': q.pk, 'text': 'ახალი', 'author': 'ბ'})
+        q.refresh_from_db()
+        self.assertEqual((q.text, q.author, q.is_active), ('ახალი', 'ბ', False))
+        from .quotes import quote_of_the_day
+        self.assertIsNone(quote_of_the_day())                          # hidden ones are not shown
+        self.client.post(reverse('quotes'), {'action': 'delete', 'id': q.pk})
+        self.assertFalse(Quote.objects.exists())
