@@ -65,6 +65,9 @@ a:hover { color: var(--accent-dark); }
     color: #C9CFDC; text-decoration: none; padding: 8px 12px; border-radius: 999px; font-size: 14.5px; white-space: nowrap;
 }
 @media (max-width: 1599px) { .app-nav .user .uname { display: none; } }
+/* eight menu links on one line (the menu is at most 1360px wide); full names on hover */
+.app-nav .links a { padding: 8px 9px; font-size: 14px; }
+.app-nav .nav-long { display: none; }
 .app-nav .links a:hover { color: #fff; background: rgba(255, 255, 255, .08); }
 .app-nav .links a.active { background: var(--accent); color: #fff; }
 .app-nav .user {
@@ -671,4 +674,86 @@ body.login-page { background: var(--page); }
     .cs-input::placeholder { color: transparent; }
     .cs-del, .cs-add { display: none !important; }
     .cs-col:empty { display: none; }
+}
+
+/* =====================================================================
+   Duty roster ("მორიგეობის განრიგი")
+   ===================================================================== */
+.rs-month { display: flex; align-items: center; gap: 8px; }
+.rs-pick { display: flex; gap: 6px; }
+.rs-pick .form-select { height: 42px; border-radius: 10px; border-color: var(--line); font-size: 15px; font-weight: 600; }
+.rs-pick select[name=m] { width: 150px; }
+.rs-pick select[name=y] { width: 100px; }
+.rs-view a { padding: 0 14px; white-space: nowrap; }
+.rs-status { border-radius: 12px; padding: 10px 16px; font-size: 14.5px; }
+.rs-status.ok { background: #EAF7F0; color: #14603F; }
+.rs-status.warn { background: #FFF4E5; color: #8A3B06; }
+.rs-warn { color: #B42318; font-weight: 600; }
+
+.rs-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.rs-wd { font-size: 13px; font-weight: 700; color: var(--muted); text-align: center; padding: 4px 0; }
+.rs-wd.we { color: var(--accent); }
+.rs-day {
+    position: relative; min-height: 96px; background: #fff; border: 1px solid transparent; border-radius: 12px; box-shadow: var(--shadow);
+    padding: 8px 10px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
+}
+.rs-day:hover { border-color: #9AA3B8; }
+.rs-day:focus-visible { outline: 3px solid rgba(180, 43, 94, .35); }
+.rs-day.we { background: #FBF6F8; }
+.rs-day.hol { background: #FCEEF3; }
+.rs-day.today { border: 2px solid var(--accent); }
+.rs-day.gap { border: 1.5px dashed #E39A9A; }
+.rs-pad { min-height: 96px; }
+.rs-wdm { display: none; font-size: 12.5px; color: var(--muted); min-width: 72px; }
+.rs-num { font-size: 18px; font-weight: 700; line-height: 1; }
+.rs-day.we .rs-num, .rs-day.hol .rs-num { color: var(--accent); }
+.rs-hol { font-size: 11px; color: var(--accent); line-height: 1.2; }
+.rs-who { font-size: 15px; font-weight: 600; padding: 3px 9px; border-radius: 8px; max-width: 100%; overflow-wrap: anywhere; }
+.rs-none { font-size: 12.5px; color: #B42318; font-weight: 600; }
+.rs-flags { position: absolute; top: 7px; right: 9px; display: flex; gap: 4px; font-size: 11px; color: var(--muted); }
+/* one soft color per doctor */
+.c0 { background: #E4EEFB; color: #1F4FB5; } .c1 { background: #FCE7EF; color: #A61E4D; }
+.c2 { background: #E6F5EC; color: #1F7A4D; } .c3 { background: #FFF0DB; color: #9A5B00; }
+.c4 { background: #EFE8FA; color: #5B3BA8; } .c5 { background: #E3F4F7; color: #146C7A; }
+.c6 { background: #F6E9E1; color: #8A4B1F; } .c7 { background: #ECEEF3; color: #33405A; }
+.rs-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: 0; }
+
+.rs-table-wrap { overflow-x: auto; }
+.rs-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.rs-table th { font-size: 13px; color: var(--muted); font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); }
+.rs-table td { padding: 6px 14px; border-bottom: 1px solid #F0F2F6; vertical-align: middle; }
+.rs-table td small { display: block; font-size: 12px; color: var(--accent); }
+.rs-table tr.we td:first-child, .rs-table tr.we td:nth-child(2) { color: var(--accent); font-weight: 600; }
+.rs-table tr.gap td { background: #FFF6F6; }
+.rs-table tr.changed td { background: #FFFBEA; }
+.rs-table .form-select { height: 38px; max-width: 260px; border-radius: 8px; }
+.rs-quick.saved { border-color: var(--ok); box-shadow: 0 0 0 3px rgba(31, 138, 91, .2); }
+.rs-flags-cell { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.rs-people .form-control, .rs-people .form-select { height: 38px; }
+.rs-people .rs-order { width: 70px; } .rs-people .rs-weeks { width: 90px; }
+.rs-people input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
+.rs-people tr.off td { opacity: .55; }
+
+.rs-bottom { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.rs-stats { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.rs-stats th { font-size: 12.5px; color: var(--muted); font-weight: 600; text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line-soft); }
+.rs-stats td { padding: 5px 6px; border-bottom: 1px solid #F3F4F8; }
+.rs-stats td:not(:first-child), .rs-stats th:not(:first-child) { text-align: right; }
+.rs-log { display: flex; flex-direction: column; font-size: 14px; padding: 4px 0; border-bottom: 1px solid #F3F4F8; }
+.rs-log small { color: var(--muted); font-size: 12px; }
+.rs-gen { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.rs-gen-side { position: sticky; top: 16px; }
+@media (max-width: 900px) {
+    .rs-bottom, .rs-gen { grid-template-columns: minmax(0, 1fr); }
+    .rs-gen-side { position: static; }
+}
+@media (max-width: 700px) {
+    /* phone: the month as a list of days */
+    .rs-cal { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+    .rs-wd, .rs-pad { display: none; }
+    .rs-day { min-height: 0; flex-direction: row; align-items: center; gap: 12px; padding: 10px 12px; }
+    .rs-num { min-width: 28px; }
+    .rs-wdm { display: inline; }
+    .rs-flags { position: static; margin-left: auto; }
+    .rs-pick select[name=m] { width: 120px; }
 }

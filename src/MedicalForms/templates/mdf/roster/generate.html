@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+
+{% block title %}ავტომატური განაწილება — {{ month_name }} {{ year }}{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <a href="{% url 'roster' %}?y={{ year }}&m={{ month }}" class="small">← მორიგეობის განრიგი</a>
+    <div class="page-head"><h1>ავტომატური განაწილება · {{ month_name }} {{ year }}</h1></div>
+
+    <div class="x-card">
+        <form method="get" class="d-flex flex-wrap gap-3 align-items-end m-0">
+            <input type="hidden" name="y" value="{{ year }}"><input type="hidden" name="m" value="{{ month }}">
+            <label class="fld">ვინ იწყებს რიგს თვის დასაწყისში
+                <select name="start" class="form-select" onchange="this.form.submit()">
+                    {% for p in rotation %}<option value="{{ p.pk }}" {% if p == start %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+                </select>
+            </label>
+            <p class="hints m-0"><span>თავისით აირჩევა ის, ვისი რიგიცაა წინა თვის ბოლო მორიგის შემდეგ.</span></p>
+        </form>
+        <p class="m-0">
+            რიგი: {% for p in rotation %}<b>{{ p.name }}</b>{% if not forloop.last %} → {% endif %}{% endfor %}.
+            ფიქსირებულ დღეებზე (მაგ. მიშა — მე-2 და მე-4 პარასკევი) რიგი ჩერდება და მომდევნო დღეს გრძელდება.
+            {% if kept %}<br>ხელით დასმული <b>{{ kept }}</b> დღე 🔒 რჩება უცვლელი.{% endif %}
+        </p>
+    </div>
+
+    {% if has_saved and changed %}
+    <div class="bd-banner"><span>ამ თვეს განრიგი უკვე შენახულია. დადასტურებისას შეიცვლება <b>{{ changed }}</b> დღე (ქვემოთ მონიშნულია). ჩაკეტილი 🔒 დღეები არ შეიცვლება.</span></div>
+    {% endif %}
+
+    <div class="rs-gen">
+        <div class="x-card p-0 rs-table-wrap">
+            <table class="rs-table">
+                <thead><tr><th>თარიღი</th><th>კვირის დღე</th><th>მორიგე ქირურგი</th><th></th></tr></thead>
+                <tbody>
+                {% for r in rows %}
+                <tr class="{% if r.weekend %}we{% endif %}{% if r.holiday %} hol{% endif %}{% if r.changed %} changed{% endif %}{% if not r.person %} gap{% endif %}">
+                    <td>{{ r.date|date:"d.m.Y" }}</td>
+                    <td>{{ r.weekday }}{% if r.holiday %}<small>{{ r.holiday }}</small>{% endif %}</td>
+                    <td><b>{{ r.person.name|default:"— მორიგე არ არის —" }}</b>{% if r.changed %} <small class="text-muted">(იყო: {{ r.saved.name|default:"არავინ" }})</small>{% endif %}</td>
+                    <td class="rs-flags-cell">{% if r.source == 'fixed' %}ფიქს.{% endif %}{% if r.locked %} 🔒{% endif %}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <aside class="x-card rs-gen-side">
+            <h2><span class="dot"></span>შემოწმება</h2>
+            <table class="rs-stats">
+                <thead><tr><th>ექიმი</th><th>მორ.</th><th>შაბ-კვი</th></tr></thead>
+                <tbody>{% for s in stats.people %}<tr><td>{{ s.person.name }}</td><td>{{ s.total }}</td><td>{{ s.weekend }}</td></tr>{% endfor %}</tbody>
+            </table>
+            <p class="m-0">{% if stats.gaps %}<span class="rs-warn">მორიგე არ არის: {{ stats.gaps|length }} დღე.</span>{% else %}ყველა დღე დაფარულია.{% endif %}
+               {% if stats.repeats %}<br><span class="rs-warn">ზედიზედ ორ დღეს ერთი ექიმი: {% for d in stats.repeats %}{{ d|date:"j" }}{% if not forloop.last %}, {% endif %}{% endfor %}.</span>{% endif %}</p>
+            <form method="post" class="m-0">
+                {% csrf_token %}
+                <input type="hidden" name="y" value="{{ year }}"><input type="hidden" name="m" value="{{ month }}">
+                <input type="hidden" name="start" value="{{ start.pk|default:'' }}">
+                <button type="submit" class="x-btn primary w-100 justify-content-center">განრიგის დადასტურება</button>
+            </form>
+            <a class="x-btn w-100 justify-content-center" href="{% url 'roster' %}?y={{ year }}&m={{ month }}">გაუქმება</a>
+        </aside>
+    </div>
+</div>
+{% endblock %}

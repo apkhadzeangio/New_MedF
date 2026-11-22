@@ -7,10 +7,11 @@
             <a href="{% url 'niv-cover' %}" class="{% if url_name == 'niv-cover' and not request.GET.t %}active{% endif %}">ახალი დანიშნულება</a>
             <a href="{% url 'niv-templates' %}" class="{% if url_name == 'niv-templates' %}active{% endif %}">დანიშნულებები</a>
             <a href="{% url 'rx-templates' %}" class="{% if url_name == 'rx-templates' %}active{% endif %}">შაბლონები</a>
-            <a href="{% url 'rx-analysis' %}" class="{% if url_name == 'rx-analysis' %}active{% endif %}">ნოზოლოგიების ანალიზი</a>
+            <a href="{% url 'rx-analysis' %}" class="{% if url_name == 'rx-analysis' %}active{% endif %}" title="ნოზოლოგიების ანალიზი"><span class="nav-long">ნოზოლოგიების </span>ანალიზი</a>
             <a href="{% url 'blood-order' %}" class="{% if url_name == 'blood-order' %}active{% endif %}">სისხლის შეკვეთა</a>
             <a href="{% url 'consent-list' %}" class="{% if url_name|slice:':7' == 'consent' %}active{% endif %}">თანხმობა</a>
-            <a href="{% url 'board' %}" class="{% if url_name|slice:':5' == 'board' %}active{% endif %}">პაციენტების დაფა</a>
+            <a href="{% url 'board' %}" class="{% if url_name|slice:':5' == 'board' %}active{% endif %}" title="პაციენტების დაფა"><span class="nav-long">პაციენტების </span>დაფა</a>
+            <a href="{% url 'roster' %}" class="{% if url_name|slice:':6' == 'roster' %}active{% endif %}">განრიგი</a>
         </div>
         {% endwith %}
         {% if request.user.is_authenticated %}

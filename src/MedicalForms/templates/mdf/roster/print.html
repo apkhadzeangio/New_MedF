@@ -1,0 +1,65 @@
+{% load static %}<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ქირურგიული მორიგეობის განრიგი — {{ month_name }} {{ year }}</title>
+{# theme.css only for the bundled Georgian font #}
+<link rel="stylesheet" href="{% static 'css/theme.css' %}?v=14">
+<style>
+@page { size: A4 {% if landscape %}landscape{% else %}portrait{% endif %}; margin: 14mm 16mm; }
+html, body { margin: 0; padding: 0; }
+body { font-family: 'Noto Sans Georgian', Sylfaen, sans-serif; color: #000; background: #e9ecef; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.sheet { width: {% if landscape %}297mm{% else %}210mm{% endif %}; margin: 12mm auto; padding: 14mm 16mm; background: #fff; box-shadow: 0 4px 18px rgba(0, 0, 0, .15); }
+h1 { font-size: 15pt; font-weight: 700; text-align: center; margin: 0; }
+.sub { font-size: 12.5pt; font-weight: 700; text-align: center; margin: 1.5mm 0 5mm; }
+table { width: 100%; border-collapse: collapse; font-size: 10.5pt; line-height: 1.25; }
+thead { display: table-header-group; }
+th { font-weight: 700; text-align: left; border: 0.35mm solid #000; padding: 1.6mm 2.5mm; background: #fff; }
+td { border: 0.25mm solid #000; padding: 1.2mm 2.5mm; vertical-align: middle; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+td.d { width: 26mm; white-space: nowrap; }
+td.w { width: 34mm; }
+tr.we td.w { font-weight: 700; }
+.none { color: #000; }
+.ptools { max-width: {% if landscape %}297mm{% else %}210mm{% endif %}; margin: 12mm auto 0; display: flex; gap: 8px; flex-wrap: wrap; font-family: system-ui, sans-serif; }
+.ptools button, .ptools a { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 6px; border: 1px solid #0d6efd; background: #0d6efd; color: #fff; cursor: pointer; text-decoration: none; }
+.ptools a { background: #fff; color: #0d6efd; }
+@media print {
+    body { background: #fff; }
+    .ptools { display: none; }
+    .sheet { width: auto; margin: 0; padding: 0; box-shadow: none; }
+}
+</style>
+</head>
+<body>
+<div class="ptools">
+    <button type="button" onclick="window.print()">🖨 ბეჭდვა</button>
+    {% if landscape %}<a href="?y={{ year }}&m={{ days.0.date.month }}&preview=1">ვერტიკალურად</a>{% else %}<a href="?y={{ year }}&m={{ days.0.date.month }}&orient=landscape&preview=1">ჰორიზონტალურად</a>{% endif %}
+    <a href="javascript:window.close()">დახურვა</a>
+</div>
+<div class="sheet">
+    <h1>ქირურგიული მორიგეობის განრიგი</h1>
+    <div class="sub">{{ month_name }} {{ year }}</div>
+    <table>
+        <thead><tr><th>თარიღი</th><th>კვირის დღე</th><th>მორიგე ქირურგი</th></tr></thead>
+        <tbody>
+        {% for d in days %}
+        <tr class="{% if d.weekend or d.holiday %}we{% endif %}">
+            <td class="d">{{ d.date|date:"d.m.Y" }}</td>
+            <td class="w">{{ d.weekday }}</td>
+            <td>{{ d.person.name|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if not preview %}
+<script>
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () {
+    setTimeout(function () { window.print(); }, 150);
+});
+</script>
+{% endif %}
+</body>
+</html>

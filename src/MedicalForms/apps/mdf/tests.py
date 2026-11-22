@@ -1197,3 +1197,147 @@ class ConsentUploadFormatsTests(BaseViewTest):
         self.client.post(reverse('consent-new'), {'docx': SimpleUploadedFile('x.rtf', rtf.encode())})
         new = ConsentForm.objects.latest('id')
         self.assertEqual(new.blocks, [{'title': 'გართულებები ტესტის დროს:', 'left': ['სისხლდენა'], 'right': []}])
+
+
+class RosterTests(BaseViewTest):
+    """Duty roster: Misha on 2nd/4th Friday, the others in turn, rotation carries over."""
+
+    ROTATION = ['რამაზი', 'ია', 'თეონა', 'გურამი', 'გიგა', 'დიმიტრი', 'თორნიკე']
+
+    def gen(self, y, m, start=None):
+        from .roster import generate
+        rows, _ = generate(y, m, start)
+        return rows
+
+    def save(self, y, m, **extra):
+        return self.client.post(reverse('roster-generate'), dict(y=y, m=m, **extra))
+
+    def test_seeded_people(self):
+        from .models import RosterPerson
+        rotation = [p.name for p in RosterPerson.objects.filter(in_rotation=True)]
+        self.assertEqual(rotation, self.ROTATION)
+        misha = RosterPerson.objects.get(name='მიშა')
+        self.assertEqual((misha.in_rotation, misha.fixed_weekday, misha.fixed_weeks), (False, 4, '2,4'))
+
+    def test_misha_on_2nd_and_4th_friday_and_rotation_pauses(self):
+        import datetime
+        rows = self.gen(2026, 11)            # Fridays of Nov 2026: 6, 13, 20, 27
+        names = [r['person'].name for r in rows]
+        self.assertEqual([r['date'].day for r in rows if r['person'].name == 'მიშა'], [13, 27])
+        self.assertTrue(all(r['date'].weekday() == 4 for r in rows if r['person'].name == 'მიშა'))
+        # without Misha's days the order never breaks: რამაზი, ია, თეონა ...
+        others = [n for n in names if n != 'მიშა']
+        self.assertEqual(others, [self.ROTATION[i % 7] for i in range(len(others))])
+        # the one whose turn it was on the 13th goes on the 14th
+        self.assertEqual(names[13], self.ROTATION[12 % 7])         # 14th = the 13th rotation turn
+        self.assertEqual(len(rows), 30)
+
+    def test_every_month_length_and_equal_shares(self):
+        for y, m, length in ((2027, 2, 28), (2028, 2, 29), (2026, 11, 30), (2026, 12, 31)):
+            rows = self.gen(y, m)
+            self.assertEqual(len(rows), length)
+            self.assertTrue(all(r['person'] for r in rows), (y, m))      # every day has a doctor
+            counts = {}
+            for r in rows:
+                if r['person'].name != 'მიშა':
+                    counts[r['person'].name] = counts.get(r['person'].name, 0) + 1
+            self.assertLessEqual(max(counts.values()) - min(counts.values()), 1, (y, m))
+
+    def test_rotation_continues_into_next_month(self):
+        self.save(2026, 11)
+        nov = self.gen(2026, 11)
+        last = [r for r in nov if r['person'].name != 'მიშა'][-1]['person'].name
+        dec = self.gen(2026, 12)
+        first = dec[0]['person'].name
+        self.assertEqual(self.ROTATION.index(first), (self.ROTATION.index(last) + 1) % 7)
+        # over two months nobody is ahead by more than one duty
+        self.save(2026, 12)
+        from .models import RosterDay
+        from collections import Counter
+        c = Counter(d.person.name for d in RosterDay.objects.filter(date__year=2026) if d.person.name != 'მიშა')
+        self.assertLessEqual(max(c.values()) - min(c.values()), 1)
+
+    def test_manual_change_is_locked_and_kept(self):
+        import datetime
+        from .models import RosterDay, RosterLog, RosterPerson
+        self.save(2026, 11)
+        gela = RosterPerson.objects.get(name='გიგა')
+        r = self.client.post(reverse('roster-day', args=['2026-11-05']), {'action': 'set', 'person': gela.pk})
+        self.assertEqual(r.json(), {'ok': True})
+        day = RosterDay.objects.get(date=datetime.date(2026, 11, 5))
+        self.assertTrue(day.locked)
+        self.assertEqual(day.person, gela)
+        self.assertTrue(RosterLog.objects.filter(text__contains='05.11').exists())
+        # regenerating keeps it; the rotation pauses on it
+        self.save(2026, 11)
+        day.refresh_from_db()
+        self.assertEqual(day.person, gela)
+        rows = self.gen(2026, 11)
+        self.assertTrue(rows[4]['locked'])
+        # unlock -> the automatic distribution may change it again
+        self.client.post(reverse('roster-day', args=['2026-11-05']), {'action': 'unlock'})
+        day.refresh_from_db()
+        self.assertFalse(day.locked)
+
+    def test_swap_two_days(self):
+        import datetime
+        from .models import RosterDay
+        self.save(2026, 11)
+        a = RosterDay.objects.get(date=datetime.date(2026, 11, 3)).person
+        b = RosterDay.objects.get(date=datetime.date(2026, 11, 10)).person
+        self.client.post(reverse('roster-day', args=['2026-11-03']), {'action': 'swap', 'other': '2026-11-10'})
+        self.assertEqual(RosterDay.objects.get(date=datetime.date(2026, 11, 3)).person, b)
+        self.assertEqual(RosterDay.objects.get(date=datetime.date(2026, 11, 10)).person, a)
+
+    def test_preview_saves_nothing_until_confirmed(self):
+        from .models import RosterDay
+        page = self.client.get(reverse('roster-generate') + '?y=2026&m=11')
+        self.assertContains(page, 'განრიგის დადასტურება')
+        self.assertFalse(RosterDay.objects.exists())
+        self.save(2026, 11)
+        self.assertEqual(RosterDay.objects.count(), 30)
+
+    def test_month_page_and_holidays(self):
+        import datetime
+        from .roster import georgian_holidays
+        h = georgian_holidays(2026)
+        self.assertEqual(h[datetime.date(2026, 4, 12)], 'აღდგომა')
+        self.assertEqual(h[datetime.date(2026, 11, 23)], 'გიორგობა')
+        self.save(2026, 11)
+        for view in ('calendar', 'table'):
+            page = self.client.get(reverse('roster') + f'?y=2026&m=11&view={view}')
+            self.assertContains(page, 'გიორგობა')
+            self.assertContains(page, 'ყველა დღე დაფარულია')
+        self.assertEqual(self.client.get(reverse('roster') + '?y=abc&m=99').status_code, 200)
+
+    def test_print_has_only_the_title_and_table(self):
+        self.save(2026, 11)
+        page = self.client.get(reverse('roster-print') + '?y=2026&m=11')
+        html = page.content.decode()
+        self.assertIn('ქირურგიული მორიგეობის განრიგი', html)
+        self.assertIn('ნოემბერი 2026', html)
+        self.assertEqual(html.count('<tr class='), 30)
+        self.assertNotIn('app-nav', html)
+        self.assertIn('size: A4 portrait', html)
+        self.assertIn('window.print()', html)
+        land = self.client.get(reverse('roster-print') + '?y=2026&m=11&orient=landscape&preview=1').content.decode()
+        self.assertIn('size: A4 landscape', land)
+        self.assertNotIn('window.print(); }, 150', land)
+
+    def test_people_edit_and_login_required(self):
+        from .models import RosterPerson
+        p = RosterPerson.objects.get(name='თეონა')
+        data = {f'p{x.pk}-{k}': v for x in RosterPerson.objects.all() for k, v in (
+            ('name', x.name), ('order', x.order), ('weekday', '' if x.fixed_weekday is None else x.fixed_weekday),
+            ('weeks', x.fixed_weeks), ('active', 'on'), *((('rotation', 'on'),) if x.in_rotation else ()))}
+        data[f'p{p.pk}-active'] = ''
+        data['new-name'] = 'ლევანი'
+        self.client.post(reverse('roster-people'), data)
+        p.refresh_from_db()
+        self.assertFalse(p.is_active)
+        self.assertTrue(RosterPerson.objects.filter(name='ლევანი', in_rotation=True).exists())
+        names = [r['person'].name for r in self.gen(2026, 11)]
+        self.assertNotIn('თეონა', names)
+        self.assertIn('ლევანი', names)
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('roster')).status_code, 302)

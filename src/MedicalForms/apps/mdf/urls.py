@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import blood, board, consent, duty, medicines, pwa, views
+from . import blood, board, consent, duty, medicines, pwa, roster, views
 
 urlpatterns = [
     path('', views.LoginView.as_view(), name='login'),
@@ -35,6 +35,13 @@ urlpatterns = [
     path('consent/<int:pk>/', consent.ConsentSheetView.as_view(), name='consent-sheet'),
     path('consent/<int:pk>/save/', consent.ConsentSaveView.as_view(), name='consent-save'),
     path('consent/<int:pk>/delete/', consent.ConsentDeleteView.as_view(), name='consent-delete'),
+
+    # Duty roster (one surgeon per day)
+    path('roster/', roster.RosterMonthView.as_view(), name='roster'),
+    path('roster/generate/', roster.RosterGenerateView.as_view(), name='roster-generate'),
+    path('roster/people/', roster.RosterPeopleView.as_view(), name='roster-people'),
+    path('roster/print/', roster.RosterPrintView.as_view(), name='roster-print'),
+    path('roster/day/<str:day>/', roster.RosterDayView.as_view(), name='roster-day'),
 
     # Blood order blank
     path('blood/', blood.BloodOrderView.as_view(), name='blood-order'),

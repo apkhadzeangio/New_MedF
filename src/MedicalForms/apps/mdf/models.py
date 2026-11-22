@@ -533,3 +533,59 @@ class ConsentForm(models.Model):
 
     def __str__(self):
         return self.name
+
+
+# --------------------------------------------------------------------------
+# Duty roster ("მორიგეობის განრიგი"): one surgeon on duty per day
+# --------------------------------------------------------------------------
+
+class RosterPerson(models.Model):
+    """A doctor of the duty roster: in the rotation, or on fixed days (e.g. 2nd and 4th Friday)."""
+    WEEKDAYS = [(0, 'ორშაბათი'), (1, 'სამშაბათი'), (2, 'ოთხშაბათი'), (3, 'ხუთშაბათი'),
+                (4, 'პარასკევი'), (5, 'შაბათი'), (6, 'კვირა')]
+
+    name = models.CharField('სახელი', max_length=100)
+    order = models.PositiveSmallIntegerField('რიგი', default=0)
+    in_rotation = models.BooleanField('რიგით მორიგეობს', default=True)
+    fixed_weekday = models.PositiveSmallIntegerField('ფიქსირებული დღე', choices=WEEKDAYS, null=True, blank=True)
+    fixed_weeks = models.CharField('რომელი კვირები (მაგ. 2,4)', max_length=20, blank=True)
+    is_active = models.BooleanField('აქტიური', default=True)
+
+    class Meta:
+        db_table = 'roster_people'
+        ordering = ('order', 'id')
+        verbose_name = 'მორიგე ექიმი'
+        verbose_name_plural = 'მორიგე ექიმები'
+
+    def __str__(self):
+        return self.name
+
+
+class RosterDay(models.Model):
+    """Who is on duty on a date. Manual changes are locked: regeneration keeps them."""
+    AUTO, FIXED, MANUAL = 'auto', 'fixed', 'manual'
+
+    date = models.DateField('თარიღი', unique=True)
+    person = models.ForeignKey(RosterPerson, verbose_name='მორიგე', on_delete=models.SET_NULL,
+                               null=True, blank=True, related_name='days')
+    locked = models.BooleanField('ჩაკეტილი', default=False)
+    source = models.CharField(max_length=10, default=AUTO)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                   null=True, blank=True, related_name='+')
+
+    class Meta:
+        db_table = 'roster_days'
+        ordering = ('date',)
+
+
+class RosterLog(models.Model):
+    """Every change of the roster: what, who, when."""
+    date = models.DateField(null=True, blank=True)
+    text = models.CharField(max_length=255)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'roster_log'
+        ordering = ('-at', '-id')

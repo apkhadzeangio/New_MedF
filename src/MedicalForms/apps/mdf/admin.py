@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import (BoardEntry, BoardPatient, ConsentForm, DutyNote, DutyReport, Medicine, NivForm,
+from .models import (BoardEntry, BoardPatient, ConsentForm, RosterDay, RosterLog, RosterPerson, DutyNote, DutyReport, Medicine, NivForm,
                      PrescriptionTemplate, StaffProfile)
 
 admin.site.site_header = 'Medical Forms - ადმინისტრირება'
@@ -85,3 +85,19 @@ class DutyReportAdmin(admin.ModelAdmin):
 class ConsentFormAdmin(admin.ModelAdmin):
     list_display = ['name', 'use_count', 'updated_at', 'updated_by']
     search_fields = ('name',)
+
+
+@admin.register(RosterPerson)
+class RosterPersonAdmin(admin.ModelAdmin):
+    list_display = ['name', 'order', 'in_rotation', 'fixed_weekday', 'fixed_weeks', 'is_active']
+
+
+@admin.register(RosterDay)
+class RosterDayAdmin(admin.ModelAdmin):
+    list_display = ['date', 'person', 'source', 'locked', 'updated_by']
+    date_hierarchy = 'date'
+
+
+@admin.register(RosterLog)
+class RosterLogAdmin(admin.ModelAdmin):
+    list_display = ['at', 'date', 'text', 'user']

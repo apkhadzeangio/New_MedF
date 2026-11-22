@@ -583,7 +583,7 @@ class TemplateFromAnalysisView(LoginRequiredMixin, generic.View):
 # --------------------------------------------------------------------------
 
 BACKUP_MODELS = ['mdf.medicine', 'mdf.note', 'mdf.nivform', 'mdf.prescriptiontemplate',
-                 'mdf.staffprofile', 'mdf.dutynote', 'mdf.boardpatient', 'mdf.boardentry', 'mdf.consentform', 'auth.user']
+                 'mdf.staffprofile', 'mdf.dutynote', 'mdf.boardpatient', 'mdf.boardentry', 'mdf.consentform', 'mdf.rosterperson', 'mdf.rosterday', 'mdf.rosterlog', 'auth.user']
 # duty reports are not backed up: they must disappear after a month
 
 
