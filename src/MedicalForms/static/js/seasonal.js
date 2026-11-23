@@ -17,9 +17,6 @@
     var KEY_LAST = 'medf-season-fall';
     var FALL_EVERY = 30 * 60 * 1000;
 
-    // a test run of the New Year snow (ends by itself)
-    var TEST = {id: 'newyear', from: '2026-11-21', to: '2026-11-22'};
-
     function store(get, key, value) {
         try {
             if (get) { return window.localStorage.getItem(key); }
@@ -145,8 +142,6 @@
     }
 
     function holidayFor(date) {
-        var today = iso(date);
-        if (TEST && today >= TEST.from && today <= TEST.to) { return byId(TEST.id); }
         for (var i = 0; i < HOLIDAYS.length; i++) {
             if (HOLIDAYS[i].when(date)) { return HOLIDAYS[i]; }
         }

@@ -27,7 +27,7 @@ from django_docxtpl import DocxTemplateView
 from . import analysis
 from .backends import ModelFilterBackend
 from .enums import Symbols, YesNo, RadialPulse
-from .forms import LoginForm, NivFormFrom, PhotoForm
+from .forms import LoginForm, NivFormForm, PhotoForm
 from .mixins import LoginRedirectMixin, GetObjectMixin
 from .models import (
     Medicine, Note, NivForm, PrescriptionTemplate, StaffProfile, ROW_COUNT,
@@ -294,11 +294,11 @@ class NivTemplateCreateView(LoginRequiredMixin, GetObjectMixin, generic.View):
                 if name == 'id' or name in data or value in (None, False):
                     continue
                 data[name] = json.dumps(value) if isinstance(value, (dict, list)) else value
-            form = NivFormFrom(data=data)
+            form = NivFormForm(data=data)
         elif instance:
-            form = NivFormFrom(instance=instance, data=data)
+            form = NivFormForm(instance=instance, data=data)
         else:
-            form = NivFormFrom(data=data)
+            form = NivFormForm(data=data)
 
         if not form.is_valid():
             logger.warning('NivForm save failed: %s', form.errors.as_json())
@@ -339,7 +339,7 @@ class NivTemplateDeleteView(LoginRequiredMixin, generic.View):
     delete = post
 
 
-class soffice_lock:
+class SofficeLock:
     """A file lock around LibreOffice (no-op where file locks are unavailable)."""
     path = os.path.join(tempfile.gettempdir(), 'medf-soffice.lock')
 
@@ -371,7 +371,7 @@ class NivDocumentView(LoginRequiredMixin, DocxTemplateView):
     def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         # LibreOffice converts one document at a time: with several server
         # processes (own server) two prints at once would disturb each other.
-        with soffice_lock():
+        with SofficeLock():
             response = super().get(request, *args, **kwargs)
         response['Content-Type'] = 'application/pdf'
         response['Content-Disposition'] = f'inline; filename="{self.filename}.pdf"'
@@ -612,9 +612,17 @@ class TemplateFromAnalysisView(LoginRequiredMixin, generic.View):
 # Backup download
 # --------------------------------------------------------------------------
 
-BACKUP_MODELS = ['mdf.medicine', 'mdf.note', 'mdf.nivform', 'mdf.prescriptiontemplate',
-                 'mdf.staffprofile', 'mdf.dutynote', 'mdf.boardpatient', 'mdf.boardentry', 'mdf.consentform', 'mdf.rosterperson', 'mdf.rosterday', 'mdf.rosterlog', 'mdf.quote', 'auth.user']
-# duty reports are not backed up: they must disappear after a month
+BACKUP_MODELS = [
+    'auth.user', 'mdf.staffprofile',
+    'mdf.medicine', 'mdf.note', 'mdf.nivform', 'mdf.prescriptiontemplate',
+    'mdf.boardpatient', 'mdf.boardentry',
+    'mdf.consentform',
+    'mdf.rosterperson', 'mdf.rosterday', 'mdf.rosterlog',
+    'mdf.quote',
+    'mdf.dutynote',             # the old duty notes (read-only history)
+]
+# Not backed up on purpose: duty reports (must disappear after a month),
+# "seen" marks of the board and small site facts (both rebuild themselves).
 
 
 def write_backup(stream):
