@@ -3,6 +3,13 @@
 set -euo pipefail
 SITE=/srv/medf/app/src/MedicalForms
 VENV=/srv/medf/venv
+if [ -n "$(sudo -u medf git -C /srv/medf/app status --porcelain)" ]; then
+    echo "!! The code on this server was changed by hand:"
+    sudo -u medf git -C /srv/medf/app status --short
+    echo "   Upload those changes to GitHub first (git add / commit / push), or discard them:"
+    echo "   sudo -u medf git -C /srv/medf/app stash"
+    exit 1
+fi
 sudo -u medf git -C /srv/medf/app pull --ff-only
 sudo -u medf "$VENV/bin/pip" install -q -r /srv/medf/app/requirements/prod.txt gunicorn
 cd "$SITE"
