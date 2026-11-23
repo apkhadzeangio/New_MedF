@@ -18,11 +18,13 @@ import re
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.cache import cache
 from django.db.models import Count, Max, Q
 from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import generic
 
 from .duty import DUTY_CHANGE_HOUR, MONTHS, TBILISI, _parse_day, day_label, duty_date_for, strip_astral
@@ -94,16 +96,26 @@ def add_event(patient, user, text, when=None):
                                      created_by=user, created_at=when or timezone.now())
 
 
-def purge_old_reports():
-    """Reports older than a month are deleted (the request: keep one month)."""
-    limit = duty_date_for() - datetime.timedelta(days=DutyReport.KEEP_DAYS)
+def purge_old_reports(force=False):
+    """Reports older than a month are deleted (the request: keep one month).
+
+    Pages call this often; the delete itself runs at most once a day per
+    server process (and from the daily backup task with force=True).
+    """
+    today = duty_date_for()
+    key = f'reports-purged-{today.isoformat()}'
+    if not force and cache.get(key):
+        return
+    limit = today - datetime.timedelta(days=DutyReport.KEEP_DAYS)
     DutyReport.objects.filter(duty_date__lt=limit).delete()
+    cache.set(key, True, 26 * 3600)
 
 
 def back_to(request, default):
     """Return to the page the form came from (only our own pages)."""
     nxt = request.POST.get('next') or ''
-    return nxt if nxt.startswith('/') and not nxt.startswith('//') else default
+    safe = nxt.startswith('/') and url_has_allowed_host_and_scheme(nxt, allowed_hosts={request.get_host()})
+    return nxt if safe and '\\' not in nxt else default
 
 
 USER_FIELDS = ('created_by__profile', 'updated_by__profile', 'done_by__profile')
@@ -202,14 +214,13 @@ class SeenAllView(LoginRequiredMixin, generic.View):
 def mark_seen(user, patient_id, when=None):
     """Remember when ``user`` last looked at a patient; return the previous time."""
     when = when or timezone.now()
-    row = BoardSeen.objects.filter(user=user, patient_id=patient_id).first()
-    if row:
-        previous = row.seen_at
-        row.seen_at = when
-        row.save(update_fields=['seen_at'])
-        return previous
-    BoardSeen.objects.create(user=user, patient_id=patient_id, seen_at=when)
-    return None
+    # get_or_create copes with two requests at once (two tabs, a double click)
+    row, created = BoardSeen.objects.get_or_create(user=user, patient_id=patient_id, defaults={'seen_at': when})
+    if created:
+        return None
+    previous = row.seen_at
+    BoardSeen.objects.filter(pk=row.pk).update(seen_at=when)
+    return previous
 
 
 class PatientFormView(LoginRequiredMixin, generic.TemplateView):

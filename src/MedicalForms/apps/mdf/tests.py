@@ -1074,7 +1074,13 @@ class ConsentTests(BaseViewTest):
         from .models import ConsentForm
         first = ConsentForm.objects.get(name__startswith='აორტა-ბარძაყის')
         self.assertEqual(first.blocks[0]['left'][0], 'სისხლდენა')
-        self.assertEqual(ConsentForm.objects.count(), 29)                      # + 28 from the Word files
+        import importlib
+        for mig in ('0022_consent_more', '0023_consent_veins_hybrid', '0024_consent_aorta_amputation',
+                    '0025_consent_temporal_crile_phlebectomy', '0026_consent_more_arterial',
+                    '0027_consent_sympathectomy_tracheostomy', '0028_consent_femoral_vein_ligation',
+                    '0029_consent_av_fistula_upper_limb'):
+            for name, _blocks in importlib.import_module(f'apps.mdf.migrations.{mig}').SHEETS:
+                self.assertTrue(ConsentForm.objects.filter(name=name).exists(), name)
         other = ConsentForm.objects.create(name='კაროტიდული ენდარტერექტომია', blocks=[])
         for _ in range(3):
             self.client.get(reverse('consent-sheet', args=[other.pk]))
@@ -1450,3 +1456,59 @@ class QuoteTests(BaseViewTest):
         self.assertIsNone(quote_of_the_day())                          # hidden ones are not shown
         self.client.post(reverse('quotes'), {'action': 'delete', 'id': q.pk})
         self.assertFalse(Quote.objects.exists())
+
+
+class RefineBatch1Tests(BaseViewTest):
+    """Small fixes found in the code review (each failed before its fix)."""
+
+    def test_roster_people_bad_order_value_is_not_an_error(self):            # A5
+        from .models import RosterPerson
+        p = RosterPerson.objects.get(name='ია')
+        data = {f'p{x.pk}-{k}': v for x in RosterPerson.objects.all() for k, v in (
+            ('name', x.name), ('order', x.order), ('min_gap', x.min_gap), ('active', 'on'))}
+        data[f'p{p.pk}-order'] = 'abc'
+        r = self.client.post(reverse('roster-people'), data)
+        self.assertEqual(r.status_code, 302)
+        p.refresh_from_db()
+        self.assertEqual(p.order, 2)                                          # kept as it was
+
+    def test_board_next_only_to_own_pages(self):                              # A7
+        from .board import back_to
+        from django.test import RequestFactory
+        rf = RequestFactory()
+        for bad in ('/\\evil.com', '//evil.com', 'https://evil.com', '/\\/evil.com'):
+            req = rf.post('/', {'next': bad})
+            self.assertEqual(back_to(req, '/board/'), '/board/', bad)
+        self.assertEqual(back_to(rf.post('/', {'next': '/board/?show=mine'}), '/x/'), '/board/?show=mine')
+
+    def test_consent_import_refuses_huge_document(self):                       # A9
+        import io, zipfile
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .models import ConsentForm
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.writestr('word/document.xml', '<w:document>' + ' ' * (25 * 1024 * 1024) + '</w:document>')
+        count = ConsentForm.objects.count()
+        r = self.client.post(reverse('consent-new'), {'docx': SimpleUploadedFile('big.docx', buf.getvalue())}, follow=True)
+        self.assertEqual(ConsentForm.objects.count(), count)
+        self.assertContains(r, 'ძალიან დიდია')
+
+    def test_mark_seen_twice_keeps_one_row(self):                              # A4
+        from .board import mark_seen
+        from .models import BoardPatient, BoardSeen
+        p = BoardPatient.objects.create(name='ტესტი')
+        self.assertIsNone(mark_seen(self.user, p.pk))
+        self.assertIsNotNone(mark_seen(self.user, p.pk))
+        self.assertEqual(BoardSeen.objects.filter(user=self.user, patient=p).count(), 1)
+
+    def test_old_reports_purged_once_a_day(self):                              # B2
+        import datetime
+        from .board import purge_old_reports
+        from .models import DutyReport
+        old = datetime.date(2020, 1, 1)
+        purge_old_reports()
+        DutyReport.objects.create(duty_date=old, data={})
+        purge_old_reports()                       # the same day: not again
+        self.assertTrue(DutyReport.objects.filter(duty_date=old).exists())
+        purge_old_reports(force=True)             # the daily backup task
+        self.assertFalse(DutyReport.objects.filter(duty_date=old).exists())
