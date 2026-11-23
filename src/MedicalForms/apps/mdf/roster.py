@@ -219,6 +219,65 @@ def _place(days, heavy_days, people, need_heavy, need_light, fixed, rnd, outside
     return {d: by_pk[pk] for d, pk in result.items()}
 
 
+def _solve(days, heavy_days, people, need_heavy, need_light, fixed, rnd, outside=None,
+           keep_apart=True, by_kind=True, max_steps=20000):
+    """Backtracking search for when the one-pass ``_place`` gets stuck.
+
+    Hard rules: everybody's number of (weekend / weekday) duties, never two days in a
+    row (also across the month border), NEVER_ADJACENT unless ``keep_apart`` is off.
+    ``by_kind=False`` only keeps the total number of duties. None if impossible.
+    """
+    one = datetime.timedelta(days=1)
+    by_pk = {p.pk: p for p in people}
+    around = {}
+    for day, person in list((outside or {}).items()) + list(fixed.items()):
+        if person:
+            around[day] = person.pk
+    apart = _never_adjacent(list(people) + list(_on_duty_people(outside, fixed))) if keep_apart else {}
+    todo = [d for d in days if d not in fixed]
+
+    def kind(day):
+        return ('h' if day in heavy_days else 'l') if by_kind else 'a'
+
+    if by_kind:
+        left = {'h': dict(need_heavy), 'l': dict(need_light)}
+    else:
+        left = {'a': {pk: need_heavy.get(pk, 0) + need_light.get(pk, 0) for pk in by_pk}}
+    result, steps = {}, [0]
+
+    def who(day):
+        return result.get(day) or around.get(day)
+
+    def go(i):
+        if i == len(todo):
+            return True
+        steps[0] += 1
+        if steps[0] > max_steps:
+            return False
+        day = todo[i]
+        k = kind(day)
+        near = (who(day - one), who(day + one))
+        options = []
+        for pk, n in left[k].items():
+            if n <= 0 or pk in near or any(x in apart.get(pk, ()) for x in near if x):
+                continue
+            mine = [d for d, x in list(result.items()) + list(around.items()) if x == pk]
+            wait = min((abs((day - d).days) for d in mine), default=99)
+            options.append((min(wait, 8) + rnd.random(), pk))
+        for _, pk in sorted(options, reverse=True):
+            result[day] = pk
+            left[k][pk] -= 1
+            if go(i + 1):
+                return True
+            left[k][pk] += 1
+            del result[day]
+        return False
+
+    if not go(0):
+        return None
+    return {d: by_pk[pk] for d, pk in result.items()}
+
+
 def _on_duty_people(*assignments):
     return {p for a in assignments for p in (a or {}).values() if p is not None}
 
@@ -347,8 +406,25 @@ def generate(year, month, seed=None):
                 best, best_pen = placed, pen
                 if pen == 0:
                     break
+        if best is None or best_pen >= 1000:
+            # the one-pass placement got stuck (or could not keep NEVER_ADJACENT apart):
+            # search properly, a few solutions, the best spread; if impossible
+            # (e.g. many locked days) relax step by step
+            for keep_apart, by_kind in ((True, True), (False, True), (False, False)):
+                found = False
+                for _ in range(8):
+                    placed = _solve(days, heavy_days, people, need_h, need_l, assign, rnd, outside,
+                                    keep_apart=keep_apart, by_kind=by_kind)
+                    if placed is None:
+                        break
+                    found = True
+                    pen = _spread_penalty({**outside, **assign, **placed})
+                    if best_pen is None or pen < best_pen:
+                        best, best_pen = placed, pen
+                if found or best is not None:
+                    break
         if best is None:
-            # very crowded month (many locked days): fill in turn, two days in a row allowed
+            # nothing possible at all: fill in turn, two days in a row allowed
             best = {d: people[i % len(people)] for i, d in enumerate(free)}
         for day, person in best.items():
             assign[day], source[day] = person, RosterDay.AUTO
