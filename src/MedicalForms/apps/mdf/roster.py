@@ -31,6 +31,25 @@ from django.views import generic
 from .duty import MONTHS, WEEKDAYS
 from .models import RosterDay, RosterLog, RosterPerson
 
+# Doctors who must never hand over to each other (one on the day right after the
+# other). Kept in the code only: not shown anywhere on the site.
+NEVER_ADJACENT = [('ია', 'თორნიკე')]
+
+
+def _never_adjacent(people):
+    """{person pk: pks this doctor may not be next to}, by name (see NEVER_ADJACENT)."""
+    by_name = {}
+    for p in people:
+        if p is not None:
+            by_name.setdefault(p.name.strip(), set()).add(p.pk)
+    apart = {}
+    for a, b in NEVER_ADJACENT:
+        for x in by_name.get(a, ()):
+            for y in by_name.get(b, ()):
+                apart.setdefault(x, set()).add(y)
+                apart.setdefault(y, set()).add(x)
+    return apart
+
 WEEKDAYS_SHORT = ['ორშ', 'სამ', 'ოთხ', 'ხუთ', 'პარ', 'შაბ', 'კვი']
 MONTHS_GEN = ['იანვრის', 'თებერვლის', 'მარტის', 'აპრილის', 'მაისის', 'ივნისის',
               'ივლისის', 'აგვისტოს', 'სექტემბრის', 'ოქტომბრის', 'ნოემბრის', 'დეკემბრის']
@@ -165,9 +184,13 @@ def _place(days, heavy_days, people, need_heavy, need_light, fixed, rnd, outside
     """
     left = {'h': dict(need_heavy), 'l': dict(need_light)}
     last = {}
+    on_duty = {}
     for day, person in list((outside or {}).items()) + list(fixed.items()):
         if person:
             last.setdefault(person.pk, []).append(day)
+            on_duty[day] = person.pk
+    apart = _never_adjacent(list(people) + [p for p in _on_duty_people(outside, fixed)])
+    one = datetime.timedelta(days=1)
     result = {}
     by_pk = {p.pk: p for p in people}
     for day in days:
@@ -184,6 +207,9 @@ def _place(days, heavy_days, people, need_heavy, need_light, fixed, rnd, outside
             if nearest <= 1:
                 continue                                  # never two days in a row
             score = min(nearest, 8) + rnd.random()        # prefer whoever has waited longest
+            if apart.get(p.pk) and any(
+                    (result.get(n) or on_duty.get(n)) in apart[p.pk] for n in (day - one, day + one)):
+                score -= 1000                             # only if nobody else can take the day
             if best_score is None or score > best_score:
                 best, best_score = p.pk, score
         if best is None:
@@ -193,12 +219,62 @@ def _place(days, heavy_days, people, need_heavy, need_light, fixed, rnd, outside
     return {d: by_pk[pk] for d, pk in result.items()}
 
 
+def _on_duty_people(*assignments):
+    return {p for a in assignments for p in (a or {}).values() if p is not None}
+
+
+def _separate(placed, fixed, outside, heavy_days, rnd):
+    """Swap duties so that NEVER_ADJACENT doctors are not on neighbouring days.
+
+    Only days of the same kind (weekend / weekday) are swapped, so everybody keeps
+    the same number of duties and weekends; a swap never makes two days in a row.
+    """
+    placed = dict(placed)
+    one = datetime.timedelta(days=1)
+    apart = _never_adjacent(_on_duty_people(placed, fixed, outside))
+    if not apart:
+        return placed
+
+    def who(day):
+        p = placed.get(day) or fixed.get(day) or (outside or {}).get(day)
+        return p.pk if p else None
+
+    def fine(day):
+        pk = who(day)
+        return all(who(n) != pk and who(n) not in apart.get(pk, ()) for n in (day - one, day + one))
+
+    for _ in range(3):
+        bad = [d for d in sorted(placed) if not fine(d)
+               and any(who(n) in apart.get(who(d), ()) for n in (d - one, d + one))]
+        if not bad:
+            break
+        for day in bad:
+            if fine(day):
+                continue
+            others = [d for d in placed if d != day and (d in heavy_days) == (day in heavy_days)
+                      and placed[d].pk != placed[day].pk]
+            for other in rnd.sample(others, len(others)):
+                touched = {day, other, day - one, day + one, other - one, other + one} & set(placed)
+                before = sum(not fine(d) for d in touched)
+                placed[day], placed[other] = placed[other], placed[day]
+                if fine(day) and fine(other) and sum(not fine(d) for d in touched) < before:
+                    break
+                placed[day], placed[other] = placed[other], placed[day]
+    return placed
+
+
 def _spread_penalty(assign):
     per = {}
     for day, person in assign.items():
         if person:
             per.setdefault(person.pk, []).append(day)
     penalty = 0
+    apart = _never_adjacent(_on_duty_people(assign))
+    one = datetime.timedelta(days=1)
+    for day, person in assign.items():
+        nxt = assign.get(day + one)
+        if person and nxt and nxt.pk in apart.get(person.pk, ()):
+            penalty += 1000
     for days in per.values():
         days.sort()
         for a, b in zip(days, days[1:]):
@@ -265,6 +341,7 @@ def generate(year, month, seed=None):
             placed = _place(days, heavy_days, people, need_h, need_l, assign, rnd, outside)
             if placed is None:
                 continue
+            placed = _separate(placed, assign, outside, heavy_days, rnd)
             pen = _spread_penalty({**outside, **assign, **placed})
             if best_pen is None or pen < best_pen:
                 best, best_pen = placed, pen
