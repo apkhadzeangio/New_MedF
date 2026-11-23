@@ -49,7 +49,21 @@
 
 ნაბიჯ-ნაბიჯ ინსტრუქცია და სკრიპტები: [`deploy/contabo/README.md`](deploy/contabo/README.md).
 
-## PythonAnywhere-ზე განახლება
+## PythonAnywhere-ზე: ყოველი ახალი ვერსია
+
+ჩვეულებრივი განახლება (ბაზა ყოველთვის რჩება, `migrate` მხოლოდ ამატებს):
+
+```bash
+cd ~/MedicalForms-new && git pull
+```
+
+```bash
+cd ~/MedicalForms-new/src/MedicalForms && python manage.py migrate && python manage.py collectstatic --noinput
+```
+
+მერე Web ტაბზე **Reload**, საიტზე **Ctrl+Shift+R**.
+
+## PythonAnywhere-ზე: პირველი დაყენება (ისტორია, 2026 წლის ნოემბერი)
 
 ყველა ბრძანება სრულდება **Bash console**-ში (Dashboard → Consoles → Bash).
 `~/MedicalForms` არის ძველი კოდის საქაღალდე. ზუსტ გზას ნახავთ **Web** ტაბზე → *Source code*.
@@ -90,14 +104,7 @@ cd ~/MedicalForms-new && pip install -r requirements/prod.txt
 **5. ბაზის განახლება, თანამშრომლები, სტატიკური ფაილები:**
 
 ```bash
-cd ~/MedicalForms-new/src/MedicalForms && python manage.py showmigrations mdf
-```
-
-ბოლო ხაზი ასეთი უნდა იყოს: `[ ] 0014_remove_back_side_add_templates_staff`. ყველა
-წინა უნდა იყოს მონიშნული `[X]`. თუ ასეა:
-
-```bash
-python manage.py migrate && python manage.py setup_staff && python manage.py collectstatic --noinput
+cd ~/MedicalForms-new/src/MedicalForms && python manage.py migrate && python manage.py setup_staff && python manage.py collectstatic --noinput
 ```
 
 **6. გადართვა:** Web ტაბზე *Source code* და *Working directory* შეცვალეთ
