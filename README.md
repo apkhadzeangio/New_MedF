@@ -63,6 +63,13 @@ cd ~/MedicalForms-new/src/MedicalForms && python manage.py migrate && python man
 
 მერე Web ტაბზე **Reload**, საიტზე **Ctrl+Shift+R**.
 
+თუ განახლებაში `requirements/prod.txt` შეიცვალა (მაგ. Django 4.2 → 5.2), `migrate`-მდე
+ერთხელ გაუშვით (virtualenv-ის შემთხვევაში ჯერ `workon <სახელი>`):
+
+```bash
+cd ~/MedicalForms-new && pip install -r requirements/prod.txt
+```
+
 ## PythonAnywhere-ზე: პირველი დაყენება (ისტორია, 2026 წლის ნოემბერი)
 
 ყველა ბრძანება სრულდება **Bash console**-ში (Dashboard → Consoles → Bash).
