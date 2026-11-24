@@ -26,7 +26,7 @@
                 {% for key, label in S.FLAGS %}<button type="button" class="st-tool t-{{ key }}" data-flag="{{ key }}"><i></i>{{ label }}</button>{% endfor %}
             </div>
             <p class="st-hint">აირჩიეთ ზემოთ რა მოვნიშნოთ და დააჭირეთ არტერიის სეგმენტს. ხელახლა დაჭერა — მოხსნა.</p>
-            <div class="st-map">{% include "mdf/cases/_artery_map.html" with segments=map interactive=True %}</div>
+            <div class="st-map">{% include "mdf/cases/_artery_map.html" with interactive=True side_name=side_name %}</div>
             <div class="fld">სამიზნე არტერიის გზა (TAP)
                 <div class="cs-seg sm">{% for key, label in S.TAP %}<label><input type="radio" name="tap" value="{{ key }}" {% if limb.tap == key %}checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div>
             </div>

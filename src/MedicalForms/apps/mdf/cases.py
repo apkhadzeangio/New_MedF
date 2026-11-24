@@ -518,8 +518,8 @@ def staging_views(case):
         if not limb:
             continue
         result = staging.compute(limb, staging.doppler_measurements(doppler_data, side))
-        out.append({'side': side, 'name': name, 'limb': limb, 'r': result, 'outline': staging.LEG_OUTLINE,
-                    'map': staging.segment_view(limb.get('segments') or {})})
+        out.append({'side': side, 'name': name, 'limb': limb, 'r': result,
+                    'am': staging.map_context(limb.get('segments') or {}, side)})
     return out
 
 
@@ -532,8 +532,8 @@ class StagingView(LoginRequiredMixin, generic.View):
         return {
             'case': case, 'side': side, 'limbs': _limbs_of(case) if len(_limbs_of(case)) > 1 else LIMBS,
             'side_name': dict(LIMBS)[side], 'limb': limb, 'measured': measured,
-            'r': staging.compute(limb, measured), 'map': staging.segment_view(limb.get('segments') or {}),
-            'S': staging, 'outline': staging.LEG_OUTLINE,
+            'r': staging.compute(limb, measured), 'am': staging.map_context(limb.get('segments') or {}, side),
+            'S': staging,
             'segments_json': limb.get('segments') or {},
         }
 

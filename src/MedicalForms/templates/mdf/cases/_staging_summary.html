@@ -2,7 +2,7 @@
 <div class="st-sum">
     <div class="st-sum-map">
         <h3>{{ st.name }}</h3>
-        {% include "mdf/cases/_artery_map.html" with segments=st.map side=st.side side_name=st.name outline=st.outline interactive=False %}
+        {% include "mdf/cases/_artery_map.html" with am=st.am side_name=st.name interactive=False %}
     </div>
     <div class="st-sum-res">
         {% include "mdf/cases/_staging_result.html" with r=st.r limb=st.limb %}
