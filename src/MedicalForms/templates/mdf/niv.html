@@ -1,6 +1,9 @@
 {% extends 'base.html' %}
 {% load static mdf_tags %}
 
+{% block vendor_styles %}<link rel="stylesheet" href="{% static 'css/jquery-ui.min.css' %}">{% endblock %}
+{% block vendor_scripts %}<script src="{% static 'js/jquery-ui.min.js' %}"></script>{% endblock %}
+
 {% block content %}
 
     {% block inner_nav %}

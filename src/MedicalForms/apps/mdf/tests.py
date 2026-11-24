@@ -1402,6 +1402,82 @@ class RosterBorderTests(BaseViewTest):
             self.assertGreaterEqual((days[1] - days[0]).days, 10, seed)
 
 
+class RosterNeverAdjacentTests(BaseViewTest):
+    """Ia and Tornike never hand over to each other (rule kept in the code only)."""
+
+    PAIR = {'ია', 'თორნიკე'}
+
+    def assert_apart(self, rows, msg):
+        import datetime
+        by_day = {r['date']: r['person'] for r in rows}
+        for day, person in by_day.items():
+            nxt = by_day.get(day + datetime.timedelta(days=1))
+            if person and nxt:
+                self.assertNotEqual({person.name, nxt.name}, self.PAIR, f'{msg} {day}')
+                self.assertNotEqual(person, nxt, f'{msg} {day}')     # still no two days in a row
+
+    def test_never_adjacent_in_a_month(self):
+        from .roster import generate
+        for y, m in [(2026, 11), (2026, 12), (2027, 2), (2027, 5), (2027, 8)]:
+            for seed in range(1, 31):
+                rows, _ = generate(y, m, seed)
+                self.assertTrue(all(r['person'] for r in rows))
+                self.assert_apart(rows, f'{y}-{m} seed {seed}')
+
+    def test_never_adjacent_across_the_month_border(self):
+        import datetime
+        from .models import RosterDay
+        for seed in range(1, 16):
+            RosterDay.objects.all().delete()
+            for i, (y, m) in enumerate([(2026, 12), (2027, 1), (2027, 2)]):
+                self.client.post(reverse('roster-generate'), {'y': y, 'm': m, 'seed': seed * 10 + i})
+            rows = [{'date': d.date, 'person': d.person} for d in RosterDay.objects.order_by('date')]
+            self.assertEqual(len(rows), 31 + 31 + 28)
+            self.assert_apart(rows, f'seed {seed}')
+
+    def test_when_the_one_pass_placement_gets_stuck_the_search_still_keeps_every_rule(self):
+        import collections
+        from unittest import mock
+        from . import roster
+        for y, m in [(2026, 12), (2027, 1), (2027, 11)]:
+            for seed in range(1, 11):
+                normal, _ = roster.generate(y, m, seed)
+                with mock.patch.object(roster, '_place', return_value=None):     # greedy always stuck
+                    rows, _ = roster.generate(y, m, seed)
+                self.assertTrue(all(r['person'] for r in rows))
+                self.assert_apart(rows, f'{y}-{m} seed {seed}')
+                order = [p.name for p in roster.rotation_people()]
+                seq = [r['person'].name for r in rows if r['person'].name in order]
+                self.assertFalse(all(seq[i] == order[i % len(order)] for i in range(len(seq))),
+                                 'fell back to filling in turn')
+                # the same number of duties and of weekend duties per doctor as the normal pass
+                hol = roster.georgian_holidays(y)
+                count = lambda rr: collections.Counter(
+                    (r['person'].name, roster.is_heavy(r['date'], hol)) for r in rr)
+                self.assertEqual(count(rows), count(normal), f'{y}-{m} seed {seed}')
+
+    def test_impossible_month_relaxes_instead_of_filling_in_turn(self):
+        import datetime
+        from .models import RosterDay, RosterPerson
+        from . import roster
+        ia = RosterPerson.objects.get(name='ია')
+        # many hand-locked days for one doctor: the quotas cannot be kept exactly
+        for day in (1, 3, 5, 7, 9, 11, 13, 15):
+            RosterDay.objects.create(date=datetime.date(2027, 3, day), person=ia, locked=True, source='manual')
+        rows, _ = roster.generate(2027, 3, 5)
+        self.assertTrue(all(r['person'] for r in rows))
+        for a, b in zip(rows, rows[1:]):
+            self.assertNotEqual(a['person'], b['person'], a['date'])
+
+    def test_rule_is_not_shown_on_the_site(self):
+        import datetime
+        for url in (reverse('roster') + '?y=2026&m=12', reverse('roster-generate') + '?y=2026&m=12&seed=3'):
+            r = self.client.get(url)
+            self.assertEqual(r.status_code, 200)
+            self.assertNotContains(r, 'NEVER_ADJACENT')
+            self.assertNotContains(r, 'ერთმანეთის')
+
+
 class QuoteTests(BaseViewTest):
     """Quote of the day on the prescription page."""
 

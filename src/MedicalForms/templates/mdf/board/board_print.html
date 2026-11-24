@@ -1,18 +1,16 @@
-{% load static mdf_tags %}<!DOCTYPE html>
+{% load static mdf_tags static_version %}<!DOCTYPE html>
 <html lang="ka">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>პაციენტების დაფა — {{ printed_at|date:"d.m.Y H:i" }}</title>
-<link rel="stylesheet" href="{% static 'css/theme.css' %}?v=17">
+<link rel="stylesheet" href="{% static_v 'css/theme.css' %}">
+<link rel="stylesheet" href="{% static_v 'css/print-tools.css' %}">
 <style>
 @page { size: A4 landscape; margin: 10mm 10mm; }
 html, body { margin: 0; padding: 0; }
 body { font-family: 'Noto Sans Georgian', 'Sylfaen', sans-serif; background: #e9ecef; color: #111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .sheet { width: 297mm; min-height: 210mm; margin: 12mm auto; padding: 10mm; background: #fff; box-shadow: 0 4px 18px rgba(0, 0, 0, .15); }
-.ptools { max-width: 297mm; margin: 12mm auto 0; display: flex; gap: 8px; font-family: system-ui, sans-serif; }
-.ptools button, .ptools a { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 6px; border: 1px solid #0d6efd; background: #0d6efd; color: #fff; cursor: pointer; text-decoration: none; }
-.ptools a { background: #fff; color: #0d6efd; }
 .bp-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 0.5mm solid #1f2a44; padding-bottom: 2mm; margin-bottom: 3mm; }
 .bp-head img { height: 11mm; }
 .bp-head h1 { margin: 0; font-size: 15pt; }
@@ -31,13 +29,12 @@ td.who small, .t small, .st small { display: block; color: #555; font-size: 8pt;
 .empty { color: #777; font-style: italic; }
 @media print {
     body { background: #fff; }
-    .ptools { display: none; }
     .sheet { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
 }
 </style>
 </head>
 <body>
-<div class="ptools">
+<div class="ptools wide">
     <button type="button" onclick="window.print()">🖨 ბეჭდვა</button>
     <a href="javascript:window.close()">დახურვა</a>
 </div>

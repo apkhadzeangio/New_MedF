@@ -1,3 +1,4 @@
 -r prod.txt
 ipython
 psycopg2-binary==2.9.6
+playwright
