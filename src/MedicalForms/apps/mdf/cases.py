@@ -23,13 +23,14 @@ from django.views import generic
 
 from .board import clean_text, doctors, person_name
 from .duty import strip_astral
-from .models import BoardPatient, Case, CasePhoto
+from . import doppler
+from .models import BoardPatient, Case, CasePhoto, DopplerStudy
 
 MAX_UPLOAD = 30 * 1024 * 1024        # one photo as it comes from the phone
 FULL_SIZE = 2000                     # longest side kept (sharp on a projector)
 THUMB_SIZE = 480
 
-TEXT_FIELDS = ('history', 'comorbidities', 'findings', 'proposal')
+TEXT_FIELDS = ('diagnosis', 'comorbidities', 'past_history', 'history', 'findings', 'proposal')
 
 
 class PhotoError(ValueError):
@@ -155,7 +156,7 @@ class CaseFormView(LoginRequiredMixin, generic.View):
         is_new = case is None
         if is_new:
             case = Case(created_by=request.user)
-        for field in ('patient_name', 'age', 'sex', 'side', 'diagnosis', 'conference_on', *TEXT_FIELDS):
+        for field in ('patient_name', 'age', 'sex', 'side', 'conference_on', *TEXT_FIELDS):
             setattr(case, field, values[field])
         case.doctor_id = values['doctor']
         case.updated_by = request.user
@@ -176,7 +177,6 @@ class CaseFormView(LoginRequiredMixin, generic.View):
             'age': int(age) if age.isdigit() and 0 < int(age) < 130 else None,
             'sex': data.get('sex') if data.get('sex') in Case.Sex.values else '',
             'side': data.get('side') if data.get('side') in Case.Side.values else '',
-            'diagnosis': ' '.join(strip_astral(data.get('diagnosis', '')).split())[:500],
             'conference_on': _date(data.get('conference_on')),
             'doctor': int(doctor) if doctor.isdigit() and int(doctor) in valid_doctors else None,
             **{f: clean_text(data.get(f, ''), 5000) for f in TEXT_FIELDS},
@@ -184,7 +184,7 @@ class CaseFormView(LoginRequiredMixin, generic.View):
 
     @staticmethod
     def _values_of(case):
-        return {f: getattr(case, f) for f in ('patient_name', 'age', 'sex', 'side', 'diagnosis', 'conference_on', *TEXT_FIELDS)} \
+        return {f: getattr(case, f) for f in ('patient_name', 'age', 'sex', 'side', 'conference_on', *TEXT_FIELDS)} \
             | {'doctor': case.doctor_id}
 
     @staticmethod
@@ -215,6 +215,7 @@ class CaseView(LoginRequiredMixin, generic.TemplateView):
                                  pk=kwargs['pk'])
         ctx.update({
             'case': case, 'groups': _photos_by_kind(case), 'kinds': CasePhoto.Kind.choices,
+            'dopplers': [doppler_view(d) for d in case.dopplers.all()],
             'kind': self.request.GET.get('kind') or CasePhoto.Kind.WOUND,
             'today': timezone.localdate(),
         })
@@ -335,7 +336,7 @@ class PresentView(LoginRequiredMixin, generic.TemplateView):
         ctx = super().get_context_data(**kwargs)
         ids = [int(x) for x in self.request.GET.get('ids', '').split(',') if x.strip().isdigit()][:60]
         qs = Case.objects.select_related('doctor', 'decided_by').prefetch_related(
-            Prefetch('photos', queryset=CasePhoto.objects.order_by('taken_on', 'id')))
+            Prefetch('photos', queryset=CasePhoto.objects.order_by('taken_on', 'id')), 'dopplers')
         if ids:
             by_id = {c.pk: c for c in qs.filter(pk__in=ids)}
             cases = [by_id[i] for i in ids if i in by_id]
@@ -350,8 +351,136 @@ class PresentView(LoginRequiredMixin, generic.TemplateView):
         order = {kind: i for i, kind in enumerate(CasePhoto.Kind.values)}
         for case in cases:
             case.slides = sorted(case.photos.all(), key=lambda p: (order.get(p.kind, 9), p.taken_on, p.pk))
+            case.doppler_views = [doppler_view(d) for d in case.dopplers.all()]
         ctx.update({'cases': cases, 'anon': self.request.GET.get('anon') == '1',
                     'back': self.request.GET.get('back') or reverse('cases')})
         if not ctx['back'].startswith('/') or ctx['back'].startswith('//'):
             ctx['back'] = reverse('cases')
         return ctx
+
+
+# --------------------------------------------------------------------------
+# Doppler (Smart-XT report PDF -> curves and numbers)
+# --------------------------------------------------------------------------
+
+PRESSURE_KEYS = (('arm', 'მხარი'), ('pt', 'PT'), ('dp', 'DP'), ('toe', 'დიდი თითი'))
+INDEX_KEYS = (('abi_pt', 'ABI (PT)'), ('abi_dp', 'ABI (DP)'), ('tbi', 'TBI'))
+ROW_PRESSURE = {'ankle_pt': 'pt', 'metatarsal_dp': 'dp', 'toe': 'toe'}
+
+
+def doppler_view(study):
+    """Everything the panel shows, ready for the template."""
+    data = study.data or {}
+    sites = {(s['side'], s['key']): s for s in data.get('sites', [])}
+    rows = []
+    for key, label, label_en in doppler.SITES:
+        row = {'key': key, 'label': label, 'label_en': label_en, 'sides': []}
+        for side in ('R', 'L'):
+            site = dict(sites.get((side, key)) or {'key': key, 'side': side, 'unit': 'mV/V' if key == 'toe' else 'cm/s'})
+            site['chart'] = doppler.chart(site)
+            site['pressure'] = (data.get('pressures', {}).get(side) or {}).get(ROW_PRESSURE.get(key))
+            row['sides'].append(site)
+        rows.append(row)
+    sides = []
+    for side, name in (('R', 'მარჯვენა'), ('L', 'მარცხენა')):
+        idx = data.get('indices', {}).get(side) or {}
+        prs = data.get('pressures', {}).get(side) or {}
+        indices = []
+        for key, label in INDEX_KEYS:
+            value = idx.get(key)
+            css, text = doppler.tbi_class(value) if key == 'tbi' else doppler.abi_class(value)
+            indices.append({'key': key, 'label': label, 'value': value, 'css': css, 'text': text})
+        sides.append({'side': side, 'name': name, 'indices': indices,
+                      'pressures': [{'key': k, 'label': lb, 'value': prs.get(k)} for k, lb in PRESSURE_KEYS]})
+    edit_rows = []
+    for prefix, keys, unit in (('p', PRESSURE_KEYS, ', mmHg'), ('i', INDEX_KEYS, '')):
+        source = data.get('pressures' if prefix == 'p' else 'indices', {})
+        for key, label in keys:
+            edit_rows.append({'label': label + unit, 'cells': [
+                {'name': f'{prefix}_{side}_{key}', 'value': (source.get(side) or {}).get(key)} for side in ('R', 'L')]})
+    return {'study': study, 'rows': rows, 'sides': sides, 'edit_rows': edit_rows,
+            'warnings': data.get('warnings', [])}
+
+
+class DopplerUploadView(LoginRequiredMixin, generic.View):
+
+    def post(self, request, pk):
+        case = get_object_or_404(Case, pk=pk)
+        uploaded = request.FILES.get('report')
+        back = HttpResponseRedirect(reverse('case', args=[case.pk]) + '#doppler')
+        if not uploaded:
+            messages.error(request, 'აირჩიეთ დოპლერის PDF.')
+            return back
+        try:
+            image, raw = doppler.load(uploaded)
+            data = doppler.parse(image)
+        except doppler.DopplerError as e:
+            messages.error(request, f'დოპლერი ვერ წავიკითხე: {e}')
+            return back
+        performed_on = _date(request.POST.get('performed_on'))
+        if not performed_on or performed_on > timezone.localdate():
+            performed_on = timezone.localdate()
+        study = DopplerStudy(case=case, performed_on=performed_on, data=data, created_by=request.user)
+        ext = 'pdf' if raw[:5] == b'%PDF-' else 'png'
+        study.file.save(f'{uuid.uuid4().hex}.{ext}', ContentFile(raw), save=False)
+        study.save()
+        Case.objects.filter(pk=case.pk).update(updated_at=timezone.now(), updated_by=request.user)
+        if data['warnings']:
+            messages.warning(request, 'დოპლერი წაკითხულია — რამდენიმე მნიშვნელობა გადაამოწმეთ (ყვითლად მონიშნულია).')
+        else:
+            messages.success(request, 'დოპლერი წაკითხულია.')
+        return back
+
+
+class DopplerEditView(LoginRequiredMixin, generic.View):
+    """Correct numbers by hand, change the date, or delete the study."""
+
+    def post(self, request, pk):
+        study = get_object_or_404(DopplerStudy, pk=pk)
+        case = study.case
+        if request.POST.get('action') == 'delete':
+            study.delete()
+            messages.success(request, 'დოპლერი წაიშალა.')
+            return HttpResponseRedirect(reverse('case', args=[case.pk]) + '#doppler')
+        data = study.data or {}
+
+        def num(name, cast=float, low=-1000, high=1000):
+            raw = (request.POST.get(name) or '').strip().replace(',', '.')
+            try:
+                value = cast(float(raw))
+            except ValueError:
+                return None
+            return value if low <= value <= high else None
+
+        for side in ('R', 'L'):
+            for key, _ in PRESSURE_KEYS:
+                data.setdefault('pressures', {}).setdefault(side, {})[key] = num(f'p_{side}_{key}', int, 0, 400)
+            for key, _ in INDEX_KEYS:
+                data.setdefault('indices', {}).setdefault(side, {})[key] = num(f'i_{side}_{key}', float, 0, 3)
+        for site in data.get('sites', []):
+            site['value'] = num(f's_{site["side"]}_{site["key"]}', float, -500, 500)
+            site['hr'] = num(f'h_{site["side"]}_{site["key"]}', int, 0, 300)
+        data['warnings'] = []                   # checked by a doctor
+        study.data = data
+        performed_on = _date(request.POST.get('performed_on'))
+        if performed_on and performed_on <= timezone.localdate():
+            study.performed_on = performed_on
+        study.save()
+        messages.success(request, 'დოპლერის მონაცემები შენახულია.')
+        return HttpResponseRedirect(reverse('case', args=[case.pk]) + '#doppler')
+
+
+class DopplerFileView(LoginRequiredMixin, generic.View):
+    """The original report, for logged-in users only."""
+
+    def get(self, request, pk):
+        study = get_object_or_404(DopplerStudy, pk=pk)
+        try:
+            fh = study.file.open('rb')
+        except (FileNotFoundError, ValueError):
+            raise Http404
+        is_pdf = study.file.name.endswith('.pdf')
+        response = FileResponse(fh, content_type='application/pdf' if is_pdf else 'image/png')
+        response['Content-Disposition'] = 'inline; filename="doppler.%s"' % ('pdf' if is_pdf else 'png')
+        response['Cache-Control'] = 'private, max-age=3600'
+        return response

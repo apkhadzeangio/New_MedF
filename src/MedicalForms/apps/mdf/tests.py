@@ -1723,7 +1723,8 @@ def _jpeg(size=(3000, 2000), orientation=None, color='red'):
     return out
 
 
-class CaseTests(BaseViewTest):
+class PrivateMediaTest(BaseViewTest):
+    """Patient files go to a temporary private folder."""
 
     def setUp(self):
         super().setUp()
@@ -1742,6 +1743,9 @@ class CaseTests(BaseViewTest):
         data = dict(patient_name='ბერიძე ნინო', age=67, diagnosis='კრიტიკული იშემია', created_by=self.user)
         data.update(kw)
         return Case.objects.create(**data)
+
+
+class CaseTests(PrivateMediaTest):
 
     def test_create_edit_and_list(self):
         from .models import Case
@@ -1768,7 +1772,7 @@ class CaseTests(BaseViewTest):
         p = BoardPatient.objects.create(unit='icu', name='კაპანაძე გიორგი', diagnosis='ანევრიზმა', created_by=self.user)
         page = self.client.get(reverse('case-new'), {'board': p.pk})
         self.assertContains(page, 'value="კაპანაძე გიორგი"')
-        self.assertContains(page, 'value="ანევრიზმა"')
+        self.assertContains(page, '>ანევრიზმა</textarea>')
         self.assertContains(self.client.get(reverse('board-patient', args=[p.pk])), f"{reverse('case-new')}?board={p.pk}")
 
     def test_photo_upload_is_upright_small_and_without_hidden_data(self):
@@ -1857,3 +1861,162 @@ class CaseTests(BaseViewTest):
         self.make_case()
         data = json.loads(gzip.decompress(b''.join(self.client.get(reverse('backup-download')).streaming_content)))
         self.assertTrue(any(o['model'] == 'mdf.case' for o in data))
+
+
+def synthetic_doppler(hr='62', pv='31.6', arm='120', abi='0.55', blank_left=False):
+    """A Smart-XT-like report drawn with the device's own character shapes (no patient data)."""
+    import math
+    from PIL import Image
+    from . import doppler as dp
+    from .doppler_glyphs import templates
+    img = Image.new('RGB', (dp.WIDTH, dp.HEIGHT), 'white')
+    px = img.load()
+
+    def paint(kind, text, x, y, pitch=10):
+        for k, ch in enumerate(text):
+            g = next(t for c, t in templates(kind) if c == ch)
+            for j, row in enumerate(g):
+                for i, v in enumerate(row):
+                    if v:
+                        px[x + k * pitch + i, y + j] = (255 - v,) * 3
+
+    def label(text, side, top, tick):
+        g = next(t for c, t in templates('label') if c == text)
+        axis = dp.SIDES[side][1]
+        x0, y0 = axis - 9 - len(g[0]), top + tick - len(g) // 2
+        for j, row in enumerate(g):
+            for i, v in enumerate(row):
+                if v:
+                    px[x0 + i, y0 + j] = (255 - v,) * 3
+
+    for row, top in enumerate(dp.BOX_TOPS):
+        toe = row == 5
+        for side, (left, axis, right) in dp.SIDES.items():
+            for x in range(left, right + 1):
+                px[x, top] = px[x, top + dp.BOX_HEIGHT] = (0, 0, 0)
+            for y in range(top, top + dp.BOX_HEIGHT + 1):
+                px[left, y] = px[right, y] = px[axis, y] = (0, 0, 0)
+            if side == 'L' and blank_left:
+                paint('cell', '***', left + 266, top + 5)
+                continue
+            zero = top + (40 if toe else 60)
+            for x in range(axis + 1, right):
+                px[x, zero] = (0, 0, 0)
+            labels = ('0.25', '0', '-0.25') if toe else ('40', '20', '0')
+            for tick, text in zip(dp.TICK_OFFSETS, labels):
+                label(text, side, top, tick)
+            last = None
+            for x in range(axis + 1, right):
+                phase = (x - axis) / 47.0
+                v = math.sin(phase * math.pi * 2) * (16 if toe else 0)
+                if not toe:
+                    v = max(0.0, math.sin(phase * math.pi * 2)) ** 3 * 30   # 30 px = 30 cm/s
+                y = int(round(zero - v))
+                for yy in range(min(y, last or y), max(y, last or y) + 1):
+                    px[x, yy] = (255, 0, 0)
+                last = y
+            paint('cell', hr, left + 266, top + 5)
+            paint('cell', pv, left + 250, top + 63)
+    for key, y0, y1 in dp.TABLE_ROWS:
+        for side in ('R', 'L'):
+            text = {'arm': arm if side == 'R' else '', 'pt': '66', 'dp': '68', 'toe': '39',
+                    'abi_pt': abi, 'abi_dp': '1.06', 'tbi': '0.32'}[key]
+            paint('table', text, dp.TABLE_COLS[side][0] + 30, y0 + 5)
+    return img
+
+
+def as_pdf(img):
+    import zlib
+    raw = zlib.compress(img.tobytes())
+    head = (b'%%PDF-1.4\n1 0 obj\n<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace /DeviceRGB '
+            b'/BitsPerComponent 8 /Filter [ /FlateDecode ] /Length %d >>\nstream\n' % (img.width, img.height, len(raw)))
+    return head + raw + b'\nendstream\nendobj\ntrailer\n<< >>\n%%EOF\n'
+
+
+class DopplerTests(PrivateMediaTest):
+
+    def test_reads_numbers_curves_and_scale(self):
+        from . import doppler as dp
+        img, raw = dp.load(io.BytesIO(as_pdf(synthetic_doppler())))
+        self.assertEqual(img.size, (806, 1140))
+        data = dp.parse(img)
+        self.assertEqual(data['warnings'], [])
+        fem = next(s for s in data['sites'] if s['key'] == 'femoral' and s['side'] == 'R')
+        self.assertEqual((fem['hr'], fem['value'], fem['unit'], fem['scaled']), (62, 31.6, 'cm/s', True))
+        peak = max(v for _, v in fem['wave'])
+        self.assertAlmostEqual(peak, 30, delta=1.5)                  # 30 px at 1 cm/s per px (label 40 at 40 px)
+        toe = next(s for s in data['sites'] if s['key'] == 'toe' and s['side'] == 'L')
+        self.assertEqual(toe['unit'], 'mV/V')
+        self.assertAlmostEqual(max(v for _, v in toe['wave']), 0.2, delta=0.02)   # 16 px at 0.25/20 px
+        self.assertEqual(data['pressures']['R'], {'arm': 120, 'pt': 66, 'dp': 68, 'toe': 39})
+        self.assertEqual(data['pressures']['L']['arm'], None)
+        self.assertEqual(data['indices']['R'], {'abi_pt': 0.55, 'abi_dp': 1.06, 'tbi': 0.32})
+        self.assertEqual(dp.abi_class(0.55)[0], 'bad')
+        self.assertEqual(dp.abi_class(0.95)[0], 'border')
+        self.assertEqual(dp.abi_class(1.2)[0], 'ok')
+        self.assertEqual(dp.abi_class(1.5)[0], 'nc')
+        self.assertEqual(dp.tbi_class(0.81)[0], 'ok')
+        chart = dp.chart(fem)
+        self.assertTrue(chart['d'].startswith('M'))
+        self.assertEqual([l['text'] for l in chart['labels']], ['40', '20', '0'])
+        self.assertLess(chart['labels'][0]['top'], chart['labels'][2]['top'])      # 40 above 0
+
+    def test_no_signal_and_other_values(self):
+        from . import doppler as dp
+        data = dp.parse(synthetic_doppler(hr='57', pv='-1.8', arm='152', abi='0.49', blank_left=True))
+        right = next(s for s in data['sites'] if s['key'] == 'ankle_pt' and s['side'] == 'R')
+        left = next(s for s in data['sites'] if s['key'] == 'ankle_pt' and s['side'] == 'L')
+        self.assertEqual((right['hr'], right['value']), (57, -1.8))
+        self.assertEqual((left['hr'], left['value'], left['wave']), (None, None, []))
+        self.assertEqual((data['pressures']['R']['arm'], data['indices']['R']['abi_pt']), (152, 0.49))
+
+    def test_unknown_files_are_refused(self):
+        from PIL import Image
+        from . import doppler as dp
+        with self.assertRaises(dp.DopplerError):
+            dp.parse(Image.new('RGB', (800, 600), 'white'))              # another size
+        with self.assertRaises(dp.DopplerError):
+            dp.parse(Image.new('RGB', (806, 1140), 'white'))             # right size, no graphs
+        with self.assertRaises(dp.DopplerError):
+            dp.load(io.BytesIO(b'%PDF-1.4 nothing here'))
+
+    def test_upload_show_edit_and_delete(self):
+        import os
+        from .models import DopplerStudy
+        case = self.make_case()
+        f = io.BytesIO(as_pdf(synthetic_doppler()))
+        f.name = 'report.pdf'
+        r = self.client.post(reverse('case-doppler', args=[case.pk]), {'report': f, 'performed_on': '2026-11-04'})
+        self.assertRedirects(r, reverse('case', args=[case.pk]) + '#doppler', fetch_redirect_response=False)
+        study = DopplerStudy.objects.get()
+        self.assertEqual(str(study.performed_on), '2026-11-04')
+        path = os.path.join(self._tmp.name, study.file.name)
+        self.assertTrue(os.path.exists(path))
+        page = self.client.get(reverse('case', args=[case.pk]))
+        self.assertContains(page, 'class="dp-line"')
+        self.assertContains(page, '0.55')
+        self.assertContains(page, 'პათოლოგია')
+        self.assertContains(self.client.get(reverse('cases-present'), {'ids': case.pk}), 'pz-dop')
+        pdf = self.client.get(reverse('doppler-file', args=[study.pk]))
+        self.assertEqual((pdf.status_code, pdf['Content-Type']), (200, 'application/pdf'))
+        # a doctor corrects a value
+        data = {f'p_{s}_{k}': '' for s in 'RL' for k in ('arm', 'pt', 'dp', 'toe')}
+        data.update({'p_R_pt': '70', 'i_R_abi_pt': '0,58', 'performed_on': '2026-11-05',
+                     's_R_femoral': '33.0', 'h_R_femoral': '64'})
+        self.client.post(reverse('doppler-edit', args=[study.pk]), data)
+        study.refresh_from_db()
+        fem = next(s for s in study.data['sites'] if s['key'] == 'femoral' and s['side'] == 'R')
+        self.assertEqual((study.data['pressures']['R']['pt'], study.data['indices']['R']['abi_pt'], fem['value'], fem['hr'],
+                          str(study.performed_on)), (70, 0.58, 33.0, 64, '2026-11-05'))
+        # not readable -> a message, nothing saved
+        bad = io.BytesIO(b'%PDF-1.4 nothing')
+        bad.name = 'x.pdf'
+        self.client.post(reverse('case-doppler', args=[case.pk]), {'report': bad})
+        self.assertEqual(DopplerStudy.objects.count(), 1)
+        # only for logged-in users; deleting removes the file
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('doppler-file', args=[study.pk])).status_code, 302)
+        self.client.force_login(self.user)
+        self.client.post(reverse('doppler-edit', args=[study.pk]), {'action': 'delete'})
+        self.assertFalse(DopplerStudy.objects.exists())
+        self.assertFalse(os.path.exists(path))

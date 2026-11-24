@@ -24,11 +24,11 @@
                 <span><small>მომხსენებელი</small>{{ case.doctor|who }}</span>
                 <span><small>მოხსენების დღე</small>{{ case.conference_on|date:"d.m.Y"|default:"—" }}</span>
             </div>
-            {% if case.diagnosis %}<p class="cs-dx-big">{{ case.diagnosis }}</p>{% endif %}
+            {% if case.diagnosis %}<div class="cs-sec"><h2>ძირითადი დიაგნოზი</h2><p class="cs-dx-big">{{ case.diagnosis|linebreaksbr }}</p></div>{% endif %}
             {% for label, text in case|case_sections %}
             <div class="cs-sec"><h2>{{ label }}</h2><p>{{ text|linebreaksbr }}</p></div>
             {% empty %}
-            <p class="text-muted m-0">ანამნეზი, კვლევები და შეთავაზება ჯერ არ არის ჩაწერილი — <a href="{% url 'case-edit' case.pk %}">ჩაწერა</a>.</p>
+            <p class="text-muted m-0">დიაგნოზები, ანამნეზი და შეთავაზება ჯერ არ არის ჩაწერილი — <a href="{% url 'case-edit' case.pk %}">ჩაწერა</a>.</p>
             {% endfor %}
             <p class="cs-stamp">შექმნა: {{ case.created_by|who }}, {{ case.created_at|date:"d.m.Y H:i" }}{% if case.updated_by %} · ბოლოს: {{ case.updated_by|who }}, {{ case.updated_at|date:"d.m.Y H:i" }}{% endif %}</p>
         </section>
@@ -47,6 +47,25 @@
             </form>
         </section>
     </div>
+
+    <section class="x-card cs-dops" id="doppler" aria-label="დოპლეროგრაფია">
+        <div class="cs-photos-head">
+            <h2>დოპლეროგრაფია</h2>
+            <form method="post" action="{% url 'case-doppler' case.pk %}" enctype="multipart/form-data" class="cs-upload">
+                {% csrf_token %}
+                <label class="cs-date" title="კვლევის თარიღი">თარიღი
+                    <input type="date" name="performed_on" class="form-control form-control-sm" value="{{ today|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}">
+                </label>
+                <label class="x-btn cs-pick">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/><path d="M8 15l2-3 2 2 2-4 2 5"/></svg>Smart-XT PDF
+                    <input type="file" name="report" accept="application/pdf,.pdf,image/png" hidden onchange="this.form.submit()">
+                </label>
+            </form>
+        </div>
+        {% for dv in dopplers %}{% include "mdf/cases/_doppler.html" with editable=True %}{% empty %}
+        <p class="text-muted m-0">ატვირთეთ აპარატის PDF — მრუდები, სიჩქარეები, წნევები და ABI/TBI აქ გამოჩნდება.</p>
+        {% endfor %}
+    </section>
 
     <section class="x-card cs-photos" id="photos" aria-label="ფოტოები">
         <div class="cs-photos-head">

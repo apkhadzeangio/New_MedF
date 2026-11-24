@@ -1,0 +1,84 @@
+{% load mdf_tags %}{% with s=dv.study %}
+<section class="dp" id="doppler-{{ s.pk }}" aria-label="დოპლეროგრაფია {{ s.performed_on|date:'d.m.Y' }}">
+    <header class="dp-head">
+        <h3>{% if not editable %}დოპლეროგრაფია {% endif %}<span>{{ s.performed_on|date:"d.m.Y" }}</span></h3>
+        {% if editable %}
+        <a class="x-btn sm" href="{% url 'doppler-file' s.pk %}" target="_blank" rel="noopener">ორიგინალი</a>
+        {% endif %}
+    </header>
+    {% if dv.warnings %}
+    <ul class="dp-warn">{% for w in dv.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    <div class="dp-sum">
+        {% for side in dv.sides %}
+        <div class="dp-side">
+            <h4>{{ side.name }}</h4>
+            <div class="dp-idx">
+                {% for i in side.indices %}
+                <div class="dp-i {{ i.css }}"><small>{{ i.label }}</small><b>{% if i.value is not None %}{{ i.value|floatformat:2 }}{% else %}—{% endif %}</b>{% if i.text %}<em>{{ i.text }}</em>{% endif %}</div>
+                {% endfor %}
+            </div>
+            <div class="dp-prs" aria-label="წნევა, mmHg">
+                {% for p in side.pressures %}<span><small>{{ p.label }}</small>{% if p.value is not None %}{{ p.value }}{% else %}—{% endif %}</span>{% endfor %}
+                <em>mmHg</em>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="dp-grid">
+        <div class="dp-colhead">მარჯვენა</div><div></div><div class="dp-colhead">მარცხენა</div>
+        {% for row in dv.rows %}
+        <div class="dp-row">
+        {% for site in row.sides %}
+        {% if forloop.last %}<div class="dp-level"><b>{{ row.label }}</b><small>{{ row.label_en }}</small></div>{% endif %}
+        <figure class="dp-chart {% if not site.chart %}empty{% endif %} {{ site.side }}">
+            {% if site.chart %}{% with c=site.chart %}
+            <div class="dp-plot">
+                <div class="dp-axis" aria-hidden="true">{% for l in c.labels %}<span style="top:{{ l.top }}%">{{ l.text }}</span>{% endfor %}</div>
+                <svg viewBox="0 0 {{ c.w }} {{ c.h }}" preserveAspectRatio="none" role="img" aria-label="{{ row.label }}, {% if site.side == 'R' %}მარჯვენა{% else %}მარცხენა{% endif %}">
+                    <line class="dp-zero" x1="0" x2="{{ c.w }}" y1="{{ c.zero }}" y2="{{ c.zero }}"/>
+                    <path class="dp-area" d="{{ c.area }}"/>
+                    <path class="dp-line" d="{{ c.d }}"/>
+                </svg>
+            </div>
+            {% endwith %}{% else %}<span class="dp-none">სიგნალი არ არის</span>{% endif %}
+            <figcaption>
+                {% if site.value is not None %}<b>{{ site.value|floatformat:1 }}</b> {{ site.unit }}{% if site.key == 'toe' %} PP{% endif %}{% endif %}
+                {% if site.hr %}<span>HR {{ site.hr }}</span>{% endif %}
+                {% if site.pressure is not None %}<span class="dp-p">{{ site.pressure }} mmHg</span>{% endif %}
+            </figcaption>
+        </figure>
+        {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if editable %}
+    <details class="dp-edit">
+        <summary>შესწორება / წაშლა</summary>
+        <form method="post" action="{% url 'doppler-edit' s.pk %}" class="dp-edit-form">
+            {% csrf_token %}
+            <label class="fld">კვლევის თარიღი <input type="date" name="performed_on" class="form-control form-control-sm" value="{{ s.performed_on|date:'Y-m-d' }}"></label>
+            <table class="dp-edit-table">
+                <thead><tr><th></th><th>მარჯვენა</th><th>მარცხენა</th></tr></thead>
+                <tbody>
+                {% for r in dv.edit_rows %}
+                <tr><th>{{ r.label }}</th>{% for c in r.cells %}<td><input name="{{ c.name }}" value="{{ c.value|default_if_none:'' }}" inputmode="decimal" class="form-control form-control-sm"></td>{% endfor %}</tr>
+                {% endfor %}
+                {% for row in dv.rows %}
+                <tr><th>{{ row.label }} — {% if row.key == 'toe' %}PP{% else %}სიჩქარე{% endif %} / HR</th>
+                    {% for site in row.sides %}<td class="dp-two"><input name="s_{{ site.side }}_{{ row.key }}" value="{{ site.value|default_if_none:'' }}" inputmode="decimal" class="form-control form-control-sm" aria-label="{% if row.key == 'toe' %}PP{% else %}სიჩქარე{% endif %}"><input name="h_{{ site.side }}_{{ row.key }}" value="{{ site.hr|default_if_none:'' }}" inputmode="numeric" class="form-control form-control-sm" aria-label="HR"></td>{% endfor %}</tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="submit" class="x-btn sm primary">შენახვა</button>
+                <button type="submit" name="action" value="delete" class="x-btn sm danger" onclick="return confirm('წაიშალოს ეს დოპლეროგრაფია?');">წაშლა</button>
+            </div>
+        </form>
+    </details>
+    {% endif %}
+</section>
+{% endwith %}

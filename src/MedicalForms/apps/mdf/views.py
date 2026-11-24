@@ -664,7 +664,7 @@ BACKUP_MODELS = [
     'mdf.consentform',
     'mdf.rosterperson', 'mdf.rosterday', 'mdf.rosterlog',
     'mdf.quote',
-    'mdf.case', 'mdf.casephoto',   # the photo files themselves are in PRIVATE_MEDIA_ROOT (not in this file)
+    'mdf.case', 'mdf.casephoto', 'mdf.dopplerstudy',   # their files are in PRIVATE_MEDIA_ROOT (not in this file)
     'mdf.dutynote',             # the old duty notes (read-only history)
 ]
 # Not backed up on purpose: duty reports (must disappear after a month),

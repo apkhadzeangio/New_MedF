@@ -20,11 +20,11 @@
 
 <main class="pz-deck">
     {% for c in cases %}
-    <section class="pz-slide" data-pk="{{ c.pk }}" data-decision="{% url 'case-decision' c.pk %}" aria-label="ქეისი {{ forloop.counter }}" {% if not forloop.first %}hidden{% endif %}>
+    <section class="pz-slide" data-case="{{ forloop.counter }}" data-pk="{{ c.pk }}" data-decision="{% url 'case-decision' c.pk %}" aria-label="ქეისი {{ forloop.counter }}" {% if not forloop.first %}hidden{% endif %}>
         <header class="pz-head">
             <h1><span class="pz-full">{{ c.patient_name }}</span><span class="pz-init">{{ c.initials }}</span></h1>
             <p class="pz-sub">{% if c.age %}{{ c.age }} წ.{% endif %}{% if c.sex %} · {{ c.get_sex_display }}{% endif %}{% if c.side %} · <b>{{ c.get_side_display }}</b>{% endif %}{% if c.doctor %} · მომხსენებელი: {{ c.doctor|who }}{% endif %}</p>
-            {% if c.diagnosis %}<p class="pz-dx">{{ c.diagnosis }}</p>{% endif %}
+            {% if c.diagnosis %}<p class="pz-dx">{{ c.diagnosis|linebreaksbr }}</p>{% endif %}
         </header>
         <div class="pz-body {% if not c.slides %}no-photos{% endif %}">
             <div class="pz-text">
@@ -59,9 +59,15 @@
             </form>
         </footer>
     </section>
+    {% for dv in c.doppler_views %}
+    <section class="pz-slide pz-dop" data-case="{{ forloop.parentloop.counter }}" aria-label="დოპლეროგრაფია" hidden>
+        <header class="pz-head"><h1><span class="pz-full">{{ c.patient_name }}</span><span class="pz-init">{{ c.initials }}</span></h1></header>
+        {% include "mdf/cases/_doppler.html" with editable=False %}
+    </section>
+    {% endfor %}
     {% endfor %}
 
-    <section class="pz-slide pz-end" aria-label="შეჯამება" hidden>
+    <section class="pz-slide pz-end" data-case="{{ cases|length }}" aria-label="შეჯამება" hidden>
         <h1>შეჯამება</h1>
         <ol class="pz-summary">
             {% for c in cases %}

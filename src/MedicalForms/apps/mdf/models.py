@@ -675,9 +675,10 @@ class Case(models.Model):
     age = models.PositiveSmallIntegerField('ასაკი', null=True, blank=True)
     sex = models.CharField('სქესი', max_length=1, choices=Sex.choices, blank=True, default='')
     side = models.CharField('მხარე', max_length=1, choices=Side.choices, blank=True, default='')
-    diagnosis = models.CharField('დიაგნოზი', max_length=500, blank=True)
+    diagnosis = models.TextField('ძირითადი დიაგნოზი', blank=True)
+    comorbidities = models.TextField('თანმხლები დიაგნოზები', blank=True)
+    past_history = models.TextField('გადატანილი დაავადებები და ოპერაციები', blank=True)
     history = models.TextField('ანამნეზი და ჩივილები', blank=True)
-    comorbidities = models.TextField('თანმხლები დაავადებები, რისკ-ფაქტორები', blank=True)
     findings = models.TextField('კვლევები (დოპლერი, ანგიოგრაფია, ანალიზები)', blank=True)
     proposal = models.TextField('შეთავაზება (რას ვთავაზობთ)', blank=True)
     decision = models.TextField('კონფერენციის გადაწყვეტილება', blank=True)
@@ -735,9 +736,27 @@ class CasePhoto(models.Model):
         verbose_name_plural = 'ქეისის ფოტოები'
 
 
+class DopplerStudy(models.Model):
+    """A Doppler report (Smart-XT PDF) of a case, read into data (see doppler.py)."""
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='dopplers')
+    performed_on = models.DateField('კვლევის თარიღი', default=timezone.localdate)
+    file = models.FileField(storage=private_storage, upload_to='doppler/%Y/%m/')
+    data = models.JSONField(default=dict)
+    created_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        db_table = 'case_dopplers'
+        ordering = ('performed_on', 'id')
+        verbose_name = 'დოპლეროგრაფია'
+        verbose_name_plural = 'დოპლეროგრაფიები'
+
+
 @receiver(post_delete, sender=CasePhoto)
-def _delete_photo_files(sender, instance, **kwargs):
+@receiver(post_delete, sender=DopplerStudy)
+def _delete_private_files(sender, instance, **kwargs):
     """The files go together with the record (also when a whole case is deleted)."""
-    for field in (instance.image, instance.thumb):
+    for name in ('image', 'thumb', 'file'):
+        field = getattr(instance, name, None)
         if field and field.name:
             field.storage.delete(field.name)

@@ -195,7 +195,7 @@
             load(slides[cur]);
             load(slides[cur + 1]);
             if (slides[cur].querySelector('.pz-strip')) { showPhoto(slides[cur], Math.max(0, currentPhoto(slides[cur]))); }
-            counter.textContent = Math.min(cur + 1, slides.length - 1);
+            counter.textContent = slides[cur].dataset.case || (cur + 1);
             if (history.replaceState) { history.replaceState(null, '', '#' + (cur + 1)); }
             window.scrollTo(0, 0);
         }

@@ -31,14 +31,17 @@
                 </div>
             </div>
         </div>
-        <label class="fld">დიაგნოზი
-            <input type="text" name="diagnosis" class="form-control" maxlength="500" value="{{ values.diagnosis|default:'' }}" placeholder="მაგ. მარჯვენა ქვედა კიდურის კრიტიკული იშემია, თითის განგრენა">
+        <label class="fld">ძირითადი დიაგნოზი
+            <textarea name="diagnosis" class="form-control" rows="2" placeholder="ჩასვით ისტორიიდან">{{ values.diagnosis|default:'' }}</textarea>
+        </label>
+        <label class="fld">თანმხლები დიაგნოზები
+            <textarea name="comorbidities" class="form-control" rows="2">{{ values.comorbidities|default:'' }}</textarea>
+        </label>
+        <label class="fld">გადატანილი დაავადებები და ოპერაციები
+            <textarea name="past_history" class="form-control" rows="2">{{ values.past_history|default:'' }}</textarea>
         </label>
         <label class="fld">ანამნეზი და ჩივილები
             <textarea name="history" class="form-control" rows="3">{{ values.history|default:'' }}</textarea>
-        </label>
-        <label class="fld">თანმხლები დაავადებები, რისკ-ფაქტორები
-            <textarea name="comorbidities" class="form-control" rows="2" placeholder="შაქრიანი დიაბეტი, თირკმლის ქრონიკული დაავადება, მწეველი…">{{ values.comorbidities|default:'' }}</textarea>
         </label>
         <label class="fld">კვლევები — დოპლერი, ანგიოგრაფია, ანალიზები
             <textarea name="findings" class="form-control" rows="4">{{ values.findings|default:'' }}</textarea>
