@@ -769,8 +769,9 @@ def _display_state(seg):
 
 
 def segment_view(segments, mirror=False, interventions=None):
-    """Paths with their CSS classes and v2 metadata for the template."""
+    """Segment items with their CSS state/flag classes and clinical tooltips."""
     norm_segs = _remap_raw_segments(segments)
+    cleaned_segs = clean_segments(norm_segs)
     rx_marked, by_marked = set(), set()
     for iv in clean_interventions(interventions):
         if iv['type'] in _INLINE_TYPES:
@@ -778,46 +779,48 @@ def segment_view(segments, mirror=False, interventions=None):
         elif iv['type'] == 'bypass':
             by_marked.update(segment_path(iv['proximal'], iv['distal']))
 
+    stenosis_labels = dict(STENOSIS)
     view = []
     for key, name, short, d, group, width, label in SEGMENTS:
-        item = norm_segs.get(key, {})
-        state = _display_state(item)
+        raw_item = norm_segs.get(key, {})
+        item = cleaned_segs.get(key, {})
+        state = _display_state(raw_item)
+        stenosis = _raw_stenosis(raw_item)
         flags = []
-        calc = _int(item.get('calc'), 0, 4) if 'calc' in item else (3 if item.get('ca') is True else 0)
-        if (calc or 0) >= 3 or item.get('coral') is True or item.get('ca') is True:
+        calc = item.get('calc', 0)
+        if calc >= 3 or item.get('coral') is True or raw_item.get('ca') is True:
             flags.append('ca')
-        if item.get('rx') is True or key in rx_marked:
+        if raw_item.get('rx') is True or key in rx_marked:
             flags.append('rx')
-        if item.get('by') is True or key in by_marked:
+        if raw_item.get('by') is True or key in by_marked:
             flags.append('by')
         classes = ['sg', f'sg-{state}'] + [f'sg-{f}' for f in flags]
+
+        tip_parts = [name]
+        if stenosis != 'none':
+            tip_parts.append(stenosis_labels.get(stenosis, stenosis))
+        if item.get('length_cm'):
+            tip_parts.append(f'{item["length_cm"]} სმ')
+        if calc:
+            tip_parts.append(f'PACSS {calc}')
         view.append({
             'key': key, 'name': name, 'short': short, 'd': d, 'group': group, 'w': width,
-            'state': state, 'stenosis': _raw_stenosis(item), 'calc': calc or 0,
-            'length_cm': _float(item.get('length_cm'), 0.1, 50.0),
+            'state': state, 'stenosis': stenosis, 'calc': calc,
+            'length_cm': item.get('length_cm'),
+            'tooltip': ' · '.join(tip_parts),
             'flags': flags, 'css': ' '.join(classes),
         })
     return view
 
 
 def map_context(segments, side, interventions=None):
-    """Everything _artery_map.html draws; the left leg is mirrored (texts are placed, not flipped)."""
-    vx, vy, vw, vh = MAP_VIEW
-    axis = 2 * vx + vw                       # x -> axis - x mirrors inside the view box
-    flip = side == 'L'
-    X = (lambda x: axis - x) if flip else (lambda x: x)
-    labels = []
-    for key, name, short, d, group, width, label in SEGMENTS:
-        if not label:
-            continue
-        x, y, anchor = label[:3]
-        if flip:
-            anchor = {'start': 'end', 'end': 'start'}.get(anchor, anchor)
-        labels.append({'x': X(x), 'y': y, 'anchor': anchor, 'text': short, 'vertical': len(label) > 3})
-    marks = [{'text': text, 'y': y, 'ty': y - 8, 'x1': X(vx + 4), 'x2': X(-6),
-              'anchor': 'end' if flip else 'start'} for text, y in LANDMARKS]
-    return {'segments': segment_view(segments, interventions=interventions), 'labels': labels, 'marks': marks,
-            'context': CONTEXT, 'image': LEG_IMAGE, 'side': side, 'view': f'{vx} {vy} {vw} {vh}', 'axis': axis}
+    """Pure-vector surgical anatomy & 3-layer vessel map context; left leg is mirrored with upright labels."""
+    from . import artery_map
+
+    cleaned_ivs = clean_interventions(interventions)
+    cleaned_segs = clean_segments(segments)
+    items = segment_view(segments, interventions=cleaned_ivs)
+    return artery_map.build_map_context(SEGMENTS, items, cleaned_segs, cleaned_ivs, side, SEGMENT_NEXT)
 
 
 # --------------------------------------------------------------------------

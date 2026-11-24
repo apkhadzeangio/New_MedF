@@ -71,7 +71,7 @@
         return { rx: rx, by: by };
     }
 
-    function paintAll() {
+    function paintAll(markDirty) {
         var marks = activeInterventionMarks();
         form.querySelectorAll('.am-edit [data-seg]').forEach(function (g) {
             var key = g.getAttribute('data-seg');
@@ -80,6 +80,7 @@
             if ((item.calc || 0) >= 3 || item.coral || item.ca) { css.push('sg-ca'); }
             if (item.rx || marks.rx[key]) { css.push('sg-rx'); }
             if (item.by || marks.by[key]) { css.push('sg-by'); }
+            if (markDirty) { css.push('am-dirty'); }
             g.setAttribute('class', css.join(' '));
         });
     }
@@ -119,17 +120,24 @@
             }
         }
         if (Object.keys(item).length) { segments[key] = item; } else { delete segments[key]; }
-        paintAll();
+        paintAll(true);
         sync();
-        preview();
+        preview(true);
     }
 
-    form.querySelectorAll('.am-edit [data-seg]').forEach(function (g) {
-        g.addEventListener('click', function () { apply(g); });
-        g.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); apply(g); }
+    var mapBox = form.querySelector('.st-map');
+    if (mapBox) {
+        mapBox.addEventListener('click', function (e) {
+            var g = e.target.closest('.am-edit [data-seg]');
+            if (g) { apply(g); }
         });
-    });
+        mapBox.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                var g = e.target.closest('.am-edit [data-seg]');
+                if (g) { e.preventDefault(); apply(g); }
+            }
+        });
+    }
 
     // ---- Structured prior interventions (6 categories) --------------------
 
@@ -366,9 +374,9 @@
                 interventions = interventions.filter(function (x) { return x.id !== iv.id; });
                 if (editingId === iv.id) { closeEditor(); }
                 renderInterventionsList();
-                paintAll();
+                paintAll(true);
                 sync();
-                preview();
+                preview(true);
             });
             btns.appendChild(editB);
             btns.appendChild(delB);
@@ -648,9 +656,9 @@
         syncLumenFromInterventions();
         closeEditor();
         renderInterventionsList();
-        paintAll();
+        paintAll(true);
         sync();
-        preview();
+        preview(true);
         return true;
     }
 
@@ -697,14 +705,16 @@
 
     // ---- Live server preview & form submission ----------------------------
 
-    var timer = null, seq = 0;
-    function preview() {
+    var timer = null, seq = 0, needMap = false;
+    function preview(refreshMap) {
+        if (refreshMap) { needMap = true; }
         clearTimeout(timer);
         timer = setTimeout(function () {
             sync();
             var data = new FormData(form);
             data.append('preview', '1');
             var mine = ++seq;
+            var swapMap = needMap;
             fetch(form.getAttribute('data-preview'), { method: 'POST', body: data, credentials: 'same-origin',
                 headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.ok ? r.json() : null; })
@@ -714,6 +724,21 @@
                     var box = document.createElement('div');
                     box.innerHTML = r.html;
                     old.replaceWith(box.firstElementChild);
+                    if (swapMap && r.map_html && mapBox) {
+                        needMap = false;
+                        var activeSeg = document.activeElement && document.activeElement.getAttribute
+                            ? document.activeElement.getAttribute('data-seg') : null;
+                        var mwrap = document.createElement('div');
+                        mwrap.innerHTML = r.map_html;
+                        var oldSvg = mapBox.querySelector('svg.am');
+                        if (oldSvg && mwrap.firstElementChild) {
+                            oldSvg.replaceWith(mwrap.firstElementChild);
+                            if (activeSeg) {
+                                var nextFocus = mapBox.querySelector('[data-seg="' + activeSeg + '"]');
+                                if (nextFocus) { nextFocus.focus(); }
+                            }
+                        }
+                    }
                     live();
                 })
                 .catch(function () {});
@@ -728,11 +753,11 @@
 
     form.addEventListener('change', function (e) {
         if (editor && editor.contains(e.target)) { return; }
-        preview();
+        preview(false);
     });
     form.addEventListener('input', function (e) {
         if (editor && editor.contains(e.target)) { return; }
-        if (e.target.tagName === 'INPUT' && e.target.type !== 'radio') { preview(); }
+        if (e.target.tagName === 'INPUT' && e.target.type !== 'radio') { preview(false); }
     });
     form.addEventListener('submit', function (e) {
         if (editor && !editor.hidden && editorDirty) {

@@ -340,32 +340,83 @@ body.cs-present {
 
 /* ---- staging: artery map, GLASS / WIfI / PLAN ------------------------ */
 .am {
-    --am-ink: #1B2437; --am-halo: #fff; --am-muted: #8A93A6;
-    --am-n: #C8203F; --am-mild: #E3AE2E; --am-st: #E0701C; --am-oc: #2B303B; --am-ca: #F2F4F8; --am-rx: #2456B8; --am-by: #148A55;
+    --am-ink: #1B2437; --am-halo: #FFFFFF; --am-muted: #7C8599;
+    --am-limb: #F4EAE0; --am-limb-edge: #DECBB8;
+    --am-bone: rgba(255, 252, 247, .76); --am-bone-edge: #D5C4B0;
+    --am-adv: #6E1727; --am-plaque: #E5C478; --am-cto: #3B252E;
+    --am-lumen: #CF1F3E; --am-lumen-deep: #B31B36; --am-gloss: rgba(255, 255, 255, .48);
+    --am-coll: #C8203F; --am-calc-edge: #334155; --am-calc-core: #FFFFFF;
+    --am-mild: #E3AE2E; --am-st: #E0701C; --am-oc: #2B303B;
     display: block; height: 640px; width: auto; max-width: 100%; margin: 0 auto; font-family: inherit;
 }
-.am-img { pointer-events: none; }
-.am-ctx { fill: none; stroke: var(--am-n); stroke-width: 12; stroke-linecap: round; opacity: .3; }
-.am-lab { font-size: 26px; font-weight: 800; fill: var(--am-ink); paint-order: stroke; stroke: var(--am-halo);
-          stroke-width: 6px; stroke-linejoin: round; letter-spacing: .02em; pointer-events: none; }
-.am-mark { stroke: var(--am-muted); stroke-width: 2; stroke-dasharray: 4 6; }
-.am-mtext { font-size: 22px; fill: var(--am-muted); }
+.am-anatomy, .am-adv-group, .am-plaque-group, .am-lumen-group, .am-coll-group, .am-calc-group, .am-iv-group { pointer-events: none; }
+.am-limb { fill: var(--am-limb); stroke: var(--am-limb-edge); stroke-width: 2; }
+.am-bone { fill: var(--am-bone); stroke: var(--am-bone-edge); stroke-width: 1.5; stroke-linejoin: round; }
+.am-patella { stroke-dasharray: 3.5 2.5; }
+.am-ligament { stroke: var(--am-muted); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .7; }
+.am-adv-group { filter: drop-shadow(0 1px 1.5px rgba(15, 23, 42, .22)); }
+.am-adv { fill: var(--am-adv); }
+.am-adv.deep { opacity: .84; }
+.am-plaque { fill: var(--am-plaque); }
+.am-cto-core { fill: var(--am-cto); }
+.am-lumen { fill: var(--am-lumen); }
+.am-lumen.deep { fill: var(--am-lumen-deep); }
+.am-gloss { fill: none; stroke: var(--am-gloss); stroke-linecap: round; }
+.am-thrombus { fill: #450A0A; opacity: .82; }
+.am-coll { fill: none; stroke: var(--am-coll); stroke-width: 2.1; stroke-dasharray: 4.5 2.5; stroke-linecap: round; opacity: .9; }
+.am-coll-dot { fill: var(--am-coll); }
+.am-calc-edge { fill: none; stroke: var(--am-calc-edge); stroke-width: 4.2; stroke-dasharray: 5 2.6; stroke-linecap: round; }
+.am-calc-core { fill: none; stroke: var(--am-calc-core); stroke-width: 2.4; stroke-dasharray: 5 2.6; stroke-linecap: round; }
+.am-coral { fill: var(--am-calc-core); stroke: var(--am-calc-edge); stroke-width: 1.1; }
+
+.am-stent-sleeve { fill: rgba(56, 189, 248, .22); }
+.am-stent { fill: none; stroke: #2563EB; stroke-width: 1.35; stroke-linejoin: round; opacity: .94; }
+.am-stent.tone-warn { stroke: #D97706; }
+.am-stent.tone-bad { stroke: #94A3B8; }
+.am-stent-dot { fill: #38BDF8; stroke: #0F172A; stroke-width: .8; }
+.am-stent-frac { stroke: #DC2626; stroke-width: 2.4; stroke-linecap: round; }
+.am-patch { fill: rgba(245, 158, 11, .28); stroke: #B45309; stroke-width: 1.5; }
+.am-patch.tone-bad { fill: rgba(100, 116, 139, .32); stroke: #475569; }
+.am-suture { stroke: #92400E; stroke-width: 1.3; stroke-linecap: round; }
+.am-pta { fill: none; stroke: #2563EB; stroke-width: 1.6; stroke-dasharray: 3.5 3.5; opacity: .82; }
+.am-pta.thrombectomy { stroke: #7C3AED; stroke-dasharray: 2 3; }
+
+.am-bypass { filter: drop-shadow(0 1px 1.8px rgba(15, 23, 42, .25)); }
+.am-bypass.vein .am-bypass-outer { fill: #065F46; }
+.am-bypass.vein .am-bypass-inner, .am-bypass.vein .am-hood { fill: #10B981; stroke: #065F46; }
+.am-bypass.ptfe .am-bypass-outer { fill: #0369A1; }
+.am-bypass.ptfe .am-bypass-inner, .am-bypass.ptfe .am-hood { fill: #38BDF8; stroke: #0369A1; }
+.am-bypass.occluded .am-bypass-outer { fill: #475569; }
+.am-bypass.occluded .am-bypass-inner, .am-bypass.occluded .am-hood { fill: #94A3B8; stroke: #475569; opacity: .7; }
+.am-bypass-oc { fill: none; stroke: #334155; stroke-width: 2.2; stroke-dasharray: 4 4; }
+.am-hood { stroke-width: 2; }
+.am-ptfe-ring { stroke: #E0F2FE; stroke-width: 1.3; }
+.am-miller { fill: none; stroke: #10B981; stroke-width: 2.2; }
+.am-amp { fill: none; stroke: #0F766E; stroke-width: 2.8; stroke-dasharray: 5 3; stroke-linecap: round; }
+.am-amp.bad { stroke: #DC2626; }
+
+.am-lab { font-size: 23px; font-weight: 800; fill: var(--am-ink); paint-order: stroke; stroke: var(--am-halo);
+          stroke-width: 5.5px; stroke-linejoin: round; letter-spacing: .02em; pointer-events: none; }
+.am-graft-lbl { font-size: 18px; font-weight: 700; fill: #047857; paint-order: stroke; stroke: var(--am-halo);
+                stroke-width: 4.5px; pointer-events: none; }
+.am-graft-lbl.ptfe { fill: #0369A1; }
+.am-graft-lbl.occluded { fill: #64748B; }
+.am-amp-lbl { font-size: 17px; font-weight: 700; fill: #0F766E; paint-order: stroke; stroke: var(--am-halo); stroke-width: 4px; pointer-events: none; }
+.am-amp-lbl.bad { fill: #DC2626; }
+.am-mark { stroke: var(--am-muted); stroke-width: 1.3; stroke-dasharray: 3.5 5; opacity: .62; pointer-events: none; }
+.am-mtext { font-size: 17px; fill: var(--am-muted); paint-order: stroke; stroke: var(--am-halo); stroke-width: 3.5px; pointer-events: none; }
+
 .sg path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.sg-shell { stroke: rgba(255, 255, 255, .75); stroke-width: calc(var(--w) * 1px + 5px); }
-.sg-line { stroke: var(--am-n); stroke-width: calc(var(--w) * 1px); }
-.sg-gloss { stroke: #fff; stroke-opacity: .45; stroke-width: calc(var(--w) * .28px); transform: translate(-1.6px, 0); }
-.sg .sg-gloss { stroke-linecap: butt; }
-.sg-mark { stroke: transparent; stroke-width: 4; }
-.sg-hit { stroke: transparent; stroke-width: 40; pointer-events: stroke; }
-.sg-mild .sg-line { stroke: var(--am-mild); }
-.sg-st .sg-line { stroke: var(--am-st); }
-.sg-oc .sg-line { stroke: var(--am-oc); stroke-dasharray: 6 7; }
-.sg-oc .sg-gloss { display: none; }
-.sg-ca .sg-shell { stroke: var(--am-ca); stroke-dasharray: 2.5 3.5; stroke-width: calc(var(--w) * 1px + 14px); filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, .55)); }
-.sg-rx .sg-mark { stroke: var(--am-rx); stroke-dasharray: 10 6; stroke-width: 3.5; }
-.sg-by .sg-mark { stroke: var(--am-by); stroke-width: 5; }
+.sg-focus { stroke: transparent; stroke-width: calc(var(--w) * 1px + 8px); pointer-events: none; }
+.sg-quick { stroke: transparent; stroke-width: calc(var(--w) * .85px); pointer-events: none; }
+.sg-hit { stroke: transparent; stroke-width: 38; pointer-events: stroke; }
+.sg.am-dirty.sg-n .sg-quick { stroke: var(--am-lumen); }
+.sg.am-dirty.sg-mild .sg-quick { stroke: var(--am-mild); }
+.sg.am-dirty.sg-st .sg-quick { stroke: var(--am-st); }
+.sg.am-dirty.sg-oc .sg-quick { stroke: var(--am-oc); stroke-dasharray: 6 6; }
+.sg.am-dirty.sg-ca .sg-focus { stroke: var(--am-calc-core); stroke-dasharray: 3 3; filter: drop-shadow(0 0 1.2px #0F172A); }
 .am-edit [data-seg] { cursor: pointer; outline: none; }
-.am-edit [data-seg]:hover .sg-line, .am-edit [data-seg]:focus-visible .sg-line { filter: drop-shadow(0 0 5px rgba(180, 43, 94, .95)); }
+.am-edit [data-seg]:hover .sg-focus, .am-edit [data-seg]:focus-visible .sg-focus { stroke: rgba(180, 43, 94, .36); }
 
 .st-grid { display: grid; grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); gap: 16px; align-items: start; }
 .st-map-card { position: sticky; top: 12px; }
@@ -497,14 +548,20 @@ body.cs-present {
 
 /* staging in the dark presentation */
 .cs-present .am {
-    --am-ink: #F1F4F9; --am-halo: #0E131C; --am-muted: #7F8BA2; --am-n: #FF4D6D; --am-oc: #C3CAD6; --am-ca: #F2F4F8;
-    --am-rx: #7FA8F0; --am-by: #5FD19C; height: 76vh;
+    --am-ink: #F1F5F9; --am-halo: #0E131C; --am-muted: #8A96AE;
+    --am-limb: #1C2330; --am-limb-edge: #303B4F;
+    --am-bone: rgba(226, 232, 240, .07); --am-bone-edge: rgba(226, 232, 240, .18);
+    --am-adv: #5A1B2B; --am-plaque: #D4B06A; --am-cto: #2A1D26;
+    --am-lumen: #F43F5E; --am-lumen-deep: #D62F4C; --am-gloss: rgba(255, 255, 255, .38);
+    --am-coll: #FB7185; --am-calc-edge: #475569; --am-calc-core: #F8FAFC;
+    height: 76vh;
 }
-.cs-present .am-img { filter: brightness(.82) saturate(.9); }
-.cs-present .am-lab { font-size: 36px; stroke-width: 8px; }
-.cs-present .am-mtext { font-size: 30px; }
-.cs-present .sg-shell { stroke: rgba(14, 19, 28, .55); }
-.cs-present .st-legend .lg-n i { background: #E0607A; }
+.cs-present .am-lab { font-size: 30px; stroke-width: 7px; }
+.cs-present .am-graft-lbl { font-size: 22px; stroke-width: 6px; fill: #34D399; }
+.cs-present .am-graft-lbl.ptfe { fill: #7DD3FC; }
+.cs-present .am-graft-lbl.occluded { fill: #94A3B8; }
+.cs-present .am-mtext { font-size: 22px; stroke-width: 5px; }
+.cs-present .st-legend .lg-n i { background: #F43F5E; }
 .cs-present .st-legend .lg-oc i { background: repeating-linear-gradient(90deg, #9AA4B8 0 3px, transparent 3px 6px); }
 .cs-present .st-legend .lg-ca i { background: repeating-linear-gradient(90deg, #E6EAF1 0 1.5px, transparent 1.5px 3px); }
 

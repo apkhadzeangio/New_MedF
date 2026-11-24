@@ -2408,3 +2408,77 @@ class StagingPageTests(PrivateMediaTest):
         self.client.post(url, {**payload, 'interventions': json.dumps([interventions[4]])})
         case.refresh_from_db()
         self.assertEqual([iv['id'] for iv in case.staging['R']['interventions']], ['iv5'])
+
+
+class StagingVectorMapTests(PrivateMediaTest):
+    """T3: pure-vector surgical anatomy, 3-layer tubular vessels, pathology, grafts, and mirroring."""
+
+    def test_vector_layers_pathology_grafts_and_left_leg_mirroring(self):
+        from .staging import map_context
+        segments = {
+            'cia': {'stenosis': 'moderate', 'length_cm': 4.0, 'calc': 2, 'morph': 'eccentric', 'aneurysm': True},
+            'sfa1': {'stenosis': 'occlusion', 'calc': 4, 'flush': True, 'coral': True},
+            'sfa2': {'stenosis': 'occlusion', 'reconstitution': 'yes', 'thrombus': True},
+            'pop2': {'stenosis': 'severe', 'length_cm': 3.0, 'morph': 'concentric', 'ulcerated': True},
+        }
+        interventions = [
+            {'type': 'bypass', 'conduit_group': 'vein', 'conduit': 'gsv_reversed',
+             'proximal': 'cfa', 'distal': 'pop3', 'status': 'patent'},
+            {'type': 'bypass', 'conduit_group': 'prosthetic', 'conduit': 'ptfe_ringed', 'cuff': 'miller',
+             'proximal': 'contralateral_cfa', 'distal': 'cfa', 'status': 'stenosed', 'site': 'distal'},
+            {'type': 'stent', 'subtype': 'covered', 'segments': ['eia'], 'status': 'fractured'},
+            {'type': 'endarterectomy', 'subtype': 'patch_vein', 'segments': ['cfa'], 'status': 'patent'},
+            {'type': 'angioplasty', 'subtype': 'dcb', 'segments': ['at1'], 'status': 'patent'},
+            {'type': 'amputation', 'subtype': 'tma', 'status': 'healed'},
+        ]
+        right = map_context(segments, 'R', interventions)
+        left = map_context(segments, 'L', interventions)
+
+        # 26 adventitial tubes, plaque/CTO beds, collateral arcade, unilateral + bilateral PACSS plates
+        self.assertEqual(len(right['adventitia']), 26)
+        self.assertEqual(len(right['plaque_beds']), 4)
+        self.assertTrue(len(right['collaterals']) >= 1)
+        self.assertEqual(len(right['calc_plates']), 3)          # PACSS 2 (1 wall) + PACSS 4 (2 walls)
+        self.assertTrue(len(right['coral_nodules']) >= 1)
+        self.assertEqual(len(right['thrombi']), 3)
+
+        # Interventions: covered fractured stent, patch + sutures, balloon marks, 2 bypasses, TMA line
+        self.assertEqual(len(right['iv']['stents']), 1)
+        self.assertTrue(bool(right['iv']['stents'][0]['sleeve']))
+        self.assertIsNotNone(right['iv']['stents'][0]['fracture'])
+        self.assertEqual(len(right['iv']['patches']), 1)
+        self.assertTrue(len(right['iv']['patches'][0]['ticks']) >= 2)
+        self.assertEqual(len(right['iv']['bypasses']), 2)
+        self.assertTrue(len(right['iv']['bypasses'][1]['rings']) > 0)
+        self.assertIsNotNone(right['iv']['bypasses'][1]['miller'])
+        self.assertEqual(len(right['iv']['amputations']), 1)
+
+        # Left leg mirrors coordinates around axis=300 and flips start<->end anchors without flipping text
+        self.assertEqual(right['axis'], 300)
+        for r_lbl, l_lbl in zip(right['labels'], left['labels']):
+            self.assertEqual(r_lbl['text'], l_lbl['text'])
+            self.assertAlmostEqual(r_lbl['x'] + l_lbl['x'], 300.0, places=1)
+            self.assertTrue(-58 <= l_lbl['x'] <= 358, l_lbl)
+            if r_lbl['anchor'] in ('start', 'end'):
+                self.assertNotEqual(r_lbl['anchor'], l_lbl['anchor'])
+
+    def test_rendered_svg_has_no_raster_image_and_updates_in_preview(self):
+        case = self.make_case(side='B')
+        url_l = reverse('case-staging', args=[case.pk, 'L'])
+        page = self.client.get(url_l)
+        self.assertNotContains(page, 'leg-anterior.webp')       # pure vector, no raster image
+        self.assertContains(page, 'class="am-limb"')
+        self.assertContains(page, 'class="am-bone"')
+        self.assertContains(page, 'ადუქტორული ხვრელი')
+        self.assertContains(page, 'translate(300,0) scale(-1,1)')
+
+        preview = self.client.post(url_l, {
+            'segments': json.dumps({'sfa1': {'stenosis': 'occlusion', 'calc': 4}}),
+            'interventions': json.dumps([{'type': 'bypass', 'conduit_group': 'vein', 'conduit': 'gsv_reversed',
+                                          'proximal': 'cfa', 'distal': 'pop3', 'status': 'patent'}]),
+            'cfa': 'A', 'preview': '1',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        self.assertIn('map_html', preview)
+        self.assertIn('am-cto-core', preview['map_html'])
+        self.assertIn('am-coll', preview['map_html'])
+        self.assertIn('am-bypass vein', preview['map_html'])

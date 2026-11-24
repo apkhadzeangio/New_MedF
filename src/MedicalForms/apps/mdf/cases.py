@@ -573,8 +573,11 @@ class StagingView(LoginRequiredMixin, generic.View):
             data['wound_angiosome'] = existing.get('wound_angiosome', '')
         limb = staging.clean(data, today=today)
         if request.headers.get('x-requested-with') == 'XMLHttpRequest' and request.POST.get('preview'):
-            ctx = self._context(case, side, limb) | {'live': True}
-            return JsonResponse({'html': render(request, 'mdf/cases/_staging_result.html', ctx).content.decode()})
+            ctx = self._context(case, side, limb) | {'live': True, 'interactive': True}
+            return JsonResponse({
+                'html': render(request, 'mdf/cases/_staging_result.html', ctx).content.decode(),
+                'map_html': render(request, 'mdf/cases/_artery_map.html', ctx).content.decode(),
+            })
         case.staging = staging.save_limb(case.staging, side, limb, today=today)
         case.updated_by = request.user
         case.save(update_fields=['staging', 'updated_by', 'updated_at'])

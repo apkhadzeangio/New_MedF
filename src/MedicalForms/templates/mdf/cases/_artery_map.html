@@ -1,18 +1,78 @@
-{% load static %}<svg class="am{% if interactive %} am-edit{% endif %}" viewBox="{{ am.view }}" role="img" aria-label="არტერიების რუკა — {{ side_name }}">
+<svg class="am{% if interactive %} am-edit{% endif %}" viewBox="{{ am.view }}" role="img" aria-label="არტერიების რუკა — {{ side_name }}">
     <g{% if am.side == 'L' %} transform="translate({{ am.axis }},0) scale(-1,1)"{% endif %}>
-        <image class="am-img" href="{% static am.image.src %}" x="0" y="0" width="{{ am.image.width }}" height="{{ am.image.height }}" preserveAspectRatio="none"/>
-        {% for c in am.context %}<path class="am-ctx" d="{{ c }}"/>{% endfor %}
+        <g class="am-anatomy" aria-hidden="true">
+            <path class="am-limb" d="{{ am.limb_d }}"/>
+            {% for sk in am.skeleton %}<path class="am-bone" d="{{ sk }}"/>{% endfor %}
+            <ellipse class="am-bone am-patella" cx="{{ am.patella.cx }}" cy="{{ am.patella.cy }}" rx="{{ am.patella.rx }}" ry="{{ am.patella.ry }}"/>
+            <line class="am-ligament" x1="{{ am.inguinal.x1 }}" y1="{{ am.inguinal.y1 }}" x2="{{ am.inguinal.x2 }}" y2="{{ am.inguinal.y2 }}"/>
+        </g>
+
+        <g class="am-adv-group" aria-hidden="true">
+            {% for a in am.adventitia %}<path class="am-adv{% if a.deep %} deep{% endif %}" d="{{ a.d }}"/>{% endfor %}
+            {% for cap in am.junction_caps %}<circle class="am-adv" cx="{{ cap.cx }}" cy="{{ cap.cy }}" r="{{ cap.r }}"/>{% endfor %}
+        </g>
+
+        <g class="am-plaque-group" aria-hidden="true">
+            {% for p in am.plaque_beds %}<path class="{% if p.cto %}am-cto-core{% else %}am-plaque{% endif %}" d="{{ p.d }}"/>{% endfor %}
+        </g>
+
+        <g class="am-lumen-group" aria-hidden="true">
+            {% for l in am.lumens %}
+            <path class="am-lumen{% if l.deep %} deep{% endif %}" d="{{ l.d }}"/>
+            {% if l.gloss %}<path class="am-gloss" d="{{ l.gloss }}" style="stroke-width:{{ l.gloss_w }}px"/>{% endif %}
+            {% endfor %}
+            {% for cap in am.lumen_caps %}<circle class="am-lumen" cx="{{ cap.cx }}" cy="{{ cap.cy }}" r="{{ cap.r }}"/>{% endfor %}
+            {% for th in am.thrombi %}<circle class="am-thrombus" cx="{{ th.cx }}" cy="{{ th.cy }}" r="{{ th.r }}"/>{% endfor %}
+        </g>
+
+        <g class="am-coll-group" aria-hidden="true">
+            {% for c in am.collaterals %}<path class="am-coll" d="{{ c.d }}"/><circle class="am-coll-dot" cx="{{ c.rx }}" cy="{{ c.ry }}" r="3.2"/>{% endfor %}
+        </g>
+
+        <g class="am-calc-group" aria-hidden="true">
+            {% for cp in am.calc_plates %}<path class="am-calc-edge" d="{{ cp }}"/><path class="am-calc-core" d="{{ cp }}"/>{% endfor %}
+            {% for cn in am.coral_nodules %}<circle class="am-coral" cx="{{ cn.cx }}" cy="{{ cn.cy }}" r="{{ cn.r }}"/>{% endfor %}
+        </g>
+
+        <g class="am-iv-group" aria-hidden="true">
+            {% for bm in am.iv.balloon_marks %}<path class="am-pta {{ bm.kind }}" d="{{ bm.left }}"/><path class="am-pta {{ bm.kind }}" d="{{ bm.right }}"/>{% endfor %}
+            {% for pa in am.iv.patches %}
+            <path class="am-patch tone-{{ pa.tone }}" d="{{ pa.d }}"/>
+            {% for t in pa.ticks %}<line class="am-suture" x1="{{ t.0 }}" y1="{{ t.1 }}" x2="{{ t.2 }}" y2="{{ t.3 }}"/>{% endfor %}
+            {% endfor %}
+            {% for st in am.iv.stents %}
+            {% if st.sleeve %}<path class="am-stent-sleeve" d="{{ st.sleeve }}"/>{% endif %}
+            <path class="am-stent tone-{{ st.tone }}" d="{{ st.zig_a }}"/>
+            <path class="am-stent tone-{{ st.tone }}" d="{{ st.zig_b }}"/>
+            {% for m in st.markers %}<circle class="am-stent-dot" cx="{{ m.0 }}" cy="{{ m.1 }}" r="2.1"/>{% endfor %}
+            {% if st.fracture %}<line class="am-stent-frac" x1="{{ st.fracture.0 }}" y1="{{ st.fracture.1 }}" x2="{{ st.fracture.2 }}" y2="{{ st.fracture.3 }}"/>{% endif %}
+            {% endfor %}
+            {% for by in am.iv.bypasses %}
+            <g class="am-bypass {{ by.style }}">
+                <path class="am-bypass-outer" d="{{ by.outer_d }}"/>
+                <path class="am-bypass-inner" d="{{ by.inner_d }}"/>
+                {% if by.style == 'occluded' %}<path class="am-bypass-oc" d="{{ by.center_d }}"/>{% endif %}
+                {% for rg in by.rings %}<line class="am-ptfe-ring" x1="{{ rg.0 }}" y1="{{ rg.1 }}" x2="{{ rg.2 }}" y2="{{ rg.3 }}"/>{% endfor %}
+                {% if by.miller %}<ellipse class="am-miller" cx="{{ by.miller.0 }}" cy="{{ by.miller.1 }}" rx="9.8" ry="6.2"/>{% endif %}
+                {% for hd in by.hoods %}<circle class="am-hood" cx="{{ hd.0 }}" cy="{{ hd.1 }}" r="6.8"/>{% endfor %}
+            </g>
+            {% endfor %}
+            {% for amp in am.iv.amputations %}<path class="am-amp{% if not amp.healed %} bad{% endif %}" d="{{ amp.d }}"/>{% endfor %}
+        </g>
+
         {% for s in am.segments %}
         <g class="{{ s.css }}" style="--w:{{ s.w }}" data-seg="{{ s.key }}" data-state="{{ s.state }}" data-flags="{{ s.flags|join:',' }}"{% if interactive %} tabindex="0" role="button"{% endif %} aria-label="{{ s.name }}">
-            <title>{{ s.name }}</title>
-            <path class="sg-shell" d="{{ s.d }}"/>
-            <path class="sg-line" d="{{ s.d }}"/>
-            <path class="sg-gloss" d="{{ s.d }}"/>
-            <path class="sg-mark" d="{{ s.d }}"/>
+            <title>{{ s.tooltip }}</title>
+            <path class="sg-focus" d="{{ s.d }}"/>
+            <path class="sg-quick" d="{{ s.d }}"/>
             <path class="sg-hit" d="{{ s.d }}"/>
         </g>
         {% endfor %}
     </g>
-    {% for m in am.marks %}<line class="am-mark" x1="{{ m.x1 }}" x2="{{ m.x2 }}" y1="{{ m.y }}" y2="{{ m.y }}"/><text class="am-mtext" x="{{ m.x1 }}" y="{{ m.ty }}" text-anchor="{{ m.anchor }}">{{ m.text }}</text>{% endfor %}
+
+    <text class="am-mtext" x="{{ am.inguinal.tx }}" y="{{ am.inguinal.ty }}" text-anchor="{{ am.inguinal.anchor }}">{{ am.inguinal.text }}</text>
+    {% for m in am.marks %}<line class="am-mark" x1="{{ m.x1 }}" x2="{{ m.x2 }}" y1="{{ m.y }}" y2="{{ m.y }}"/><text class="am-mtext" x="{{ m.tx }}" y="{{ m.ty }}" text-anchor="{{ m.anchor }}">{{ m.text }}</text>{% endfor %}
+    {% for amp in am.iv.amputations %}<text class="am-amp-lbl{% if not amp.healed %} bad{% endif %}" x="{{ amp.x }}" y="{{ amp.y }}" text-anchor="{{ amp.anchor }}">{{ amp.text }}</text>{% endfor %}
+    {% for bl in am.iv.bypass_labels %}<text class="am-graft-lbl {{ bl.style }}" x="{{ bl.x }}" y="{{ bl.y }}" text-anchor="{{ bl.anchor }}">{{ bl.text }}</text>{% endfor %}
     {% for l in am.labels %}<text class="am-lab" x="{{ l.x }}" y="{{ l.y }}" text-anchor="{{ l.anchor }}" dominant-baseline="middle"{% if l.vertical %} transform="rotate(-90 {{ l.x }} {{ l.y }})"{% endif %}>{{ l.text }}</text>{% endfor %}
 </svg>
