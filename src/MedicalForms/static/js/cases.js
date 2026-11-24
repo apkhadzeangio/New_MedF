@@ -351,8 +351,27 @@
         if (store('cases-map-view') === 'dsa') { setCardView('dsa'); }
     }
 
+    function initFormControls() {
+        var btn = document.getElementById('cs-insert-plan');
+        var ta = document.getElementById('id_proposal');
+        if (!btn || !ta) { return; }
+        btn.addEventListener('click', function () {
+            var planText = (btn.getAttribute('data-plan-text') || '').trim();
+            if (!planText) { return; }
+            var cur = ta.value.trim();
+            if (!cur) {
+                ta.value = planText;
+            } else if (cur.indexOf(planText) === -1) {
+                ta.value = cur + '\n' + planText;
+            }
+            ta.focus();
+        });
+    }
+
     initUpload();
     initViewer();
     initDetailControls();
+    initFormControls();
     initPresent();
 }());
+

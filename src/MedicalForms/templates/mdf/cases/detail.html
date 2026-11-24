@@ -28,11 +28,30 @@
                 <span><small>მოხსენების დღე</small>{{ case.conference_on|date:"d.m.Y"|default:"—" }}</span>
             </div>
             {% if case.diagnosis %}<div class="cs-sec"><h2>ძირითადი დიაგნოზი</h2><p class="cs-dx-big">{{ case.diagnosis|linebreaksbr }}</p></div>{% endif %}
-            {% for label, text in case|case_sections %}
+            {% with secs=case|case_sections_no_proposal %}
+            {% for label, text in secs %}
             <div class="cs-sec"><h2>{{ label }}</h2><p>{{ text|linebreaksbr }}</p></div>
-            {% empty %}
-            <p class="text-muted m-0">დიაგნოზები, ანამნეზი და შეთავაზება ჯერ არ არის ჩაწერილი — <a href="{% url 'case-edit' case.pk %}">ჩაწერა</a>.</p>
             {% endfor %}
+            {% if case.proposal or plan_items %}
+            <div class="cs-sec cs-sec-proposal">
+                <h2>შეთავაზება</h2>
+                {% if case.proposal %}<p>{{ case.proposal|linebreaksbr }}</p>{% endif %}
+                {% if plan_items %}
+                <div class="cs-plan-inline">
+                    {% for pi in plan_items %}
+                    <div class="st-plan compact plan-{{ pi.plan }}">
+                        <small>PLAN ალგორითმი{% if plan_show_side %} ({{ pi.name }}){% endif %}</small>
+                        <b>{{ pi.label }}</b>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% if not secs and not case.proposal and not plan_items %}
+            <p class="text-muted m-0">დიაგნოზები, ანამნეზი და შეთავაზება ჯერ არ არის ჩაწერილი — <a href="{% url 'case-edit' case.pk %}">ჩაწერა</a>.</p>
+            {% endif %}
+            {% endwith %}
             <p class="cs-stamp">შექმნა: {{ case.created_by|who }}, {{ case.created_at|date:"d.m.Y H:i" }}{% if case.updated_by %} · ბოლოს: {{ case.updated_by|who }}, {{ case.updated_at|date:"d.m.Y H:i" }}{% endif %}</p>
         </section>
 
@@ -60,28 +79,53 @@
                 <button type="button" class="st-view-btn" data-map-view="dsa">ანგიოგრაფია (DSA)</button>
             </div>
             {% endif %}
-            {% for key, name in limbs %}<a class="x-btn sm" href="{% url 'case-staging' case.pk key %}">{% if stagings %}{{ name }} — რედაქტირება{% else %}{{ name }} კიდური{% endif %}</a>{% endfor %}
+            <div class="cs-entry-btns">
+                {% for key, name in limbs %}
+                <a class="x-btn sm" href="{% url 'case-staging' case.pk key %}">{% if limbs|length > 1 %}{{ name }} — {% endif %}ანგიოგრაფია</a>
+                <a class="x-btn sm" href="{% url 'case-wifi' case.pk key %}">{% if limbs|length > 1 %}{{ name }} — {% endif %}WIfI · PLAN</a>
+                {% endfor %}
+            </div>
         </div>
         {% if stagings %}{% include "mdf/cases/_staging_summary.html" %}{% else %}
-        <p class="text-muted m-0">არტერიების რუკა, GLASS, WIfI და რეკომენდებული სტრატეგია ჯერ არ არის შევსებული.</p>{% endif %}
+        <p class="text-muted m-0">შეავსეთ ცალ-ცალკე ფანჯრებიდან: <b>ანგიოგრაფია</b> (არტერიების რუკა, GLASS და პროტოკოლი) და <b>WIfI · PLAN</b> (ჭრილობა, ინფექცია, იშემია).</p>{% endif %}
     </section>
 
     <section class="x-card cs-dops" id="doppler" aria-label="დოპლეროგრაფია">
         <div class="cs-photos-head">
             <h2>დოპლეროგრაფია</h2>
-            <form method="post" action="{% url 'case-doppler' case.pk %}" enctype="multipart/form-data" class="cs-upload">
-                {% csrf_token %}
-                <label class="cs-date" title="კვლევის თარიღი">თარიღი
-                    <input type="date" name="performed_on" class="form-control form-control-sm" value="{{ today|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}">
-                </label>
-                <label class="x-btn cs-pick">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/><path d="M8 15l2-3 2 2 2-4 2 5"/></svg>Smart-XT PDF
-                    <input type="file" name="report" accept="application/pdf,.pdf,image/png" hidden onchange="this.form.submit()">
-                </label>
-            </form>
+            <div class="cs-entry-btns">
+                <a class="x-btn sm primary" href="{% url 'case-doppler' case.pk %}">ABI / TBI / წნევების შეყვანა</a>
+                <form method="post" action="{% url 'case-doppler' case.pk %}" enctype="multipart/form-data" class="cs-upload">
+                    {% csrf_token %}
+                    <label class="cs-date" title="კვლევის თარიღი">თარიღი
+                        <input type="date" name="performed_on" class="form-control form-control-sm" value="{{ today|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}">
+                    </label>
+                    <label class="x-btn sm cs-pick">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/><path d="M8 15l2-3 2 2 2-4 2 5"/></svg>Smart-XT PDF
+                        <input type="file" name="report" accept="application/pdf,.pdf,image/png" hidden onchange="this.form.submit()">
+                    </label>
+                </form>
+            </div>
         </div>
+        {% if manual_doppler_rows %}
+        <div class="dp-sum dp-manual-summary">
+            {% for row in manual_doppler_rows %}
+            <div class="dp-side">
+                <h4>{{ row.name }} — შეყვანილი მაჩვენებლები</h4>
+                <div class="dp-idx dp-idx-4">
+                    <div class="dp-i {{ row.abi_css }}"><small>ABI</small><b>{% if row.abi is not None %}{{ row.abi|floatformat:2 }}{% else %}—{% endif %}</b></div>
+                    <div class="dp-i {{ row.tbi_css }}"><small>TBI</small><b>{% if row.tbi is not None %}{{ row.tbi|floatformat:2 }}{% else %}—{% endif %}</b></div>
+                    <div class="dp-i"><small>კოჭი (AP)</small><b>{% if row.ap is not None %}{{ row.ap|floatformat:"-1" }}{% else %}—{% endif %}</b><em>mmHg</em></div>
+                    <div class="dp-i {{ row.tp_css }}"><small>Toe pressure</small><b>{% if row.tp is not None %}{{ row.tp|floatformat:"-1" }}{% else %}—{% endif %}</b><em>mmHg</em></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
         {% for dv in dopplers %}{% include "mdf/cases/_doppler.html" with editable=True %}{% empty %}
-        <p class="text-muted m-0">ატვირთეთ აპარატის PDF — მრუდები, სიჩქარეები, წნევები და ABI/TBI აქ გამოჩნდება.</p>
+        {% if not manual_doppler_rows %}
+        <p class="text-muted m-0">შედით <b>ABI / TBI / წნევების შეყვანის</b> ფანჯარაში ან ატვირთეთ აპარატის Smart-XT PDF.</p>
+        {% endif %}
         {% endfor %}
     </section>
 

@@ -46,9 +46,22 @@
         <label class="fld">კვლევები — დოპლერი, ანგიოგრაფია, ანალიზები
             <textarea name="findings" class="form-control" rows="4">{{ values.findings|default:'' }}</textarea>
         </label>
-        <label class="fld">შეთავაზება — რა ოპერაციას ვთავაზობთ
-            <textarea name="proposal" class="form-control" rows="2">{{ values.proposal|default:'' }}</textarea>
-        </label>
+        <div class="fld">
+            <div class="cs-fld-head">
+                <label for="id_proposal">შეთავაზება — რა ოპერაციას ვთავაზობთ</label>
+                {% if plan_insert_text %}
+                <button type="button" class="x-btn sm" id="cs-insert-plan" data-plan-text="{{ plan_insert_text }}">+ PLAN-ის ჩასმა</button>
+                {% endif %}
+            </div>
+            <textarea id="id_proposal" name="proposal" class="form-control" rows="2">{{ values.proposal|default:'' }}</textarea>
+            {% if plan_items %}
+            <div class="cs-plan-hint">
+                {% for pi in plan_items %}
+                <span><b>PLAN{% if plan_show_side %} ({{ pi.name }}){% endif %}:</b> {{ pi.label }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
         <div class="cs-row">
             <label class="fld">მომხსენებელი ექიმი
                 <select name="doctor" class="form-select">
@@ -67,3 +80,5 @@
     </form>
 </div>
 {% endblock %}
+
+{% block extra_scripts %}<script src="{% static_v 'js/cases.js' %}"></script>{% endblock %}

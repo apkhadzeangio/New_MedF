@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% load static_version %}
+
+{% block title %}{{ case.patient_name }} — დოპლეროგრაფია{% endblock %}
+{% block body_class %}cs-print-doc{% endblock %}
+{% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/cases.css' %}">{% endblock %}
+
+{% block content %}
+<div class="app-main st-page">
+    <div class="st-top-nav">
+        <a href="{% url 'case' case.pk %}#doppler" class="small">← {{ case.patient_name }}</a>
+        <nav class="st-win-nav" aria-label="შეყვანის ფანჯრები">
+            <a href="{% url 'case-staging' case.pk default_side %}" class="st-win-link">ანგიოგრაფია · GLASS</a>
+            <a href="{% url 'case-wifi' case.pk default_side %}" class="st-win-link">WIfI · PLAN</a>
+            <a href="{% url 'case-doppler' case.pk %}" class="st-win-link on" aria-current="page">დოპლეროგრაფია</a>
+        </nav>
+    </div>
+    <div class="page-head">
+        <h1>დოპლეროგრაფია <span class="count">· ABI · TBI · კოჭის წნევა · Toe pressure</span></h1>
+    </div>
+
+    <section class="x-card dp-manual-card" aria-label="დოპლეროგრაფიის პარამეტრების შეყვანა">
+        <div>
+            <h2>ჰემოდინამიკური პარამეტრები</h2>
+            <p class="st-hint">ჩაწერეთ გაზომილი ABI, TBI, კოჭის წნევა (AP) და თითის წნევა (Toe pressure) — ეს მაჩვენებლები სავალდებულოდ გამოჩნდება კონფერენციის პრეზენტაციაში და ავტომატურად გამოიყენება WIfI იშემიის დასათვლელად.</p>
+        </div>
+
+        <form method="post" action="{% url 'case-doppler' case.pk %}" class="dp-manual-form" autocomplete="off">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="manual">
+            <div class="dp-manual-grid">
+                {% for ml in manual_limbs %}
+                <div class="dp-manual-limb{% if ml.primary %} primary{% endif %}">
+                    <div class="dp-manual-head">
+                        <h3>{{ ml.name }} კიდური</h3>
+                        {% if ml.primary %}<em class="st-iv-badge tone-ok">სამიზნე მხარე</em>{% endif %}
+                    </div>
+                    <div class="dp-manual-fields">
+                        <label class="fld">ABI (გოჯ-მხრის ინდექსი)
+                            <input name="abi_{{ ml.side }}" inputmode="decimal" class="form-control" value="{{ ml.limb.abi|default_if_none:'' }}" placeholder="{% if ml.pdf.abi is not None %}PDF: {{ ml.pdf.abi|floatformat:2 }}{% else %}მაგ. 0.55{% endif %}">
+                        </label>
+                        <label class="fld">TBI (თით-მხრის ინდექსი)
+                            <input name="tbi_{{ ml.side }}" inputmode="decimal" class="form-control" value="{{ ml.limb.tbi|default_if_none:'' }}" placeholder="{% if ml.pdf.tbi is not None %}PDF: {{ ml.pdf.tbi|floatformat:2 }}{% else %}მაგ. 0.32{% endif %}">
+                        </label>
+                        <label class="fld">კოჭის წნევა (AP), mmHg
+                            <input name="ap_{{ ml.side }}" inputmode="numeric" class="form-control" value="{{ ml.limb.ap|default_if_none:'' }}" placeholder="{% if ml.pdf.ap is not None %}PDF: {{ ml.pdf.ap }}{% else %}მაგ. 68{% endif %}">
+                        </label>
+                        <label class="fld">Toe pressure (თითის წნევა / TcPO2), mmHg
+                            <input name="tp_{{ ml.side }}" inputmode="numeric" class="form-control" value="{{ ml.limb.tp|default_if_none:'' }}" placeholder="{% if ml.pdf.tp is not None %}PDF: {{ ml.pdf.tp }}{% else %}მაგ. 28{% endif %}">
+                        </label>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="submit" class="x-btn primary">პარამეტრების შენახვა</button>
+                <a class="x-btn" href="{% url 'case' case.pk %}#doppler">გაუქმება</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="x-card cs-dops" aria-label="აპარატის PDF ამონაბეჭდი">
+        <div class="cs-photos-head">
+            <h2>აპარატის ამონაბეჭდი (Hadeco Smart-XT PDF)</h2>
+            <form method="post" action="{% url 'case-doppler' case.pk %}" enctype="multipart/form-data" class="cs-upload">
+                {% csrf_token %}
+                <label class="cs-date" title="კვლევის თარიღი">თარიღი
+                    <input type="date" name="performed_on" class="form-control form-control-sm" value="{{ today|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}">
+                </label>
+                <label class="x-btn cs-pick">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/><path d="M8 15l2-3 2 2 2-4 2 5"/></svg>Smart-XT PDF ატვირთვა
+                    <input type="file" name="report" accept="application/pdf,.pdf,image/png" hidden onchange="this.form.submit()">
+                </label>
+            </form>
+        </div>
+        {% for dv in dopplers %}{% include "mdf/cases/_doppler.html" with editable=True %}{% empty %}
+        <p class="text-muted m-0">სურვილისამებრ ატვირთეთ აპარატის PDF — მრუდები, სიჩქარეები, წნევები და ABI/TBI ავტომატურად წაიკითხება.</p>
+        {% endfor %}
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}<script src="{% static_v 'js/cases.js' %}"></script>{% endblock %}

@@ -734,12 +734,115 @@ body.cs-present {
 .am-dsa-mode .st-legend .lg-n i { background: #F8FAFC; box-shadow: 0 0 0 1px #64748B; }
 .am-dsa-mode .st-legend .lg-ca i { background: repeating-linear-gradient(90deg, #FDE047 0 1.5px, transparent 1.5px 3px); }
 
+/* ---- Split entry windows, Protocol generator, Manual Doppler & Mandatory Presentation Vitals ---- */
+.st-top-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
+.st-win-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-win-link {
+    display: inline-flex; align-items: center; height: 32px; padding: 0 11px; border-radius: 9px;
+    border: 1.5px solid var(--line); background: #fff; color: var(--ink-2); font-size: 13px;
+    font-weight: 600; text-decoration: none;
+}
+.st-win-link:hover { border-color: #9AA3B8; color: var(--ink); }
+.st-win-link.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+.cs-entry-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cs-fld-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.cs-fld-head label { margin: 0; }
+.cs-plan-hint { display: flex; flex-direction: column; gap: 2px; margin-top: 5px; font-size: 12.5px; color: var(--ink-2); }
+.cs-plan-inline { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.st-plan.compact { padding: 8px 11px; border-width: 1.5px; }
+.st-plan.compact b { font-size: 14.5px; line-height: 1.35; }
+.st-sum.no-map { grid-template-columns: minmax(0, 1fr); }
+.st-sum-nomap { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.st-sum-nomap h3 { margin: 0; font-size: 15px; font-weight: 700; }
+
+.st-proto-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.st-proto-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.st-proto-head small { display: block; margin-top: 2px; font-size: 12px; }
+.st-proto-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.st-proto-box {
+    font-size: 13.5px; line-height: 1.55; background: #F8FAFC; border: 1.5px solid #CBD5E1;
+    border-radius: 10px; resize: vertical; color: var(--ink);
+}
+#st-copy-proto.copied { background: #15803D; border-color: #15803D; color: #fff; }
+
+.st-dop-summary {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap;
+    padding: 9px 12px; border-radius: 10px; background: #F8FAFC; border: 1px solid var(--line);
+}
+.st-dop-summary small { display: block; font-size: 11.5px; font-weight: 700; color: var(--muted); }
+.st-dop-summary b { font-size: 13.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
+
+.dp-manual-card { display: flex; flex-direction: column; gap: 12px; }
+.dp-manual-card h2 { margin: 0 0 3px; font-size: 18px; font-weight: 700; }
+.dp-manual-form { display: flex; flex-direction: column; gap: 14px; }
+.dp-manual-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dp-manual-limb {
+    display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px;
+    background: #F8FAFC; border: 1.5px solid var(--line); min-width: 0;
+}
+.dp-manual-limb.primary { border-color: #93C5FD; background: #F8FBFF; }
+.dp-manual-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.dp-manual-head h3 { margin: 0; font-size: 15px; font-weight: 700; color: var(--ink); }
+.dp-manual-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
+.dp-manual-fields .fld { margin: 0; min-width: 0; font-size: 12.5px; }
+.dp-idx.dp-idx-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.dp-manual-summary { margin-bottom: 10px; }
+
+/* Mandatory WIfI / GLASS / ABI / TBI / Toe pressure strip & PLAN in proposal on Presentation */
+.pz-vitals { display: flex; flex-direction: column; gap: 8px; }
+.pz-vital-row {
+    display: grid; grid-template-columns: auto repeat(5, minmax(0, 1fr)); gap: 8px; align-items: stretch;
+}
+.pz-v-side {
+    display: flex; align-items: center; justify-content: center; padding: 6px 12px; border-radius: 10px;
+    background: #182131; border: 1px solid #2A364B; color: #F3B7CC; font-size: 14px; font-weight: 700;
+    white-space: nowrap;
+}
+.pz-v-cell {
+    display: flex; flex-direction: column; justify-content: center; padding: 6px 11px; border-radius: 10px;
+    background: #141B28; border: 1px solid #222C3E; border-left: 4px solid #475569; min-width: 0;
+}
+.pz-v-cell small { font-size: 11.5px; font-weight: 700; color: #8F9AAF; letter-spacing: .03em; }
+.pz-v-cell b { font-size: 23px; line-height: 1.12; color: #fff; font-variant-numeric: tabular-nums; }
+.pz-v-cell em { font-style: normal; font-size: 12px; color: #B8C3D6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pz-v-cell.wifi-1, .pz-v-cell.glass-I, .pz-v-cell.dp-ok { border-left-color: #1F8A5B; }
+.pz-v-cell.wifi-2 { border-left-color: #8DB33A; }
+.pz-v-cell.wifi-3, .pz-v-cell.glass-II, .pz-v-cell.dp-border { border-left-color: #E0A100; }
+.pz-v-cell.wifi-4, .pz-v-cell.glass-III, .pz-v-cell.dp-bad { border-left-color: #FF7A6B; }
+.pz-v-cell.wifi-5 { border-left-color: #94A3B8; }
+.pz-v-cell.dp-nc { border-left-color: #B69CFF; }
+
+.pz-plan-box { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.pz-sec.proposal p + .pz-plan-box { padding-top: 8px; border-top: 1px solid #2A364B; }
+.pz-plan-line {
+    display: flex; flex-direction: column; gap: 1px; padding: 7px 11px; border-radius: 9px;
+    background: #121824; border-left: 4px solid #64748B;
+}
+.pz-plan-line.plan-open { border-left-color: #5FD19C; }
+.pz-plan-line.plan-endo { border-left-color: #D8C21E; }
+.pz-plan-line.plan-none, .pz-plan-line.plan-unsalvageable { border-left-color: #FF7A6B; }
+.pz-plan-line small { font-size: 12px; font-weight: 700; color: #8F9AAF; letter-spacing: .02em; }
+.pz-plan-line b { font-size: 17px; font-weight: 600; color: #F1F5F9; line-height: 1.35; }
+
+@media (max-width: 900px) {
+    .dp-manual-grid { grid-template-columns: minmax(0, 1fr); }
+    .pz-vital-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pz-v-side { grid-column: 1 / -1; justify-content: flex-start; }
+}
+@media (max-width: 560px) {
+    .dp-manual-fields { grid-template-columns: minmax(0, 1fr); }
+    .dp-idx.dp-idx-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .st-win-link { flex: 1 1 auto; justify-content: center; padding: 0 8px; font-size: 12px; }
+}
+
 /* ---- Clean A4 print styling (Case Card, Staging, Presentation) --------- */
 @media print {
     body.cs-print-doc, body.cs-present { background: #fff !important; color: #111827 !important; }
     body.cs-print-doc .app-main { max-width: none; padding: 0; gap: 10px; }
     body.cs-print-doc .cs-detail > a.small,
     body.cs-print-doc .st-page > a.small,
+    body.cs-print-doc .st-top-nav,
     body.cs-print-doc .page-head .x-btn,
     body.cs-print-doc .page-head .cs-tabs,
     body.cs-print-doc .st-view-switch,
@@ -751,9 +854,11 @@ body.cs-present {
     body.cs-print-doc #st-iv-editor,
     body.cs-print-doc .st-iv-item-btns,
     body.cs-print-doc #st-sug-box,
+    body.cs-print-doc .st-proto-actions,
     body.cs-print-doc .st-save,
     body.cs-print-doc .cs-decide button,
     body.cs-print-doc .cs-staging .cs-photos-head .x-btn,
+    body.cs-print-doc .cs-dops .cs-photos-head .x-btn,
     body.cs-print-doc .cs-upload,
     body.cs-print-doc #cs-progress,
     body.cs-print-doc .dp-edit,
@@ -789,7 +894,7 @@ body.cs-present {
     }
     body.cs-print-doc .am-lumen-group, body.cs-present .am-lumen-group { filter: none !important; }
     body.cs-print-doc .st-badge, body.cs-print-doc .st-plan, body.cs-print-doc .st-iv-badge,
-    body.cs-print-doc .st-legend i, body.cs-print-doc .cs-status {
+    body.cs-print-doc .st-legend i, body.cs-print-doc .cs-status, body.cs-present .pz-v-cell {
         -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
 
@@ -798,7 +903,11 @@ body.cs-present {
     body.cs-present .pz-slide[hidden] { display: flex !important; }
     body.cs-present .pz-slide:last-child { break-after: auto; page-break-after: auto; }
     body.cs-present .pz-head h1, body.cs-present .st-badge b, body.cs-present .st-plan b,
-    body.cs-present .st-iv-main b, body.cs-present .st-line b { color: #111827 !important; }
-    body.cs-present .st-badge, body.cs-present .st-plan, body.cs-present .st-iv-item { background: #F8FAFC !important; }
-    body.cs-present .st-badge em, body.cs-present .st-line, body.cs-present .st-iv-detail { color: #334155 !important; }
+    body.cs-present .st-iv-main b, body.cs-present .st-line b,
+    body.cs-present .pz-v-cell b, body.cs-present .pz-plan-line b, body.cs-present .pz-sec.proposal p { color: #111827 !important; }
+    body.cs-present .st-badge, body.cs-present .st-plan, body.cs-present .st-iv-item,
+    body.cs-present .pz-v-cell, body.cs-present .pz-v-side, body.cs-present .pz-sec.proposal, body.cs-present .pz-plan-line { background: #F8FAFC !important; border-color: #CBD5E1 !important; }
+    body.cs-present .st-badge em, body.cs-present .st-line, body.cs-present .st-iv-detail,
+    body.cs-present .pz-v-cell em, body.cs-present .pz-v-side { color: #334155 !important; }
 }
+

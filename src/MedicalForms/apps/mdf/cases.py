@@ -201,9 +201,12 @@ class CaseFormView(LoginRequiredMixin, generic.View):
 
     @staticmethod
     def _render(request, case, values):
+        plan_info = case_plan_info(case) if case else {'items': [], 'show_side': False, 'insert_text': ''}
         return render(request, 'mdf/cases/form.html', {
             'case': case, 'values': values, 'doctors': doctors(),
             'sexes': Case.Sex.choices[1:], 'sides': Case.Side.choices[1:],
+            'plan_items': plan_info['items'], 'plan_show_side': plan_info['show_side'],
+            'plan_insert_text': plan_info['insert_text'],
         })
 
 
@@ -214,10 +217,15 @@ class CaseView(LoginRequiredMixin, generic.TemplateView):
         ctx = super().get_context_data(**kwargs)
         case = get_object_or_404(Case.objects.select_related('doctor', 'decided_by', 'created_by', 'updated_by'),
                                  pk=kwargs['pk'])
+        limb_metrics = case_limb_metrics(case)
+        plan_info = case_plan_info(case, limb_metrics=limb_metrics)
         ctx.update({
             'case': case, 'groups': _photos_by_kind(case), 'kinds': CasePhoto.Kind.choices,
             'dopplers': [doppler_view(d) for d in case.dopplers.all()],
             'stagings': staging_views(case), 'limbs': _limbs_of(case),
+            'limb_metrics': limb_metrics,
+            'manual_doppler_rows': [row for row in limb_metrics if row['has_manual_doppler']],
+            'plan_items': plan_info['items'], 'plan_show_side': plan_info['show_side'],
             'kind': self.request.GET.get('kind') or CasePhoto.Kind.WOUND,
             'today': timezone.localdate(),
         })
@@ -355,6 +363,10 @@ class PresentView(LoginRequiredMixin, generic.TemplateView):
             case.slides = sorted(case.photos.all(), key=lambda p: (order.get(p.kind, 9), p.taken_on, p.pk))
             case.doppler_views = [doppler_view(d) for d in case.dopplers.all()]
             case.staging_views = staging_views(case)
+            case.limb_metrics = case_limb_metrics(case)
+            plan_info = case_plan_info(case, limb_metrics=case.limb_metrics)
+            case.plan_items = plan_info['items']
+            case.plan_show_side = plan_info['show_side']
         ctx.update({'cases': cases, 'anon': self.request.GET.get('anon') == '1',
                     'back': self.request.GET.get('back') or reverse('cases')})
         if not ctx['back'].startswith('/') or ctx['back'].startswith('//'):
@@ -406,11 +418,61 @@ def doppler_view(study):
 
 
 class DopplerUploadView(LoginRequiredMixin, generic.View):
+    """Dedicated Doppler window: enter ABI/TBI/AP/TP by hand or upload a Hadeco Smart-XT PDF."""
+    template_name = 'mdf/cases/doppler.html'
+
+    def _context(self, case):
+        from . import staging
+        today = timezone.localdate()
+        pdf_data = _latest_doppler(case)
+        active_sides = {s for s, _ in _limbs_of(case)}
+        manual_limbs = []
+        for side, name in LIMBS:
+            limb = staging.get_limb(case.staging, side, today=today)
+            pdf_m = staging.doppler_measurements(pdf_data, side)
+            manual_limbs.append({
+                'side': side,
+                'name': name,
+                'primary': side in active_sides,
+                'limb': limb,
+                'pdf': pdf_m,
+            })
+        default_side = _limbs_of(case)[0][0]
+        return {
+            'case': case,
+            'default_side': default_side,
+            'manual_limbs': manual_limbs,
+            'dopplers': [doppler_view(d) for d in case.dopplers.all()],
+            'today': today,
+        }
+
+    def get(self, request, pk):
+        case = get_object_or_404(Case, pk=pk)
+        return render(request, self.template_name, self._context(case))
 
     def post(self, request, pk):
+        from . import staging
         case = get_object_or_404(Case, pk=pk)
-        uploaded = request.FILES.get('report')
         back = HttpResponseRedirect(reverse('case', args=[case.pk]) + '#doppler')
+        if request.POST.get('action') == 'manual':
+            today = timezone.localdate()
+            staging_map = dict(case.staging) if isinstance(case.staging, dict) else {}
+            for side, _ in LIMBS:
+                had_side = isinstance(staging_map.get(side), dict)
+                existing = staging.get_limb(staging_map, side, today=today)
+                candidate = dict(existing)
+                for field in ('abi', 'tbi', 'ap', 'tp'):
+                    candidate[field] = request.POST.get(f'{field}_{side}', '')
+                cleaned = staging.clean(candidate, today=today)
+                if had_side or staging.has_manual_doppler(cleaned):
+                    staging_map = staging.save_limb(staging_map, side, cleaned, today=today)
+            case.staging = staging_map
+            case.updated_by = request.user
+            case.save(update_fields=['staging', 'updated_by', 'updated_at'])
+            messages.success(request, 'დოპლერის პარამეტრები შენახულია.')
+            return back
+
+        uploaded = request.FILES.get('report')
         if not uploaded:
             messages.error(request, 'აირჩიეთ დოპლერის PDF.')
             return back
@@ -504,35 +566,121 @@ def _limbs_of(case):
 
 
 def _latest_doppler(case):
-    study = case.dopplers.order_by('-performed_on', '-id').first()
-    return study.data if study else None
+    studies = sorted(case.dopplers.all(), key=lambda s: (s.performed_on, s.pk), reverse=True)
+    return studies[0].data if studies else None
+
+
+def case_limb_metrics(case):
+    """Mandatory per-limb summary (GLASS, WIfI, PLAN, ABI, TBI, AP, Toe pressure) for presentation & detail."""
+    from . import staging
+    today = timezone.localdate()
+    doppler_data = _latest_doppler(case)
+    staging_map = case.staging if isinstance(case.staging, dict) else {}
+
+    target_sides = {s for s, _ in _limbs_of(case)}
+    for s, _ in LIMBS:
+        if staging_map.get(s):
+            target_sides.add(s)
+    if case.side == '':
+        # When side wasn't specified on the card, prefer staged/measured limbs if only one side has data
+        with_data = {
+            s for s, _ in LIMBS
+            if staging_map.get(s) or staging.doppler_measurements(doppler_data, s)
+        }
+        if len(with_data) == 1:
+            target_sides = with_data
+
+    rows = []
+    for side, name in LIMBS:
+        if side not in target_sides:
+            continue
+        raw_limb = staging_map.get(side)
+        limb = staging.get_limb(staging_map, side, today=today) if raw_limb else staging.clean({}, today=today)
+        measured = staging.doppler_measurements(doppler_data, side)
+        r = staging.compute(limb, measured)
+        m = r['measured']
+        tp = m.get('tp')
+        if tp is None:
+            tp_css = ''
+        elif tp < 40:
+            tp_css = 'bad'
+        elif tp < 60:
+            tp_css = 'border'
+        else:
+            tp_css = 'ok'
+        rows.append({
+            'side': side,
+            'name': name,
+            'limb': limb,
+            'r': r,
+            'abi': m.get('abi'),
+            'abi_css': doppler.abi_class(m.get('abi'))[0],
+            'tbi': m.get('tbi'),
+            'tbi_css': doppler.tbi_class(m.get('tbi'))[0],
+            'ap': m.get('ap'),
+            'tp': tp,
+            'tp_css': tp_css,
+            'has_any_doppler': any(m.get(k) is not None for k in ('abi', 'tbi', 'ap', 'tp')),
+            'has_manual_doppler': staging.has_manual_doppler(raw_limb),
+        })
+    return rows
+
+
+def case_plan_info(case, limb_metrics=None):
+    """PLAN algorithm conclusion(s) for display inside 'შეთავაზება' and 1-click insertion into proposal."""
+    rows = limb_metrics if limb_metrics is not None else case_limb_metrics(case)
+    items = [
+        {'side': row['side'], 'name': row['name'], 'plan': row['r']['plan'], 'label': row['r']['plan_label']}
+        for row in rows if row['r'].get('plan_label')
+    ]
+    show_side = len(items) > 1 or (len(items) == 1 and case.side in ('B', '') and len(rows) > 1)
+    if not items:
+        insert_text = ''
+    elif len(items) == 1 and not show_side:
+        insert_text = f'PLAN: {items[0]["label"]}'
+    else:
+        insert_text = '\n'.join(f'PLAN ({it["name"]}): {it["label"]}' for it in items)
+    return {'items': items, 'show_side': show_side, 'insert_text': insert_text}
 
 
 def staging_views(case):
-    """[{side, name, limb, r, am}] for the limbs that have been staged."""
+    """[{side, name, limb, r, am, fm, has_angio, has_wifi}] for the limbs that have been staged."""
     from . import staging
     out = []
     doppler_data = _latest_doppler(case) if case.staging else None
     today = timezone.localdate()
     for side, name in LIMBS:
-        if not (case.staging or {}).get(side):
+        raw = (case.staging or {}).get(side)
+        if not raw or not staging.has_staging(raw):
             continue
         limb = staging.get_limb(case.staging, side, today=today)
         result = staging.compute(limb, staging.doppler_measurements(doppler_data, side))
+        has_angio = staging.has_angiography(limb)
         out.append({'side': side, 'name': name, 'limb': limb, 'r': result,
+                    'has_angio': has_angio, 'has_wifi': staging.has_wifi(limb),
                     'interventions': staging.interventions_view(limb.get('interventions')),
-                    'am': staging.map_context(limb.get('segments') or {}, side, limb.get('interventions')),
+                    'am': staging.map_context(limb.get('segments') or {}, side, limb.get('interventions')) if has_angio else None,
                     'fm': staging.foot_context(limb.get('segments') or {}, side, limb.get('interventions'),
-                                               limb.get('wound_angiosome') or '')})
+                                               limb.get('wound_angiosome') or '') if has_angio else None})
     return out
 
 
 class StagingView(LoginRequiredMixin, generic.View):
+    """Dedicated Angiography window: artery map, prior interventions, GLASS, and copy-paste protocol."""
     template_name = 'mdf/cases/staging.html'
 
     def _context(self, case, side, limb):
         from . import staging
+        today = timezone.localdate()
         measured = staging.doppler_measurements(_latest_doppler(case), side)
+        other = 'L' if side == 'R' else 'R'
+        other_raw = (case.staging or {}).get(other)
+        has_other_angio = staging.has_angiography(other_raw)
+        protocol_text = staging.angiography_protocol(limb, side, today=today)
+        protocol_bilateral = (
+            staging.angiography_protocol_bilateral(staging.save_limb(case.staging, side, limb, today=today), today=today)
+            if has_other_angio else ''
+        )
         return {
             'case': case, 'side': side, 'limbs': _limbs_of(case) if len(_limbs_of(case)) > 1 else LIMBS,
             'side_name': dict(LIMBS)[side], 'limb': limb, 'measured': measured,
@@ -545,6 +693,9 @@ class StagingView(LoginRequiredMixin, generic.View):
             'segments_json': limb.get('segments') or {},
             'interventions_json': limb.get('interventions') or [],
             'iv_catalog_json': staging.intervention_catalog(),
+            'protocol_text': protocol_text,
+            'protocol_bilateral_text': protocol_bilateral,
+            'mode': 'angio',
         }
 
     def get(self, request, pk, side):
@@ -562,20 +713,35 @@ class StagingView(LoginRequiredMixin, generic.View):
             raise Http404
         today = timezone.localdate()
         existing = staging.get_limb(case.staging, side, today=today)
-        data = request.POST.dict()
-        try:
-            data['segments'] = json.loads(request.POST.get('segments') or '{}')
-        except ValueError:
-            data['segments'] = {}
+        data = dict(existing)
+
+        if request.POST.get('_form') == 'angio':
+            for key in ('tap', 'ai', 'cfa', 'fp', 'ip', 'pedal'):
+                data[key] = request.POST.get(key, '')
+            data['fp_calc'] = 'fp_calc' in request.POST
+            data['ip_calc'] = 'ip_calc' in request.POST
+        else:
+            for key, val in request.POST.items():
+                if key not in ('csrfmiddlewaretoken', 'preview', '_form'):
+                    data[key] = val
+            if 'fp' in request.POST or 'fp_calc' in request.POST:
+                data['fp_calc'] = 'fp_calc' in request.POST
+            if 'ip' in request.POST or 'ip_calc' in request.POST:
+                data['ip_calc'] = 'ip_calc' in request.POST
+            if 'w' in request.POST or 'unsalvageable' in request.POST:
+                data['unsalvageable'] = 'unsalvageable' in request.POST
+
+        if 'segments' in request.POST:
+            try:
+                data['segments'] = json.loads(request.POST.get('segments') or '{}')
+            except ValueError:
+                data['segments'] = {}
         if 'interventions' in request.POST:
             try:
                 data['interventions'] = json.loads(request.POST.get('interventions') or '[]')
             except ValueError:
                 data['interventions'] = []
-        else:
-            data['interventions'] = existing.get('interventions', [])
-        if 'wound_angiosome' not in request.POST:
-            data['wound_angiosome'] = existing.get('wound_angiosome', '')
+
         limb = staging.clean(data, today=today)
         if request.headers.get('x-requested-with') == 'XMLHttpRequest' and request.POST.get('preview'):
             ctx = self._context(case, side, limb) | {'live': True, 'interactive': True}
@@ -583,9 +749,63 @@ class StagingView(LoginRequiredMixin, generic.View):
                 'html': render(request, 'mdf/cases/_staging_result.html', ctx).content.decode(),
                 'map_html': render(request, 'mdf/cases/_artery_map.html', ctx).content.decode(),
                 'foot_html': render(request, 'mdf/cases/_foot_map.html', ctx).content.decode(),
+                'protocol_text': ctx['protocol_text'],
+                'protocol_bilateral_text': ctx['protocol_bilateral_text'],
             })
         case.staging = staging.save_limb(case.staging, side, limb, today=today)
         case.updated_by = request.user
         case.save(update_fields=['staging', 'updated_by', 'updated_at'])
-        messages.success(request, f'{dict(LIMBS)[side]} კიდურის სტადირება შენახულია.')
+        messages.success(request, f'{dict(LIMBS)[side]} კიდურის ანგიოგრაფია შენახულია.')
+        return HttpResponseRedirect(reverse('case', args=[case.pk]) + '#staging')
+
+
+class WifiView(LoginRequiredMixin, generic.View):
+    """Dedicated WIfI & PLAN clinical assessment window (separate from Angiography and Doppler)."""
+    template_name = 'mdf/cases/wifi.html'
+
+    def _context(self, case, side, limb):
+        from . import staging
+        measured = staging.doppler_measurements(_latest_doppler(case), side)
+        r = staging.compute(limb, measured)
+        return {
+            'case': case, 'side': side, 'limbs': _limbs_of(case) if len(_limbs_of(case)) > 1 else LIMBS,
+            'side_name': dict(LIMBS)[side], 'limb': limb, 'measured': measured,
+            'doppler_eff': r['measured'],
+            'r': r,
+            'fm': staging.foot_context(limb.get('segments') or {}, side, limb.get('interventions'),
+                                       limb.get('wound_angiosome') or ''),
+            'S': staging,
+            'mode': 'wifi',
+        }
+
+    def get(self, request, pk, side):
+        case = get_object_or_404(Case, pk=pk)
+        if side not in dict(LIMBS):
+            raise Http404
+        from . import staging
+        limb = staging.get_limb(case.staging, side, today=timezone.localdate())
+        return render(request, self.template_name, self._context(case, side, limb))
+
+    def post(self, request, pk, side):
+        from . import staging
+        case = get_object_or_404(Case, pk=pk)
+        if side not in dict(LIMBS):
+            raise Http404
+        today = timezone.localdate()
+        existing = staging.get_limb(case.staging, side, today=today)
+        data = dict(existing)
+        for key in ('w', 'i', 'fi', 'wound_angiosome', 'risk', 'vein', 'note'):
+            data[key] = request.POST.get(key, '')
+        data['unsalvageable'] = 'unsalvageable' in request.POST
+        limb = staging.clean(data, today=today)
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest' and request.POST.get('preview'):
+            ctx = self._context(case, side, limb) | {'live': True, 'interactive': False}
+            return JsonResponse({
+                'html': render(request, 'mdf/cases/_staging_result.html', ctx).content.decode(),
+                'foot_html': render(request, 'mdf/cases/_foot_map.html', ctx).content.decode(),
+            })
+        case.staging = staging.save_limb(case.staging, side, limb, today=today)
+        case.updated_by = request.user
+        case.save(update_fields=['staging', 'updated_by', 'updated_at'])
+        messages.success(request, f'{dict(LIMBS)[side]} კიდურის WIfI და კლინიკური შეფასება შენახულია.')
         return HttpResponseRedirect(reverse('case', args=[case.pk]) + '#staging')

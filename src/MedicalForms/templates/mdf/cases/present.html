@@ -27,13 +27,66 @@
             <p class="pz-sub">{% if c.age %}{{ c.age }} წ.{% endif %}{% if c.sex %} · {{ c.get_sex_display }}{% endif %}{% if c.side %} · <b>{{ c.get_side_display }}</b>{% endif %}{% if c.doctor %} · მომხსენებელი: {{ c.doctor|who }}{% endif %}</p>
             {% if c.diagnosis %}<p class="pz-dx">{{ c.diagnosis|linebreaksbr }}</p>{% endif %}
         </header>
+
+        <div class="pz-vitals" aria-label="WIfI, GLASS და დოპლეროგრაფიული მონაცემები">
+            {% for lm in c.limb_metrics %}
+            <div class="pz-vital-row" data-limb="{{ lm.side }}">
+                <span class="pz-v-side">{{ lm.name }}</span>
+                <div class="pz-v-cell wifi-{{ lm.r.wifi|default:'x' }}">
+                    <small>WIfI</small>
+                    <b>{% if lm.r.wifi %}{{ lm.r.wifi }}{% else %}—{% endif %}</b>
+                    <em>{% if lm.r.wifi %}W{{ lm.r.w }} I{{ lm.r.i }}{% if lm.r.i_auto %}*{% endif %} fI{{ lm.r.fi }} · {{ lm.r.wifi_risk }}{% else %}არ არის{% endif %}</em>
+                </div>
+                <div class="pz-v-cell glass-{{ lm.r.glass|default:'x' }}">
+                    <small>GLASS</small>
+                    <b>{% if lm.r.glass %}{{ lm.r.glass }}{% elif lm.r.fp_final is not None %}NA{% else %}—{% endif %}</b>
+                    <em>{% if lm.r.fp_final is not None %}FP {{ lm.r.fp_final }} · IP {{ lm.r.ip_final }}{% if lm.limb.pedal %} · {{ lm.limb.pedal }}{% endif %}{% else %}არ არის{% endif %}</em>
+                </div>
+                <div class="pz-v-cell dp-{{ lm.abi_css|default:'x' }}">
+                    <small>ABI</small>
+                    <b>{% if lm.abi is not None %}{{ lm.abi|floatformat:2 }}{% else %}—{% endif %}</b>
+                    <em>{% if lm.ap is not None %}კოჭი {{ lm.ap|floatformat:"-1" }} mmHg{% else %}დოპლერი{% endif %}</em>
+                </div>
+                <div class="pz-v-cell dp-{{ lm.tbi_css|default:'x' }}">
+                    <small>TBI</small>
+                    <b>{% if lm.tbi is not None %}{{ lm.tbi|floatformat:2 }}{% else %}—{% endif %}</b>
+                    <em>თით-მხრის</em>
+                </div>
+                <div class="pz-v-cell dp-{{ lm.tp_css|default:'x' }}">
+                    <small>Toe pressure</small>
+                    <b>{% if lm.tp is not None %}{{ lm.tp|floatformat:"-1" }}{% else %}—{% endif %}</b>
+                    <em>{% if lm.tp is not None %}mmHg{% else %}არ არის{% endif %}</em>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
         <div class="pz-body {% if not c.slides %}no-photos{% endif %}">
             <div class="pz-text">
-                {% for label, text in c|case_sections %}
-                <div class="pz-sec {% if label == 'შეთავაზება' %}proposal{% endif %}"><h2>{{ label }}</h2><p>{{ text|linebreaksbr }}</p></div>
-                {% empty %}
-                <p class="pz-empty">ტექსტი არ არის ჩაწერილი.</p>
+                {% with secs=c|case_sections_no_proposal %}
+                {% for label, text in secs %}
+                <div class="pz-sec"><h2>{{ label }}</h2><p>{{ text|linebreaksbr }}</p></div>
                 {% endfor %}
+                {% if c.proposal or c.plan_items %}
+                <div class="pz-sec proposal">
+                    <h2>შეთავაზება</h2>
+                    {% if c.proposal %}<p>{{ c.proposal|linebreaksbr }}</p>{% endif %}
+                    {% if c.plan_items %}
+                    <div class="pz-plan-box">
+                        {% for pi in c.plan_items %}
+                        <div class="pz-plan-line plan-{{ pi.plan }}">
+                            <small>PLAN ალგორითმი{% if c.plan_show_side %} ({{ pi.name }}){% endif %}</small>
+                            <b>{{ pi.label }}</b>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% if not secs and not c.proposal and not c.plan_items %}
+                <p class="pz-empty">ტექსტი არ არის ჩაწერილი.</p>
+                {% endif %}
+                {% endwith %}
             </div>
             {% if c.slides %}
             <div class="pz-media">
@@ -58,16 +111,20 @@
     <section class="pz-slide pz-stage-slide" data-case="{{ forloop.parentloop.counter }}" data-pk="{{ c.pk }}" data-decision="{% url 'case-decision' c.pk %}" data-side="{{ st.side }}" aria-label="სტადირება — {{ st.name }}" hidden>
         <header class="pz-head pz-stage-head">
             <h1><span class="pz-full">{{ c.patient_name }}</span><span class="pz-init">{{ c.initials }}</span> <small>· სტადირება — {{ st.name }} კიდური</small></h1>
+            {% if st.am %}
             <div class="st-view-switch dark" role="group" aria-label="რუკის რეჟიმი">
                 <button type="button" class="st-view-btn on" data-map-view="anat">ანატომიური</button>
                 <button type="button" class="st-view-btn" data-map-view="dsa">ანგიოგრაფია (DSA)</button>
             </div>
+            {% endif %}
         </header>
         <div class="pz-stage-main">
             {% include "mdf/cases/_staging_limb.html" %}
+            {% if st.am %}
             <div class="st-legend" aria-hidden="true">
                 <span class="lg-n"><i></i>ნორმა</span><span class="lg-mild"><i></i>&lt;50%</span><span class="lg-st"><i></i>≥50%</span><span class="lg-oc"><i></i>ოკლუზია</span><span class="lg-ca"><i></i>კალციფიკაცია</span><span class="lg-rx"><i></i>სტენტი / პლასტიკა</span><span class="lg-by"><i></i>შუნტი</span>
             </div>
+            {% endif %}
         </div>
         {% include "mdf/cases/_present_decide.html" with c=c %}
     </section>

@@ -2554,13 +2554,15 @@ class StagingFootAngiosomesTests(PrivateMediaTest):
         fm_occ = foot_context({'per3': {'stenosis': 'occlusion'}}, 'R')
         self.assertEqual(fm_occ['peroneal_comm'], [])
 
-        # Staging page GET + AJAX preview + POST save + detail + presentation
+        # Angiography page has interactive foot map without WIfI/Doppler inputs; WIfI page has wound_angiosome
         case = self.make_case(side='R')
         url = reverse('case-staging', args=[case.pk, 'R'])
         page = self.client.get(url)
         self.assertContains(page, 'class="am am-foot am-edit"')
         self.assertContains(page, 'data-zoom="btk"')
-        self.assertContains(page, 'name="wound_angiosome"')
+        self.assertNotContains(page, 'name="wound_angiosome"')
+        wifi_page = self.client.get(reverse('case-wifi', args=[case.pk, 'R']))
+        self.assertContains(wifi_page, 'name="wound_angiosome"')
 
         payload = {
             'segments': json.dumps({'arch': {'stenosis': 'none'}, 'mpa': {'stenosis': 'moderate'}}),
@@ -2767,6 +2769,162 @@ class StagingDsaPresentAndPrintTests(PrivateMediaTest):
         # Decision footer present on main slide + 2 staging slides + 1 Doppler slide = 4 footers
         self.assertEqual(html.count('class="pz-decide-toggle"'), 4)
         self.assertEqual(html.count(f'data-decision="{reverse("case-decision", args=[case.pk])}"'), 4)
+
+
+class StagingSplitWorkflowAndProtocolTests(PrivateMediaTest):
+    """Split entry windows (Angiography vs WIfI/PLAN vs Doppler), mandatory presentation strip, PLAN in proposal, and protocol generator."""
+
+    def test_three_separate_windows_preserve_each_others_fields(self):
+        case = self.make_case(side='R', proposal='ბარძაყ-წვივის აუტოვენური შუნტირება')
+        angio_url = reverse('case-staging', args=[case.pk, 'R'])
+        wifi_url = reverse('case-wifi', args=[case.pk, 'R'])
+        doppler_url = reverse('case-doppler', args=[case.pk])
+
+        # 1. Angiography window has zero Doppler and zero WIfI input fields
+        angio_page = self.client.get(angio_url)
+        self.assertContains(angio_page, 'id="st-proto-text"')
+        self.assertContains(angio_page, 'id="st-copy-proto"')
+        for forbidden in ('name="abi"', 'name="tbi"', 'name="ap"', 'name="tp"',
+                          'name="w"', 'name="i"', 'name="fi"', 'name="wound_angiosome"'):
+            self.assertNotContains(angio_page, forbidden)
+
+        # 2. WIfI window has W, I, fI, angiosome, risk & vein, and zero Doppler or segment inputs
+        wifi_page = self.client.get(wifi_url)
+        for expected in ('name="w"', 'name="i"', 'name="fi"', 'name="wound_angiosome"', 'name="risk"', 'name="vein"'):
+            self.assertContains(wifi_page, expected)
+        for forbidden in ('name="abi"', 'name="tbi"', 'name="segments"', 'name="fp"'):
+            self.assertNotContains(wifi_page, forbidden)
+        self.assertEqual(self.client.get(reverse('case-wifi', args=[case.pk, 'X'])).status_code, 404)
+
+        # 3. Doppler window GET + manual POST saves ABI, TBI, AP, and Toe pressure without creating a fake map slide
+        doppler_page = self.client.get(doppler_url)
+        self.assertContains(doppler_page, 'name="abi_R"')
+        self.assertContains(doppler_page, 'name="tbi_R"')
+        self.assertContains(doppler_page, 'name="ap_R"')
+        self.assertContains(doppler_page, 'name="tp_R"')
+
+        r_dop = self.client.post(doppler_url, {
+            'action': 'manual',
+            'abi_R': '0,48', 'tbi_R': '0,24', 'ap_R': '58', 'tp_R': '24',
+            'abi_L': '', 'tbi_L': '', 'ap_L': '', 'tp_L': '',
+        })
+        self.assertRedirects(r_dop, reverse('case', args=[case.pk]) + '#doppler', fetch_redirect_response=False)
+        case.refresh_from_db()
+        self.assertEqual(
+            (case.staging['R']['abi'], case.staging['R']['tbi'], case.staging['R']['ap'], case.staging['R']['tp']),
+            (0.48, 0.24, 58.0, 24.0),
+        )
+        self.assertNotIn('L', case.staging)     # untouched side stays absent
+        # Standalone Doppler numbers do not create a blank artery-map slide
+        pres_after_dop = self.client.get(reverse('cases-present'), {'ids': case.pk})
+        self.assertNotContains(pres_after_dop, 'class="pz-slide pz-stage-slide"')
+        self.assertContains(pres_after_dop, '0.48')
+        self.assertContains(pres_after_dop, '0.24')
+        self.assertContains(pres_after_dop, '24')
+
+        # 4. WIfI window saves W2, auto-ischemia (from TP=24 -> I3), fI1, risk=avg, vein=yes -> WIfI stage 4
+        r_wifi = self.client.post(wifi_url, {
+            'w': '2', 'i': '', 'fi': '1', 'wound_angiosome': 'medial_plantar',
+            'risk': 'avg', 'vein': 'yes', 'note': 'მედიალური ქუსლისა და ძირის წყლული',
+        })
+        self.assertRedirects(r_wifi, reverse('case', args=[case.pk]) + '#staging', fetch_redirect_response=False)
+        case.refresh_from_db()
+        self.assertEqual((case.staging['R']['w'], case.staging['R']['fi'], case.staging['R']['abi'], case.staging['R']['tbi']),
+                         (2, 1, 0.48, 0.24))
+
+        # 5. Angiography window (_form='angio') saves segments + GLASS III while preserving WIfI & Doppler!
+        r_angio = self.client.post(angio_url, {
+            '_form': 'angio',
+            'segments': json.dumps({'sfa1': {'stenosis': 'occlusion', 'calc': 4, 'flush': True},
+                                    'sfa2': {'stenosis': 'occlusion'},
+                                    'sfa3': {'stenosis': 'occlusion', 'reconstitution': 'yes'}}),
+            'interventions': json.dumps([]),
+            'tap': 'pt', 'fp': '4', 'fp_calc': 'on', 'ip': '2', 'pedal': 'P0', 'ai': '', 'cfa': 'A',
+        })
+        self.assertRedirects(r_angio, reverse('case', args=[case.pk]) + '#staging', fetch_redirect_response=False)
+        case.refresh_from_db()
+        limb = case.staging['R']
+        self.assertEqual((limb['fp'], limb['ip'], limb['w'], limb['fi'], limb['wound_angiosome']),
+                         (4, 2, 2, 1, 'medial_plantar'))
+        self.assertEqual((limb['abi'], limb['tbi'], limb['ap'], limb['tp']), (0.48, 0.24, 58.0, 24.0))
+
+        # 6. Conference presentation Slide 1 shows WIfI, GLASS, ABI, TBI, Toe pressure AND PLAN inside 'შეთავაზება'
+        pres = self.client.get(reverse('cases-present'), {'ids': case.pk})
+        self.assertContains(pres, 'class="pz-vitals"')
+        self.assertContains(pres, '<small>WIfI</small>')
+        self.assertContains(pres, '<small>GLASS</small>')
+        self.assertContains(pres, '<small>ABI</small>')
+        self.assertContains(pres, '<small>TBI</small>')
+        self.assertContains(pres, '<small>Toe pressure</small>')
+        self.assertContains(pres, '0.48')
+        self.assertContains(pres, '0.24')
+        # Doctor's own proposal AND automatic PLAN recommendation both appear inside 'შეთავაზება'
+        self.assertContains(pres, 'ბარძაყ-წვივის აუტოვენური შუნტირება')
+        self.assertContains(pres, 'PLAN ალგორითმი')
+        self.assertContains(pres, 'ღია შუნტირება — საშუალო რისკი, ვარგისი ვენა')
+
+        # Detail card & Case edit form also surface PLAN recommendation and 1-click insert button
+        detail = self.client.get(reverse('case', args=[case.pk]))
+        self.assertContains(detail, 'PLAN ალგორითმი')
+        self.assertContains(detail, 'ღია შუნტირება — საშუალო რისკი, ვარგისი ვენა')
+        edit_form = self.client.get(reverse('case-edit', args=[case.pk]))
+        self.assertContains(edit_form, 'id="cs-insert-plan"')
+        self.assertContains(edit_form, 'PLAN: ღია შუნტირება')
+
+    def test_angiography_protocol_single_and_bilateral_generation(self):
+        from .staging import angiography_protocol, angiography_protocol_bilateral, save_limb
+
+        # 1. Normal right limb
+        normal_txt = angiography_protocol({}, 'R')
+        self.assertIn('ქვედა კიდურის არტერიოგრაფია — მარჯვენა კიდური', normal_txt)
+        self.assertIn('ინფრარენული აორტა: გამავალია', normal_txt)
+        self.assertIn('ჰემოდინამიკურად მნიშვნელოვანი სტენოზისა და ოკლუზიის გარეშე', normal_txt)
+        self.assertNotIn('პუნქცია', normal_txt)
+        self.assertNotIn('კონტრასტ', normal_txt)
+
+        # 2. Multi-level disease + prior bypass -> grouped anatomical prose + GLASS conclusion
+        diseased_r = {
+            'segments': {
+                'aorta': {'stenosis': 'moderate', 'calc': 3},
+                'sfa2': {'stenosis': 'occlusion', 'calc': 4},
+                'sfa3': {'stenosis': 'occlusion', 'reconstitution': 'yes'},
+                'at1': {'stenosis': 'severe', 'length_cm': 2.5},
+                'arch': {'stenosis': 'occlusion'},
+            },
+            'interventions': [
+                {'type': 'bypass', 'conduit_group': 'vein', 'conduit': 'gsv_reversed',
+                 'proximal': 'cfa', 'distal': 'pop3', 'performed_on': '06.2023', 'status': 'stenosed', 'site': 'distal'},
+            ],
+            'fp': 3, 'ip': 1, 'pedal': 'P1', 'tap': 'pt',
+        }
+        r_txt = angiography_protocol(diseased_r, 'R')
+        self.assertIn('ინფრარენული აორტა: 50–69%-იანი სტენოზი', r_txt)
+        self.assertIn('შუა და დისტალურ მესამედში — ოკლუზია', r_txt)
+        self.assertIn('დისტალური სეგმენტი აღდგება კოლატერალებით', r_txt)
+        self.assertIn('ტერფის რკალი შეკრული არ არის', r_txt)
+        self.assertIn('შუნტირება: CFA → P3', r_txt)
+        self.assertIn('GLASS სტადია II (FP 3, IP 1; P1; TAP — უკანა წვივის არტერია (PT))', r_txt)
+
+        # 3. Bilateral protocol & live AJAX preview on second leg
+        st_map = save_limb({}, 'R', diseased_r)
+        st_map = save_limb(st_map, 'L', {'segments': {'cia': {'stenosis': 'occlusion', 'flush': True}}, 'fp': 0, 'ip': 0})
+        bi_txt = angiography_protocol_bilateral(st_map)
+        self.assertIn('ქვედა კიდურების არტერიოგრაფია', bi_txt)
+        self.assertEqual(bi_txt.count('• ინფრარენული აორტა:'), 1)
+        self.assertIn('მარჯვენა ქვედა კიდური:', bi_txt)
+        self.assertIn('მარცხენა ქვედა კიდური:', bi_txt)
+        self.assertIn('საერთო თეძოს არტერია — სათავის (flush) ოკლუზია', bi_txt)
+
+        case = self.make_case(side='B', staging=st_map)
+        preview = self.client.post(
+            reverse('case-staging', args=[case.pk, 'L']),
+            {'_form': 'angio', 'segments': json.dumps({'pt2': {'stenosis': 'severe'}}), 'fp': '0', 'ip': '2', 'preview': '1'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+        self.assertIn('უკანა წვივის არტერია: შუა მესამედში — 70–99%-იანი კრიტიკული სტენოზი', preview['protocol_text'])
+        self.assertIn('მარჯვენა ქვედა კიდური:', preview['protocol_bilateral_text'])
+        self.assertIn('უკანა წვივის არტერია: შუა მესამედში — 70–99%-იანი კრიტიკული სტენოზი', preview['protocol_bilateral_text'])
+
 
 
 

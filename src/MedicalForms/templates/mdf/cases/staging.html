@@ -1,15 +1,22 @@
 {% extends 'base.html' %}
 {% load static_version %}
 
-{% block title %}{{ case.patient_name }} — სტადირება{% endblock %}
+{% block title %}{{ case.patient_name }} — ანგიოგრაფია{% endblock %}
 {% block body_class %}cs-print-doc{% endblock %}
 {% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/cases.css' %}">{% endblock %}
 
 {% block content %}
 <div class="app-main st-page">
-    <a href="{% url 'case' case.pk %}#staging" class="small">← {{ case.patient_name }}</a>
+    <div class="st-top-nav">
+        <a href="{% url 'case' case.pk %}#staging" class="small">← {{ case.patient_name }}</a>
+        <nav class="st-win-nav" aria-label="შეყვანის ფანჯრები">
+            <a href="{% url 'case-staging' case.pk side %}" class="st-win-link on" aria-current="page">ანგიოგრაფია · GLASS</a>
+            <a href="{% url 'case-wifi' case.pk side %}" class="st-win-link">WIfI · PLAN</a>
+            <a href="{% url 'case-doppler' case.pk %}" class="st-win-link">დოპლეროგრაფია</a>
+        </nav>
+    </div>
     <div class="page-head">
-        <h1>სტადირება <span class="count">· GLASS · WIfI · PLAN</span></h1>
+        <h1>ანგიოგრაფია <span class="count">· არტერიების რუკა · GLASS · პროტოკოლი</span></h1>
         <div class="cs-tabs" role="tablist">
             {% for key, name in limbs %}<a role="tab" href="{% url 'case-staging' case.pk key %}" class="{% if key == side %}active{% endif %}">{{ name }}</a>{% endfor %}
         </div>
@@ -17,9 +24,12 @@
 
     <form method="post" id="st-form" class="st-grid" data-preview="{% url 'case-staging' case.pk side %}" autocomplete="off">
         {% csrf_token %}
+        <input type="hidden" name="_form" value="angio">
         {{ segments_json|json_script:"st-segments" }}
         {{ interventions_json|json_script:"st-interventions" }}
         {{ iv_catalog_json|json_script:"st-iv-catalog" }}
+        {{ protocol_text|json_script:"st-proto-single-init" }}
+        {{ protocol_bilateral_text|json_script:"st-proto-bi-init" }}
         <input type="hidden" name="segments" value="">
         <input type="hidden" name="interventions" value="">
 
@@ -36,7 +46,7 @@
                 {% for key, label in S.FLAGS %}<button type="button" class="st-tool t-{{ key }}" data-flag="{{ key }}"><i></i>{{ label }}</button>{% endfor %}
                 <button type="button" class="st-tool t-inspect" data-inspect="1">დეტალები</button>
             </div>
-            <p class="st-hint">აირჩიეთ ზემოთ რა მოვნიშნოთ და დააჭირეთ არტერიის სეგმენტს — ქვემოთ გაიხსნება სეგმენტის დეტალური პანელიც. ხელახლა დაჭერა — მოხსნა.</p>
+            <p class="st-hint">აირჩიეთ ზემოთ რა მოვნიშნოთ და დააჭირეთ არტერიის სეგმენტს — ქვემოთ გაიხსნება სეგმენტის დეტალური პანელიც, ხოლო მარჯვნივ ავტომატურად აიწყობა ანგიოგრაფიის პროტოკოლი.</p>
             <div class="st-zoom" role="toolbar" aria-label="ზონის გადიდება">
                 {% for zkey, zlabel, zview in zoom_zones %}<button type="button" class="st-zoom-btn{% if zkey == 'all' %} on{% endif %}" data-zoom="{{ zkey }}" data-viewbox="{{ zview }}">{{ zlabel }}</button>{% endfor %}
             </div>
@@ -113,20 +123,10 @@
 
             <div class="st-foot-box">
                 <div class="st-foot-head">
-                    <b>ტერფის რკალი და ანგიოსომები</b>
+                    <b>ტერფის არტერიები და პლანტარული რკალი</b>
                     <span>ლატერალურ-ირიბი ხედი</span>
                 </div>
                 <div class="st-foot-map">{% include "mdf/cases/_foot_map.html" with interactive=True side_name=side_name %}</div>
-                <div class="fld">ჭრილობის ლოკალიზაცია — ანგიოსომა
-                    <div class="st-angio-grid" role="radiogroup" aria-label="ჭრილობის ანგიოსომა">
-                        {% for akey, atitle, ahint in S.ANGIOSOME_CARDS %}
-                        <label class="st-angio-opt{% if akey == 'none' %} wide{% endif %}">
-                            <input type="radio" name="wound_angiosome" value="{{ akey }}" {% if limb.wound_angiosome == akey %}checked{% endif %}>
-                            <span><b>{{ atitle }}</b>{% if ahint %}<small>{{ ahint }}</small>{% endif %}</span>
-                        </label>
-                        {% endfor %}
-                    </div>
-                </div>
             </div>
 
             <div class="fld">სამიზნე არტერიის გზა (TAP)
@@ -142,10 +142,30 @@
 
         <div class="st-side">
             <div class="x-card st-result-card">
-                <h2>შედეგი</h2>
-                {% include "mdf/cases/_staging_result.html" with live=True %}
+                <h2>ანგიოგრაფიული შეფასება</h2>
+                {% include "mdf/cases/_staging_result.html" with live=True mode="angio" %}
                 <p class="st-src">{{ S.TABLES_SOURCE }} დამხმარე შეფასებაა — გადაწყვეტილებას ქირურგი / კონფერენცია იღებს.</p>
             </div>
+
+            <section class="x-card st-proto-card" aria-label="ანგიოგრაფიის პროტოკოლი">
+                <div class="st-proto-head">
+                    <div>
+                        <h2>ანგიოგრაფიის პროტოკოლი</h2>
+                        <small class="text-muted">ავტომატურად იწყობა რუკაზე მონიშნული სეგმენტებისა და ჩარევების მიხედვით</small>
+                    </div>
+                    <div class="st-proto-actions">
+                        <div class="st-view-switch" id="st-proto-scope-wrap" role="group" aria-label="პროტოკოლის მოცულობა" {% if not protocol_bilateral_text %}hidden{% endif %}>
+                            <button type="button" class="st-view-btn on" data-proto-scope="single">{{ side_name }}</button>
+                            <button type="button" class="st-view-btn" data-proto-scope="bilateral">ორივე კიდური</button>
+                        </div>
+                        <button type="button" class="x-btn primary sm" id="st-copy-proto">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            <span>პროტოკოლის კოპირება</span>
+                        </button>
+                    </div>
+                </div>
+                <textarea id="st-proto-text" class="form-control st-proto-box" rows="9" readonly aria-label="ანგიოგრაფიის პროტოკოლის ტექსტი">{{ protocol_text }}</textarea>
+            </section>
 
             <section class="x-card st-iv-card" aria-label="წარსული ჩარევები კიდურზე">
                 <div class="st-iv-head">
@@ -228,35 +248,6 @@
                 <p class="st-src">{{ S.CALC_NOTE }}</p>
                 <div class="fld">ტერფი (ინფრამალეოლური, P)</div>
                 <div class="st-opts">{% for key, text in S.PEDAL %}<label class="st-opt"><input type="radio" name="pedal" value="{{ key }}" {% if limb.pedal == key %}checked{% endif %}><span><b>{{ key }}</b>{{ text }}</span></label>{% endfor %}</div>
-            </section>
-
-            <section class="x-card" aria-label="WIfI">
-                <h2>WIfI — კიდურის საფრთხე</h2>
-                <div class="fld">W — ჭრილობა</div>
-                <div class="st-opts">{% for g, title, text in S.WOUND %}<label class="st-opt"><input type="radio" name="w" value="{{ g }}" {% if limb.w == g %}checked{% endif %}><span><b>W{{ g }} · {{ title }}</b>{{ text }}</span></label>{% endfor %}</div>
-
-                <div class="fld">I — იშემია</div>
-                <div class="st-measure">
-                    <label>ABI <input name="abi" inputmode="decimal" class="form-control form-control-sm" value="{{ limb.abi|default_if_none:'' }}" placeholder="{{ measured.abi|default_if_none:'' }}"></label>
-                    <label>AP, mmHg <input name="ap" inputmode="numeric" class="form-control form-control-sm" value="{{ limb.ap|default_if_none:'' }}" placeholder="{{ measured.ap|default_if_none:'' }}"></label>
-                    <label>TP / TcPO2 <input name="tp" inputmode="numeric" class="form-control form-control-sm" value="{{ limb.tp|default_if_none:'' }}" placeholder="{{ measured.tp|default_if_none:'' }}"></label>
-                </div>
-                <p class="st-src">{% if measured %}ცარიელ ველებში — უკანასკნელი დოპლერის მონაცემები (ABI — PT/DP-დან მაღალი, AP — უმაღლესი კოჭის წნევა). {% endif %}{{ S.ISCHEMIA_NOTE }}</p>
-                <div class="st-opts">
-                    <label class="st-opt"><input type="radio" name="i" value="" {% if limb.i is None %}checked{% endif %}><span><b>ავტომატურად</b>გაზომვებიდან (ცხრ. 3.3)</span></label>
-                    {% for g, abi, ap, tp in S.ISCHEMIA %}<label class="st-opt"><input type="radio" name="i" value="{{ g }}" {% if limb.i == g %}checked{% endif %}><span><b>I{{ g }}</b>{{ abi }} · {{ ap }} · {{ tp }}</span></label>{% endfor %}
-                </div>
-
-                <div class="fld">fI — ტერფის ინფექცია</div>
-                <div class="st-opts">{% for g, title, text in S.INFECTION %}<label class="st-opt"><input type="radio" name="fi" value="{{ g }}" {% if limb.fi == g %}checked{% endif %}><span><b>fI{{ g }} · {{ title }}</b>{{ text }}</span></label>{% endfor %}</div>
-                <label class="st-check"><input type="checkbox" name="unsalvageable" {% if limb.unsalvageable %}checked{% endif %}> ტერფი გადარჩენადი არ არის (stage 5)</label>
-            </section>
-
-            <section class="x-card" aria-label="პაციენტი">
-                <h2>პაციენტი (PLAN)</h2>
-                <div class="st-opts">{% for key, text in S.RISK %}<label class="st-opt"><input type="radio" name="risk" value="{{ key }}" {% if limb.risk == key %}checked{% endif %}><span>{{ text }}</span></label>{% endfor %}</div>
-                <div class="st-opts">{% for key, text in S.VEIN %}<label class="st-opt"><input type="radio" name="vein" value="{{ key }}" {% if limb.vein == key %}checked{% endif %}><span>{{ text }}</span></label>{% endfor %}</div>
-                <label class="fld">შენიშვნა <input name="note" class="form-control" maxlength="500" value="{{ limb.note }}"></label>
             </section>
 
             <div class="st-save">

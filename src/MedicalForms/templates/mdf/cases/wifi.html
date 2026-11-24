@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% load static_version %}
+
+{% block title %}{{ case.patient_name }} — WIfI · PLAN{% endblock %}
+{% block body_class %}cs-print-doc{% endblock %}
+{% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/cases.css' %}">{% endblock %}
+
+{% block content %}
+<div class="app-main st-page">
+    <div class="st-top-nav">
+        <a href="{% url 'case' case.pk %}#staging" class="small">← {{ case.patient_name }}</a>
+        <nav class="st-win-nav" aria-label="შეყვანის ფანჯრები">
+            <a href="{% url 'case-staging' case.pk side %}" class="st-win-link">ანგიოგრაფია · GLASS</a>
+            <a href="{% url 'case-wifi' case.pk side %}" class="st-win-link on" aria-current="page">WIfI · PLAN</a>
+            <a href="{% url 'case-doppler' case.pk %}" class="st-win-link">დოპლეროგრაფია</a>
+        </nav>
+    </div>
+    <div class="page-head">
+        <h1>კლინიკური სტადირება <span class="count">· WIfI · ანგიოსომა · PLAN</span></h1>
+        <div class="cs-tabs" role="tablist">
+            {% for key, name in limbs %}<a role="tab" href="{% url 'case-wifi' case.pk key %}" class="{% if key == side %}active{% endif %}">{{ name }}</a>{% endfor %}
+        </div>
+    </div>
+
+    <form method="post" id="st-form" class="st-grid" data-preview="{% url 'case-wifi' case.pk side %}" autocomplete="off">
+        {% csrf_token %}
+        <section class="x-card st-map-card" aria-label="ჭრილობა და ანგიოსომა">
+            <h2>W — ჭრილობა და ანგიოსომა ({{ side_name }})</h2>
+            <div class="st-opts">{% for g, title, text in S.WOUND %}<label class="st-opt"><input type="radio" name="w" value="{{ g }}" {% if limb.w == g %}checked{% endif %}><span><b>W{{ g }} · {{ title }}</b>{{ text }}</span></label>{% endfor %}</div>
+
+            <div class="st-foot-box">
+                <div class="st-foot-head">
+                    <b>ჭრილობის ლოკალიზაცია — ანგიოსომა</b>
+                    <span>6 ზონა ტერფსა და კოჭზე</span>
+                </div>
+                <div class="st-foot-map">{% include "mdf/cases/_foot_map.html" with interactive=False side_name=side_name %}</div>
+                <div class="st-angio-grid" role="radiogroup" aria-label="ჭრილობის ანგიოსომა">
+                    {% for akey, atitle, ahint in S.ANGIOSOME_CARDS %}
+                    <label class="st-angio-opt{% if akey == 'none' %} wide{% endif %}">
+                        <input type="radio" name="wound_angiosome" value="{{ akey }}" {% if limb.wound_angiosome == akey %}checked{% endif %}>
+                        <span><b>{{ atitle }}</b>{% if ahint %}<small>{{ ahint }}</small>{% endif %}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <div class="st-side">
+            <div class="x-card st-result-card">
+                <h2>შედეგი</h2>
+                {% include "mdf/cases/_staging_result.html" with live=True mode="wifi" %}
+                <p class="st-src">{{ S.TABLES_SOURCE }} დამხმარე შეფასებაა — გადაწყვეტილებას ქირურგი / კონფერენცია იღებს.</p>
+            </div>
+
+            <section class="x-card" aria-label="იშემია და ინფექცია">
+                <h2>I · fI — იშემია და ინფექცია</h2>
+
+                <div class="st-dop-summary">
+                    <div>
+                        <small>დოპლეროგრაფიის მონაცემები ({{ side_name }})</small>
+                        {% if doppler_eff.abi is not None or doppler_eff.tbi is not None or doppler_eff.ap is not None or doppler_eff.tp is not None %}
+                        <b>ABI: {% if doppler_eff.abi is not None %}{{ doppler_eff.abi|floatformat:2 }}{% else %}—{% endif %} · TBI: {% if doppler_eff.tbi is not None %}{{ doppler_eff.tbi|floatformat:2 }}{% else %}—{% endif %} · AP: {% if doppler_eff.ap is not None %}{{ doppler_eff.ap|floatformat:"-1" }} mmHg{% else %}—{% endif %} · Toe pressure: {% if doppler_eff.tp is not None %}{{ doppler_eff.tp|floatformat:"-1" }} mmHg{% else %}—{% endif %}</b>
+                        {% else %}
+                        <span class="text-muted">დოპლერის პარამეტრები ჯერ არ არის შეყვანილი.</span>
+                        {% endif %}
+                    </div>
+                    <a class="x-btn sm" href="{% url 'case-doppler' case.pk %}">დოპლერის ფანჯარა →</a>
+                </div>
+                <p class="st-src">{{ S.ISCHEMIA_NOTE }}</p>
+
+                <div class="fld">I — იშემიის ხარისხი</div>
+                <div class="st-opts">
+                    <label class="st-opt"><input type="radio" name="i" value="" {% if limb.i is None %}checked{% endif %}><span><b>ავტომატურად</b>დოპლერის მონაცემებიდან (ცხრ. 3.3)</span></label>
+                    {% for g, abi, ap, tp in S.ISCHEMIA %}<label class="st-opt"><input type="radio" name="i" value="{{ g }}" {% if limb.i == g %}checked{% endif %}><span><b>I{{ g }}</b>{{ abi }} · {{ ap }} · {{ tp }}</span></label>{% endfor %}
+                </div>
+
+                <div class="fld">fI — ტერფის ინფექცია</div>
+                <div class="st-opts">{% for g, title, text in S.INFECTION %}<label class="st-opt"><input type="radio" name="fi" value="{{ g }}" {% if limb.fi == g %}checked{% endif %}><span><b>fI{{ g }} · {{ title }}</b>{{ text }}</span></label>{% endfor %}</div>
+                <label class="st-check"><input type="checkbox" name="unsalvageable" {% if limb.unsalvageable %}checked{% endif %}> ტერფი გადარჩენადი არ არის (stage 5)</label>
+            </section>
+
+            <section class="x-card" aria-label="პაციენტი">
+                <h2>პაციენტი — PLAN ალგორითმისთვის</h2>
+                <div class="fld">ოპერაციული რისკი და სიცოცხლის მოსალოდნელი ხანგრძლივობა</div>
+                <div class="st-opts">{% for key, text in S.RISK %}<label class="st-opt"><input type="radio" name="risk" value="{{ key }}" {% if limb.risk == key %}checked{% endif %}><span>{{ text }}</span></label>{% endfor %}</div>
+                <div class="fld">აუტოვენური კონდუიტი</div>
+                <div class="st-opts">{% for key, text in S.VEIN %}<label class="st-opt"><input type="radio" name="vein" value="{{ key }}" {% if limb.vein == key %}checked{% endif %}><span>{{ text }}</span></label>{% endfor %}</div>
+                <label class="fld">კლინიკური შენიშვნა <input name="note" class="form-control" maxlength="500" value="{{ limb.note }}"></label>
+            </section>
+
+            <div class="st-save">
+                <button type="submit" class="x-btn primary">შენახვა</button>
+                <a class="x-btn" href="{% url 'case' case.pk %}#staging" data-allow-leave="1">გაუქმება</a>
+                <span class="st-unsaved" id="st-unsaved" hidden>შეუნახავია</span>
+                <span class="st-live" id="st-live" role="status"></span>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}<script src="{% static_v 'js/staging.js' %}"></script>{% endblock %}

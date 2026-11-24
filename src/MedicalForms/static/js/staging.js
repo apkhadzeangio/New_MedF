@@ -1110,6 +1110,64 @@
         preview(false);
     });
 
+    // ---- Live Angiography Protocol (single / bilateral + 1-click Copy) ----
+
+    var protoTextEl = document.getElementById('st-proto-text');
+    var protoScopeWrap = document.getElementById('st-proto-scope-wrap');
+    var copyProtoBtn = document.getElementById('st-copy-proto');
+    var protoSingle = readJson('st-proto-single-init', protoTextEl ? protoTextEl.value : '');
+    var protoBi = readJson('st-proto-bi-init', '');
+    var protoScope = 'single';
+    var copyTimer = null;
+
+    function renderProtocol() {
+        if (!protoTextEl) { return; }
+        if (protoScopeWrap) { protoScopeWrap.hidden = !protoBi; }
+        if (protoScope === 'bilateral' && !protoBi) { protoScope = 'single'; }
+        protoTextEl.value = (protoScope === 'bilateral' && protoBi) ? protoBi : protoSingle;
+        if (protoScopeWrap) {
+            protoScopeWrap.querySelectorAll('[data-proto-scope]').forEach(function (b) {
+                b.classList.toggle('on', b.getAttribute('data-proto-scope') === protoScope);
+            });
+        }
+    }
+
+    if (protoScopeWrap) {
+        protoScopeWrap.querySelectorAll('[data-proto-scope]').forEach(function (b) {
+            b.addEventListener('click', function () {
+                protoScope = b.getAttribute('data-proto-scope') || 'single';
+                renderProtocol();
+            });
+        });
+    }
+
+    if (copyProtoBtn && protoTextEl) {
+        copyProtoBtn.addEventListener('click', function () {
+            var text = protoTextEl.value || '';
+            var labelSpan = copyProtoBtn.querySelector('span');
+            function markCopied() {
+                copyProtoBtn.classList.add('copied');
+                if (labelSpan) { labelSpan.textContent = '✓ დაკოპირდა'; }
+                clearTimeout(copyTimer);
+                copyTimer = setTimeout(function () {
+                    copyProtoBtn.classList.remove('copied');
+                    if (labelSpan) { labelSpan.textContent = 'პროტოკოლის კოპირება'; }
+                }, 2000);
+            }
+            function fallbackCopy() {
+                protoTextEl.focus();
+                protoTextEl.select();
+                try { document.execCommand('copy'); } catch (e) {}
+                markCopied();
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(markCopied).catch(fallbackCopy);
+            } else {
+                fallbackCopy();
+            }
+        });
+    }
+
     // ---- Live server preview & form submission ----------------------------
 
     var timer = null, seq = 0, needMap = false;
@@ -1131,6 +1189,11 @@
                     var box = document.createElement('div');
                     box.innerHTML = r.html;
                     old.replaceWith(box.firstElementChild);
+                    if (typeof r.protocol_text === 'string') {
+                        protoSingle = r.protocol_text;
+                        protoBi = r.protocol_bilateral_text || '';
+                        renderProtocol();
+                    }
                     if (swapMap) {
                         needMap = false;
                         var activeEl = document.activeElement;
@@ -1219,7 +1282,9 @@
     });
 
     renderInterventionsList();
+    renderProtocol();
     paintAll();
     live();
     sync();
 }());
+

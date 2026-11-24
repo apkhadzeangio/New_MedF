@@ -1,4 +1,5 @@
-<div class="st-sum">
+<div class="st-sum{% if not st.am %} no-map{% endif %}">
+    {% if st.am %}
     <div class="st-sum-map">
         <div class="st-sum-leg">
             <h3>{{ st.name }}</h3>
@@ -11,6 +12,12 @@
         </div>
         {% endif %}
     </div>
+    {% else %}
+    <div class="st-sum-nomap">
+        <h3>{{ st.name }}</h3>
+        <p class="st-hint">ანგიოგრაფიის რუკა ჯერ არ არის შევსებული.</p>
+    </div>
+    {% endif %}
     <div class="st-sum-res">
         {% include "mdf/cases/_staging_result.html" with r=st.r limb=st.limb %}
         {% if st.limb.tap %}<p class="st-line">TAP: {% if st.limb.tap == 'at' %}წინა წვივის{% elif st.limb.tap == 'pt' %}უკანა წვივის{% else %}მცირე წვივის{% endif %}</p>{% endif %}

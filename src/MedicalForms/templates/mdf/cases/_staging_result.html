@@ -1,15 +1,19 @@
 <div class="st-res"{% if live %} id="st-res"{% endif %}>
     <div class="st-res-row">
+        {% if mode != 'wifi' or r.glass or r.fp_final is not None %}
         <div class="st-badge glass-{{ r.glass|default:'x' }}">
             <small>GLASS</small>
             <b>{% if r.glass %}{{ r.glass }}{% elif r.fp_final is not None %}NA{% else %}—{% endif %}</b>
             <em>{% if r.fp_final is not None %}FP {{ r.fp_final }} · IP {{ r.ip_final }}{% if limb.pedal %} · {{ limb.pedal }}{% endif %}{% else %}FP / IP აირჩიეთ{% endif %}</em>
         </div>
+        {% endif %}
+        {% if mode != 'angio' or r.wifi %}
         <div class="st-badge wifi-{{ r.wifi|default:'x' }}">
             <small>WIfI</small>
             <b>{% if r.wifi %}{{ r.wifi }}{% else %}—{% endif %}</b>
             <em>{% if r.wifi %}W{{ r.w }} I{{ r.i }}{% if r.i_auto %}*{% endif %} fI{{ r.fi }} · {{ r.wifi_risk }}{% else %}W / I / fI აირჩიეთ{% endif %}</em>
         </div>
+        {% endif %}
         {% if r.benefit is not None %}
         <div class="st-badge benefit-{{ r.benefit }}">
             <small>რევასკ. სარგებელი</small>
@@ -21,7 +25,12 @@
     <div class="st-plan plan-{{ r.plan }}"><small>რეკომენდებული სტრატეგია (PLAN)</small><b>{{ r.plan_label }}</b></div>
     {% endif %}
     {% if r.glass_text %}<p class="st-line">{{ r.glass_text }}</p>{% endif %}
-    {% if r.i_auto %}<p class="st-line">* იშემიის ხარისხი გამოთვლილია: {{ r.i_from }}{% if r.measured.abi is not None %} · ABI {{ r.measured.abi }}{% endif %}{% if r.measured.ap is not None %} · AP {{ r.measured.ap }}{% endif %}{% if r.measured.tp is not None %} · TP {{ r.measured.tp }}{% endif %}</p>{% endif %}
+    {% if not live %}
+    {% if r.measured.abi is not None or r.measured.tbi is not None or r.measured.ap is not None or r.measured.tp is not None %}
+    <p class="st-line st-dop-line">დოპლერი: {% if r.measured.abi is not None %}ABI <b>{{ r.measured.abi|floatformat:2 }}</b>{% endif %}{% if r.measured.tbi is not None %}{% if r.measured.abi is not None %} · {% endif %}TBI <b>{{ r.measured.tbi|floatformat:2 }}</b>{% endif %}{% if r.measured.ap is not None %}{% if r.measured.abi is not None or r.measured.tbi is not None %} · {% endif %}AP <b>{{ r.measured.ap|floatformat:"-1" }} mmHg</b>{% endif %}{% if r.measured.tp is not None %}{% if r.measured.abi is not None or r.measured.tbi is not None or r.measured.ap is not None %} · {% endif %}Toe pressure <b>{{ r.measured.tp|floatformat:"-1" }} mmHg</b>{% endif %}</p>
+    {% endif %}
+    {% endif %}
+    {% if r.i_auto %}<p class="st-line">* იშემიის ხარისხი გამოთვლილია: {{ r.i_from }}{% if r.measured.abi is not None %} · ABI {{ r.measured.abi }}{% endif %}{% if r.measured.tbi is not None %} · TBI {{ r.measured.tbi }}{% endif %}{% if r.measured.ap is not None %} · AP {{ r.measured.ap }}{% endif %}{% if r.measured.tp is not None %} · TP {{ r.measured.tp }}{% endif %}</p>{% endif %}
     {% if r.inflow %}<p class="st-line">Inflow: {{ r.inflow }}</p>{% endif %}
     {% if r.angiosome %}
     <p class="st-line st-angio-line">ანგიოსომა: <b>{{ r.angiosome.label }}</b> · <em class="st-iv-badge tone-{{ r.angiosome.tone }}">{{ r.angiosome.text }}</em></p>
@@ -29,7 +38,7 @@
     {% if r.suggested.has_map %}
     <p class="st-line st-runoff-line">გამავლობა: <b>{{ r.suggested.runoff_count }}/3 წვივის არტერია{% if r.suggested.patent_tibials %} ({{ r.suggested.patent_tibials|join:", " }}){% endif %}</b> · SVS ქულა: <b>{{ r.suggested.svs_runoff_text }}</b>/19 · ტერფი: <b>{{ r.suggested.foot_runoff_text }}</b>/10</p>
     {% endif %}
-    {% if live and r.suggested.has_map %}
+    {% if live and mode != 'wifi' and r.suggested.has_map %}
     <div class="st-sug{% if not r.suggested.differs %} synced{% endif %}" id="st-sug-box">
         <div class="st-sug-top">
             <div class="st-sug-main">
@@ -54,5 +63,5 @@
     </div>
     {% endif %}
     {% for n in r.notes %}<p class="st-note">{{ n }}</p>{% endfor %}
-    {% if live %}<span class="st-short" hidden>GLASS {{ r.glass|default:"—" }} · WIfI {{ r.wifi|default:"—" }}{% if r.plan %} · {% if r.plan == 'endo' %}ენდოვასკულური{% elif r.plan == 'open' %}ღია შუნტირება{% elif r.plan == 'unsure' %}განუსაზღვრელი{% elif r.plan == 'unsalvageable' %}გადარჩენადი არ არის{% else %}რევასკ. იშვიათად{% endif %}{% endif %}</span>{% endif %}
+    {% if live %}<span class="st-short" hidden>{% if mode == 'angio' %}GLASS {{ r.glass|default:"—" }}{% elif mode == 'wifi' %}WIfI {{ r.wifi|default:"—" }}{% else %}GLASS {{ r.glass|default:"—" }} · WIfI {{ r.wifi|default:"—" }}{% endif %}{% if r.plan %} · {% if r.plan == 'endo' %}ენდოვასკულური{% elif r.plan == 'open' %}ღია შუნტირება{% elif r.plan == 'unsure' %}განუსაზღვრელი{% elif r.plan == 'unsalvageable' %}გადარჩენადი არ არის{% else %}რევასკ. იშვიათად{% endif %}{% endif %}</span>{% endif %}
 </div>

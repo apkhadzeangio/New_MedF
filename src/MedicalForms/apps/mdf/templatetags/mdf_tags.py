@@ -63,3 +63,10 @@ CASE_SECTIONS = (
 def case_sections(case):
     """The filled-in text parts of a case: [(label, text), ...]."""
     return [(label, getattr(case, field)) for field, label in CASE_SECTIONS if getattr(case, field, '')]
+
+
+@register.filter
+def case_sections_no_proposal(case):
+    """Filled-in text parts of a case except proposal (which renders alongside PLAN)."""
+    return [(label, getattr(case, field)) for field, label in CASE_SECTIONS
+            if field != 'proposal' and getattr(case, field, '')]

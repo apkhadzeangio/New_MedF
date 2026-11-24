@@ -59,6 +59,7 @@ urlpatterns = [
     path('cases/<int:pk>/decision/', cases.DecisionView.as_view(), name='case-decision'),
     path('cases/<int:pk>/delete/', cases.CaseDeleteView.as_view(), name='case-delete'),
     path('cases/<int:pk>/staging/<str:side>/', cases.StagingView.as_view(), name='case-staging'),
+    path('cases/<int:pk>/wifi/<str:side>/', cases.WifiView.as_view(), name='case-wifi'),
     path('cases/<int:pk>/doppler/', cases.DopplerUploadView.as_view(), name='case-doppler'),
     path('cases/doppler/<int:pk>/edit/', cases.DopplerEditView.as_view(), name='doppler-edit'),
     path('cases/doppler/<int:pk>/file/', cases.DopplerFileView.as_view(), name='doppler-file'),
