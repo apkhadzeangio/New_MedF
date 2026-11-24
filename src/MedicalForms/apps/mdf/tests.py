@@ -1592,3 +1592,21 @@ class RefineBatch3Tests(BaseViewTest):
                                                           patient_name=niv.patient_name, m1='Heparin'))
             self.client.get(reverse('print-niv-cover'), {'t': niv.pk})
             self.assertEqual(render.call_count, 2)                   # changed -> printed afresh
+
+    def test_b3_analysis_cached_until_prescriptions_change(self):
+        from . import analysis
+        niv = self.make_niv(diagnosis='აორტის ანევრიზმა', m1='Heparin')
+        self.make_niv(diagnosis='აორტის ანევრიზმა', m1='Aspirin')
+        first = analysis.medicines_for('ანევრიზმა', 'diagnosis')
+        self.assertEqual(first[0], 2)
+        with self.assertNumQueries(2):                       # per call only the "did anything change?" query
+            self.assertEqual(analysis.medicines_for('ანევრიზმა', 'diagnosis'), first)
+            analysis.medicines_for('ანევრიზმა', 'diagnosis')
+        niv.m1 = 'Warfarin'
+        niv.save()
+        names = [m['name'] for m in analysis.medicines_for('ანევრიზმა', 'diagnosis')[1]]
+        self.assertIn('Warfarin', names)
+        niv.delete()
+        self.assertEqual(analysis.medicines_for('ანევრიზმა', 'diagnosis')[0], 1)
+        groups, _ = analysis.overview('terms', '')
+        self.assertEqual(groups[0]['count'], 1)
