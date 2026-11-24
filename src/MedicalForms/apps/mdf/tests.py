@@ -2215,6 +2215,64 @@ class StagingSchemaV2Tests(TestCase):
         self.assertIsNone(limb['fp'])                                           # booleans rejected as integers
         self.assertEqual(limb['wound_angiosome'], 'medial_plantar')
 
+    def test_lumen_sync_dates_and_bypass_note(self):
+        import datetime
+        from .staging import clean, clean_partial_date, compute, format_partial_date, interventions_view
+        today = datetime.date(2026, 11, 24)
+        self.assertEqual(clean_partial_date('06.2023', today=today), '2023-06')
+        self.assertEqual(clean_partial_date('5.6.2023', today=today), '2023-06-05')
+        self.assertEqual(clean_partial_date('05/2022', today=today), '2022-05')
+        self.assertEqual(format_partial_date('2023-06-05'), '05.06.2023')
+        self.assertEqual(format_partial_date('2023-06'), '06.2023')
+        self.assertEqual(format_partial_date('2023'), '2023')
+
+        limb = clean({
+            'segments': {
+                'cfa': {'stenosis': 'occlusion', 'calc': 3, 'flush': True},
+                'at1': {'stenosis': 'occlusion', 'reconstitution': 'yes'},
+            },
+            'interventions': [
+                # Occluded stent -> marks sfa2 & sfa3 occluded automatically
+                {'type': 'stent', 'subtype': 'des', 'segments': ['sfa2', 'sfa3'], 'status': 'occluded'},
+                # Restenosed DCB -> downgrades at1 from occlusion to severe and clears CTO flags
+                {'type': 'angioplasty', 'subtype': 'dcb', 'segments': ['at1'], 'status': 'restenosed'},
+                # Patent patch endarterectomy -> clears cfa occlusion while preserving calc=3
+                {'type': 'endarterectomy', 'subtype': 'patch_bovine', 'segments': ['cfa'], 'status': 'patent'},
+                # Newer 2024 patent thrombectomy entered BEFORE older 2021 occluded stent -> 2024 wins
+                {'type': 'thrombectomy', 'subtype': 'fogarty', 'segments': ['pop1'],
+                 'performed_on': '06.2024', 'status': 'patent'},
+                {'type': 'stent', 'subtype': 'bms', 'segments': ['pop1'],
+                 'performed_on': '2021', 'status': 'occluded'},
+            ],
+        }, today=today)
+        self.assertEqual(limb['segments']['sfa2'], {'stenosis': 'occlusion'})
+        self.assertEqual(limb['segments']['sfa3'], {'stenosis': 'occlusion'})
+        self.assertEqual(limb['segments']['at1'], {'stenosis': 'severe'})
+        self.assertEqual(limb['segments']['cfa'], {'calc': 3})
+        self.assertNotIn('pop1', limb['segments'])                              # patent 2024 thrombectomy beat 2021 stent
+
+        # Functioning bypass triggers GLASS reminder note; occluded bypass does not
+        r_pat = compute({'fp': 3, 'ip': 1, 'interventions': [
+            {'type': 'bypass', 'conduit': 'gsv_reversed', 'proximal': 'cfa', 'distal': 'pop3', 'status': 'patent'},
+        ]})
+        self.assertTrue(any('ფუნქციონირებს შუნტი' in n for n in r_pat['notes']))
+        r_occ = compute({'fp': 3, 'ip': 1, 'interventions': [
+            {'type': 'bypass', 'conduit': 'ptfe', 'proximal': 'cfa', 'distal': 'pop1', 'status': 'occluded'},
+        ]})
+        self.assertFalse(any('ფუნქციონირებს შუნტი' in n for n in r_occ['notes']))
+
+        rows = interventions_view([
+            {'type': 'bypass', 'conduit': 'ptfe_ringed', 'cuff': 'miller', 'proximal': 'cfa', 'distal': 'pt3',
+             'performed_on': '2022-06', 'status': 'stenosed', 'site': 'distal', 'note': '75%'},
+            {'type': 'amputation', 'subtype': 'tma', 'performed_on': '2024-03-10', 'status': 'nonhealing'},
+        ])
+        self.assertEqual((rows[0]['title'], rows[0]['date_display'], rows[0]['tone']),
+                         ('შუნტირება: CFA → PT დისტ.', '06.2022', 'warn'))
+        self.assertIn('Miller-ის მანჟეტი', rows[0]['detail'])
+        self.assertIn('დისტალური ანასტომოზი', rows[0]['status_label'])
+        self.assertEqual((rows[1]['title'], rows[1]['date_display'], rows[1]['tone']),
+                         ('ტრანსმეტატარზული (TMA)', '10.03.2024', 'bad'))
+
 
 class StagingPageTests(PrivateMediaTest):
 
@@ -2226,6 +2284,9 @@ class StagingPageTests(PrivateMediaTest):
         self.assertContains(page, 'data-seg="sfa2"')
         self.assertContains(page, 'data-seg="pop3"')
         self.assertContains(page, 'data-seg="mpa"')
+        self.assertContains(page, 'id="st-iv-editor"')
+        self.assertNotContains(page, 'data-flag="rx"')
+        self.assertNotContains(page, 'data-flag="by"')
         self.assertContains(page, 'FP 4')
         self.assertEqual(self.client.get(reverse('case-staging', args=[case.pk, 'X'])).status_code, 404)
         data = {'segments': json.dumps({'sfa2': {'s': 'oc'}, 'pop1': {'s': 'st', 'ca': True}}),
@@ -2293,3 +2354,57 @@ class StagingPageTests(PrivateMediaTest):
                          {'segments': json.dumps({'sfa2': {'stenosis': 'occlusion'}}), 'fp': '3', 'ip': '1', 'cfa': 'A'})
         v1_case.refresh_from_db()
         self.assertEqual(len(v1_case.staging['R']['interventions']), 2)
+
+    def test_interventions_crud_summary_and_presentation(self):
+        case = self.make_case(side='R', past_history='კორონარული შუნტირება 2019')
+        url = reverse('case-staging', args=[case.pk, 'R'])
+        interventions = [
+            {'id': 'iv1', 'type': 'bypass', 'conduit_group': 'vein', 'conduit': 'gsv_reversed',
+             'proximal': 'cfa', 'distal': 'pop3', 'performed_on': '06.2022',
+             'status': 'stenosed', 'site': 'distal', 'note': 'ანასტომოზის 75% სტენოზი'},
+            {'id': 'iv2', 'type': 'stent', 'subtype': 'des', 'segments': ['sfa2', 'sfa3'],
+             'performed_on': '2021', 'status': 'isr_2', 'note': ''},
+            {'id': 'iv3', 'type': 'angioplasty', 'subtype': 'dcb', 'segments': ['at2'],
+             'performed_on': '2023-09', 'status': 'patent', 'note': ''},
+            {'id': 'iv4', 'type': 'endarterectomy', 'subtype': 'patch_bovine', 'segments': ['cfa', 'pfa'],
+             'performed_on': '06.2022', 'status': 'patent', 'note': ''},
+            {'id': 'iv5', 'type': 'amputation', 'subtype': 'toes', 'performed_on': '12.10.2024',
+             'status': 'healed', 'note': 'I თითი'},
+            {'id': 'iv6', 'type': 'thrombectomy', 'subtype': 'fogarty', 'segments': ['pop1'],
+             'performed_on': '2024-01', 'status': 'occluded', 'note': ''},
+        ]
+        payload = {
+            'segments': json.dumps({}),
+            'interventions': json.dumps(interventions),
+            'fp': '3', 'ip': '1', 'pedal': 'P0', 'tap': 'at',
+            'w': '2', 'i': '2', 'fi': '0', 'risk': 'avg', 'vein': 'yes', 'cfa': 'A',
+        }
+        # Live preview includes the functioning-bypass GLASS reminder note
+        preview = self.client.post(url, {**payload, 'preview': '1'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        self.assertIn('ფუნქციონირებს შუნტი', preview['html'])
+
+        self.client.post(url, payload)
+        case.refresh_from_db()
+        self.assertEqual(case.past_history, 'კორონარული შუნტირება 2019')     # card free-text untouched
+        saved = case.staging['R']
+        self.assertEqual(len(saved['interventions']), 6)
+        # Stent ISR-2 and occluded thrombectomy automatically synced onto native segment lumen
+        self.assertEqual(saved['segments']['sfa2']['stenosis'], 'severe')
+        self.assertEqual(saved['segments']['sfa3']['stenosis'], 'severe')
+        self.assertEqual(saved['segments']['pop1']['stenosis'], 'occlusion')
+
+        # Shown on both Case detail page and Conference Presentation slide
+        for page in (self.client.get(reverse('case', args=[case.pk])),
+                     self.client.get(reverse('cases-present'), {'ids': case.pk})):
+            self.assertContains(page, 'წარსული ჩარევები')
+            self.assertContains(page, 'შუნტირება: CFA → P3')
+            self.assertContains(page, '06.2022')
+            self.assertContains(page, 'Tosaka II')
+            self.assertContains(page, 'ქსენოპერიკარდიუმის პატჩით')
+            self.assertContains(page, 'თით(ებ)ის ამპუტაცია')
+            self.assertContains(page, 'Fogarty')
+
+        # Deleting interventions leaves only remaining items
+        self.client.post(url, {**payload, 'interventions': json.dumps([interventions[4]])})
+        case.refresh_from_db()
+        self.assertEqual([iv['id'] for iv in case.staging['R']['interventions']], ['iv5'])

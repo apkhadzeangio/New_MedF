@@ -17,7 +17,10 @@
     <form method="post" id="st-form" class="st-grid" data-preview="{% url 'case-staging' case.pk side %}" autocomplete="off">
         {% csrf_token %}
         {{ segments_json|json_script:"st-segments" }}
+        {{ interventions_json|json_script:"st-interventions" }}
+        {{ iv_catalog_json|json_script:"st-iv-catalog" }}
         <input type="hidden" name="segments" value="">
+        <input type="hidden" name="interventions" value="">
 
         <section class="x-card st-map-card" aria-label="არტერიების რუკა">
             <h2>არტერიების რუკა — {{ side_name }}</h2>
@@ -25,7 +28,7 @@
                 {% for key, label in S.STATES %}<button type="button" class="st-tool t-{{ key }}{% if key == 'oc' %} on{% endif %}" data-state="{{ key }}"><i></i>{{ label }}</button>{% endfor %}
                 {% for key, label in S.FLAGS %}<button type="button" class="st-tool t-{{ key }}" data-flag="{{ key }}"><i></i>{{ label }}</button>{% endfor %}
             </div>
-            <p class="st-hint">აირჩიეთ ზემოთ რა მოვნიშნოთ და დააჭირეთ არტერიის სეგმენტს. ხელახლა დაჭერა — მოხსნა.</p>
+            <p class="st-hint">აირჩიეთ ზემოთ რა მოვნიშნოთ და დააჭირეთ არტერიის სეგმენტს. ხელახლა დაჭერა — მოხსნა. წარსული ჩარევები იწერება ცალკე ბლოკში.</p>
             <div class="st-map">{% include "mdf/cases/_artery_map.html" with interactive=True side_name=side_name %}</div>
             <div class="fld">სამიზნე არტერიის გზა (TAP)
                 <div class="cs-seg sm">{% for key, label in S.TAP %}<label><input type="radio" name="tap" value="{{ key }}" {% if limb.tap == key %}checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div>
@@ -44,6 +47,76 @@
                 {% include "mdf/cases/_staging_result.html" with live=True %}
                 <p class="st-src">{{ S.TABLES_SOURCE }} დამხმარე შეფასებაა — გადაწყვეტილებას ქირურგი / კონფერენცია იღებს.</p>
             </div>
+
+            <section class="x-card st-iv-card" aria-label="წარსული ჩარევები კიდურზე">
+                <div class="st-iv-head">
+                    <h2>წარსული ჩარევები კიდურზე</h2>
+                    <button type="button" class="x-btn sm" id="st-iv-add">+ ჩარევის დამატება</button>
+                </div>
+                <p class="st-hint" id="st-iv-empty">შუნტირება, სტენტირება, ანგიოპლასტიკა, ენდარტერექტომია, თრომბექტომია ან მცირე ამპუტაცია ჯერ არ არის ჩაწერილი.</p>
+                <ul class="st-iv-list" id="st-iv-list"></ul>
+
+                <div class="st-iv-editor" id="st-iv-editor" hidden>
+                    <div class="fld">ჩარევის ტიპი
+                        <div class="st-iv-types" id="st-iv-types" role="radiogroup" aria-label="ჩარევის ტიპი"></div>
+                    </div>
+
+                    <div id="st-iv-bypass-fields" class="st-iv-group">
+                        <div class="st-iv-row2">
+                            <label class="fld">კონდუიტის ჯგუფი
+                                <select id="st-iv-conduit-group" class="form-select form-select-sm"></select>
+                            </label>
+                            <label class="fld">კონდუიტი
+                                <select id="st-iv-conduit" class="form-select form-select-sm"></select>
+                            </label>
+                        </div>
+                        <label class="st-check" id="st-iv-cuff-wrap"><input type="checkbox" id="st-iv-cuff"> დისტალური ვენური მანჟეტი (Miller / Taylor)</label>
+                        <div class="st-iv-row2">
+                            <label class="fld">პროქსიმალური ანასტომოზი
+                                <select id="st-iv-proximal" class="form-select form-select-sm"></select>
+                            </label>
+                            <label class="fld">დისტალური ანასტომოზი
+                                <select id="st-iv-distal" class="form-select form-select-sm"></select>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="st-iv-subtype-wrap" class="st-iv-group" hidden>
+                        <label class="fld"><span id="st-iv-subtype-label">ქვეტიპი</span>
+                            <select id="st-iv-subtype" class="form-select form-select-sm"></select>
+                        </label>
+                    </div>
+
+                    <div id="st-iv-segments-wrap" class="st-iv-group" hidden>
+                        <div class="fld">სეგმენტები (ერთი ან რამდენიმე)
+                            <div class="st-iv-seg-picker" id="st-iv-seg-picker"></div>
+                        </div>
+                    </div>
+
+                    <div class="st-iv-row2">
+                        <label class="fld">მდგომარეობა (სტატუსი)
+                            <select id="st-iv-status" class="form-select form-select-sm"></select>
+                        </label>
+                        <label class="fld" id="st-iv-site-wrap" hidden>შევიწროების ადგილი
+                            <select id="st-iv-site" class="form-select form-select-sm"></select>
+                        </label>
+                        <label class="fld">თარიღი (არასავალდებულო)
+                            <input type="text" id="st-iv-date" class="form-control form-control-sm" maxlength="10" placeholder="მაგ. 2023 ან 06.2023">
+                        </label>
+                    </div>
+
+                    <label class="fld">შენიშვნა (არასავალდებულო)
+                        <input type="text" id="st-iv-note" class="form-control form-control-sm" maxlength="200" placeholder="მაგ. I–II თითი, ან დისტალური ანასტომოზის 75% სტენოზი">
+                    </label>
+                    <p class="st-src" id="st-iv-sync-hint" hidden>სტატუსი ავტომატურად აისახება არჩეული სეგმენტის სანათურზე.</p>
+                    <p class="st-iv-err" id="st-iv-err" role="alert" hidden></p>
+
+                    <div class="st-iv-actions">
+                        <button type="button" class="x-btn primary sm" id="st-iv-commit">ჩამატება</button>
+                        <button type="button" class="x-btn sm" id="st-iv-cancel">გაუქმება</button>
+                    </div>
+                </div>
+            </section>
 
             <section class="x-card" aria-label="GLASS">
                 <h2>GLASS — ანატომია</h2>

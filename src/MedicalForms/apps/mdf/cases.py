@@ -520,6 +520,7 @@ def staging_views(case):
         limb = staging.get_limb(case.staging, side, today=today)
         result = staging.compute(limb, staging.doppler_measurements(doppler_data, side))
         out.append({'side': side, 'name': name, 'limb': limb, 'r': result,
+                    'interventions': staging.interventions_view(limb.get('interventions')),
                     'am': staging.map_context(limb.get('segments') or {}, side, limb.get('interventions'))})
     return out
 
@@ -537,6 +538,8 @@ class StagingView(LoginRequiredMixin, generic.View):
             'am': staging.map_context(limb.get('segments') or {}, side, limb.get('interventions')),
             'S': staging,
             'segments_json': limb.get('segments') or {},
+            'interventions_json': limb.get('interventions') or [],
+            'iv_catalog_json': staging.intervention_catalog(),
         }
 
     def get(self, request, pk, side):

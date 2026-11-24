@@ -248,7 +248,7 @@ VESSEL_INTERVENTION_STATUS = (
     ('occluded', 'ოკლუზია'),
 )
 
-# Legacy toolbar options (kept for staging.html until T2/T5 replace the toolbar)
+# Quick toolbar options on the map (prior interventions now live in their own structured list)
 STATES = (
     ('n', 'ნორმა'),
     ('mild', 'სტენოზი <50%'),
@@ -257,9 +257,26 @@ STATES = (
 )
 FLAGS = (
     ('ca', 'მძიმე კალციფიკაცია'),
-    ('rx', 'სტენტი / ანგიოპლასტიკა'),
-    ('by', 'შუნტი'),
 )
+
+SEGMENT_GROUPS = (
+    ('inflow', 'აორტო-თეძო-ბარძაყი'),
+    ('fp', 'ბარძაყ-მუხლქვეშა'),
+    ('ip', 'წვივი'),
+    ('pedal', 'ტერფი'),
+)
+SEGMENT_SHORT = {
+    'aorta': 'Ao', 'cia': 'CIA', 'iia': 'IIA', 'eia': 'EIA', 'cfa': 'CFA', 'pfa': 'PFA',
+    'sfa1': 'SFA პროქს.', 'sfa2': 'SFA შუა', 'sfa3': 'SFA დისტ.',
+    'pop1': 'P1', 'pop2': 'P2', 'pop3': 'P3',
+    'tpt': 'TPT',
+    'at1': 'AT პროქს.', 'at2': 'AT შუა', 'at3': 'AT დისტ.',
+    'pt1': 'PT პროქს.', 'pt2': 'PT შუა', 'pt3': 'PT დისტ.',
+    'per1': 'PER პროქს.', 'per2': 'PER შუა', 'per3': 'PER დისტ.',
+    'dp': 'DP', 'mpa': 'MPA', 'lpa': 'LPA', 'arch': 'ტერფის რკალი',
+    'contralateral_cfa': 'მოპირდაპირე CFA (fem-fem)',
+    'axillary': 'აქსილარული არტერია',
+}
 
 MAP_VIEW = (-70, -230, 420, 2006)          # x, y, width, height of the drawing
 LEG_IMAGE = {'src': 'img/limb/leg-anterior.webp', 'width': 285, 'height': 1776}
@@ -311,27 +328,45 @@ def segment_path(proximal, distal):
 
 
 def clean_partial_date(value, today=None):
-    """Accepts YYYY, YYYY-MM or YYYY-MM-DD (1950..today); invalid or future dates -> ''."""
-    raw = str(value or '').strip()
+    """Accepts YYYY, YYYY-MM, YYYY-MM-DD (or MM.YYYY / DD.MM.YYYY) in 1950..today; else ''."""
+    raw = str(value or '').strip().replace('/', '.')
     if not raw:
         return ''
     today = today or datetime.date.today()
+    if '.' in raw:
+        dots = raw.split('.')
+        if len(dots) == 2 and all(p.isdigit() for p in dots) and len(dots[1]) == 4:
+            raw = f'{int(dots[1]):04d}-{int(dots[0]):02d}'
+        elif len(dots) == 3 and all(p.isdigit() for p in dots) and len(dots[2]) == 4:
+            raw = f'{int(dots[2]):04d}-{int(dots[1]):02d}-{int(dots[0]):02d}'
+        else:
+            return ''
     parts = raw.split('-')
     if len(parts) == 1 and len(parts[0]) == 4 and parts[0].isdigit():
         year = int(parts[0])
         return raw if 1950 <= year <= today.year else ''
-    if len(parts) == 2 and len(parts[0]) == 4 and len(parts[1]) == 2 and all(p.isdigit() for p in parts):
+    if len(parts) == 2 and len(parts[0]) == 4 and 1 <= len(parts[1]) <= 2 and all(p.isdigit() for p in parts):
         year, month = int(parts[0]), int(parts[1])
         if 1950 <= year and 1 <= month <= 12 and (year, month) <= (today.year, today.month):
             return f'{year:04d}-{month:02d}'
         return ''
-    if len(parts) == 3 and len(parts[0]) == 4 and len(parts[1]) == 2 and len(parts[2]) == 2:
+    if len(parts) == 3 and len(parts[0]) == 4 and all(p.isdigit() and 1 <= len(p) <= 2 for p in parts[1:]):
         try:
-            dt = datetime.date.fromisoformat(raw)
+            dt = datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
         except ValueError:
             return ''
-        return raw if 1950 <= dt.year and dt <= today else ''
+        return dt.isoformat() if 1950 <= dt.year and dt <= today else ''
     return ''
+
+
+def format_partial_date(value):
+    """Canonical YYYY / YYYY-MM / YYYY-MM-DD -> Georgian clinic display (YYYY / MM.YYYY / DD.MM.YYYY)."""
+    parts = str(value or '').strip().split('-')
+    if len(parts) == 3:
+        return f'{parts[2]}.{parts[1]}.{parts[0]}'
+    if len(parts) == 2:
+        return f'{parts[1]}.{parts[0]}'
+    return parts[0] if parts and parts[0] else ''
 
 
 def _remap_raw_segments(raw):
@@ -556,9 +591,170 @@ def upgrade_limb(data, today=None):
             })
 
     out['v'] = SCHEMA_VERSION
-    out['segments'] = clean_segments(raw_segs)
-    out['interventions'] = clean_interventions(interventions, today=today)
+    cleaned_ivs = clean_interventions(interventions, today=today)
+    out['segments'] = sync_interventions_lumen(clean_segments(raw_segs), cleaned_ivs)
+    out['interventions'] = cleaned_ivs
     return out
+
+
+_INLINE_TYPES = ('stent', 'angioplasty', 'endarterectomy', 'thrombectomy')
+
+
+def sync_interventions_lumen(segments, interventions):
+    """Keep segment lumen consistent with the latest in-line intervention (stent, PTA, patch, thrombectomy)."""
+    out = {k: dict(v) for k, v in (segments or {}).items()}
+    inline = [iv for iv in (interventions or []) if iv.get('type') in _INLINE_TYPES]
+    if not inline:
+        return out
+
+    # Order dated procedures chronologically while keeping undated procedures at their list positions
+    dated_slots = [i for i, iv in enumerate(inline) if iv.get('performed_on')]
+    dated_sorted = sorted((inline[i] for i in dated_slots), key=lambda iv: iv['performed_on'])
+    ordered = list(inline)
+    for slot, iv in zip(dated_slots, dated_sorted):
+        ordered[slot] = iv
+
+    latest_for_seg = {}
+    for iv in ordered:
+        for seg in iv.get('segments') or ():
+            latest_for_seg[seg] = iv
+
+    for iv in ordered:
+        active = [s for s in (iv.get('segments') or ()) if latest_for_seg.get(s) is iv]
+        if not active:
+            continue
+        status = iv.get('status')
+        if status == 'patent':
+            for s in active:
+                cur = out.get(s)
+                if cur and cur.get('stenosis') in ('moderate', 'severe', 'occlusion'):
+                    cur.pop('stenosis', None)
+                    cur.pop('flush', None)
+                    cur.pop('reconstitution', None)
+                    cur.pop('morph', None)
+                    if not cur.get('aneurysm'):
+                        cur.pop('length_cm', None)
+                    if not cur:
+                        out.pop(s, None)
+        elif status in ('isr_1', 'isr_2', 'restenosed'):
+            for s in active:
+                if out.get(s, {}).get('stenosis') == 'occlusion':
+                    out[s]['stenosis'] = 'severe'
+                    out[s].pop('flush', None)
+                    out[s].pop('reconstitution', None)
+            if not any(out.get(s, {}).get('stenosis') in ('moderate', 'severe') for s in active):
+                for s in active:
+                    out.setdefault(s, {})['stenosis'] = 'severe'
+        elif status == 'occluded':
+            if not any(out.get(s, {}).get('stenosis') == 'occlusion' for s in active):
+                for s in active:
+                    out.setdefault(s, {})['stenosis'] = 'occlusion'
+    return out
+
+
+def interventions_view(interventions):
+    """Human-readable Georgian intervention records for the case summary and presentation slide."""
+    type_labels = dict(INTERVENTION_TYPES)
+    conduit_labels = {code: label for items in BYPASS_CONDUITS.values() for code, label in items}
+    group_labels = dict(BYPASS_CONDUIT_GROUPS)
+    bypass_status_labels = dict(BYPASS_STATUS)
+    bypass_site_labels = dict(BYPASS_SITES)
+    stent_sub_labels = dict(STENT_SUBTYPES)
+    stent_status_labels = dict(STENT_STATUS)
+    pta_sub_labels = dict(ANGIOPLASTY_SUBTYPES)
+    ea_sub_labels = dict(ENDARTERECTOMY_SUBTYPES)
+    amp_sub_labels = dict(AMPUTATION_SUBTYPES)
+    amp_status_labels = dict(AMPUTATION_STATUS)
+    thromb_sub_labels = dict(THROMBECTOMY_SUBTYPES)
+    vessel_status_labels = dict(VESSEL_INTERVENTION_STATUS)
+
+    rows = []
+    for iv in clean_interventions(interventions):
+        kind = iv['type']
+        detail_parts = []
+        if kind == 'bypass':
+            prox = SEGMENT_SHORT.get(iv['proximal'], iv['proximal'])
+            dist = SEGMENT_SHORT.get(iv['distal'], iv['distal'])
+            title = f'შუნტირება: {prox} → {dist}'
+            if iv['conduit']:
+                detail_parts.append(conduit_labels.get(iv['conduit'], iv['conduit']))
+            elif iv['conduit_group'] != 'unspecified':
+                detail_parts.append(group_labels.get(iv['conduit_group'], ''))
+            else:
+                detail_parts.append('კონდუიტი დაუზუსტებელია')
+            if iv.get('cuff') == 'miller':
+                detail_parts.append('Miller-ის მანჟეტი')
+            status_label = bypass_status_labels.get(iv['status'], iv['status'])
+            if iv['status'] == 'stenosed' and iv.get('site'):
+                status_label += f' ({bypass_site_labels.get(iv["site"], iv["site"])})'
+            tone = 'ok' if iv['status'] == 'patent' else ('warn' if iv['status'] == 'stenosed' else 'bad')
+        elif kind == 'amputation':
+            title = amp_sub_labels.get(iv['subtype'], type_labels[kind])
+            status_label = amp_status_labels.get(iv['status'], iv['status'])
+            tone = 'ok' if iv['status'] == 'healed' else 'bad'
+        else:
+            segs_txt = ', '.join(SEGMENT_SHORT.get(s, s) for s in iv['segments'])
+            short_kind = {'angioplasty': 'ანგიოპლასტიკა', 'endarterectomy': 'ენდარტერექტომია'}.get(
+                kind, type_labels[kind])
+            title = f'{short_kind}: {segs_txt}'
+            sub_map = {
+                'stent': stent_sub_labels, 'angioplasty': pta_sub_labels,
+                'endarterectomy': ea_sub_labels, 'thrombectomy': thromb_sub_labels,
+            }[kind]
+            if iv.get('subtype') and iv['subtype'] != 'unspecified':
+                detail_parts.append(sub_map.get(iv['subtype'], iv['subtype']))
+            status_map = stent_status_labels if kind == 'stent' else vessel_status_labels
+            status_label = status_map.get(iv['status'], iv['status'])
+            tone = 'ok' if iv['status'] == 'patent' else ('bad' if iv['status'] == 'occluded' else 'warn')
+
+        rows.append({
+            'id': iv['id'],
+            'type': kind,
+            'title': title,
+            'detail': ' · '.join(p for p in detail_parts if p),
+            'date_display': format_partial_date(iv.get('performed_on')),
+            'status_label': status_label,
+            'tone': tone,
+            'note': iv.get('note') or '',
+        })
+    return rows
+
+
+def intervention_catalog():
+    """Options and anatomical metadata passed once as JSON to staging.js (single source of truth)."""
+    grouped = []
+    for grp_key, grp_label in SEGMENT_GROUPS:
+        items = [[key, SEGMENT_SHORT.get(key, key), name]
+                 for key, name, _short, _d, g, _w, _lab in SEGMENTS if g == grp_key]
+        grouped.append({'key': grp_key, 'label': grp_label, 'items': items})
+    return {
+        'types': list(INTERVENTION_TYPES),
+        'conduit_groups': [g for g in BYPASS_CONDUIT_GROUPS if g[0] != 'unspecified'],
+        'conduits': {k: list(v) for k, v in BYPASS_CONDUITS.items() if k != 'unspecified'},
+        'cuffs': list(BYPASS_CUFFS),
+        'extra_origins': list(EXTRA_ORIGINS),
+        'bypass_status': list(BYPASS_STATUS),
+        'bypass_sites': list(BYPASS_SITES),
+        'subtypes': {
+            'stent': [x for x in STENT_SUBTYPES if x[0] != 'unspecified'],
+            'angioplasty': [x for x in ANGIOPLASTY_SUBTYPES if x[0] != 'unspecified'],
+            'endarterectomy': [x for x in ENDARTERECTOMY_SUBTYPES if x[0] != 'unspecified'],
+            'amputation': list(AMPUTATION_SUBTYPES),
+            'thrombectomy': [x for x in THROMBECTOMY_SUBTYPES if x[0] != 'unspecified'],
+        },
+        'statuses': {
+            'bypass': list(BYPASS_STATUS),
+            'stent': list(STENT_STATUS),
+            'angioplasty': list(VESSEL_INTERVENTION_STATUS),
+            'endarterectomy': list(VESSEL_INTERVENTION_STATUS),
+            'amputation': list(AMPUTATION_STATUS),
+            'thrombectomy': list(VESSEL_INTERVENTION_STATUS),
+        },
+        'segment_groups': grouped,
+        'segment_short': SEGMENT_SHORT,
+        'segment_order': [s[0] for s in SEGMENTS],
+        'segment_next': {k: list(v) for k, v in SEGMENT_NEXT.items()},
+    }
 
 
 def _display_state(seg):
@@ -577,7 +773,7 @@ def segment_view(segments, mirror=False, interventions=None):
     norm_segs = _remap_raw_segments(segments)
     rx_marked, by_marked = set(), set()
     for iv in clean_interventions(interventions):
-        if iv['type'] in ('stent', 'angioplasty'):
+        if iv['type'] in _INLINE_TYPES:
             rx_marked.update(iv['segments'])
         elif iv['type'] == 'bypass':
             by_marked.update(segment_path(iv['proximal'], iv['distal']))
@@ -950,4 +1146,8 @@ def compute(limb, measured=None):
             out['plan_label'] = PLAN_LABEL[key] + ' — საშუალო რისკი, ვარგისი ვენა (სურ. 6.4).'
     if limb.get('pedal') == 'P2':
         out['notes'].append('P2: კოჭს სამიზნე არტერია არ კვეთს — WIfI 3–4-ზე შეიძლება იყოს „no-option“ (სურ. 6.4 P2-ს არ მოიცავს).')
+    ivs = upgrade_limb(limb).get('interventions') or () if isinstance(limb, dict) else ()
+    if any(iv['type'] == 'bypass' and iv['status'] in ('patent', 'stenosed') for iv in ivs):
+        out['notes'].append('კიდურზე ფუნქციონირებს შუნტი — გაითვალისწინეთ, რომ GLASS პირველადი ნატიური არტერიების '
+                            'შესაფასებლად არის შექმნილი (GVG ნაწ. 5).')
     return out
