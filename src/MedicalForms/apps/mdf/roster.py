@@ -17,6 +17,7 @@ Ultrasound on-call is a later stage.
 """
 import calendar
 import datetime
+import hashlib
 import random
 
 from django.contrib import messages
@@ -412,6 +413,7 @@ class RosterGenerateView(LoginRequiredMixin, generic.TemplateView):
             row['hist_heavy'] = hist_heavy.get(row['person'].pk)
         ctx.update({
             'year': year, 'month': month, 'month_name': MONTHS[month - 1], 'rows': rows, 'seed': seed,
+            'fingerprint': fingerprint(rows),
             'rotation': people, 'specials': RosterPerson.objects.filter(is_active=True, in_rotation=False),
             'stats': stats,
             'changed': sum(1 for r in rows if r['changed']),
@@ -423,6 +425,11 @@ class RosterGenerateView(LoginRequiredMixin, generic.TemplateView):
     def post(self, request, *args, **kwargs):
         year, month = parse_month(request.POST)
         rows, seed = generate(year, month, _seed(request.POST))      # the same as the preview
+        if request.POST.get('fp') and request.POST['fp'] != fingerprint(rows):
+            # someone changed a day or the doctors list after this preview was opened
+            messages.warning(request, 'სანამ წინასწარ ნახვა ღია იყო, განრიგში ან მორიგეების სიაში რაღაც შეიცვალა. '
+                                      'შეამოწმეთ განახლებული განაწილება და დაადასტურეთ ხელახლა.')
+            return HttpResponseRedirect(reverse('roster-generate') + f'?y={year}&m={month}&seed={seed}')
         with transaction.atomic():
             for r in rows:
                 if r['locked']:
@@ -433,6 +440,12 @@ class RosterGenerateView(LoginRequiredMixin, generic.TemplateView):
             log(request.user, f'{MONTHS[month - 1]} {year}: განრიგი განაწილდა ავტომატურად', datetime.date(year, month, 1))
         messages.success(request, f'{MONTHS[month - 1]} {year} — განრიგი შენახულია.')
         return HttpResponseRedirect(reverse('roster') + f'?y={year}&m={month}')
+
+
+def fingerprint(rows):
+    """Short hash of a distribution: the confirm button saves only what was shown."""
+    text = ';'.join(f"{r['date']:%d}:{r['person'].pk if r['person'] else '-'}:{int(bool(r['locked']))}" for r in rows)
+    return hashlib.sha1(text.encode()).hexdigest()[:16]
 
 
 def _or(value, default):

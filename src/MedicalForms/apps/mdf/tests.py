@@ -1524,3 +1524,20 @@ class RefineBatch3Tests(BaseViewTest):
         self.assertContains(home, 'action="/logout/"')  # the menu posts
         self.client.post('/logout/')
         self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_a6_roster_confirm_saves_only_what_was_previewed(self):
+        import datetime as dt
+        from .models import RosterDay, RosterPerson
+        page = self.client.get(reverse('roster-generate'), dict(y=2026, m=12, seed=5))
+        fp = page.context['fingerprint']
+        # meanwhile someone fixes 10 December by hand
+        other = RosterPerson.objects.get(name='გიგა')
+        RosterDay.objects.create(date=dt.date(2026, 12, 10), person=other, locked=True, source='manual')
+        resp = self.client.post(reverse('roster-generate'), dict(y=2026, m=12, seed=5, fp=fp))
+        self.assertRedirects(resp, reverse('roster-generate') + '?y=2026&m=12&seed=5', fetch_redirect_response=False)
+        self.assertEqual(RosterDay.objects.filter(date__year=2026, date__month=12).count(), 1)   # nothing saved
+        # the fresh preview saves fine
+        fp = self.client.get(reverse('roster-generate'), dict(y=2026, m=12, seed=5)).context['fingerprint']
+        self.client.post(reverse('roster-generate'), dict(y=2026, m=12, seed=5, fp=fp))
+        self.assertEqual(RosterDay.objects.filter(date__year=2026, date__month=12).count(), 31)
+        self.assertEqual(RosterDay.objects.get(date=dt.date(2026, 12, 10)).person, other)

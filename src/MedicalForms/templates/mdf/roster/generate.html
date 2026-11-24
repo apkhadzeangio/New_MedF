@@ -53,6 +53,7 @@
                 {% csrf_token %}
                 <input type="hidden" name="y" value="{{ year }}"><input type="hidden" name="m" value="{{ month }}">
                 <input type="hidden" name="seed" value="{{ seed }}">
+                <input type="hidden" name="fp" value="{{ fingerprint }}">
                 <button type="submit" class="x-btn primary w-100 justify-content-center">განრიგის დადასტურება</button>
             </form>
             <a class="x-btn w-100 justify-content-center" href="{% url 'roster' %}?y={{ year }}&m={{ month }}">გაუქმება</a>
