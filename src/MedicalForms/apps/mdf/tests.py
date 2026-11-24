@@ -7,10 +7,10 @@ import shutil
 from unittest import skipUnless
 
 from django.contrib.auth.models import User
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.http import QueryDict
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from .models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
@@ -40,6 +40,7 @@ class BaseViewTest(TestCase):
 
     def setUp(self):
         cache.clear()
+        caches['pdf'].clear()
         self.user = User.objects.create_user('doc', password='Secret-pass-123')
         self.client.force_login(self.user)
 
@@ -1541,3 +1542,53 @@ class RefineBatch3Tests(BaseViewTest):
         self.client.post(reverse('roster-generate'), dict(y=2026, m=12, seed=5, fp=fp))
         self.assertEqual(RosterDay.objects.filter(date__year=2026, date__month=12).count(), 31)
         self.assertEqual(RosterDay.objects.get(date=dt.date(2026, 12, 10)).person, other)
+
+    def test_a3_parallel_edit_keeps_both_versions(self):
+        niv = self.make_niv(patient_name='ბერიძე ნინო', m1='Aspirin')
+        page = self.client.get(reverse('niv-cover'), {'t': niv.pk})
+        version = niv.version
+        self.assertContains(page, f'value="{version}" name="v"')
+        # a colleague saves first
+        ina = User.objects.create_user('ina', password='x')
+        other = Client()
+        other.force_login(ina)
+        other.post(reverse('niv-create'), dict(t=niv.pk, v=version, action='save', patient_name='ბერიძე ნინო', m1='Heparin'))
+        niv.refresh_from_db()
+        self.assertEqual((niv.m1, niv.updated_by), ('Heparin', ina))
+        # now this doctor saves the old page: the colleague's version stays, a copy is made
+        r = self.client.post(reverse('niv-create'), dict(t=niv.pk, v=version, action='save', patient_name='ბერიძე ნინო', m1='Clopidogrel'))
+        copy = NivForm.objects.exclude(pk=niv.pk).get()
+        self.assertRedirects(r, f"{reverse('niv-cover')}?t={copy.pk}", fetch_redirect_response=False)
+        niv.refresh_from_db()
+        self.assertEqual((niv.m1, copy.m1, copy.updated_by), ('Heparin', 'Clopidogrel', self.user))
+        self.assertContains(self.client.get(r.url), 'ცალკე ასლად')
+        # an up-to-date page saves in place as before
+        r = self.client.post(reverse('niv-create'), dict(t=niv.pk, v=niv.version, action='save', patient_name='ბერიძე ნინო', m1='Warfarin'))
+        self.assertEqual(NivForm.objects.count(), 2)
+        niv.refresh_from_db()
+        self.assertEqual(niv.m1, 'Warfarin')
+
+    def test_a3_print_context_unchanged(self):
+        from .views import NivDocumentView
+        niv = self.make_niv()
+        view = NivDocumentView()
+        view.request = RequestFactory().get('/', {'t': niv.pk})
+        keys = set(view.get_context_data())
+        self.assertNotIn('updated_at', keys)
+        self.assertNotIn('updated_by', keys)
+
+    def test_b1_pdf_cached_until_saved(self):
+        from unittest import mock
+        from django_docxtpl import DocxTemplateView
+        niv = self.make_niv()
+        real = DocxTemplateView.get
+        with mock.patch.object(DocxTemplateView, 'get', autospec=True, side_effect=real) as render:
+            first = self.client.get(reverse('print-niv-cover'), {'t': niv.pk})
+            again = self.client.get(reverse('print-niv-cover'), {'t': niv.pk})
+            self.assertEqual(render.call_count, 1)                   # LibreOffice ran once
+            self.assertEqual(first.content, again.content)
+            self.assertEqual(again['Content-Type'], 'application/pdf')
+            self.client.post(reverse('niv-create'), dict(t=niv.pk, v=niv.version, action='save',
+                                                          patient_name=niv.patient_name, m1='Heparin'))
+            self.client.get(reverse('print-niv-cover'), {'t': niv.pk})
+            self.assertEqual(render.call_count, 2)                   # changed -> printed afresh

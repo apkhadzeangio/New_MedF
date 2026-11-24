@@ -10,7 +10,9 @@ from typing import Any
 from django.contrib import messages
 from django.contrib.auth import logout, authenticate, login
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.conf import settings
 from django.core import serializers
+from django.core.cache import caches
 from django.core.management import call_command
 from django.db.models import Case, F, IntegerField, Q, Value, When
 from django.forms import model_to_dict
@@ -291,6 +293,13 @@ class NivTemplateCreateView(LoginRequiredMixin, GetObjectMixin, generic.View):
         # no separate name: the prescription is known by the patient (and diagnosis)
         data['title'] = prescription_title(data, instance)
 
+        conflict = None
+        sent_version = request.POST.get('v')
+        if instance and action != 'save_as' and sent_version and sent_version != instance.version:
+            # someone else saved it after this page was opened: keep both, overwrite nothing
+            conflict = instance
+            action = 'save_as'
+
         if instance and action == 'save_as':
             # "Save As": create a copy with the edits, leave the original as it was.
             for name, value in model_to_dict(instance).items():
@@ -314,10 +323,23 @@ class NivTemplateCreateView(LoginRequiredMixin, GetObjectMixin, generic.View):
                 back = f'{back}?t={instance.pk}'
             return HttpResponseRedirect(back)
 
-        instance = form.save()
+        instance = form.save(commit=False)
+        instance.updated_by = request.user
+        instance.save()
+        cover = reverse('niv-cover')
+        if conflict:
+            from .board import person_name
+            if conflict.updated_by_id == request.user.pk:
+                who = 'თქვენ, სხვა ფანჯარაში'
+            else:
+                who = person_name(conflict.updated_by) or 'სხვა მომხმარებელი'
+            when = f', {timezone.localtime(conflict.updated_at):%H:%M}' if conflict.updated_at else ''
+            messages.warning(request, f'სანამ ეს დანიშნულება ღია გქონდათ, ის შეიცვალა ({who}{when}). '
+                                      'ის ვერსია უცვლელად დარჩა, თქვენი კი შეინახა ცალკე ასლად (ახლა ის არის გახსნილი). '
+                                      'შეადარეთ ორივე და ზედმეტი წაშალეთ.')
+            return HttpResponseRedirect(f'{cover}?t={instance.pk}')
         messages.success(request, f'დანიშნულება „{instance.title}“ შენახულია.')
 
-        cover = reverse('niv-cover')
         if action == 'save_and_new':
             return HttpResponseRedirect(cover)
         if action == 'save_as':
@@ -372,13 +394,31 @@ class NivDocumentView(LoginRequiredMixin, DocxTemplateView):
     output_format = 'pdf'
 
     def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        # LibreOffice converts one document at a time: with several server
-        # processes (own server) two prints at once would disturb each other.
-        with SofficeLock():
-            response = super().get(request, *args, **kwargs)
-        response['Content-Type'] = 'application/pdf'
+        key = self._cache_key()
+        pdf = caches['pdf'].get(key) if key else None
+        if pdf is None:
+            # LibreOffice converts one document at a time: with several server
+            # processes (own server) two prints at once would disturb each other.
+            with SofficeLock():
+                response = super().get(request, *args, **kwargs)
+            pdf = response.content
+            if key and len(pdf) < 3 * 1024 * 1024:
+                caches['pdf'].set(key, pdf)
+        response = HttpResponse(pdf, content_type='application/pdf')
         response['Content-Disposition'] = f'inline; filename="{self.filename}.pdf"'
         return response
+
+    def _cache_key(self):
+        """Same prescription, same saved version, same form file -> the same PDF."""
+        for param in ('t', 'as'):
+            niv = self._find(self.request.GET.get(param, self.request.POST.get(param))).only('pk', 'updated_at').first()
+            if niv:
+                try:
+                    form_file = os.path.getmtime(os.path.join(settings.DOCXTPL_TEMPLATE_DIR, self.template_name))
+                except OSError:
+                    return None
+                return f'niv-pdf:{niv.pk}:{niv.version}:{form_file:.0f}'
+        return None
 
     @staticmethod
     def _find(value):
@@ -395,6 +435,8 @@ class NivDocumentView(LoginRequiredMixin, DocxTemplateView):
             raise Http404('დანიშნულება ვერ მოიძებნა.')
         data = serializers.serialize("json", niv)
         data = json.loads(data)[0]['fields']
+        data.pop('updated_at', None)          # bookkeeping only: the printed form's keys stay as they were
+        data.pop('updated_by', None)
         for i in range(1, ROW_COUNT + 1):
             row = data[f'r{i}']
             if not isinstance(row, dict):

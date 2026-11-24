@@ -242,6 +242,11 @@ class NivForm(models.Model):
         default=jsonfield_default_value
     )
 
+    # when / by whom it was last saved (warns when two doctors edit at once; not printed)
+    updated_at = models.DateTimeField('ბოლოს შეცვლილია', auto_now=True, null=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name='ბოლოს შეცვალა', null=True, blank=True,
+                                   editable=False, on_delete=models.SET_NULL, related_name='+')
+
     class Meta:
         db_table = 'niv_forms'
         verbose_name = 'დანიშნულება (NIV-300-9/ა)'
@@ -249,6 +254,11 @@ class NivForm(models.Model):
 
     def __str__(self):
         return self.title
+
+    @property
+    def version(self):
+        """Changes on every save; the page sends it back to detect a parallel edit."""
+        return f'{self.updated_at.timestamp():.6f}' if self.updated_at else '0'
 
     @cached_property
     def rows_as_string(self):
