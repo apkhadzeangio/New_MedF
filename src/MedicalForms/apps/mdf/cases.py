@@ -509,17 +509,18 @@ def _latest_doppler(case):
 
 
 def staging_views(case):
-    """[{side, name, limb, result, map}] for the limbs that have been staged."""
+    """[{side, name, limb, r, am}] for the limbs that have been staged."""
     from . import staging
     out = []
     doppler_data = _latest_doppler(case) if case.staging else None
+    today = timezone.localdate()
     for side, name in LIMBS:
-        limb = (case.staging or {}).get(side)
-        if not limb:
+        if not (case.staging or {}).get(side):
             continue
+        limb = staging.get_limb(case.staging, side, today=today)
         result = staging.compute(limb, staging.doppler_measurements(doppler_data, side))
         out.append({'side': side, 'name': name, 'limb': limb, 'r': result,
-                    'am': staging.map_context(limb.get('segments') or {}, side)})
+                    'am': staging.map_context(limb.get('segments') or {}, side, limb.get('interventions'))})
     return out
 
 
@@ -532,7 +533,8 @@ class StagingView(LoginRequiredMixin, generic.View):
         return {
             'case': case, 'side': side, 'limbs': _limbs_of(case) if len(_limbs_of(case)) > 1 else LIMBS,
             'side_name': dict(LIMBS)[side], 'limb': limb, 'measured': measured,
-            'r': staging.compute(limb, measured), 'am': staging.map_context(limb.get('segments') or {}, side),
+            'r': staging.compute(limb, measured),
+            'am': staging.map_context(limb.get('segments') or {}, side, limb.get('interventions')),
             'S': staging,
             'segments_json': limb.get('segments') or {},
         }
@@ -542,7 +544,7 @@ class StagingView(LoginRequiredMixin, generic.View):
         if side not in dict(LIMBS):
             raise Http404
         from . import staging
-        limb = (case.staging or {}).get(side) or staging.clean({})
+        limb = staging.get_limb(case.staging, side, today=timezone.localdate())
         return render(request, self.template_name, self._context(case, side, limb))
 
     def post(self, request, pk, side):
@@ -550,16 +552,27 @@ class StagingView(LoginRequiredMixin, generic.View):
         case = get_object_or_404(Case, pk=pk)
         if side not in dict(LIMBS):
             raise Http404
+        today = timezone.localdate()
+        existing = staging.get_limb(case.staging, side, today=today)
         data = request.POST.dict()
         try:
             data['segments'] = json.loads(request.POST.get('segments') or '{}')
         except ValueError:
             data['segments'] = {}
-        limb = staging.clean(data)
+        if 'interventions' in request.POST:
+            try:
+                data['interventions'] = json.loads(request.POST.get('interventions') or '[]')
+            except ValueError:
+                data['interventions'] = []
+        else:
+            data['interventions'] = existing.get('interventions', [])
+        if 'wound_angiosome' not in request.POST:
+            data['wound_angiosome'] = existing.get('wound_angiosome', '')
+        limb = staging.clean(data, today=today)
         if request.headers.get('x-requested-with') == 'XMLHttpRequest' and request.POST.get('preview'):
             ctx = self._context(case, side, limb) | {'live': True}
             return JsonResponse({'html': render(request, 'mdf/cases/_staging_result.html', ctx).content.decode()})
-        case.staging = {**(case.staging or {}), side: limb}
+        case.staging = staging.save_limb(case.staging, side, limb, today=today)
         case.updated_by = request.user
         case.save(update_fields=['staging', 'updated_by', 'updated_at'])
         messages.success(request, f'{dict(LIMBS)[side]} კიდურის სტადირება შენახულია.')

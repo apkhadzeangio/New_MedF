@@ -11,11 +11,24 @@
 
     function sync() { hidden.value = JSON.stringify(segments); }
 
+    var stateToV2 = { mild: 'mild', st: 'severe', oc: 'occlusion' };
+
+    function stateCode(item) {
+        var st = item.stenosis || item.s || 'none';
+        if (st === 'occlusion' || st === 'oc') { return 'oc'; }
+        if (st === 'severe' || st === 'moderate' || st === 'st') { return 'st'; }
+        if (st === 'mild') { return 'mild'; }
+        return 'n';
+    }
+
     function paint(g) {
         var key = g.getAttribute('data-seg');
         var item = segments[key] || {};
-        var css = ['sg', 'sg-' + (item.s || 'n')];
-        ['ca', 'rx', 'by'].forEach(function (f) { if (item[f]) { css.push('sg-' + f); } });
+        var base = (g.getAttribute('data-flags') || '').split(',');
+        var css = ['sg', 'sg-' + stateCode(item)];
+        if ((item.calc || 0) >= 3 || item.coral || item.ca) { css.push('sg-ca'); }
+        if (item.rx || base.indexOf('rx') !== -1) { css.push('sg-rx'); }
+        if (item.by || base.indexOf('by') !== -1) { css.push('sg-by'); }
         g.setAttribute('class', css.join(' '));
     }
 
@@ -30,11 +43,28 @@
     function apply(g) {
         var key = g.getAttribute('data-seg');
         var item = segments[key] || {};
-        if (tool.flag) {
+        delete item.s;
+        delete item.ca;
+        if (tool.flag === 'ca') {
+            if ((item.calc || 0) >= 3) { delete item.calc; } else { item.calc = 3; }
+        } else if (tool.flag) {
             item[tool.flag] = !item[tool.flag];
             if (!item[tool.flag]) { delete item[tool.flag]; }
         } else if (tool.state) {
-            if (item.s === tool.state || tool.state === 'n') { delete item.s; } else { item.s = tool.state; }
+            var cur = stateCode(item);
+            if (cur === tool.state || tool.state === 'n') {
+                delete item.stenosis;
+                delete item.flush;
+                delete item.reconstitution;
+                delete item.length_cm;
+                delete item.morph;
+            } else {
+                item.stenosis = stateToV2[tool.state];
+                if (item.stenosis !== 'occlusion') {
+                    delete item.flush;
+                    delete item.reconstitution;
+                }
+            }
         }
         if (Object.keys(item).length) { segments[key] = item; } else { delete segments[key]; }
         paint(g);

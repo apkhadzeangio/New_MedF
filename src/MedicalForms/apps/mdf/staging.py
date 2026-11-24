@@ -6,25 +6,36 @@ see TABLES_SOURCE. Everything is decision support: the surgeon or the
 conference decides.
 """
 
+import collections
+import datetime
+import json
+import re
+
 # --------------------------------------------------------------------------
 # the artery map (one leg, front view; the left leg is drawn mirrored)
 # --------------------------------------------------------------------------
+
+SCHEMA_VERSION = 2
+SHARED_SEGMENTS = ('aorta',)
 
 # Right leg, front view, drawn over an anatomical illustration (static/img/limb/leg-anterior.webp,
 # generated with Figma AI). Coordinates are the illustration's pixels (285 x 1776); the iliac arteries
 # continue above it towards the aortic bifurcation (body midline at x=300). The left leg is mirrored.
 # key, Georgian name, label, SVG path, group, vessel width, label position (x, y, anchor[, "v" = vertical])
 SEGMENTS = (
+    ('aorta', 'ინფრარენული აორტა', 'Ao', 'M300,-230 L300,-175', 'inflow', 16, (282, -205, 'end')),
     ('cia', 'საერთო თეძოს არტერია', 'CIA', 'M300,-175 C288,-140 270,-110 250,-82', 'inflow', 14, (236, -140, 'end')),
+    ('iia', 'შიგნითა თეძოს არტერია', 'IIA', 'M250,-82 C262,-50 270,-20 272,20', 'inflow', 9.5, (284, 6, 'start')),
     ('eia', 'გარეთა თეძოს არტერია', 'EIA', 'M250,-82 C222,-46 176,10 150,70 C146,82 142,96 140,108', 'inflow', 13, (176, -30, 'end')),
     ('cfa', 'საერთო ბარძაყის არტერია', 'CFA', 'M140,108 C142,124 144,138 146,152', 'inflow', 13, (122, 132, 'end')),
     ('pfa', 'ბარძაყის ღრმა არტერია', 'PFA', 'M146,152 C130,176 116,220 108,290', 'inflow', 9, (92, 250, 'end')),
     ('sfa1', 'ზედაპირული ბარძაყის — პროქსიმალური', 'SFA', 'M146,152 C150,190 156,228 163,268', 'fp', 11, (176, 214, 'start')),
     ('sfa2', 'ზედაპირული ბარძაყის — შუა', '', 'M163,268 C172,320 182,372 191,424', 'fp', 11, None),
     ('sfa3', 'ზედაპირული ბარძაყის — დისტალური', '', 'M191,424 C198,470 206,520 208,580', 'fp', 11, None),
-    ('pop1', 'მუხლქვეშა — მუხლზემოთ (P1)', 'POP', 'M208,580 C206,650 180,730 160,800 C156,814 152,830 150,850', 'fp', 10, (214, 700, 'start')),
-    ('pop2', 'მუხლქვეშა — მუხლქვემოთ (P2–3)', '', 'M150,850 C147,880 144,910 142,940', 'fp', 10, None),
-    ('tpt', 'წვივ-მცირე წვივის ღერო', 'TPT', 'M142,940 C143,955 145,970 146,985', 'ip', 9, (160, 962, 'start')),
+    ('pop1', 'მუხლქვეშა — მუხლზემოთ (P1)', 'P1', 'M208,580 C206,650 180,730 160,800 C156,814 152,830 150,850', 'fp', 10, (214, 700, 'start')),
+    ('pop2', 'მუხლქვეშა — სახსრის დონე (P2)', 'P2', 'M150,850 C148,868 147,884 146,898', 'fp', 10, (172, 874, 'start')),
+    ('pop3', 'მუხლქვეშა — მუხლქვემოთ (P3)', 'P3', 'M146,898 C145,912 143,926 142,940', 'fp', 10, (170, 920, 'start')),
+    ('tpt', 'წვივ-მცირე წვივის ღერო', 'TPT', 'M142,940 C143,955 145,970 146,985', 'ip', 9, (164, 966, 'start')),
     ('at1', 'წინა წვივის — პროქსიმალური', 'AT', 'M142,940 C124,944 104,952 95,976', 'ip', 8, (78, 990, 'end')),
     ('at2', 'წინა წვივის — შუა', '', 'M95,976 C91,1040 89,1110 90,1180', 'ip', 8, None),
     ('at3', 'წინა წვივის — დისტალური', '', 'M90,1180 C92,1280 100,1400 112,1482', 'ip', 7.5, None),
@@ -35,12 +46,209 @@ SEGMENTS = (
     ('per2', 'მცირე წვივის — შუა', '', 'M134,1120 C130,1175 128,1228 126,1280', 'ip', 7.5, None),
     ('per3', 'მცირე წვივის — დისტალური', '', 'M126,1280 C124,1340 122,1390 120,1432', 'ip', 7, None),
     ('dp', 'ტერფის ზურგის არტერია', 'DP', 'M112,1482 C120,1530 130,1585 140,1638', 'pedal', 7, (100, 1580, 'end')),
-    ('plantar', 'ტერფის ლატერალური ძირის', 'PL', 'M176,1512 C174,1560 158,1600 128,1626 C112,1638 98,1642 88,1646', 'pedal', 6.5, (192, 1570, 'start')),
+    ('mpa', 'მედიალური პლანტარული არტერია', 'MPA', 'M176,1512 C180,1552 178,1596 168,1636', 'pedal', 6, (196, 1618, 'start')),
+    ('lpa', 'ლატერალური პლანტარული არტერია', 'LPA', 'M176,1512 C174,1560 158,1600 128,1626 C112,1638 98,1642 88,1646', 'pedal', 6.5, (192, 1560, 'start')),
     ('arch', 'ტერფის რკალი', 'ARCH', 'M88,1646 C100,1668 124,1672 140,1638', 'pedal', 6, (114, 1700, 'middle')),
 )
 SEGMENT_KEYS = {s[0] for s in SEGMENTS}
+SEGMENT_ORDER = {s[0]: i for i, s in enumerate(SEGMENTS)}
+LEGACY_SEGMENT_MAP = {'plantar': 'lpa'}
 
-# what can be marked on a segment
+# Directed anatomical tree (proximal -> distal) for grouping stents and tracing bypass paths
+SEGMENT_NEXT = {
+    'aorta': ('cia',),
+    'cia': ('iia', 'eia'),
+    'iia': (),
+    'eia': ('cfa',),
+    'cfa': ('pfa', 'sfa1'),
+    'pfa': (),
+    'sfa1': ('sfa2',),
+    'sfa2': ('sfa3',),
+    'sfa3': ('pop1',),
+    'pop1': ('pop2',),
+    'pop2': ('pop3',),
+    'pop3': ('at1', 'tpt'),
+    'tpt': ('pt1', 'per1'),
+    'at1': ('at2',),
+    'at2': ('at3',),
+    'at3': ('dp',),
+    'pt1': ('pt2',),
+    'pt2': ('pt3',),
+    'pt3': ('mpa', 'lpa'),
+    'per1': ('per2',),
+    'per2': ('per3',),
+    'per3': (),
+    'dp': ('arch',),
+    'mpa': (),
+    'lpa': ('arch',),
+    'arch': (),
+}
+
+_SEGMENT_RANK = {'aorta': 0}
+_SEGMENT_ADJ = {k: set() for k in SEGMENT_KEYS}
+_queue = collections.deque(['aorta'])
+while _queue:
+    _cur = _queue.popleft()
+    for _nxt in SEGMENT_NEXT[_cur]:
+        _SEGMENT_ADJ[_cur].add(_nxt)
+        _SEGMENT_ADJ[_nxt].add(_cur)
+        if _nxt not in _SEGMENT_RANK:
+            _SEGMENT_RANK[_nxt] = _SEGMENT_RANK[_cur] + 1
+            _queue.append(_nxt)
+assert len(SEGMENTS) == 26 and set(_SEGMENT_RANK) == SEGMENT_KEYS
+
+# Schema v2 segment attributes (SVS 2016 reporting standards + PACSS, Rocha-Singh et al. 2014)
+STENOSIS = (
+    ('none', 'ნორმა (<20%)'),
+    ('mild', '20–49%'),
+    ('moderate', '50–69%'),
+    ('severe', '70–99%'),
+    ('occlusion', 'ოკლუზია (CTO)'),
+)
+LENGTH_CHIPS = (
+    (2.0, '<3 სმ'),
+    (4.0, '3–5 სმ'),
+    (7.5, '5–10 სმ'),
+    (15.0, '10–20 სმ'),
+    (25.0, '>20 სმ'),
+)
+PACSS = (
+    (0, 'PACSS 0 — კალციუმი არ ჩანს'),
+    (1, 'PACSS 1 — ცალმხრივი <5 სმ'),
+    (2, 'PACSS 2 — ცალმხრივი ≥5 სმ'),
+    (3, 'PACSS 3 — ორმხრივი <5 სმ'),
+    (4, 'PACSS 4 — ორმხრივი ≥5 სმ'),
+)
+RECONSTITUTION = (
+    ('yes', 'აღდგება კოლატერალებით'),
+    ('delayed', 'დაგვიანებული აღდგენა'),
+    ('none', 'არ აღდგება'),
+)
+MORPHOLOGY = (
+    ('', 'არ არის მითითებული'),
+    ('eccentric', 'ექსცენტრული'),
+    ('concentric', 'კონცენტრული'),
+)
+SEGMENT_FLAGS = (
+    ('coral', 'მარჯნისებრი კალციუმი'),
+    ('thrombus', 'თრომბოზი'),
+    ('aneurysm', 'ანევრიზმა'),
+    ('ulcerated', 'დაწყლულებული ფოლაქი'),
+    ('small_caliber', 'მცირე კალიბრი (<6 მმ)'),
+    ('trifurcation', 'ტრიფურკაციაზე გავრცელება'),
+)
+
+# 6 foot & ankle angiosomes (Taylor & Palmer 1987; Attinger et al. 2006)
+ANGIOSOMES = (
+    ('', 'არ არის მითითებული'),
+    ('none', 'ჭრილობა არ არის'),
+    ('dorsal', 'ტერფის ზურგი / დორსალური თითები (AT → DP)'),
+    ('medial_plantar', 'მედიალური ძირი / I თითი (PT → MPA)'),
+    ('lateral_plantar', 'ლატერალური ძირი / ლატერალური თითები (PT → LPA)'),
+    ('medial_heel', 'მედიალური ქუსლი (PT)'),
+    ('lateral_heel', 'ლატერალური ქუსლი (PER)'),
+    ('lateral_ankle', 'კოჭის წინა-ლატერალური უბანი (PER)'),
+)
+
+# Prior limb interventions (6 categories; Tosaka et al. 2012 for FP in-stent restenosis)
+MAX_INTERVENTIONS = 20
+INTERVENTION_TYPES = (
+    ('bypass', 'შუნტირება'),
+    ('stent', 'სტენტირება'),
+    ('angioplasty', 'ბალონური ანგიოპლასტიკა / ათერექტომია'),
+    ('endarterectomy', 'ენდარტერექტომია / პლასტიკა'),
+    ('amputation', 'მცირე ამპუტაცია'),
+    ('thrombectomy', 'თრომბექტომია / თრომბოლიზისი'),
+)
+BYPASS_CONDUIT_GROUPS = (
+    ('vein', 'აუტოვენა'),
+    ('prosthetic', 'სინთეზური პროთეზი'),
+    ('other', 'სხვა კონდუიტი'),
+    ('unspecified', 'დაუზუსტებელი'),
+)
+BYPASS_CONDUITS = {
+    'vein': (
+        ('gsv_reversed', 'დიდი კანქვეშა ვენა — რევერსირებული'),
+        ('gsv_insitu', 'დიდი კანქვეშა ვენა — in situ'),
+        ('gsv_nonrev', 'დიდი კანქვეშა ვენა — ტრანსლოცირებული'),
+        ('ssv', 'მცირე კანქვეშა ვენა'),
+        ('arm_vein', 'ზედა კიდურის ვენა'),
+        ('spliced', 'შედგენილი ვენური კონდუიტი'),
+    ),
+    'prosthetic': (
+        ('ptfe', 'PTFE'),
+        ('ptfe_ringed', 'არმირებული PTFE'),
+        ('ptfe_heparin', 'ჰეპარინით დაფარული PTFE'),
+        ('dacron', 'დაკრონი'),
+    ),
+    'other': (
+        ('allograft', 'ალოგრაფტი'),
+        ('composite', 'კომპოზიტური (პროთეზი + ვენა)'),
+    ),
+    'unspecified': (),
+}
+BYPASS_CUFFS = (('', 'მანჟეტის გარეშე'), ('miller', 'ვენური მანჟეტი (Miller / Taylor)'))
+EXTRA_ORIGINS = (
+    ('contralateral_cfa', 'მოპირდაპირე ბარძაყის არტერია (fem-fem)'),
+    ('axillary', 'აქსილარული არტერია (აქსილო-ფემორალური)'),
+)
+BYPASS_ORIGINS = SEGMENT_KEYS | {k for k, _ in EXTRA_ORIGINS}
+BYPASS_STATUS = (
+    ('patent', 'გამავალი'),
+    ('stenosed', 'სტენოზირებული'),
+    ('occluded', 'თრომბირებული'),
+)
+BYPASS_SITES = (('', 'არ არის მითითებული'), ('proximal', 'პროქსიმალური ანასტომოზი'),
+                ('body', 'შუნტის სხეული'), ('distal', 'დისტალური ანასტომოზი'))
+STENT_SUBTYPES = (
+    ('bms', 'ლითონის სტენტი (BMS)'),
+    ('interwoven', 'წნული ნიტინოლი (Supera)'),
+    ('des', 'წამლით დაფარული სტენტი (DES)'),
+    ('covered', 'დაფარული სტენტ-გრაფტი (Viabahn)'),
+    ('unspecified', 'სტენტი / ანგიოპლასტიკა — დაუზუსტებელი'),
+)
+STENT_STATUS = (
+    ('patent', 'გამავალი'),
+    ('isr_1', 'Tosaka I — ფოკალური რესტენოზი (≤5 სმ)'),
+    ('isr_2', 'Tosaka II — დიფუზური რესტენოზი (>5 სმ)'),
+    ('occluded', 'Tosaka III — სტენტის ოკლუზია'),
+    ('fractured', 'სტენტის მოტეხილობა'),
+)
+ANGIOPLASTY_SUBTYPES = (
+    ('poba', 'ჩვეულებრივი ბალონი (POBA)'),
+    ('dcb', 'წამლით დაფარული ბალონი (DCB)'),
+    ('scoring', 'ჭრილიანი ბალონი (Scoring / Cutting)'),
+    ('atherectomy', 'ათერექტომია'),
+    ('unspecified', 'დაუზუსტებელი'),
+)
+ENDARTERECTOMY_SUBTYPES = (
+    ('patch_vein', 'აუტოვენური პატჩით'),
+    ('patch_bovine', 'ქსენოპერიკარდიუმის პატჩით'),
+    ('patch_prosthetic', 'სინთეზური პატჩით'),
+    ('profundaplasty', 'პროფუნდაპლასტიკა'),
+    ('primary', 'პირველადი ნაკერი'),
+    ('unspecified', 'დაუზუსტებელი'),
+)
+AMPUTATION_SUBTYPES = (
+    ('toes', 'თით(ებ)ის ამპუტაცია'),
+    ('ray', 'სხივური რეზექცია'),
+    ('tma', 'ტრანსმეტატარზული (TMA)'),
+    ('chopart_lisfranc', 'შოპარი / ლისფრანკი'),
+)
+AMPUTATION_STATUS = (('healed', 'შეხორცებული'), ('nonhealing', 'შეუხორცებელი'))
+THROMBECTOMY_SUBTYPES = (
+    ('fogarty', 'ღია თრომბექტომია (Fogarty)'),
+    ('mechanical', 'მექანიკური / ასპირაციული თრომბექტომია'),
+    ('lysis', 'კათეტერული თრომბოლიზისი'),
+    ('unspecified', 'დაუზუსტებელი'),
+)
+VESSEL_INTERVENTION_STATUS = (
+    ('patent', 'გამავალი'),
+    ('restenosed', 'რესტენოზი'),
+    ('occluded', 'ოკლუზია'),
+)
+
+# Legacy toolbar options (kept for staging.html until T2/T5 replace the toolbar)
 STATES = (
     ('n', 'ნორმა'),
     ('mild', 'სტენოზი <50%'),
@@ -55,42 +263,348 @@ FLAGS = (
 
 MAP_VIEW = (-70, -230, 420, 2006)          # x, y, width, height of the drawing
 LEG_IMAGE = {'src': 'img/limb/leg-anterior.webp', 'width': 285, 'height': 1776}
-CONTEXT = ['M300,-230 L300,-175', 'M250,-82 C262,-50 270,-20 272,20']   # aorta and internal iliac (not marked)
+CONTEXT = []                               # aorta and internal iliac are now interactive segments
 LANDMARKS = (('მუხლი', 880), ('კოჭი', 1515))
+
+_LEGACY_STENOSIS = {'n': 'none', 'mild': 'mild', 'st': 'severe', 'oc': 'occlusion'}
+_CONDUIT_TO_GROUP = {code: grp for grp, items in BYPASS_CONDUITS.items() for code, _ in items}
+_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,24}$')
+
+
+def _bmp_line(value, limit=200):
+    text = ''.join(ch for ch in str(value or '') if ord(ch) <= 0xFFFF)
+    return ' '.join(text.split())[:limit]
+
+
+def _sort_segments(keys):
+    seen = set()
+    valid = []
+    for k in keys:
+        k = LEGACY_SEGMENT_MAP.get(k, k)
+        if k in SEGMENT_KEYS and k not in seen:
+            seen.add(k)
+            valid.append(k)
+    return sorted(valid, key=lambda k: (_SEGMENT_RANK[k], SEGMENT_ORDER[k]))
+
+
+def segment_path(proximal, distal):
+    """Directed anatomical path from proximal to distal segment (for bypass highlighting)."""
+    proximal = LEGACY_SEGMENT_MAP.get(proximal, proximal)
+    distal = LEGACY_SEGMENT_MAP.get(distal, distal)
+    if distal not in SEGMENT_KEYS:
+        return []
+    if proximal not in SEGMENT_KEYS:
+        return [distal]
+    if proximal == distal:
+        return [proximal]
+    queue = collections.deque([[proximal]])
+    visited = {proximal}
+    while queue:
+        path = queue.popleft()
+        for nxt in SEGMENT_NEXT[path[-1]]:
+            if nxt == distal:
+                return path + [nxt]
+            if nxt not in visited:
+                visited.add(nxt)
+                queue.append(path + [nxt])
+    return _sort_segments([proximal, distal])
+
+
+def clean_partial_date(value, today=None):
+    """Accepts YYYY, YYYY-MM or YYYY-MM-DD (1950..today); invalid or future dates -> ''."""
+    raw = str(value or '').strip()
+    if not raw:
+        return ''
+    today = today or datetime.date.today()
+    parts = raw.split('-')
+    if len(parts) == 1 and len(parts[0]) == 4 and parts[0].isdigit():
+        year = int(parts[0])
+        return raw if 1950 <= year <= today.year else ''
+    if len(parts) == 2 and len(parts[0]) == 4 and len(parts[1]) == 2 and all(p.isdigit() for p in parts):
+        year, month = int(parts[0]), int(parts[1])
+        if 1950 <= year and 1 <= month <= 12 and (year, month) <= (today.year, today.month):
+            return f'{year:04d}-{month:02d}'
+        return ''
+    if len(parts) == 3 and len(parts[0]) == 4 and len(parts[1]) == 2 and len(parts[2]) == 2:
+        try:
+            dt = datetime.date.fromisoformat(raw)
+        except ValueError:
+            return ''
+        return raw if 1950 <= dt.year and dt <= today else ''
+    return ''
+
+
+def _remap_raw_segments(raw):
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return {}
+    if not isinstance(raw, dict):
+        return {}
+    remapped = {}
+    for key, value in raw.items():
+        if not isinstance(value, dict):
+            continue
+        target = LEGACY_SEGMENT_MAP.get(key, key)
+        if target not in SEGMENT_KEYS:
+            continue
+        if target in remapped and key in LEGACY_SEGMENT_MAP:
+            continue                        # explicit 'lpa' takes precedence over legacy 'plantar'
+        remapped[target] = dict(value)
+    return remapped
+
+
+def _raw_stenosis(seg):
+    st = seg.get('stenosis')
+    if st in {k for k, _ in STENOSIS}:
+        return st
+    return _LEGACY_STENOSIS.get(seg.get('s'), 'none')
 
 
 def clean_segments(raw):
-    """{'sfa2': {'s': 'oc', 'ca': True}, ...} from the page -> only known keys/values."""
+    """Normalize segment dicts (v1 or v2) -> canonical v2 segment dicts with known keys/values only."""
     out = {}
-    states = {k for k, _ in STATES}
-    flags = {k for k, _ in FLAGS}
-    for key, value in (raw or {}).items():
-        if key not in SEGMENT_KEYS or not isinstance(value, dict):
-            continue
+    reconst_opts = {k for k, _ in RECONSTITUTION}
+    morph_opts = {'eccentric', 'concentric'}
+    flag_keys = tuple(k for k, _ in SEGMENT_FLAGS)
+    for key, value in _remap_raw_segments(raw).items():
         item = {}
-        if value.get('s') in states and value.get('s') != 'n':
-            item['s'] = value['s']
-        for f in flags:
-            if value.get(f) is True:
-                item[f] = True
+        stenosis = _raw_stenosis(value)
+        if stenosis != 'none':
+            item['stenosis'] = stenosis
+        has_aneurysm = value.get('aneurysm') is True
+        if stenosis != 'none' or has_aneurysm:
+            length = _float(value.get('length_cm'), 0.1, 50.0)
+            if length is not None:
+                item['length_cm'] = round(length, 1)
+        if 'calc' in value and value.get('calc') not in (None, ''):
+            calc = _int(value.get('calc'), 0, 4)
+        else:
+            calc = 3 if value.get('ca') is True else None
+        if calc:
+            item['calc'] = calc
+        if stenosis == 'occlusion':
+            if value.get('flush') is True:
+                item['flush'] = True
+            if value.get('reconstitution') in reconst_opts:
+                item['reconstitution'] = value['reconstitution']
+        if stenosis != 'none' and value.get('morph') in morph_opts:
+            item['morph'] = value['morph']
+        for flag in flag_keys:
+            if value.get(flag) is True:
+                item[flag] = True
         if item:
             out[key] = item
     return out
 
 
-def segment_view(segments, mirror=False):
-    """Paths with their CSS classes for the template."""
+def clean_interventions(raw, today=None):
+    """Validate structured prior interventions list (max MAX_INTERVENTIONS items)."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return []
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out = []
+    used_ids = set()
+    valid_types = {k for k, _ in INTERVENTION_TYPES}
+    conduit_groups = {k for k, _ in BYPASS_CONDUIT_GROUPS}
+    bypass_statuses = {k for k, _ in BYPASS_STATUS}
+    bypass_sites = {'proximal', 'body', 'distal'}
+    stent_subtypes = {k for k, _ in STENT_SUBTYPES}
+    stent_statuses = {k for k, _ in STENT_STATUS}
+    pta_subtypes = {k for k, _ in ANGIOPLASTY_SUBTYPES}
+    ea_subtypes = {k for k, _ in ENDARTERECTOMY_SUBTYPES}
+    amp_subtypes = {k for k, _ in AMPUTATION_SUBTYPES}
+    amp_statuses = {k for k, _ in AMPUTATION_STATUS}
+    thromb_subtypes = {k for k, _ in THROMBECTOMY_SUBTYPES}
+    vessel_statuses = {k for k, _ in VESSEL_INTERVENTION_STATUS}
+
+    for entry in raw:
+        if len(out) >= MAX_INTERVENTIONS:
+            break
+        if not isinstance(entry, dict):
+            continue
+        kind = entry.get('type')
+        if kind not in valid_types:
+            continue
+        raw_id = str(entry.get('id') or '').strip()
+        if not _ID_RE.match(raw_id) or raw_id in used_ids:
+            idx = len(out) + 1
+            while f'iv{idx}' in used_ids:
+                idx += 1
+            raw_id = f'iv{idx}'
+
+        performed_on = clean_partial_date(entry.get('performed_on'), today=today)
+        note = _bmp_line(entry.get('note'), 200)
+
+        if kind == 'bypass':
+            proximal = LEGACY_SEGMENT_MAP.get(entry.get('proximal'), entry.get('proximal'))
+            distal = LEGACY_SEGMENT_MAP.get(entry.get('distal'), entry.get('distal'))
+            if proximal not in BYPASS_ORIGINS or distal not in SEGMENT_KEYS:
+                continue
+            conduit = entry.get('conduit') or ''
+            group = entry.get('conduit_group')
+            if group not in conduit_groups:
+                group = _CONDUIT_TO_GROUP.get(conduit, 'unspecified')
+            allowed_conduits = {k for k, _ in BYPASS_CONDUITS[group]}
+            if conduit not in allowed_conduits:
+                conduit = ''
+            status = entry.get('status') if entry.get('status') in bypass_statuses else 'patent'
+            site = entry.get('site') if status == 'stenosed' and entry.get('site') in bypass_sites else ''
+            item = {
+                'id': raw_id, 'type': 'bypass',
+                'conduit_group': group, 'conduit': conduit,
+                'cuff': 'miller' if entry.get('cuff') == 'miller' else '',
+                'proximal': proximal, 'distal': distal,
+                'performed_on': performed_on, 'status': status, 'site': site, 'note': note,
+            }
+        elif kind == 'amputation':
+            subtype = entry.get('subtype')
+            if subtype not in amp_subtypes:
+                continue
+            status = entry.get('status') if entry.get('status') in amp_statuses else 'healed'
+            item = {
+                'id': raw_id, 'type': 'amputation', 'subtype': subtype,
+                'performed_on': performed_on, 'status': status, 'note': note,
+            }
+        else:
+            segs = _sort_segments(entry.get('segments') or []) if isinstance(entry.get('segments'), (list, tuple)) else []
+            if not segs:
+                continue
+            if kind == 'stent':
+                subtype = entry.get('subtype') if entry.get('subtype') in stent_subtypes else 'unspecified'
+                status = entry.get('status') if entry.get('status') in stent_statuses else 'patent'
+            elif kind == 'angioplasty':
+                subtype = entry.get('subtype') if entry.get('subtype') in pta_subtypes else 'unspecified'
+                status = entry.get('status') if entry.get('status') in vessel_statuses else 'patent'
+            elif kind == 'endarterectomy':
+                subtype = entry.get('subtype') if entry.get('subtype') in ea_subtypes else 'unspecified'
+                status = entry.get('status') if entry.get('status') in vessel_statuses else 'patent'
+            else:                               # thrombectomy
+                subtype = entry.get('subtype') if entry.get('subtype') in thromb_subtypes else 'unspecified'
+                raw_st = 'occluded' if entry.get('status') == 'reoccluded' else entry.get('status')
+                status = raw_st if raw_st in vessel_statuses else 'patent'
+            item = {
+                'id': raw_id, 'type': kind, 'subtype': subtype, 'segments': segs,
+                'performed_on': performed_on, 'status': status, 'note': note,
+            }
+
+        used_ids.add(raw_id)
+        out.append(item)
+    return out
+
+
+def _legacy_rx_components(rx_keys):
+    """Group legacy rx=True segments into connected anatomical chains (ordered proximal -> distal)."""
+    remaining = set(rx_keys)
+    components = []
+    for start in _sort_segments(rx_keys):
+        if start not in remaining:
+            continue
+        comp = []
+        queue = collections.deque([start])
+        remaining.remove(start)
+        while queue:
+            cur = queue.popleft()
+            comp.append(cur)
+            for nb in _SEGMENT_ADJ[cur]:
+                if nb in remaining:
+                    remaining.remove(nb)
+                    queue.append(nb)
+        components.append(_sort_segments(comp))
+    return components
+
+
+def upgrade_limb(data, today=None):
+    """Losslessly upgrade a v1 (or partial v2) limb dictionary to schema v2 in memory."""
+    if not isinstance(data, dict):
+        return {}
+    out = dict(data)
+    raw_segs = _remap_raw_segments(data.get('segments'))
+    interventions = list(clean_interventions(data.get('interventions'), today=today))
+
+    rx_keys = [k for k, v in raw_segs.items() if v.get('rx') is True]
+    for comp in _legacy_rx_components(rx_keys):
+        statuses = {_raw_stenosis(raw_segs[k]) for k in comp}
+        if 'occlusion' in statuses:
+            st = 'occluded'
+        elif statuses & {'moderate', 'severe'}:
+            st = 'isr_1'
+        else:
+            st = 'patent'
+        if not any(iv['type'] == 'stent' and iv.get('subtype') == 'unspecified' and iv.get('segments') == comp
+                   for iv in interventions):
+            interventions.append({
+                'type': 'stent', 'subtype': 'unspecified', 'segments': comp,
+                'performed_on': '', 'status': st, 'note': '',
+            })
+
+    by_keys = _sort_segments([k for k, v in raw_segs.items() if v.get('by') is True])
+    if by_keys:
+        proximal, distal = by_keys[0], by_keys[-1]
+        if not any(iv['type'] == 'bypass' and iv.get('conduit_group') == 'unspecified'
+                   and iv.get('proximal') == proximal and iv.get('distal') == distal
+                   for iv in interventions):
+            interventions.append({
+                'type': 'bypass', 'conduit_group': 'unspecified', 'conduit': '', 'cuff': '',
+                'proximal': proximal, 'distal': distal,
+                'performed_on': '', 'status': 'patent', 'site': '', 'note': '',
+            })
+
+    out['v'] = SCHEMA_VERSION
+    out['segments'] = clean_segments(raw_segs)
+    out['interventions'] = clean_interventions(interventions, today=today)
+    return out
+
+
+def _display_state(seg):
+    st = _raw_stenosis(seg)
+    if st == 'occlusion':
+        return 'oc'
+    if st in ('moderate', 'severe'):
+        return 'st'
+    if st == 'mild':
+        return 'mild'
+    return 'n'
+
+
+def segment_view(segments, mirror=False, interventions=None):
+    """Paths with their CSS classes and v2 metadata for the template."""
+    norm_segs = _remap_raw_segments(segments)
+    rx_marked, by_marked = set(), set()
+    for iv in clean_interventions(interventions):
+        if iv['type'] in ('stent', 'angioplasty'):
+            rx_marked.update(iv['segments'])
+        elif iv['type'] == 'bypass':
+            by_marked.update(segment_path(iv['proximal'], iv['distal']))
+
     view = []
     for key, name, short, d, group, width, label in SEGMENTS:
-        item = segments.get(key, {})
-        classes = ['sg', f'sg-{item.get("s", "n")}'] + [f'sg-{f}' for f, _ in FLAGS if item.get(f)]
-        view.append({'key': key, 'name': name, 'short': short, 'd': d, 'group': group, 'w': width,
-                     'state': item.get('s', 'n'), 'flags': [f for f, _ in FLAGS if item.get(f)],
-                     'css': ' '.join(classes)})
+        item = norm_segs.get(key, {})
+        state = _display_state(item)
+        flags = []
+        calc = _int(item.get('calc'), 0, 4) if 'calc' in item else (3 if item.get('ca') is True else 0)
+        if (calc or 0) >= 3 or item.get('coral') is True or item.get('ca') is True:
+            flags.append('ca')
+        if item.get('rx') is True or key in rx_marked:
+            flags.append('rx')
+        if item.get('by') is True or key in by_marked:
+            flags.append('by')
+        classes = ['sg', f'sg-{state}'] + [f'sg-{f}' for f in flags]
+        view.append({
+            'key': key, 'name': name, 'short': short, 'd': d, 'group': group, 'w': width,
+            'state': state, 'stenosis': _raw_stenosis(item), 'calc': calc or 0,
+            'length_cm': _float(item.get('length_cm'), 0.1, 50.0),
+            'flags': flags, 'css': ' '.join(classes),
+        })
     return view
 
 
-def map_context(segments, side):
+def map_context(segments, side, interventions=None):
     """Everything _artery_map.html draws; the left leg is mirrored (texts are placed, not flipped)."""
     vx, vy, vw, vh = MAP_VIEW
     axis = 2 * vx + vw                       # x -> axis - x mirrors inside the view box
@@ -106,8 +620,8 @@ def map_context(segments, side):
         labels.append({'x': X(x), 'y': y, 'anchor': anchor, 'text': short, 'vertical': len(label) > 3})
     marks = [{'text': text, 'y': y, 'ty': y - 8, 'x1': X(vx + 4), 'x2': X(-6),
               'anchor': 'end' if flip else 'start'} for text, y in LANDMARKS]
-    return {'segments': segment_view(segments), 'labels': labels, 'marks': marks, 'context': CONTEXT,
-            'image': LEG_IMAGE, 'side': side, 'view': f'{vx} {vy} {vw} {vh}', 'axis': axis}
+    return {'segments': segment_view(segments, interventions=interventions), 'labels': labels, 'marks': marks,
+            'context': CONTEXT, 'image': LEG_IMAGE, 'side': side, 'view': f'{vx} {vy} {vw} {vh}', 'axis': axis}
 
 
 # --------------------------------------------------------------------------
@@ -277,6 +791,8 @@ PLAN_LABEL = {'none': 'რევასკულარიზაცია იშ�
 # --------------------------------------------------------------------------
 
 def _int(value, low, high):
+    if isinstance(value, bool):
+        return None
     try:
         v = int(value)
     except (TypeError, ValueError):
@@ -285,6 +801,8 @@ def _int(value, low, high):
 
 
 def _float(value, low, high):
+    if isinstance(value, bool):
+        return None
     try:
         v = float(str(value).replace(',', '.'))
     except (TypeError, ValueError):
@@ -292,22 +810,60 @@ def _float(value, low, high):
     return v if low <= v <= high else None
 
 
-def clean(data):
-    """Form / JSON data of one limb -> what is stored."""
-    choice = lambda key, options: data.get(key) if data.get(key) in {k for k, _ in options} else ''
+def clean(data, today=None):
+    """Form / JSON data of one limb (v1 or v2) -> canonical v2 dict ready to store."""
+    upgraded = upgrade_limb(data if isinstance(data, dict) else {}, today=today)
+    choice = lambda key, options: upgraded.get(key) if upgraded.get(key) in {k for k, _ in options} else ''
     return {
-        'segments': clean_segments(data.get('segments')),
+        'v': SCHEMA_VERSION,
+        'segments': upgraded['segments'],
+        'interventions': upgraded['interventions'],
+        'wound_angiosome': choice('wound_angiosome', ANGIOSOMES),
         'tap': choice('tap', TAP),
-        'fp': _int(data.get('fp'), 0, 4), 'ip': _int(data.get('ip'), 0, 4),
-        'fp_calc': data.get('fp_calc') in (True, 'on', '1'), 'ip_calc': data.get('ip_calc') in (True, 'on', '1'),
+        'fp': _int(upgraded.get('fp'), 0, 4), 'ip': _int(upgraded.get('ip'), 0, 4),
+        'fp_calc': upgraded.get('fp_calc') in (True, 'on', '1'), 'ip_calc': upgraded.get('ip_calc') in (True, 'on', '1'),
         'pedal': choice('pedal', PEDAL),
         'ai': choice('ai', INFLOW_AI), 'cfa': choice('cfa', INFLOW_CFA) or 'A',
-        'w': _int(data.get('w'), 0, 3), 'i': _int(data.get('i'), 0, 3), 'fi': _int(data.get('fi'), 0, 3),
-        'unsalvageable': data.get('unsalvageable') in (True, 'on', '1'),
-        'abi': _float(data.get('abi'), 0, 3), 'ap': _float(data.get('ap'), 0, 400), 'tp': _float(data.get('tp'), 0, 400),
+        'w': _int(upgraded.get('w'), 0, 3), 'i': _int(upgraded.get('i'), 0, 3), 'fi': _int(upgraded.get('fi'), 0, 3),
+        'unsalvageable': upgraded.get('unsalvageable') in (True, 'on', '1'),
+        'abi': _float(upgraded.get('abi'), 0, 3), 'ap': _float(upgraded.get('ap'), 0, 400), 'tp': _float(upgraded.get('tp'), 0, 400),
         'risk': choice('risk', RISK) or 'avg', 'vein': choice('vein', VEIN) or 'yes',
-        'note': ' '.join(str(data.get('note') or '').split())[:500],
+        'note': _bmp_line(upgraded.get('note'), 500),
     }
+
+
+def get_limb(case_staging, side, today=None):
+    """Cleaned v2 limb for `side`; inherits shared segments (aorta) from the other side when unstaged or v1."""
+    staging_map = case_staging if isinstance(case_staging, dict) else {}
+    other = 'L' if side == 'R' else 'R'
+    raw = staging_map.get(side)
+    limb = clean(raw if isinstance(raw, dict) else {}, today=today)
+    other_raw = staging_map.get(other)
+    if isinstance(other_raw, dict):
+        is_unstaged_or_v1 = not isinstance(raw, dict) or raw.get('v') != SCHEMA_VERSION
+        if is_unstaged_or_v1:
+            other_segs = clean_segments(other_raw.get('segments'))
+            for shared in SHARED_SEGMENTS:
+                if shared not in limb['segments'] and shared in other_segs:
+                    limb['segments'][shared] = dict(other_segs[shared])
+    return limb
+
+
+def save_limb(case_staging, side, limb, today=None):
+    """Store `limb` under `side` (v2) and synchronize shared segments (infrarenal aorta) across staged limbs."""
+    staging_map = dict(case_staging) if isinstance(case_staging, dict) else {}
+    cleaned = clean(limb, today=today)
+    staging_map[side] = cleaned
+    other = 'L' if side == 'R' else 'R'
+    if isinstance(staging_map.get(other), dict):
+        other_limb = clean(staging_map[other], today=today)
+        for shared in SHARED_SEGMENTS:
+            if shared in cleaned['segments']:
+                other_limb['segments'][shared] = dict(cleaned['segments'][shared])
+            else:
+                other_limb['segments'].pop(shared, None)
+        staging_map[other] = other_limb
+    return staging_map
 
 
 def doppler_measurements(study_data, side):

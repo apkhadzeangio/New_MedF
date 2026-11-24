@@ -2093,9 +2093,127 @@ class StagingTablesTests(TestCase):
         self.assertEqual((r['i'], r['i_auto'], r['i_from'], r['wifi']), (2, True, 'TP', 2))
         limb = clean({'segments': {'sfa2': {'s': 'oc', 'ca': True, 'x': 1}, 'bogus': {'s': 'oc'}, 'pop1': {'s': 'n'}},
                       'fp': '7', 'ip': '2', 'w': 'a', 'risk': 'weird', 'tap': 'pt', 'abi': '0,6'})
-        self.assertEqual(limb['segments'], {'sfa2': {'s': 'oc', 'ca': True}})
+        self.assertEqual(limb['v'], 2)
+        self.assertEqual(limb['segments'], {'sfa2': {'stenosis': 'occlusion', 'calc': 3}})
         self.assertEqual((limb['fp'], limb['ip'], limb['w'], limb['risk'], limb['tap'], limb['abi']),
                          (None, 2, None, 'avg', 'pt', 0.6))
+
+
+class StagingSchemaV2Tests(TestCase):
+    """Schema v2: 26 segments, lossless v1 -> v2 upgrade, validation, and shared infrarenal aorta."""
+
+    def test_26_segments_and_anatomical_paths(self):
+        from .staging import SEGMENTS, SEGMENT_KEYS, map_context, segment_path
+        self.assertEqual(len(SEGMENTS), 26)
+        for key in ('aorta', 'cia', 'iia', 'eia', 'cfa', 'pfa', 'sfa1', 'pop1', 'pop2', 'pop3',
+                    'tpt', 'at1', 'pt1', 'per1', 'dp', 'mpa', 'lpa', 'arch'):
+            self.assertIn(key, SEGMENT_KEYS)
+        self.assertNotIn('plantar', SEGMENT_KEYS)
+        self.assertEqual(segment_path('cfa', 'pop3'), ['cfa', 'sfa1', 'sfa2', 'sfa3', 'pop1', 'pop2', 'pop3'])
+        self.assertEqual(segment_path('pop3', 'lpa'), ['pop3', 'tpt', 'pt1', 'pt2', 'pt3', 'lpa'])
+        self.assertEqual(segment_path('contralateral_cfa', 'cfa'), ['cfa'])
+        right = map_context({}, 'R')
+        left = map_context({}, 'L')
+        self.assertEqual(len(right['segments']), 26)
+        self.assertEqual(len(left['segments']), 26)
+
+    def test_v1_upgrade_is_lossless_and_idempotent(self):
+        import copy
+        from .staging import clean, compute, map_context, upgrade_limb
+        v1 = {
+            'segments': {
+                'cia': {'s': 'st', 'rx': True},
+                'eia': {'rx': True},                    # connected to cia across iia in SEGMENTS
+                'sfa2': {'s': 'oc', 'ca': True, 'rx': True},
+                'sfa3': {'s': 'oc', 'rx': True},
+                'cfa': {'by': True},
+                'plantar': {'s': 'mild', 'by': True},   # legacy plantar -> lpa
+                'pop2': {'s': 'st'},
+            },
+            'fp': 3, 'ip': 2, 'fp_calc': True, 'pedal': 'P1', 'tap': 'pt',
+            'ai': 'I', 'cfa': 'A', 'w': 2, 'i': 2, 'fi': 1, 'risk': 'avg', 'vein': 'yes',
+        }
+        snapshot = copy.deepcopy(v1)
+        up = upgrade_limb(v1)
+        self.assertEqual(v1, snapshot)                  # never mutates caller's dict
+        self.assertEqual(up['v'], 2)
+        self.assertEqual(up['segments'], {
+            'cia': {'stenosis': 'severe'},
+            'sfa2': {'stenosis': 'occlusion', 'calc': 3},
+            'sfa3': {'stenosis': 'occlusion'},
+            'lpa': {'stenosis': 'mild'},
+            'pop2': {'stenosis': 'severe'},
+        })
+        self.assertEqual(up['interventions'], [
+            {'id': 'iv1', 'type': 'stent', 'subtype': 'unspecified', 'segments': ['cia', 'eia'],
+             'performed_on': '', 'status': 'isr_1', 'note': ''},
+            {'id': 'iv2', 'type': 'stent', 'subtype': 'unspecified', 'segments': ['sfa2', 'sfa3'],
+             'performed_on': '', 'status': 'occluded', 'note': ''},
+            {'id': 'iv3', 'type': 'bypass', 'conduit_group': 'unspecified', 'conduit': '', 'cuff': '',
+             'proximal': 'cfa', 'distal': 'lpa', 'performed_on': '', 'status': 'patent', 'site': '', 'note': ''},
+        ])
+        cleaned = clean(v1)
+        self.assertEqual(clean(cleaned), cleaned)       # idempotent
+        self.assertEqual(compute(cleaned), compute(v1)) # clinical staging unchanged
+        by_key = {s['key']: s for s in map_context(cleaned['segments'], 'R', cleaned['interventions'])['segments']}
+        self.assertEqual(by_key['sfa2']['css'], 'sg sg-oc sg-ca sg-rx sg-by')
+        self.assertEqual(by_key['eia']['css'], 'sg sg-n sg-rx')
+        self.assertEqual(by_key['lpa']['css'], 'sg sg-mild sg-by')
+
+    def test_v2_segment_and_intervention_validation(self):
+        import datetime
+        from .staging import clean, clean_interventions, clean_partial_date, clean_segments
+        today = datetime.date(2026, 11, 24)
+        self.assertEqual(clean_partial_date('2021', today=today), '2021')
+        self.assertEqual(clean_partial_date('2026-11', today=today), '2026-11')
+        self.assertEqual(clean_partial_date('2026-11-24', today=today), '2026-11-24')
+        self.assertEqual(clean_partial_date('2026-12', today=today), '')        # future month
+        self.assertEqual(clean_partial_date('2026-11-25', today=today), '')     # future day
+        self.assertEqual(clean_partial_date('2024-02-30', today=today), '')     # invalid calendar date
+        self.assertEqual(clean_partial_date('1920', today=today), '')
+
+        segs = clean_segments({
+            'aorta': {'stenosis': 'moderate', 'length_cm': '4,26', 'calc': 4, 'morph': 'eccentric',
+                      'flush': True, 'reconstitution': 'yes', 'aneurysm': True},
+            'sfa1': {'stenosis': 'occlusion', 'length_cm': 12, 'calc': 0, 'flush': True,
+                     'reconstitution': 'delayed', 'coral': True, 'thrombus': True},
+            'cia': {'stenosis': 'none', 'aneurysm': True, 'length_cm': 3.5, 'small_caliber': True, 'morph': 'concentric'},
+            'pop3': {'stenosis': 'severe', 'calc': True, 'trifurcation': True, 'ulcerated': True},
+            'eia': {'stenosis': 'none', 'length_cm': 8.0, 'flush': True},       # normal with stale CTO/length -> dropped
+        })
+        # flush/reconstitution stripped on non-CTO aorta; length rounded to 1 decimal
+        self.assertEqual(segs['aorta'], {'stenosis': 'moderate', 'length_cm': 4.3, 'calc': 4,
+                                         'morph': 'eccentric', 'aneurysm': True})
+        self.assertEqual(segs['sfa1'], {'stenosis': 'occlusion', 'length_cm': 12.0, 'flush': True,
+                                        'reconstitution': 'delayed', 'coral': True, 'thrombus': True})
+        self.assertEqual(segs['cia'], {'length_cm': 3.5, 'aneurysm': True, 'small_caliber': True})
+        self.assertEqual(segs['pop3'], {'stenosis': 'severe', 'trifurcation': True, 'ulcerated': True})
+        self.assertNotIn('eia', segs)
+
+        ivs = clean_interventions([
+            {'type': 'bypass', 'conduit': 'gsv_reversed', 'cuff': 'miller', 'proximal': 'cfa', 'distal': 'pt3',
+             'performed_on': '2023-05', 'status': 'stenosed', 'site': 'distal', 'note': '  ანასტომოზი  '},
+            {'type': 'bypass', 'conduit_group': 'prosthetic', 'conduit': 'ptfe_ringed',
+             'proximal': 'contralateral_cfa', 'distal': 'cfa', 'status': 'patent', 'site': 'distal'},
+            {'type': 'stent', 'subtype': 'des', 'segments': ['sfa3', 'sfa2', 'sfa3'], 'status': 'isr_2'},
+            {'type': 'angioplasty', 'subtype': 'dcb', 'segments': ['at2'], 'status': 'restenosed'},
+            {'type': 'endarterectomy', 'subtype': 'patch_bovine', 'segments': ['cfa', 'pfa'], 'status': 'patent'},
+            {'type': 'amputation', 'subtype': 'toes', 'status': 'healed', 'performed_on': '2024'},
+            {'type': 'thrombectomy', 'subtype': 'fogarty', 'segments': ['pop1'], 'status': 'reoccluded'},
+            {'type': 'bypass', 'proximal': 'cfa', 'distal': 'contralateral_cfa'},   # invalid distal -> skipped
+            {'type': 'stent', 'segments': []},                                       # empty segments -> skipped
+            {'type': 'amputation', 'subtype': 'unknown'},                            # invalid subtype -> skipped
+        ], today=today)
+        self.assertEqual(len(ivs), 7)
+        self.assertEqual((ivs[0]['conduit_group'], ivs[0]['cuff'], ivs[0]['site'], ivs[0]['note']),
+                         ('vein', 'miller', 'distal', 'ანასტომოზი'))
+        self.assertEqual(ivs[1]['site'], '')                                    # site cleared when status != stenosed
+        self.assertEqual(ivs[2]['segments'], ['sfa2', 'sfa3'])                  # deduplicated & proximal->distal
+        self.assertEqual(ivs[6]['status'], 'occluded')                          # reoccluded normalized to occluded
+
+        limb = clean({'fp': True, 'wound_angiosome': 'medial_plantar'}, today=today)
+        self.assertIsNone(limb['fp'])                                           # booleans rejected as integers
+        self.assertEqual(limb['wound_angiosome'], 'medial_plantar')
 
 
 class StagingPageTests(PrivateMediaTest):
@@ -2104,7 +2222,10 @@ class StagingPageTests(PrivateMediaTest):
         case = self.make_case(side='R')
         url = reverse('case-staging', args=[case.pk, 'R'])
         page = self.client.get(url)
+        self.assertContains(page, 'data-seg="aorta"')
         self.assertContains(page, 'data-seg="sfa2"')
+        self.assertContains(page, 'data-seg="pop3"')
+        self.assertContains(page, 'data-seg="mpa"')
         self.assertContains(page, 'FP 4')
         self.assertEqual(self.client.get(reverse('case-staging', args=[case.pk, 'X'])).status_code, 404)
         data = {'segments': json.dumps({'sfa2': {'s': 'oc'}, 'pop1': {'s': 'st', 'ca': True}}),
@@ -2117,8 +2238,58 @@ class StagingPageTests(PrivateMediaTest):
         self.assertEqual(case.staging, {})                          # a preview saves nothing
         self.client.post(url, data)
         case.refresh_from_db()
-        self.assertEqual(case.staging['R']['segments'], {'sfa2': {'s': 'oc'}, 'pop1': {'s': 'st', 'ca': True}})
+        self.assertEqual(case.staging['R']['v'], 2)
+        self.assertEqual(case.staging['R']['segments'],
+                         {'sfa2': {'stenosis': 'occlusion'}, 'pop1': {'stenosis': 'severe', 'calc': 3}})
         detail = self.client.get(reverse('case', args=[case.pk]))
         self.assertContains(detail, 'sg sg-oc')
         self.assertContains(detail, 'GLASS')
         self.assertContains(self.client.get(reverse('cases-present'), {'ids': case.pk}), 'pz-stage-slide')
+
+    def test_shared_aorta_syncs_across_limbs_and_v1_interventions_persist(self):
+        from .cases import staging_views
+        case = self.make_case(side='B')
+        r_url = reverse('case-staging', args=[case.pk, 'R'])
+        l_url = reverse('case-staging', args=[case.pk, 'L'])
+
+        # 1. Saving R with infrarenal aorta disease does not create a phantom L limb,
+        #    but opening L pre-populates the shared aorta automatically.
+        self.client.post(r_url, {
+            'segments': json.dumps({'aorta': {'stenosis': 'occlusion', 'calc': 4, 'flush': True},
+                                    'sfa1': {'stenosis': 'severe'}}),
+            'fp': '2', 'ip': '0', 'cfa': 'A',
+        })
+        case.refresh_from_db()
+        self.assertEqual(list(case.staging.keys()), ['R'])
+        self.assertEqual([v['side'] for v in staging_views(case)], ['R'])
+
+        l_page = self.client.get(l_url)
+        self.assertEqual(l_page.context['segments_json'],
+                         {'aorta': {'stenosis': 'occlusion', 'calc': 4, 'flush': True}})
+
+        # 2. Updating aorta on L syncs back onto R while preserving R's limb-specific segments.
+        self.client.post(l_url, {
+            'segments': json.dumps({'aorta': {'stenosis': 'moderate', 'calc': 2}, 'pt1': {'stenosis': 'occlusion'}}),
+            'fp': '0', 'ip': '3', 'cfa': 'A',
+        })
+        case.refresh_from_db()
+        self.assertEqual(case.staging['R']['segments'],
+                         {'aorta': {'stenosis': 'moderate', 'calc': 2}, 'sfa1': {'stenosis': 'severe'}})
+        self.assertEqual(case.staging['L']['segments'],
+                         {'aorta': {'stenosis': 'moderate', 'calc': 2}, 'pt1': {'stenosis': 'occlusion'}})
+
+        # 3. Clearing aorta on R clears it on L too.
+        self.client.post(r_url, {'segments': json.dumps({'sfa1': {'stenosis': 'severe'}}), 'cfa': 'A'})
+        case.refresh_from_db()
+        self.assertNotIn('aorta', case.staging['R']['segments'])
+        self.assertNotIn('aorta', case.staging['L']['segments'])
+        self.assertEqual(case.staging['L']['segments'], {'pt1': {'stenosis': 'occlusion'}})
+
+        # 4. Existing v1 record with rx/by keeps migrated interventions when re-saved without interventions field.
+        v1_case = self.make_case(side='R', staging={
+            'R': {'segments': {'sfa2': {'s': 'oc', 'rx': True}, 'cfa': {'by': True}, 'pop1': {'by': True}}, 'fp': 3, 'ip': 1}
+        })
+        self.client.post(reverse('case-staging', args=[v1_case.pk, 'R']),
+                         {'segments': json.dumps({'sfa2': {'stenosis': 'occlusion'}}), 'fp': '3', 'ip': '1', 'cfa': 'A'})
+        v1_case.refresh_from_db()
+        self.assertEqual(len(v1_case.staging['R']['interventions']), 2)
