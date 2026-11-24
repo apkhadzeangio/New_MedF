@@ -588,6 +588,10 @@ class RosterGenerateView(LoginRequiredMixin, generic.TemplateView):
         return HttpResponseRedirect(reverse('roster') + f'?y={year}&m={month}')
 
 
+def _or(value, default):
+    return default if value is None else value
+
+
 def _small_int(value, low, high):
     try:
         n = int(value)
@@ -667,7 +671,7 @@ class RosterPeopleView(LoginRequiredMixin, generic.TemplateView):
             weekday = request.POST.get(p + 'weekday', '')
             new = {
                 'name': name,
-                'order': int(request.POST.get(p + 'order') or person.order or 0),
+                'order': _or(_small_int(request.POST.get(p + 'order'), 0, 999), person.order),
                 'in_rotation': bool(request.POST.get(p + 'rotation')),
                 'fixed_weekday': int(weekday) if weekday.isdigit() and int(weekday) < 7 else None,
                 'fixed_weeks': ''.join(c for c in request.POST.get(p + 'weeks', '') if c.isdigit() or c == ',')[:20],

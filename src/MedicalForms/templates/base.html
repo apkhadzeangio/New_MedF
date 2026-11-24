@@ -1,4 +1,4 @@
-{% load static %}
+{% load static static_version %}
 <!DOCTYPE html>
 <html lang="ka">
 <head>
@@ -16,10 +16,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="დაფა">
-    <link rel="stylesheet" href="{% static 'css/bootstrap.min.css' %}?v=1">
-    <link rel="stylesheet" href="{% static 'css/jquery-ui.min.css' %}">
-    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=26">
-    <link rel="stylesheet" href="{% static 'css/theme.css' %}?v=17">
+    <link rel="stylesheet" href="{% static_v 'css/bootstrap.min.css' %}">
+    {% block vendor_styles %}{% endblock %}
+    <link rel="stylesheet" href="{% static_v 'css/style.css' %}">
+    <link rel="stylesheet" href="{% static_v 'css/theme.css' %}">
 
     {% block extra_styles %}
     {% endblock %}
@@ -39,14 +39,14 @@
 
 <!-- main jQuery -->
 <script src="{% static 'js/jquery-3.7.0.min.js' %}"></script>
-<script src="{% static 'js/popper.min.js' %}?v=1"></script>
+<script src="{% static_v 'js/popper.min.js' %}"></script>
 <!-- bootstrap -->
-<script src="{% static 'js/bootstrap.min.js' %}?v=1"></script>
-<script src="{% static 'js/jquery-ui.min.js' %}"></script>
+<script src="{% static_v 'js/bootstrap.min.js' %}"></script>
+{% block vendor_scripts %}{% endblock %}
 <script src="{% static 'js/notify.min.js' %}"></script>
 <script src="{% static 'js/clipboard.min.js' %}"></script>
-<script src="{% static 'js/custom.js' %}?v=33"></script>
-<script src="{% static 'js/seasonal.js' %}?v=2" defer></script>
+<script src="{% static_v 'js/custom.js' %}"></script>
+<script src="{% static_v 'js/seasonal.js' %}" defer></script>
 
 <script>
 if ('serviceWorker' in navigator) { window.addEventListener('load', function () { navigator.serviceWorker.register('{% url "pwa-sw" %}').catch(function () {}); }); }

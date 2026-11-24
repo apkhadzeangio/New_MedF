@@ -197,6 +197,8 @@ if env_bool('DJANGO_HTTPS', False):
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # browsers remember "always https" (own server with a certificate); 0 = off
+    SECURE_HSTS_SECONDS = int(env('DJANGO_HSTS_SECONDS', '0') or 0)
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'SAMEORIGIN'

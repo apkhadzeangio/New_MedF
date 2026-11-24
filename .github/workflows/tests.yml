@@ -1,0 +1,26 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: System packages (mysqlclient build, LibreOffice for the PDF tests)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -yq pkg-config default-libmysqlclient-dev libreoffice-writer-nogui fonts-liberation fonts-noto-core
+      - name: Python packages
+        run: pip install -r requirements/prod.txt
+      - name: Checks and tests
+        working-directory: src/MedicalForms
+        run: |
+          python manage.py check --settings=MedicalForms.settings.dev
+          python manage.py makemigrations --check --dry-run --settings=MedicalForms.settings.dev
+          python manage.py test --settings=MedicalForms.settings.dev

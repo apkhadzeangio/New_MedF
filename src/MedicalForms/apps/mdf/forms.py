@@ -9,7 +9,7 @@ class LoginForm(forms.Form):
     next = forms.CharField(required=False)
 
 
-class NivFormFrom(forms.ModelForm):
+class NivFormForm(forms.ModelForm):
 
     class Meta:
         model = NivForm

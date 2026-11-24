@@ -23,11 +23,3 @@ class LoginRedirectMixin(object):
             return HttpResponseRedirect(reverse_lazy('niv-cover'))
         return super().dispatch(request, *args, **kwargs)
 
-
-class ActiveTabMixin(object):
-    active_class = None
-
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        ctx['active'] = self.active_class
-        return ctx

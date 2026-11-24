@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+"""Browser smoke check for MedicalForms main pages using Playwright (Chromium).
+
+Logs in as a synthetic test user on the dev server, opens the 9 main pages at
+widths 390, 768, 1366, and 1920, reports HTTP status, console/page errors, and
+horizontal scroll (allowing the wide prescription table on /niv-300-9-a/cover/),
+and saves full-page screenshots under tools/out/smoke/.
+"""
+import argparse
+import os
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+from PIL import Image, ImageChops
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DJANGO_DIR = REPO_ROOT / 'src' / 'MedicalForms'
+DEFAULT_SETTINGS = 'MedicalForms.settings.dev'
+DEFAULT_OUT = REPO_ROOT / 'tools' / 'out' / 'smoke'
+
+DEFAULT_USER = 'medf_smoke_test'
+DEFAULT_PASS = 'medf-smoke-local-only'
+
+MAIN_PAGES = [
+    ('niv_cover', '/niv-300-9-a/cover/', True),
+    ('niv_templates', '/niv-300-9-a/templates/', False),
+    ('templates', '/templates/', False),
+    ('analysis', '/analysis/', False),
+    ('blood', '/blood/', False),
+    ('consent', '/consent/', False),
+    ('board', '/board/', False),
+    ('roster', '/roster/', False),
+    ('quotes', '/quotes/', False),
+]
+WIDTHS = [390, 768, 1366, 1920]
+
+
+def setup_django(settings_module: str):
+    if str(DJANGO_DIR) not in sys.path:
+        sys.path.insert(0, str(DJANGO_DIR))
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', settings_module)
+    import django
+    django.setup()
+
+
+def ensure_test_user(settings_module: str, username: str, password: str) -> bool:
+    """Ensure the test user exists in the local dev DB. Returns True if newly created."""
+    setup_django(settings_module)
+    from django.contrib.auth import get_user_model
+    from django.core.management import call_command
+    from django.db import OperationalError
+    from apps.mdf.models import StaffProfile
+
+    User = get_user_model()
+    try:
+        User.objects.filter(username=username).exists()
+    except OperationalError:
+        call_command('migrate', verbosity=0)
+
+    user, created = User.objects.get_or_create(
+        username=username,
+        defaults={'first_name': 'ტესტ', 'last_name': 'ექიმი', 'is_staff': True},
+    )
+    user.is_active = True
+    user.set_password(password)
+    user.save()
+    StaffProfile.objects.get_or_create(
+        user=user,
+        defaults={
+            'display_name': 'ტესტ ექიმი',
+            'full_name': 'ტესტ ექიმი',
+            'show_on_login': True,
+        },
+    )
+    return created
+
+
+def cleanup_test_user(username: str):
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    User.objects.filter(username=username).delete()
+
+
+def server_reachable(url: str) -> bool:
+    try:
+        with urllib.request.urlopen(url.rstrip('/') + '/', timeout=1.5) as resp:
+            return resp.status < 500
+    except Exception:
+        return False
+
+
+def free_port() -> int:
+    with socket.socket() as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
+
+
+class ManagedDevServer:
+    """Connects to --url (or :8000 if running), otherwise starts a temporary runserver."""
+
+    def __init__(self, url: str | None, settings_module: str):
+        self.settings_module = settings_module
+        self.proc = None
+        if url:
+            self.base_url = url.rstrip('/')
+            self._external = True
+        elif server_reachable('http://127.0.0.1:8000'):
+            self.base_url = 'http://127.0.0.1:8000'
+            self._external = True
+        else:
+            port = free_port()
+            self.base_url = f'http://127.0.0.1:{port}'
+            self._external = False
+
+    def __enter__(self):
+        if self._external:
+            if not server_reachable(self.base_url):
+                raise RuntimeError(f'Dev server is not reachable at {self.base_url}')
+            return self.base_url
+
+        host_port = self.base_url.replace('http://', '')
+        self.proc = subprocess.Popen(
+            [sys.executable, 'manage.py', 'runserver', host_port,
+             '--noreload', f'--settings={self.settings_module}'],
+            cwd=str(DJANGO_DIR),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            if server_reachable(self.base_url):
+                return self.base_url
+            time.sleep(0.2)
+        err = ''
+        if self.proc.poll() is not None and self.proc.stderr:
+            err = self.proc.stderr.read().decode('utf-8', errors='replace')
+        raise RuntimeError(f'Failed to start dev server at {self.base_url}.\n{err}')
+
+    def __exit__(self, *exc):
+        if self.proc:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+
+
+def login_browser(page, base_url: str, username: str, password: str):
+    page.goto(base_url + '/', wait_until='networkidle')
+    card = page.locator(f'.person[data-username="{username}"]')
+    if card.count() > 0:
+        card.first.click()
+        page.locator('#password').fill(password)
+        page.locator('#password-step button[type="submit"]').click()
+    else:
+        user_inp = page.locator('input[autocomplete="username"]')
+        if user_inp.count() > 0:
+            user_inp.fill(username)
+            page.locator('input[name="password"]').fill(password)
+            page.locator('#login-form button[type="submit"]').click()
+        else:
+            page.evaluate(
+                """([u, p]) => {
+                    document.getElementById('username').value = u;
+                    document.getElementById('password').value = p;
+                    document.getElementById('login-form').submit();
+                }""",
+                [username, password],
+            )
+    page.wait_for_load_state('networkidle')
+
+
+def compare_dirs(dir_a: Path, dir_b: Path) -> int:
+    files_a = sorted(p.name for p in dir_a.glob('*.png'))
+    files_b = sorted(p.name for p in dir_b.glob('*.png'))
+    if not files_a:
+        print(f'No PNG files found in {dir_a}', file=sys.stderr)
+        return 1
+    if files_a != files_b:
+        print(f'Screenshot list mismatch:\n  {dir_a}: {files_a}\n  {dir_b}: {files_b}', file=sys.stderr)
+        return 1
+    diffs = 0
+    for name in files_a:
+        im_a = Image.open(dir_a / name).convert('RGBA')
+        im_b = Image.open(dir_b / name).convert('RGBA')
+        if im_a.size != im_b.size:
+            print(f'DIFF {name}: size {im_a.size} != {im_b.size}', file=sys.stderr)
+            diffs += 1
+            continue
+        b_a, b_b = im_a.tobytes(), im_b.tobytes()
+        if b_a != b_b:
+            px = sum(1 for i in range(0, len(b_a), 4) if b_a[i:i + 4] != b_b[i:i + 4])
+            rgb_diff = ImageChops.difference(im_a.convert('RGB'), im_b.convert('RGB'))
+            a_diff = ImageChops.difference(im_a.getchannel('A'), im_b.getchannel('A'))
+            bbox = rgb_diff.getbbox() or a_diff.getbbox()
+            print(f'DIFF {name}: {px} pixels differ (bbox={bbox})', file=sys.stderr)
+            diffs += 1
+        else:
+            print(f'OK   {name}: identical')
+    if diffs:
+        print(f'\nFAILED: {diffs} screenshot(s) differ.', file=sys.stderr)
+        return 1
+    print(f'\nPASSED: all {len(files_a)} screenshot(s) match pixel for pixel.')
+    return 0
+
+
+def run_smoke(args) -> int:
+    from playwright.sync_api import sync_playwright
+
+    out_dir: Path = args.out
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    created_user = False
+    if args.ensure_user:
+        created_user = ensure_test_user(args.settings, args.user, args.password)
+
+    failures = []
+    try:
+        with ManagedDevServer(args.url, args.settings) as base_url, sync_playwright() as pw:
+            print(f'Target server: {base_url}')
+            print(f'Screenshots:   {out_dir}\n')
+            header = f"{'PAGE':<26} {'WIDTH':>5}  {'HTTP':>4}  {'ERRORS':>6}  {'H-SCROLL':<14}  SCREENSHOT"
+            print(header)
+            print('-' * len(header))
+
+            browser = pw.chromium.launch()
+            context = browser.new_context(
+                locale='ka-GE',
+                timezone_id='Asia/Tbilisi',
+                reduced_motion='reduce',
+            )
+            context.add_init_script(
+                "try { window.localStorage.setItem('medf-season-off', '1'); } catch (e) {}"
+            )
+            page = context.new_page()
+            login_browser(page, base_url, args.user, args.password)
+
+            console_errs: list[str] = []
+            page_errs: list[str] = []
+            asset_errs: list[str] = []
+
+            page.on('console', lambda m: console_errs.append(m.text) if m.type == 'error' else None)
+            page.on('pageerror', lambda e: page_errs.append(str(e)))
+            page.on('response', lambda r: asset_errs.append(f'{r.status} {r.url}') if r.status >= 400 else None)
+
+            for slug, path, allow_scroll in MAIN_PAGES:
+                for width in WIDTHS:
+                    console_errs.clear()
+                    page_errs.clear()
+                    asset_errs.clear()
+
+                    page.set_viewport_size({'width': width, 'height': 900})
+                    resp = page.goto(base_url + path, wait_until='networkidle')
+                    status = resp.status if resp else 0
+                    page.evaluate("() => document.fonts ? document.fonts.ready : null")
+                    page.evaluate("() => { if (document.activeElement) document.activeElement.blur(); }")
+                    page.wait_for_timeout(50)
+
+                    dims = page.evaluate("""() => ({
+                        scrollWidth: document.documentElement.scrollWidth,
+                        clientWidth: document.documentElement.clientWidth
+                    })""")
+                    has_scroll = dims['scrollWidth'] > dims['clientWidth'] + 1
+                    if not has_scroll:
+                        scroll_label = 'no'
+                    elif allow_scroll:
+                        scroll_label = 'yes (allowed)'
+                    else:
+                        scroll_label = f"YES ({dims['scrollWidth']}>{dims['clientWidth']})"
+
+                    shot_file = out_dir / f'{slug}_{width}.png'
+                    page.screenshot(path=str(shot_file), full_page=True)
+
+                    all_errs = console_errs + page_errs + asset_errs
+                    print(f'{path:<26} {width:>5}  {status:>4}  {len(all_errs):>6}  {scroll_label:<14}  {shot_file.name}')
+
+                    if status != 200:
+                        failures.append(f'{path} @{width}px: HTTP {status}')
+                    if all_errs:
+                        failures.append(f'{path} @{width}px: errors: {all_errs}')
+                    if has_scroll and not allow_scroll:
+                        failures.append(
+                            f'{path} @{width}px: unexpected horizontal scroll '
+                            f'({dims["scrollWidth"]}px > {dims["clientWidth"]}px)'
+                        )
+
+            browser.close()
+    finally:
+        if created_user and not args.keep_user:
+            cleanup_test_user(args.user)
+
+    print()
+    if failures:
+        print(f'FAILED ({len(failures)} issue(s)):', file=sys.stderr)
+        for item in failures:
+            print(f'  - {item}', file=sys.stderr)
+        return 1
+
+    print(f'OK: {len(MAIN_PAGES)} pages x {len(WIDTHS)} widths checked with 0 errors.')
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description='Browser smoke check for MedicalForms.')
+    parser.add_argument('--url', default=None,
+                        help='Base URL of a running dev server (auto-starts one if omitted and :8000 is down).')
+    parser.add_argument('--out', type=Path, default=DEFAULT_OUT,
+                        help=f'Directory for saved screenshots (default: {DEFAULT_OUT}).')
+    parser.add_argument('--user', default=DEFAULT_USER, help='Test username.')
+    parser.add_argument('--password', default=DEFAULT_PASS, help='Test password.')
+    parser.add_argument('--no-ensure-user', dest='ensure_user', action='store_false',
+                        help='Do not create/update the test user in the local dev database.')
+    parser.add_argument('--keep-user', action='store_true',
+                        help='Keep the auto-created test user after the run.')
+    parser.add_argument('--settings', default=DEFAULT_SETTINGS,
+                        help=f'Django settings module (default: {DEFAULT_SETTINGS}).')
+    parser.add_argument('--compare-dirs', nargs=2, type=Path, metavar=('BEFORE_DIR', 'AFTER_DIR'),
+                        help='Compare two saved screenshot directories pixel by pixel.')
+    args = parser.parse_args()
+
+    if args.compare_dirs:
+        return compare_dirs(args.compare_dirs[0], args.compare_dirs[1])
+    return run_smoke(args)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

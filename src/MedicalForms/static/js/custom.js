@@ -70,19 +70,26 @@ $(document).ready(function () {
     /* Dates                                                               */
     /* ------------------------------------------------------------------ */
 
-    $('input[id="doe"]').datepicker({
-        dateFormat: "dd.mm.yy",
-    });
-    $('input[id="dob"]').datepicker({
-        dateFormat: "dd.mm.yy",
-        changeYear: true,
-        changeMonth: true,
-        minDate: "-110y",
-        yearRange: "-110:+0",
-    });
+    var hasDatepicker = typeof $.fn.datepicker === 'function';
+
+    if (hasDatepicker) {
+        $('input[id="doe"]').datepicker({
+            dateFormat: "dd.mm.yy",
+        });
+        $('input[id="dob"]').datepicker({
+            dateFormat: "dd.mm.yy",
+            changeYear: true,
+            changeMonth: true,
+            minDate: "-110y",
+            yearRange: "-110:+0",
+        });
+    }
 
     // The three day columns are always consecutive dates: choosing one fills the others.
     function setDays(changedIndex, selected) {
+        if (!hasDatepicker) {
+            return;
+        }
         var base = $('.fdate' + changedIndex).datepicker('getDate');
         if (!base) {
             return;
@@ -100,10 +107,14 @@ $(document).ready(function () {
     }
 
     [1, 2, 3].forEach(function (i) {
-        $('.fdate' + i).datepicker({
-            dateFormat: "dd.mm.yy",
-            onSelect: function (selected) { setDays(i, selected); }
-        }).on('input', function () {
+        var $fdate = $('.fdate' + i);
+        if (hasDatepicker) {
+            $fdate.datepicker({
+                dateFormat: "dd.mm.yy",
+                onSelect: function (selected) { setDays(i, selected); }
+            });
+        }
+        $fdate.on('input', function () {
             // typed by hand
             $('input[id="form-day' + i + '"]').val(this.value);
             markDirty();

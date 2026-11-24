@@ -2,6 +2,8 @@
 {% load static %}
 
 {% block title %}სისხლის შეკვეთა{% endblock %}
+{% block vendor_styles %}<link rel="stylesheet" href="{% static 'css/jquery-ui.min.css' %}">{% endblock %}
+{% block vendor_scripts %}<script src="{% static 'js/jquery-ui.min.js' %}"></script>{% endblock %}
 
 {% block content %}
 <div class="app-main">
@@ -84,8 +86,10 @@
 {% block extra_scripts %}
 <script>
 $(function () {
-    $('#id_date').datepicker({dateFormat: 'dd.mm.yy'});
-    $('#id_dob').datepicker({dateFormat: 'dd.mm.yy', changeYear: true, changeMonth: true, yearRange: '-110:+0'});
+    if (typeof $.fn.datepicker === 'function') {
+        $('#id_date').datepicker({dateFormat: 'dd.mm.yy'});
+        $('#id_dob').datepicker({dateFormat: 'dd.mm.yy', changeYear: true, changeMonth: true, yearRange: '-110:+0'});
+    }
     function pad(n) { return (n < 10 ? '0' : '') + n; }
     function refresh() {
         $('[data-pv]').each(function () {

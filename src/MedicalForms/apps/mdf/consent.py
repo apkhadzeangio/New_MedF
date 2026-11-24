@@ -32,6 +32,7 @@ from .models import ConsentForm, StaffProfile
 MAX_BLOCKS = 10
 MAX_ITEMS = 40
 MAX_TEXT = 300
+MAX_DOCUMENT_XML = 20 * 1024 * 1024     # unpacked text of a .docx (a real sheet is ~0.1 MB)
 
 
 # --------------------------------------------------------------------------
@@ -96,6 +97,8 @@ def _paragraphs(document_xml):
 def parse_docx(fileobj):
     """Complication blocks from a consent .docx (only the text of page 2)."""
     with zipfile.ZipFile(fileobj) as z:
+        if z.getinfo('word/document.xml').file_size > MAX_DOCUMENT_XML:
+            raise ValueError('ფაილი ძალიან დიდია — ეს თანხმობის ფურცელი არ უნდა იყოს.')
         xml = z.read('word/document.xml').decode('utf-8')
     paras = list(_paragraphs(xml))
     start = next((i for i, (t, _) in enumerate(paras) if START_MARK in t), None)

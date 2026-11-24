@@ -60,6 +60,7 @@ DJANGO_SECRET_KEY=$SECRET
 DJANGO_DEBUG=0
 DJANGO_ALLOWED_HOSTS=$DOMAIN,www.$DOMAIN
 DJANGO_HTTPS=1
+DJANGO_HSTS_SECONDS=2592000
 DB_NAME=medf
 DB_USER=medf
 DB_HOST=localhost
@@ -141,6 +142,15 @@ echo "== 8/8 daily backup (03:15, keeps 14)"
 cat > /etc/cron.d/medf-backup <<CRON
 15 3 * * * medf cd $SITE && $VENV/bin/python manage.py backup_data --dir $BACKUPS --keep 14 >> /srv/medf/backup.log 2>&1
 CRON
+cat > /etc/logrotate.d/medf <<ROTATE
+/srv/medf/backup.log {
+    monthly
+    rotate 6
+    compress
+    missingok
+    notifempty
+}
+ROTATE
 
 echo
 echo "Done: https://$DOMAIN"
