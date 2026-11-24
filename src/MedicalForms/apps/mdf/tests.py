@@ -408,8 +408,10 @@ class StaffAndBackupTests(TestCase):
 
         r = self.client.get(reverse('backup-download'))
         self.assertEqual(r['Content-Type'], 'application/gzip')
+        self.assertNotIn('Content-Encoding', r)            # the browser saves the .gz as it is
+        self.assertIn('attachment; filename="medf-backup-', r['Content-Disposition'])
         import gzip
-        data = json.loads(gzip.decompress(r.content))
+        data = json.loads(gzip.decompress(b''.join(r.streaming_content)))
         self.assertTrue(any(o['model'] == 'mdf.staffprofile' for o in data))
 
         from tempfile import TemporaryDirectory
@@ -631,7 +633,7 @@ class DutyNoteTests(BaseViewTest):
     def test_backup_includes_notes(self):
         import gzip
         self.create('21.11.2026 10:00', patient='x', body='y')
-        data = json.loads(gzip.decompress(self.client.get(reverse('backup-download')).content))
+        data = json.loads(gzip.decompress(b''.join(self.client.get(reverse('backup-download')).streaming_content)))
         self.assertTrue(any(o['model'] == 'mdf.dutynote' for o in data))
 
 

@@ -17,7 +17,7 @@ from django.core.management import call_command
 from django.db.models import Case, F, IntegerField, Q, Value, When
 from django.forms import model_to_dict
 from django.http import (
-    Http404, HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse,
+    FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse,
 )
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse, reverse_lazy
@@ -682,11 +682,12 @@ def write_backup(stream):
 class BackupDownloadView(LoginRequiredMixin, generic.View):
 
     def get(self, request, *args, **kwargs):
-        buf = io.BytesIO()
-        write_backup(buf)
+        # a temporary file, not memory: the copy grows with the years
+        fh = tempfile.TemporaryFile()
+        write_backup(fh)
+        fh.seek(0)
         from .models import SiteState
         SiteState.touch('backup_downloaded')
         stamp = timezone.localtime().strftime('%Y-%m-%d_%H%M')
-        response = HttpResponse(buf.getvalue(), content_type='application/gzip')
-        response['Content-Disposition'] = f'attachment; filename="medf-backup-{stamp}.json.gz"'
-        return response
+        return FileResponse(fh, as_attachment=True, filename=f'medf-backup-{stamp}.json.gz',
+                            content_type='application/gzip')
