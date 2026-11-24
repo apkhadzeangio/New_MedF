@@ -161,6 +161,10 @@ MEDIA_URL = '/media/'
 # Staff photos. Kept outside the code folder so updates don't delete them.
 MEDIA_ROOT = Path(env('MEDIA_ROOT', str(Path.home() / 'medf-media')))
 
+# Patient photos (cases). NOT under MEDIA_ROOT: no web server publishes this folder,
+# the site shows the photos only to logged-in users.
+PRIVATE_MEDIA_ROOT = Path(env('PRIVATE_MEDIA_ROOT', str(Path.home() / 'medf-private')))
+
 STORAGES = {
     'default': {
         'BACKEND': 'django.core.files.storage.FileSystemStorage',

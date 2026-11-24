@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import blood, board, consent, duty, medicines, pwa, quotes, roster, views
+from . import blood, board, cases, consent, duty, medicines, pwa, quotes, roster, views
 
 urlpatterns = [
     path('', views.LoginView.as_view(), name='login'),
@@ -50,6 +50,17 @@ urlpatterns = [
     path('blood/print/', blood.BloodOrderPrintView.as_view(), name='blood-order-print'),
 
     # Patients board (ICU + ward) and duty reports
+    path('cases/', cases.CaseListView.as_view(), name='cases'),
+    path('cases/new/', cases.CaseFormView.as_view(), name='case-new'),
+    path('cases/present/', cases.PresentView.as_view(), name='cases-present'),
+    path('cases/<int:pk>/', cases.CaseView.as_view(), name='case'),
+    path('cases/<int:pk>/edit/', cases.CaseFormView.as_view(), name='case-edit'),
+    path('cases/<int:pk>/photos/', cases.PhotoUploadView.as_view(), name='case-photos'),
+    path('cases/<int:pk>/decision/', cases.DecisionView.as_view(), name='case-decision'),
+    path('cases/<int:pk>/delete/', cases.CaseDeleteView.as_view(), name='case-delete'),
+    path('cases/photo/<int:pk>/', cases.PhotoView.as_view(), name='case-photo'),
+    path('cases/photo/<int:pk>/thumb/', cases.PhotoView.as_view(), {'size': 'thumb'}, name='case-photo-thumb'),
+    path('cases/photo/<int:pk>/edit/', cases.PhotoEditView.as_view(), name='case-photo-edit'),
     path('board/', board.BoardView.as_view(), name='board'),
     path('board/print/', board.BoardPrintView.as_view(), name='board-print'),
     path('board/stats/', board.StatsView.as_view(), name='board-stats'),

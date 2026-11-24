@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% load static_version mdf_tags %}
+
+{% block title %}ქეისები{% endblock %}
+{% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/cases.css' %}">{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="page-head">
+        <h1>ქეისები <span class="count">· კონფერენცია</span></h1>
+        {% if status == 'open' and cases %}
+        <a class="x-btn" href="{% url 'cases-present' %}?ids={% for c in cases %}{{ c.pk }}{% if not forloop.last %},{% endif %}{% endfor %}" title="ყველა ქვემოთ ჩამოთვლილი ქეისი, სრულ ეკრანზე">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="m10 8 5 3-5 3z"/><path d="M8 21h8"/></svg>მოხსენება</a>
+        {% endif %}
+        <a class="x-btn primary" href="{% url 'case-new' %}">+ ახალი ქეისი</a>
+    </div>
+
+    <div class="cs-tabs" role="tablist">
+        {% for key, label, n in tabs %}
+        <a role="tab" href="?s={{ key }}" class="{% if key == status %}active{% endif %}" aria-selected="{% if key == status %}true{% else %}false{% endif %}">{{ label }} <span>{{ n }}</span></a>
+        {% endfor %}
+    </div>
+
+    <form class="search-box" method="get" role="search">
+        <input type="hidden" name="s" value="{{ status }}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" name="q" value="{{ q }}" placeholder="ძებნა: პაციენტი, დიაგნოზი, გადაწყვეტილება" aria-label="ძებნა">
+    </form>
+
+    <div class="cs-grid">
+        {% for c in cases %}
+        <a class="cs-card" href="{% url 'case' c.pk %}">
+            <span class="cs-cover">
+                {% if c.cover %}<img src="{% url 'case-photo-thumb' c.cover.pk %}" alt="" loading="lazy">
+                {% else %}<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>{% endif %}
+                {% if c.n_photos %}<span class="cs-n">{{ c.n_photos }} ფოტო</span>{% endif %}
+            </span>
+            <span class="cs-body">
+                <b>{{ c.patient_name }}</b>
+                <small>{% if c.age %}{{ c.age }} წ.{% endif %}{% if c.sex %} · {{ c.get_sex_display }}{% endif %}{% if c.side %} · {{ c.get_side_display }}{% endif %}</small>
+                {% if c.diagnosis %}<span class="cs-dx">{{ c.diagnosis }}</span>{% endif %}
+                {% if c.status == 'open' %}
+                <span class="cs-meta">{% if c.conference_on %}<span class="cs-day {% if c.conference_on < today %}late{% elif c.conference_on == today %}now{% endif %}">{% if c.conference_on == today %}დღეს{% else %}{{ c.conference_on|date:"d.m" }}{% endif %}</span>{% endif %}{% if c.doctor %}{{ c.doctor|who }}{% endif %}</span>
+                {% else %}
+                <span class="cs-decision">{{ c.decision|default:"—"|truncatechars:140 }}</span>
+                <span class="cs-meta">{{ c.decided_at|date:"d.m.Y" }}{% if c.decided_by %} · {{ c.decided_by|who }}{% endif %}</span>
+                {% endif %}
+            </span>
+        </a>
+        {% empty %}
+        <div class="x-card cs-empty">
+            {% if q %}ვერაფერი მოიძებნა.
+            {% elif status == 'open' %}მოსახსენებელი ქეისი ჯერ არ არის. <a href="{% url 'case-new' %}">დაამატეთ პირველი</a> — ფოტოებს ტელეფონიდანვე გადაიღებთ.
+            {% else %}აქ ჯერ არაფერია.{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

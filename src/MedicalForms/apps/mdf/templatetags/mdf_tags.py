@@ -48,3 +48,17 @@ def who(user):
     """Short name of a person (ინა, რამაზი …); '—' when unknown."""
     from apps.mdf.board import person_name
     return person_name(user) or '—'
+
+
+CASE_SECTIONS = (
+    ('history', 'ანამნეზი და ჩივილები'),
+    ('comorbidities', 'თანმხლები დაავადებები, რისკ-ფაქტორები'),
+    ('findings', 'კვლევები'),
+    ('proposal', 'შეთავაზება'),
+)
+
+
+@register.filter
+def case_sections(case):
+    """The filled-in text parts of a case: [(label, text), ...]."""
+    return [(label, getattr(case, field)) for field, label in CASE_SECTIONS if getattr(case, field, '')]

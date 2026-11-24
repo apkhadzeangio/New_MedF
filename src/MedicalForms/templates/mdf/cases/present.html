@@ -1,0 +1,80 @@
+{% load static static_version mdf_tags %}<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <title>მოხსენება — ქეისები</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <link rel="icon" type="image/png" href="{% static 'img/healthcare.png' %}" sizes="16x16">
+    <link rel="stylesheet" href="{% static_v 'css/theme.css' %}">
+    <link rel="stylesheet" href="{% static_v 'css/cases.css' %}">
+</head>
+<body class="cs-present{% if anon %} anon{% endif %}">
+<div class="pz-bar">
+    <span class="pz-count"><b id="pz-i">1</b> / {{ cases|length }}</span>
+    <span class="pz-hint">← → ქეისი · ↑ ↓ ფოტო · F სრული ეკრანი · A სახელის დამალვა · D გადაწყვეტილება</span>
+    <button type="button" class="pz-btn" id="pz-anon" aria-pressed="{% if anon %}true{% else %}false{% endif %}" title="სრული სახელის ნაცვლად ინიციალები (A)">ინიციალები</button>
+    <button type="button" class="pz-btn" id="pz-full" title="სრული ეკრანი (F)">სრული ეკრანი</button>
+    <a class="pz-btn" href="{{ back }}" title="გასვლა">✕</a>
+</div>
+
+<main class="pz-deck">
+    {% for c in cases %}
+    <section class="pz-slide" data-pk="{{ c.pk }}" data-decision="{% url 'case-decision' c.pk %}" aria-label="ქეისი {{ forloop.counter }}" {% if not forloop.first %}hidden{% endif %}>
+        <header class="pz-head">
+            <h1><span class="pz-full">{{ c.patient_name }}</span><span class="pz-init">{{ c.initials }}</span></h1>
+            <p class="pz-sub">{% if c.age %}{{ c.age }} წ.{% endif %}{% if c.sex %} · {{ c.get_sex_display }}{% endif %}{% if c.side %} · <b>{{ c.get_side_display }}</b>{% endif %}{% if c.doctor %} · მომხსენებელი: {{ c.doctor|who }}{% endif %}</p>
+            {% if c.diagnosis %}<p class="pz-dx">{{ c.diagnosis }}</p>{% endif %}
+        </header>
+        <div class="pz-body {% if not c.slides %}no-photos{% endif %}">
+            <div class="pz-text">
+                {% for label, text in c|case_sections %}
+                <div class="pz-sec {% if label == 'შეთავაზება' %}proposal{% endif %}"><h2>{{ label }}</h2><p>{{ text|linebreaksbr }}</p></div>
+                {% empty %}
+                <p class="pz-empty">ტექსტი არ არის ჩაწერილი.</p>
+                {% endfor %}
+            </div>
+            {% if c.slides %}
+            <div class="pz-media">
+                <figure class="pz-stage">
+                    <img alt="" data-src="{% url 'case-photo' c.slides.0.pk %}">
+                    <figcaption></figcaption>
+                </figure>
+                <div class="pz-strip">
+                    {% for p in c.slides %}
+                    <button type="button" class="{% if forloop.first %}on{% endif %}" data-full="{% url 'case-photo' p.pk %}"
+                            data-caption="{{ p.get_kind_display }} · {{ p.taken_on|date:'d.m.Y' }}{% if p.caption %} · {{ p.caption }}{% endif %}">
+                        <img alt="" data-src="{% url 'case-photo-thumb' p.pk %}">
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        <footer class="pz-decide {% if c.decision %}done{% endif %}">
+            <button type="button" class="pz-decide-toggle"><span class="pz-decide-label">გადაწყვეტილება</span><span class="pz-decide-text">{{ c.decision|default:"— ჯერ არ არის (D)" }}</span></button>
+            <form class="pz-decide-form" hidden>
+                <textarea name="decision" rows="3" placeholder="კონფერენციის გადაწყვეტილება…">{{ c.decision }}</textarea>
+                <div><button type="submit" class="pz-btn primary">შენახვა</button> <button type="button" class="pz-btn pz-cancel">გაუქმება</button> <span class="pz-saved" role="status"></span></div>
+            </form>
+        </footer>
+    </section>
+    {% endfor %}
+
+    <section class="pz-slide pz-end" aria-label="შეჯამება" hidden>
+        <h1>შეჯამება</h1>
+        <ol class="pz-summary">
+            {% for c in cases %}
+            <li data-pk="{{ c.pk }}"><b><span class="pz-full">{{ c.patient_name }}</span><span class="pz-init">{{ c.initials }}</span></b>
+                <span class="pz-sum-dx">{{ c.diagnosis }}</span>
+                <span class="pz-sum-decision">{{ c.decision|default:"—" }}</span></li>
+            {% endfor %}
+        </ol>
+        <a class="pz-btn" href="{{ back }}">დასრულება</a>
+    </section>
+</main>
+
+{% csrf_token %}
+<script src="{% static_v 'js/cases.js' %}"></script>
+</body>
+</html>
