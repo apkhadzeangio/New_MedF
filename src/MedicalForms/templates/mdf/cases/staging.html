@@ -29,7 +29,29 @@
                 {% for key, label in S.FLAGS %}<button type="button" class="st-tool t-{{ key }}" data-flag="{{ key }}"><i></i>{{ label }}</button>{% endfor %}
             </div>
             <p class="st-hint">აირჩიეთ ზემოთ რა მოვნიშნოთ და დააჭირეთ არტერიის სეგმენტს. ხელახლა დაჭერა — მოხსნა. წარსული ჩარევები იწერება ცალკე ბლოკში.</p>
+            <div class="st-zoom" role="toolbar" aria-label="ზონის გადიდება">
+                {% for zkey, zlabel, zview in zoom_zones %}<button type="button" class="st-zoom-btn{% if zkey == 'all' %} on{% endif %}" data-zoom="{{ zkey }}" data-viewbox="{{ zview }}">{{ zlabel }}</button>{% endfor %}
+            </div>
             <div class="st-map">{% include "mdf/cases/_artery_map.html" with interactive=True side_name=side_name %}</div>
+
+            <div class="st-foot-box">
+                <div class="st-foot-head">
+                    <b>ტერფის რკალი და ანგიოსომები</b>
+                    <span>ლატერალურ-ირიბი ხედი</span>
+                </div>
+                <div class="st-foot-map">{% include "mdf/cases/_foot_map.html" with interactive=True side_name=side_name %}</div>
+                <div class="fld">ჭრილობის ლოკალიზაცია — ანგიოსომა
+                    <div class="st-angio-grid" role="radiogroup" aria-label="ჭრილობის ანგიოსომა">
+                        {% for akey, atitle, ahint in S.ANGIOSOME_CARDS %}
+                        <label class="st-angio-opt{% if akey == 'none' %} wide{% endif %}">
+                            <input type="radio" name="wound_angiosome" value="{{ akey }}" {% if limb.wound_angiosome == akey %}checked{% endif %}>
+                            <span><b>{{ atitle }}</b>{% if ahint %}<small>{{ ahint }}</small>{% endif %}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
             <div class="fld">სამიზნე არტერიის გზა (TAP)
                 <div class="cs-seg sm">{% for key, label in S.TAP %}<label><input type="radio" name="tap" value="{{ key }}" {% if limb.tap == key %}checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div>
             </div>

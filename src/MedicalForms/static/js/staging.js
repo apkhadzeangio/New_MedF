@@ -125,13 +125,37 @@
         preview(true);
     }
 
+    var mapCard = form.querySelector('.st-map-card');
     var mapBox = form.querySelector('.st-map');
-    if (mapBox) {
-        mapBox.addEventListener('click', function (e) {
+    var footBox = form.querySelector('.st-foot-map');
+    var currentZoom = 'all';
+    var currentViewBox = null;
+
+    function applyZoom() {
+        if (!mapBox) { return; }
+        var svg = mapBox.querySelector('svg.am');
+        if (!svg) { return; }
+        if (currentViewBox) { svg.setAttribute('viewBox', currentViewBox); }
+        svg.classList.toggle('am-zoomed', currentZoom !== 'all');
+    }
+
+    form.querySelectorAll('.st-zoom-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            form.querySelectorAll('.st-zoom-btn').forEach(function (b) { b.classList.remove('on'); });
+            btn.classList.add('on');
+            currentZoom = btn.getAttribute('data-zoom') || 'all';
+            currentViewBox = btn.getAttribute('data-viewbox');
+            applyZoom();
+        });
+    });
+
+    var segHost = mapCard || mapBox;
+    if (segHost) {
+        segHost.addEventListener('click', function (e) {
             var g = e.target.closest('.am-edit [data-seg]');
             if (g) { apply(g); }
         });
-        mapBox.addEventListener('keydown', function (e) {
+        segHost.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' || e.key === ' ') {
                 var g = e.target.closest('.am-edit [data-seg]');
                 if (g) { e.preventDefault(); apply(g); }
@@ -724,18 +748,35 @@
                     var box = document.createElement('div');
                     box.innerHTML = r.html;
                     old.replaceWith(box.firstElementChild);
-                    if (swapMap && r.map_html && mapBox) {
+                    if (swapMap) {
                         needMap = false;
-                        var activeSeg = document.activeElement && document.activeElement.getAttribute
-                            ? document.activeElement.getAttribute('data-seg') : null;
-                        var mwrap = document.createElement('div');
-                        mwrap.innerHTML = r.map_html;
-                        var oldSvg = mapBox.querySelector('svg.am');
-                        if (oldSvg && mwrap.firstElementChild) {
-                            oldSvg.replaceWith(mwrap.firstElementChild);
-                            if (activeSeg) {
-                                var nextFocus = mapBox.querySelector('[data-seg="' + activeSeg + '"]');
-                                if (nextFocus) { nextFocus.focus(); }
+                        var activeEl = document.activeElement;
+                        var activeSeg = activeEl && activeEl.getAttribute ? activeEl.getAttribute('data-seg') : null;
+                        var focusInFoot = !!(activeSeg && footBox && footBox.contains(activeEl));
+                        var focusInMap = !!(activeSeg && mapBox && mapBox.contains(activeEl));
+                        if (r.map_html && mapBox) {
+                            var mwrap = document.createElement('div');
+                            mwrap.innerHTML = r.map_html;
+                            var oldSvg = mapBox.querySelector('svg.am');
+                            if (oldSvg && mwrap.firstElementChild) {
+                                oldSvg.replaceWith(mwrap.firstElementChild);
+                                applyZoom();
+                                if (focusInMap) {
+                                    var nextFocus = mapBox.querySelector('[data-seg="' + activeSeg + '"]');
+                                    if (nextFocus) { nextFocus.focus(); }
+                                }
+                            }
+                        }
+                        if (r.foot_html && footBox) {
+                            var fwrap = document.createElement('div');
+                            fwrap.innerHTML = r.foot_html;
+                            var oldFoot = footBox.querySelector('svg.am-foot');
+                            if (oldFoot && fwrap.firstElementChild) {
+                                oldFoot.replaceWith(fwrap.firstElementChild);
+                                if (focusInFoot) {
+                                    var nextFootFocus = footBox.querySelector('[data-seg="' + activeSeg + '"]');
+                                    if (nextFootFocus) { nextFootFocus.focus(); }
+                                }
                             }
                         }
                     }
@@ -753,7 +794,7 @@
 
     form.addEventListener('change', function (e) {
         if (editor && editor.contains(e.target)) { return; }
-        preview(false);
+        preview(Boolean(e.target && e.target.name === 'wound_angiosome'));
     });
     form.addEventListener('input', function (e) {
         if (editor && editor.contains(e.target)) { return; }

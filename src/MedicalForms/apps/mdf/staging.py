@@ -149,6 +149,28 @@ ANGIOSOMES = (
     ('lateral_heel', 'ლატერალური ქუსლი (PER)'),
     ('lateral_ankle', 'კოჭის წინა-ლატერალური უბანი (PER)'),
 )
+ANGIOSOME_CARDS = (
+    ('none', 'ჭრილობა არ არის', ''),
+    ('dorsal', '1. ტერფის ზურგი', 'AT → DP'),
+    ('medial_plantar', '2. მედიალური ძირი / I თითი', 'PT → MPA'),
+    ('lateral_plantar', '3. ლატერალური ძირი / თითები', 'PT → LPA'),
+    ('medial_heel', '4. ქუსლი — მედიალური', 'PT'),
+    ('lateral_heel', '5. ქუსლი — ლატერალური', 'PER'),
+    ('lateral_ankle', '6. კოჭის წინა-ლატერალური', 'PER'),
+)
+ANGIOSOME_SOURCE = {
+    'dorsal': 'at',
+    'medial_plantar': 'pt',
+    'lateral_plantar': 'pt',
+    'medial_heel': 'pt',
+    'lateral_heel': 'per',
+    'lateral_ankle': 'per',
+}
+ANGIOSOME_TERMINAL = {
+    'dorsal': 'dp',
+    'medial_plantar': 'mpa',
+    'lateral_plantar': 'lpa',
+}
 
 # Prior limb interventions (6 categories; Tosaka et al. 2012 for FP in-stent restenosis)
 MAX_INTERVENTIONS = 20
@@ -823,6 +845,22 @@ def map_context(segments, side, interventions=None):
     return artery_map.build_map_context(SEGMENTS, items, cleaned_segs, cleaned_ivs, side, SEGMENT_NEXT)
 
 
+def foot_context(segments, side, interventions=None, wound_angiosome=''):
+    """Lateral-oblique pedal arch & 6 angiosome territories context for `_foot_map.html`."""
+    from . import artery_map
+
+    cleaned_ivs = clean_interventions(interventions)
+    cleaned_segs = clean_segments(segments)
+    items = segment_view(segments, interventions=cleaned_ivs)
+    angio = wound_angiosome if wound_angiosome in ANGIOSOME_SOURCE else ''
+    return artery_map.build_foot_context(items, cleaned_segs, cleaned_ivs, side, angio)
+
+
+def zoom_zones():
+    from . import artery_map
+    return artery_map.ZOOM_ZONES
+
+
 # --------------------------------------------------------------------------
 # The tables (transcribed from the guideline; page numbers of the PMC author
 # manuscript nihms-1728674: Tables 3.3-3.5 p.176-178, 5.1-5.4 p.180-183,
@@ -1083,6 +1121,56 @@ def doppler_measurements(study_data, side):
     return out
 
 
+def angiosome_status(limb):
+    """Evaluate direct vs indirect angiosome perfusion for the selected wound angiosome and TAP."""
+    if not isinstance(limb, dict):
+        return None
+    ang = limb.get('wound_angiosome') or ''
+    if ang not in ANGIOSOME_SOURCE:
+        return None
+    label = dict(ANGIOSOMES).get(ang, ang)
+    source = ANGIOSOME_SOURCE[ang]
+    tap_labels = dict(TAP)
+    source_label = tap_labels.get(source, source)
+    tap = limb.get('tap') or ''
+    segs = clean_segments(limb.get('segments'))
+
+    if tap not in tap_labels:
+        return {
+            'key': ang, 'label': label, 'source_tap': source, 'source_label': source_label,
+            'direct': None, 'status': 'pending', 'tone': 'muted',
+            'text': f'პირდაპირი მკვებავი არტერია: {source_label}',
+        }
+
+    term = ANGIOSOME_TERMINAL.get(ang)
+    if tap == source:
+        if term and segs.get(term, {}).get('stenosis') == 'occlusion':
+            return {
+                'key': ang, 'label': label, 'source_tap': source, 'source_label': source_label,
+                'direct': False, 'status': 'collateral', 'tone': 'warn',
+                'text': 'სამიზნე წვივის არტერია ემთხვევა, თუმცა ტერფის ტოტი დახშულია (რკალით/კოლატერალით კვება)',
+            }
+        return {
+            'key': ang, 'label': label, 'source_tap': source, 'source_label': source_label,
+            'direct': True, 'status': 'direct', 'tone': 'ok',
+            'text': 'პირდაპირი (ანგიოსომაზე მიმართული) რევასკულარიზაცია',
+        }
+
+    arch_st = segs.get('arch', {}).get('stenosis', 'none')
+    arch_intact = arch_st not in ('moderate', 'severe', 'occlusion') and limb.get('pedal') not in ('P1', 'P2')
+    if arch_intact:
+        return {
+            'key': ang, 'label': label, 'source_tap': source, 'source_label': source_label,
+            'direct': False, 'status': 'indirect_arch', 'tone': 'warn',
+            'text': 'არაპირდაპირი რევასკულარიზაცია ინტაქტური ტერფის რკალის გავლით',
+        }
+    return {
+        'key': ang, 'label': label, 'source_tap': source, 'source_label': source_label,
+        'direct': False, 'status': 'indirect_poor', 'tone': 'bad',
+        'text': 'არაპირდაპირი რევასკულარიზაცია დაზიანებული ტერფის რკალის პირობებში',
+    }
+
+
 def compute(limb, measured=None):
     """Everything derived from one limb's entries (all tables above)."""
     measured = measured or {}
@@ -1153,4 +1241,7 @@ def compute(limb, measured=None):
     if any(iv['type'] == 'bypass' and iv['status'] in ('patent', 'stenosed') for iv in ivs):
         out['notes'].append('კიდურზე ფუნქციონირებს შუნტი — გაითვალისწინეთ, რომ GLASS პირველადი ნატიური არტერიების '
                             'შესაფასებლად არის შექმნილი (GVG ნაწ. 5).')
+    angio = angiosome_status(limb)
+    if angio:
+        out['angiosome'] = angio
     return out

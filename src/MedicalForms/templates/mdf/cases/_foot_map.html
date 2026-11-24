@@ -1,0 +1,51 @@
+<svg class="am am-foot{% if interactive %} am-edit{% endif %}" viewBox="{{ fm.view }}" role="img" aria-label="ტერფის რკალი და ანგიოსომები — {{ side_name }}">
+    <g class="am-anatomy" aria-hidden="true">
+        <path class="am-limb" d="{{ fm.foot_d }}"/>
+        {% for b in fm.bones %}<path class="am-bone" d="{{ b }}"/>{% endfor %}
+        {% if fm.angiosome %}<path class="am-angio-zone" d="{{ fm.angiosome.d }}"/>{% endif %}
+        <line class="am-mark" x1="34" y1="86" x2="162" y2="86"/>
+        <text class="am-mtext foot" x="166" y="89">კოჭის ხაზი</text>
+    </g>
+
+    <g class="am-adv-group" aria-hidden="true">
+        {% for a in fm.adventitia %}<path class="am-adv{% if a.deep %} deep{% endif %}" d="{{ a.d }}"/>{% endfor %}
+        {% for cap in fm.junction_caps %}<circle class="am-adv" cx="{{ cap.cx }}" cy="{{ cap.cy }}" r="{{ cap.r }}"/>{% endfor %}
+    </g>
+
+    <g class="am-plaque-group" aria-hidden="true">
+        {% for p in fm.plaque_beds %}<path class="{% if p.cto %}am-cto-core{% else %}am-plaque{% endif %}" d="{{ p.d }}"/>{% endfor %}
+    </g>
+
+    <g class="am-lumen-group" aria-hidden="true">
+        {% for l in fm.lumens %}<path class="am-lumen{% if l.deep %} deep{% endif %}" d="{{ l.d }}"/>{% endfor %}
+        {% for pc in fm.peroneal_comm %}<path class="am-per-comm" d="{{ pc }}"/>{% endfor %}
+    </g>
+
+    <g class="am-calc-group" aria-hidden="true">
+        {% for cp in fm.calc_plates %}<path class="am-calc-edge" d="{{ cp }}"/><path class="am-calc-core" d="{{ cp }}"/>{% endfor %}
+    </g>
+
+    <g class="am-iv-group" aria-hidden="true">
+        {% for st in fm.stents %}<path class="am-stent tone-{{ st.tone }}" d="{{ st.zig_a }}"/><path class="am-stent tone-{{ st.tone }}" d="{{ st.zig_b }}"/>{% endfor %}
+        {% for dh in fm.distal_hoods %}
+        <g class="am-bypass {{ dh.style }}">
+            {% if dh.miller %}<ellipse class="am-miller" cx="{{ dh.cx }}" cy="{{ dh.cy }}" rx="9" ry="5.6"/>{% endif %}
+            <circle class="am-hood" cx="{{ dh.cx }}" cy="{{ dh.cy }}" r="6.2"/>
+        </g>
+        {% endfor %}
+        {% for amp in fm.amputations %}<path class="am-amp{% if not amp.healed %} bad{% endif %}" d="{{ amp.d }}"/>{% endfor %}
+    </g>
+
+    {% for s in fm.segments %}
+    <g class="{{ s.css }}" style="--w:{{ s.w }}" data-seg="{{ s.key }}" data-state="{{ s.state }}" data-flags="{{ s.flags|join:',' }}"{% if interactive %} tabindex="0" role="button"{% endif %} aria-label="{{ s.name }}">
+        <title>{{ s.tooltip }}</title>
+        <path class="sg-focus" d="{{ s.d }}"/>
+        <path class="sg-quick" d="{{ s.d }}"/>
+        <path class="sg-hit" d="{{ s.d }}"/>
+    </g>
+    {% endfor %}
+
+    {% for amp in fm.amputations %}<text class="am-amp-lbl foot{% if not amp.healed %} bad{% endif %}" x="{{ amp.x }}" y="{{ amp.y }}" text-anchor="middle">{{ amp.text }}</text>{% endfor %}
+    {% for l in fm.labels %}<text class="am-lab foot" x="{{ l.x }}" y="{{ l.y }}" text-anchor="{{ l.anchor }}" dominant-baseline="middle">{{ l.text }}</text>{% endfor %}
+    {% if fm.angiosome %}<text class="am-angio-lbl" x="14" y="286">ჭრილობა: {{ fm.angiosome.label }}</text>{% endif %}
+</svg>

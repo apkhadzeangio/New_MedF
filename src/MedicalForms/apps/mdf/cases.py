@@ -521,7 +521,9 @@ def staging_views(case):
         result = staging.compute(limb, staging.doppler_measurements(doppler_data, side))
         out.append({'side': side, 'name': name, 'limb': limb, 'r': result,
                     'interventions': staging.interventions_view(limb.get('interventions')),
-                    'am': staging.map_context(limb.get('segments') or {}, side, limb.get('interventions'))})
+                    'am': staging.map_context(limb.get('segments') or {}, side, limb.get('interventions')),
+                    'fm': staging.foot_context(limb.get('segments') or {}, side, limb.get('interventions'),
+                                               limb.get('wound_angiosome') or '')})
     return out
 
 
@@ -536,6 +538,9 @@ class StagingView(LoginRequiredMixin, generic.View):
             'side_name': dict(LIMBS)[side], 'limb': limb, 'measured': measured,
             'r': staging.compute(limb, measured),
             'am': staging.map_context(limb.get('segments') or {}, side, limb.get('interventions')),
+            'fm': staging.foot_context(limb.get('segments') or {}, side, limb.get('interventions'),
+                                       limb.get('wound_angiosome') or ''),
+            'zoom_zones': staging.zoom_zones(),
             'S': staging,
             'segments_json': limb.get('segments') or {},
             'interventions_json': limb.get('interventions') or [],
@@ -577,6 +582,7 @@ class StagingView(LoginRequiredMixin, generic.View):
             return JsonResponse({
                 'html': render(request, 'mdf/cases/_staging_result.html', ctx).content.decode(),
                 'map_html': render(request, 'mdf/cases/_artery_map.html', ctx).content.decode(),
+                'foot_html': render(request, 'mdf/cases/_foot_map.html', ctx).content.decode(),
             })
         case.staging = staging.save_limb(case.staging, side, limb, today=today)
         case.updated_by = request.user

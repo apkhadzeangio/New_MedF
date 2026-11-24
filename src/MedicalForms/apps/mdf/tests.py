@@ -2482,3 +2482,105 @@ class StagingVectorMapTests(PrivateMediaTest):
         self.assertIn('am-cto-core', preview['map_html'])
         self.assertIn('am-coll', preview['map_html'])
         self.assertIn('am-bypass vein', preview['map_html'])
+
+
+class StagingFootAngiosomesTests(PrivateMediaTest):
+    """T4: lateral-oblique pedal arch inset, 6 Attinger angiosomes, and symmetric 4-zone zoom."""
+
+    def test_angiosome_direct_indirect_and_arch_evaluation(self):
+        from .staging import angiosome_status, compute
+
+        # Unspecified or 'none' -> no angiosome status
+        self.assertIsNone(angiosome_status({'wound_angiosome': ''}))
+        self.assertIsNone(angiosome_status({'wound_angiosome': 'none', 'tap': 'pt'}))
+        self.assertNotIn('angiosome', compute({'wound_angiosome': 'none', 'tap': 'pt', 'fp': 2, 'ip': 1}))
+
+        # Selected angiosome before TAP is chosen -> pending hint naming the source artery
+        pending = angiosome_status({'wound_angiosome': 'medial_plantar'})
+        self.assertEqual((pending['status'], pending['source_tap'], pending['direct']), ('pending', 'pt', None))
+
+        # 1. Direct revascularization: PT -> medial plantar with patent MPA
+        direct = compute({'wound_angiosome': 'medial_plantar', 'tap': 'pt', 'pedal': 'P0'})['angiosome']
+        self.assertEqual((direct['status'], direct['direct'], direct['tone']), ('direct', True, 'ok'))
+
+        # 2. Matching tibial TAP, but terminal foot branch (MPA) is occluded -> collateral/arch dependent
+        coll = compute({
+            'wound_angiosome': 'medial_plantar', 'tap': 'pt',
+            'segments': {'mpa': {'stenosis': 'occlusion'}},
+        })['angiosome']
+        self.assertEqual((coll['status'], coll['direct'], coll['tone']), ('collateral', False, 'warn'))
+
+        # 3. Indirect revascularization via intact pedal arch (AT -> medial plantar, arch patent, P0)
+        ind_ok = compute({'wound_angiosome': 'medial_plantar', 'tap': 'at', 'pedal': 'P0'})['angiosome']
+        self.assertEqual((ind_ok['status'], ind_ok['direct'], ind_ok['tone']), ('indirect_arch', False, 'warn'))
+
+        # 4. Indirect revascularization with diseased/absent pedal arch (arch occluded OR P1/P2)
+        ind_bad = compute({
+            'wound_angiosome': 'lateral_heel', 'tap': 'at',
+            'segments': {'arch': {'stenosis': 'occlusion'}},
+        })['angiosome']
+        self.assertEqual((ind_bad['status'], ind_bad['direct'], ind_bad['tone']), ('indirect_poor', False, 'bad'))
+        ind_p1 = compute({'wound_angiosome': 'dorsal', 'tap': 'pt', 'pedal': 'P1'})['angiosome']
+        self.assertEqual(ind_p1['status'], 'indirect_poor')
+
+    def test_foot_inset_zoom_zones_and_page_integration(self):
+        from .staging import foot_context, zoom_zones
+
+        # Every zoom viewBox is centered on axis=300 so R and mirrored L legs stay centered
+        zones = zoom_zones()
+        self.assertEqual([z[0] for z in zones], ['all', 'inflow', 'fp', 'btk'])
+        for _key, _label, vbox in zones:
+            vx, _vy, vw, _vh = (float(x) for x in vbox.split())
+            self.assertAlmostEqual(2.0 * vx + vw, 300.0, places=3)
+
+        # Foot context: 7 pedal/ankle segments, peroneal communicating branches, Miller hood & TMA line
+        fm_pat = foot_context(
+            {'mpa': {'stenosis': 'severe', 'calc': 3}},
+            'R',
+            [{'type': 'bypass', 'conduit_group': 'prosthetic', 'conduit': 'ptfe', 'cuff': 'miller',
+              'proximal': 'cfa', 'distal': 'dp', 'status': 'patent'},
+             {'type': 'amputation', 'subtype': 'tma', 'status': 'nonhealing'}],
+            'medial_plantar',
+        )
+        self.assertEqual([s['key'] for s in fm_pat['segments']], ['at3', 'pt3', 'per3', 'dp', 'mpa', 'lpa', 'arch'])
+        self.assertEqual(len(fm_pat['peroneal_comm']), 2)
+        self.assertIsNotNone(fm_pat['angiosome'])
+        self.assertEqual(len(fm_pat['distal_hoods']), 1)
+        self.assertTrue(fm_pat['distal_hoods'][0]['miller'])
+        self.assertEqual(len(fm_pat['amputations']), 1)
+        self.assertFalse(fm_pat['amputations'][0]['healed'])
+
+        # Occluding per3 hides peroneal communicating branches
+        fm_occ = foot_context({'per3': {'stenosis': 'occlusion'}}, 'R')
+        self.assertEqual(fm_occ['peroneal_comm'], [])
+
+        # Staging page GET + AJAX preview + POST save + detail + presentation
+        case = self.make_case(side='R')
+        url = reverse('case-staging', args=[case.pk, 'R'])
+        page = self.client.get(url)
+        self.assertContains(page, 'class="am am-foot am-edit"')
+        self.assertContains(page, 'data-zoom="btk"')
+        self.assertContains(page, 'name="wound_angiosome"')
+
+        payload = {
+            'segments': json.dumps({'arch': {'stenosis': 'none'}, 'mpa': {'stenosis': 'moderate'}}),
+            'interventions': json.dumps([]),
+            'wound_angiosome': 'medial_plantar',
+            'tap': 'pt', 'fp': '2', 'ip': '2', 'pedal': 'P0',
+            'w': '2', 'i': '2', 'fi': '1', 'risk': 'avg', 'vein': 'yes', 'cfa': 'A',
+        }
+        preview = self.client.post(url, {**payload, 'preview': '1'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        self.assertIn('foot_html', preview)
+        self.assertIn('am-angio-zone', preview['foot_html'])
+        self.assertIn('პირდაპირი (ანგიოსომაზე მიმართული) რევასკულარიზაცია', preview['html'])
+
+        self.client.post(url, payload)
+        case.refresh_from_db()
+        self.assertEqual(case.staging['R']['wound_angiosome'], 'medial_plantar')
+
+        for rendered in (self.client.get(reverse('case', args=[case.pk])),
+                         self.client.get(reverse('cases-present'), {'ids': case.pk})):
+            self.assertContains(rendered, 'am am-foot')
+            self.assertContains(rendered, 'am-angio-zone')
+            self.assertContains(rendered, 'პირდაპირი (ანგიოსომაზე მიმართული) რევასკულარიზაცია')
+

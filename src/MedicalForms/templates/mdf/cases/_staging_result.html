@@ -23,6 +23,9 @@
     {% if r.glass_text %}<p class="st-line">{{ r.glass_text }}</p>{% endif %}
     {% if r.i_auto %}<p class="st-line">* იშემიის ხარისხი გამოთვლილია: {{ r.i_from }}{% if r.measured.abi is not None %} · ABI {{ r.measured.abi }}{% endif %}{% if r.measured.ap is not None %} · AP {{ r.measured.ap }}{% endif %}{% if r.measured.tp is not None %} · TP {{ r.measured.tp }}{% endif %}</p>{% endif %}
     {% if r.inflow %}<p class="st-line">Inflow: {{ r.inflow }}</p>{% endif %}
+    {% if r.angiosome %}
+    <p class="st-line st-angio-line">ანგიოსომა: <b>{{ r.angiosome.label }}</b> · <em class="st-iv-badge tone-{{ r.angiosome.tone }}">{{ r.angiosome.text }}</em></p>
+    {% endif %}
     {% for n in r.notes %}<p class="st-note">{{ n }}</p>{% endfor %}
     {% if live %}<span class="st-short" hidden>GLASS {{ r.glass|default:"—" }} · WIfI {{ r.wifi|default:"—" }}{% if r.plan %} · {% if r.plan == 'endo' %}ენდოვასკულური{% elif r.plan == 'open' %}ღია შუნტირება{% elif r.plan == 'unsure' %}განუსაზღვრელი{% elif r.plan == 'unsalvageable' %}გადარჩენადი არ არის{% else %}რევასკ. იშვიათად{% endif %}{% endif %}</span>{% endif %}
 </div>
