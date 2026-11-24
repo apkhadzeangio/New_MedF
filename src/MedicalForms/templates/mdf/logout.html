@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+
+{% block title %}გამოსვლა{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="page-head"><h1>გამოსვლა</h1></div>
+    <form method="post" class="d-flex gap-2 align-items-center">
+        {% csrf_token %}
+        <button type="submit" class="x-btn">გამოსვლა (სხვა მომხმარებელი)</button>
+        <a class="x-btn" href="{% url 'niv-cover' %}">დარჩენა</a>
+    </form>
+</div>
+{% endblock %}

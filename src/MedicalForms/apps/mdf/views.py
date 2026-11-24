@@ -17,7 +17,7 @@ from django.forms import model_to_dict
 from django.http import (
     Http404, HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse,
 )
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -88,12 +88,15 @@ class LoginView(LoginRedirectMixin, generic.FormView):
 
 
 class LogoutView(LoginRequiredMixin, generic.View):
+    """Logs out on POST only (the menu button). A plain link or another site
+    can't log anyone out; an old bookmark to /logout/ shows a confirm button."""
 
     def get(self, request, *args, **kwargs):
+        return render(request, 'mdf/logout.html')
+
+    def post(self, request, *args, **kwargs):
         logout(request)
         return HttpResponseRedirect('/')
-
-    post = get
 
 
 class PhotoView(LoginRequiredMixin, generic.FormView):

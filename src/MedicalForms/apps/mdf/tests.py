@@ -443,7 +443,7 @@ class AvatarTests(BaseViewTest):
         ina = User.objects.create_user('ina', password='x')
         profile = StaffProfile.objects.create(user=ina, display_name='ინა')
         self.assertIn('img/staff/ina.', profile.avatar_url)
-        self.assertContains(self.client.get('/logout/', follow=True), 'img/staff/ina.')
+        self.assertContains(self.client.post('/logout/', follow=True), 'img/staff/ina.')
 
 
 class BloodOrderTests(BaseViewTest):
@@ -1512,3 +1512,15 @@ class RefineBatch1Tests(BaseViewTest):
         self.assertTrue(DutyReport.objects.filter(duty_date=old).exists())
         purge_old_reports(force=True)             # the daily backup task
         self.assertFalse(DutyReport.objects.filter(duty_date=old).exists())
+
+
+class RefineBatch3Tests(BaseViewTest):
+
+    def test_a8_logout_needs_post(self):
+        page = self.client.get('/logout/')              # a link/bookmark only asks
+        self.assertContains(page, 'method="post"')
+        self.assertIn('_auth_user_id', self.client.session)
+        home = self.client.get('/', follow=True)
+        self.assertContains(home, 'action="/logout/"')  # the menu posts
+        self.client.post('/logout/')
+        self.assertNotIn('_auth_user_id', self.client.session)
