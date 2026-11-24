@@ -2020,3 +2020,105 @@ class DopplerTests(PrivateMediaTest):
         self.client.post(reverse('doppler-edit', args=[study.pk]), {'action': 'delete'})
         self.assertFalse(DopplerStudy.objects.exists())
         self.assertFalse(os.path.exists(path))
+
+
+class StagingTablesTests(TestCase):
+    """GLASS / WIfI / PLAN against the guideline (Conte et al. 2019, PMC author manuscript)."""
+
+    def test_wifi_stage_table_3_5(self):
+        from .staging import WIFI_STAGE
+        self.assertEqual(len(WIFI_STAGE), 64)
+        cases = {(0, 0, 0): 1, (0, 0, 1): 1, (1, 1, 0): 1, (0, 0, 2): 2, (0, 3, 0): 2, (2, 0, 1): 2,
+                 (0, 0, 3): 3, (1, 3, 1): 3, (3, 0, 1): 3, (2, 1, 0): 3, (2, 2, 1): 4,   # the paper's example: WIfI 221 -> 4
+                 (2, 3, 0): 4, (3, 1, 0): 4, (3, 0, 2): 4, (1, 2, 2): 4,
+                 (0, 1, 2): 3, (0, 2, 1): 2}                                               # the two cells the print leaves unclear
+        for key, stage in cases.items():
+            self.assertEqual(WIFI_STAGE[key], stage, key)
+        for (w, i, f), stage in WIFI_STAGE.items():            # never lower when any grade rises
+            for nxt in ((w + 1, i, f), (w, i + 1, f), (w, i, f + 1)):
+                if nxt in WIFI_STAGE:
+                    self.assertGreaterEqual(WIFI_STAGE[nxt], stage, ((w, i, f), nxt))
+
+    def test_ischemia_table_3_3(self):
+        from .staging import grade_abi, grade_ap, grade_tp, suggest_ischemia
+        self.assertEqual([grade_abi(v) for v in (0.8, 0.79, 0.6, 0.59, 0.4, 0.39)], [0, 1, 1, 2, 2, 3])
+        self.assertEqual([grade_ap(v) for v in (101, 100, 70, 69, 50, 49)], [0, 1, 1, 2, 2, 3])
+        self.assertEqual([grade_tp(v) for v in (60, 59, 40, 39, 30, 29)], [0, 1, 1, 2, 2, 3])
+        self.assertEqual(suggest_ischemia(abi=0.95, ap=114, tp=25), (3, 'TP'))      # TP decides
+        self.assertEqual(suggest_ischemia(abi=0.55, ap=66), (2, 'ABI/AP'))         # the worse of the two
+        self.assertEqual(suggest_ischemia(abi=1.5, ap=180), (0, 'AP'))             # incompressible ABI
+        self.assertEqual(suggest_ischemia(), (None, ''))
+
+    def test_glass_table_5_3_and_calcification(self):
+        from .staging import GLASS_MATRIX, compute
+        self.assertEqual(GLASS_MATRIX[0], (None, 'I', 'I', 'II', 'III'))
+        self.assertEqual(GLASS_MATRIX[2], ('I', 'II', 'II', 'II', 'III'))
+        self.assertEqual(GLASS_MATRIX[3], ('II', 'II', 'II', 'III', 'III'))
+        self.assertEqual(set(GLASS_MATRIX[4]), {'III'})
+        r = compute({'fp': 2, 'ip': 2, 'fp_calc': True})
+        self.assertEqual((r['fp_final'], r['ip_final'], r['glass']), (3, 2, 'II'))
+        self.assertEqual(compute({'fp': 4, 'ip': 3, 'fp_calc': True, 'ip_calc': True})['fp_final'], 4)   # max 4
+        self.assertIsNone(compute({'fp': 0, 'ip': 0})['glass'])
+
+    def test_plan_fig_6_4_and_benefit_fig_6_3(self):
+        from .staging import compute
+        base = {'risk': 'avg', 'vein': 'yes'}
+        def plan(fp, ip, w, i, fi, **kw):
+            return compute({**base, 'fp': fp, 'ip': ip, 'w': w, 'i': i, 'fi': fi, **kw})
+        r = plan(1, 0, 1, 2, 0)                                  # GLASS I, WIfI stage 2
+        self.assertEqual((r['glass'], r['wifi'], r['plan']), ('I', 2, 'endo'))
+        r = plan(4, 4, 2, 2, 1)                                  # GLASS III, WIfI 4
+        self.assertEqual((r['glass'], r['wifi'], r['plan'], r['benefit']), ('III', 4, 'open', 4))
+        self.assertEqual(plan(3, 3, 1, 2, 1)['plan'], 'open')    # GLASS III, stage 3
+        self.assertEqual(plan(4, 0, 0, 2, 0)['plan'], 'unsure')  # GLASS III, stage 2
+        self.assertEqual(plan(2, 2, 1, 2, 1)['plan'], 'unsure')  # GLASS II, stage 3
+        self.assertEqual(plan(2, 2, 0, 2, 0)['plan'], 'endo')    # GLASS II, stage 2
+        self.assertEqual(plan(4, 4, 0, 0, 0)['plan'], 'none')    # WIfI stage 1
+        self.assertEqual(plan(4, 4, 0, 0, 0)['benefit'], 1)
+        self.assertEqual(plan(2, 2, 0, 2, 0)['benefit'], 2)      # I2, stage 2
+        self.assertEqual(plan(2, 2, 3, 3, 3, unsalvageable=True)['plan'], 'unsalvageable')
+        self.assertIn('6.41', plan(4, 4, 2, 2, 1, vein='no')['plan_label'])
+        self.assertIn('6.33', plan(4, 4, 2, 2, 1, risk='high')['plan_label'])
+        self.assertIn('6.37', plan(4, 4, 2, 2, 1, risk='high')['plan_label'])
+        self.assertIn('6.34', plan(1, 0, 1, 2, 0, risk='high')['plan_label'])
+        self.assertTrue(any('P2' in n for n in plan(1, 0, 1, 2, 0, pedal='P2')['notes']))
+        self.assertTrue(any('Inflow' in n for n in plan(1, 0, 1, 2, 0, ai='I')['notes']))
+
+    def test_ischemia_from_doppler_and_clean(self):
+        from .staging import clean, compute, doppler_measurements
+        study = {'indices': {'R': {'abi_pt': 0.55, 'abi_dp': 0.56}}, 'pressures': {'R': {'pt': 66, 'dp': 68, 'toe': 39}}}
+        m = doppler_measurements(study, 'R')
+        self.assertEqual(m, {'abi': 0.56, 'ap': 68, 'tp': 39})
+        r = compute({'w': 1, 'fi': 0, 'fp': 1, 'ip': 1}, m)
+        self.assertEqual((r['i'], r['i_auto'], r['i_from'], r['wifi']), (2, True, 'TP', 2))
+        limb = clean({'segments': {'sfa2': {'s': 'oc', 'ca': True, 'x': 1}, 'bogus': {'s': 'oc'}, 'pop1': {'s': 'n'}},
+                      'fp': '7', 'ip': '2', 'w': 'a', 'risk': 'weird', 'tap': 'pt', 'abi': '0,6'})
+        self.assertEqual(limb['segments'], {'sfa2': {'s': 'oc', 'ca': True}})
+        self.assertEqual((limb['fp'], limb['ip'], limb['w'], limb['risk'], limb['tap'], limb['abi']),
+                         (None, 2, None, 'avg', 'pt', 0.6))
+
+
+class StagingPageTests(PrivateMediaTest):
+
+    def test_page_preview_save_and_show(self):
+        case = self.make_case(side='R')
+        url = reverse('case-staging', args=[case.pk, 'R'])
+        page = self.client.get(url)
+        self.assertContains(page, 'data-seg="sfa2"')
+        self.assertContains(page, 'FP 4')
+        self.assertEqual(self.client.get(reverse('case-staging', args=[case.pk, 'X'])).status_code, 404)
+        data = {'segments': json.dumps({'sfa2': {'s': 'oc'}, 'pop1': {'s': 'st', 'ca': True}}),
+                'fp': '3', 'ip': '1', 'pedal': 'P0', 'tap': 'at', 'w': '2', 'i': '2', 'fi': '1',
+                'risk': 'avg', 'vein': 'yes', 'cfa': 'A'}
+        preview = self.client.post(url, {**data, 'preview': '1'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        self.assertIn('id="st-res"', preview['html'])
+        self.assertIn('plan-unsure', preview['html'])               # FP3 + IP1 = GLASS II; WIfI 221 = 4 -> indeterminate (Fig 6.4)
+        case.refresh_from_db()
+        self.assertEqual(case.staging, {})                          # a preview saves nothing
+        self.client.post(url, data)
+        case.refresh_from_db()
+        self.assertEqual(case.staging['R']['segments'], {'sfa2': {'s': 'oc'}, 'pop1': {'s': 'st', 'ca': True}})
+        detail = self.client.get(reverse('case', args=[case.pk]))
+        self.assertContains(detail, 'sg sg-oc')
+        self.assertContains(detail, 'GLASS')
+        self.assertContains(self.client.get(reverse('cases-present'), {'ids': case.pk}), 'pz-stage-slide')

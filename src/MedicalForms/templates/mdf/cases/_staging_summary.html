@@ -1,0 +1,16 @@
+{% for st in stagings %}
+<div class="st-sum">
+    <div class="st-sum-map">
+        <h3>{{ st.name }}</h3>
+        {% include "mdf/cases/_artery_map.html" with segments=st.map side=st.side side_name=st.name outline=st.outline interactive=False %}
+    </div>
+    <div class="st-sum-res">
+        {% include "mdf/cases/_staging_result.html" with r=st.r limb=st.limb %}
+        {% if st.limb.tap %}<p class="st-line">TAP: {% if st.limb.tap == 'at' %}წინა წვივის{% elif st.limb.tap == 'pt' %}უკანა წვივის{% else %}მცირე წვივის{% endif %}</p>{% endif %}
+        {% if st.limb.note %}<p class="st-line">{{ st.limb.note }}</p>{% endif %}
+    </div>
+</div>
+{% endfor %}
+<div class="st-legend" aria-hidden="true">
+    <span class="lg-n"><i></i>ნორმა</span><span class="lg-mild"><i></i>&lt;50%</span><span class="lg-st"><i></i>≥50%</span><span class="lg-oc"><i></i>ოკლუზია</span><span class="lg-ca"><i></i>კალციფიკაცია</span><span class="lg-rx"><i></i>სტენტი</span><span class="lg-by"><i></i>შუნტი</span>
+</div>

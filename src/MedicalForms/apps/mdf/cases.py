@@ -9,6 +9,7 @@ PhotoView hands them out to logged-in users only.
 """
 import datetime
 import io
+import json
 import uuid
 
 from django.contrib import messages
@@ -216,6 +217,7 @@ class CaseView(LoginRequiredMixin, generic.TemplateView):
         ctx.update({
             'case': case, 'groups': _photos_by_kind(case), 'kinds': CasePhoto.Kind.choices,
             'dopplers': [doppler_view(d) for d in case.dopplers.all()],
+            'stagings': staging_views(case), 'limbs': _limbs_of(case),
             'kind': self.request.GET.get('kind') or CasePhoto.Kind.WOUND,
             'today': timezone.localdate(),
         })
@@ -352,6 +354,7 @@ class PresentView(LoginRequiredMixin, generic.TemplateView):
         for case in cases:
             case.slides = sorted(case.photos.all(), key=lambda p: (order.get(p.kind, 9), p.taken_on, p.pk))
             case.doppler_views = [doppler_view(d) for d in case.dopplers.all()]
+            case.staging_views = staging_views(case)
         ctx.update({'cases': cases, 'anon': self.request.GET.get('anon') == '1',
                     'back': self.request.GET.get('back') or reverse('cases')})
         if not ctx['back'].startswith('/') or ctx['back'].startswith('//'):
@@ -484,3 +487,80 @@ class DopplerFileView(LoginRequiredMixin, generic.View):
         response['Content-Disposition'] = 'inline; filename="doppler.%s"' % ('pdf' if is_pdf else 'png')
         response['Cache-Control'] = 'private, max-age=3600'
         return response
+
+
+# --------------------------------------------------------------------------
+# Staging: artery map, GLASS, WIfI, PLAN (tables in staging.py)
+# --------------------------------------------------------------------------
+
+LIMBS = (('R', 'მარჯვენა'), ('L', 'მარცხენა'))
+
+
+def _limbs_of(case):
+    """Which legs a case is about (both when not said)."""
+    if case.side in ('R', 'L'):
+        return [l for l in LIMBS if l[0] == case.side]
+    return list(LIMBS)
+
+
+def _latest_doppler(case):
+    study = case.dopplers.order_by('-performed_on', '-id').first()
+    return study.data if study else None
+
+
+def staging_views(case):
+    """[{side, name, limb, result, map}] for the limbs that have been staged."""
+    from . import staging
+    out = []
+    doppler_data = _latest_doppler(case) if case.staging else None
+    for side, name in LIMBS:
+        limb = (case.staging or {}).get(side)
+        if not limb:
+            continue
+        result = staging.compute(limb, staging.doppler_measurements(doppler_data, side))
+        out.append({'side': side, 'name': name, 'limb': limb, 'r': result, 'outline': staging.LEG_OUTLINE,
+                    'map': staging.segment_view(limb.get('segments') or {})})
+    return out
+
+
+class StagingView(LoginRequiredMixin, generic.View):
+    template_name = 'mdf/cases/staging.html'
+
+    def _context(self, case, side, limb):
+        from . import staging
+        measured = staging.doppler_measurements(_latest_doppler(case), side)
+        return {
+            'case': case, 'side': side, 'limbs': _limbs_of(case) if len(_limbs_of(case)) > 1 else LIMBS,
+            'side_name': dict(LIMBS)[side], 'limb': limb, 'measured': measured,
+            'r': staging.compute(limb, measured), 'map': staging.segment_view(limb.get('segments') or {}),
+            'S': staging, 'outline': staging.LEG_OUTLINE,
+            'segments_json': limb.get('segments') or {},
+        }
+
+    def get(self, request, pk, side):
+        case = get_object_or_404(Case, pk=pk)
+        if side not in dict(LIMBS):
+            raise Http404
+        from . import staging
+        limb = (case.staging or {}).get(side) or staging.clean({})
+        return render(request, self.template_name, self._context(case, side, limb))
+
+    def post(self, request, pk, side):
+        from . import staging
+        case = get_object_or_404(Case, pk=pk)
+        if side not in dict(LIMBS):
+            raise Http404
+        data = request.POST.dict()
+        try:
+            data['segments'] = json.loads(request.POST.get('segments') or '{}')
+        except ValueError:
+            data['segments'] = {}
+        limb = staging.clean(data)
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest' and request.POST.get('preview'):
+            ctx = self._context(case, side, limb) | {'live': True}
+            return JsonResponse({'html': render(request, 'mdf/cases/_staging_result.html', ctx).content.decode()})
+        case.staging = {**(case.staging or {}), side: limb}
+        case.updated_by = request.user
+        case.save(update_fields=['staging', 'updated_by', 'updated_at'])
+        messages.success(request, f'{dict(LIMBS)[side]} კიდურის სტადირება შენახულია.')
+        return HttpResponseRedirect(reverse('case', args=[case.pk]) + '#staging')

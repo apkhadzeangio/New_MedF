@@ -59,6 +59,12 @@
             </form>
         </footer>
     </section>
+    {% if c.staging_views %}
+    <section class="pz-slide pz-stage-slide" data-case="{{ forloop.counter }}" aria-label="სტადირება" hidden>
+        <header class="pz-head"><h1><span class="pz-full">{{ c.patient_name }}</span><span class="pz-init">{{ c.initials }}</span> <small>· სტადირება</small></h1></header>
+        {% include "mdf/cases/_staging_summary.html" with stagings=c.staging_views %}
+    </section>
+    {% endif %}
     {% for dv in c.doppler_views %}
     <section class="pz-slide pz-dop" data-case="{{ forloop.parentloop.counter }}" aria-label="დოპლეროგრაფია" hidden>
         <header class="pz-head"><h1><span class="pz-full">{{ c.patient_name }}</span><span class="pz-init">{{ c.initials }}</span></h1></header>

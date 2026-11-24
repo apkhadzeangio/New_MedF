@@ -48,6 +48,15 @@
         </section>
     </div>
 
+    <section class="x-card cs-staging" id="staging" aria-label="სტადირება">
+        <div class="cs-photos-head">
+            <h2>სტადირება — GLASS · WIfI · PLAN</h2>
+            {% for key, name in limbs %}<a class="x-btn sm" href="{% url 'case-staging' case.pk key %}">{% if stagings %}{{ name }} — რედაქტირება{% else %}{{ name }} კიდური{% endif %}</a>{% endfor %}
+        </div>
+        {% if stagings %}{% include "mdf/cases/_staging_summary.html" %}{% else %}
+        <p class="text-muted m-0">არტერიების რუკა, GLASS, WIfI და რეკომენდებული სტრატეგია ჯერ არ არის შევსებული.</p>{% endif %}
+    </section>
+
     <section class="x-card cs-dops" id="doppler" aria-label="დოპლეროგრაფია">
         <div class="cs-photos-head">
             <h2>დოპლეროგრაფია</h2>

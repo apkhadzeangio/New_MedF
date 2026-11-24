@@ -1,0 +1,14 @@
+<svg class="am {% if interactive %}am-edit{% endif %}" viewBox="0 0 200 560" role="img" aria-label="არტერიების რუკა — {{ side_name }}">
+    <g {% if side == 'L' %}transform="translate(200,0) scale(-1,1)"{% endif %}>
+        <path class="am-leg" d="{{ outline }}"/>
+        {% for s in segments %}
+        <g class="{{ s.css }}" data-seg="{{ s.key }}" data-state="{{ s.state }}" data-flags="{{ s.flags|join:',' }}"{% if interactive %} tabindex="0" role="button"{% endif %} aria-label="{{ s.name }}">
+            <title>{{ s.name }}</title>
+            <path class="sg-shell" d="{{ s.d }}"/>
+            <path class="sg-line" d="{{ s.d }}"/>
+            <path class="sg-mark" d="{{ s.d }}"/>
+            <path class="sg-hit" d="{{ s.d }}"/>
+        </g>
+        {% endfor %}
+    </g>
+</svg>

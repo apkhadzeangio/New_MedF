@@ -1,0 +1,28 @@
+<div class="st-res"{% if live %} id="st-res"{% endif %}>
+    <div class="st-res-row">
+        <div class="st-badge glass-{{ r.glass|default:'x' }}">
+            <small>GLASS</small>
+            <b>{% if r.glass %}{{ r.glass }}{% elif r.fp_final is not None %}NA{% else %}—{% endif %}</b>
+            <em>{% if r.fp_final is not None %}FP {{ r.fp_final }} · IP {{ r.ip_final }}{% if limb.pedal %} · {{ limb.pedal }}{% endif %}{% else %}FP / IP აირჩიეთ{% endif %}</em>
+        </div>
+        <div class="st-badge wifi-{{ r.wifi|default:'x' }}">
+            <small>WIfI</small>
+            <b>{% if r.wifi %}{{ r.wifi }}{% else %}—{% endif %}</b>
+            <em>{% if r.wifi %}W{{ r.w }} I{{ r.i }}{% if r.i_auto %}*{% endif %} fI{{ r.fi }} · {{ r.wifi_risk }}{% else %}W / I / fI აირჩიეთ{% endif %}</em>
+        </div>
+        {% if r.benefit is not None %}
+        <div class="st-badge benefit-{{ r.benefit }}">
+            <small>რევასკ. სარგებელი</small>
+            <b>{{ r.benefit_label }}</b>
+        </div>
+        {% endif %}
+    </div>
+    {% if r.plan_label %}
+    <div class="st-plan plan-{{ r.plan }}"><small>რეკომენდებული სტრატეგია (PLAN)</small><b>{{ r.plan_label }}</b></div>
+    {% endif %}
+    {% if r.glass_text %}<p class="st-line">{{ r.glass_text }}</p>{% endif %}
+    {% if r.i_auto %}<p class="st-line">* იშემიის ხარისხი გამოთვლილია: {{ r.i_from }}{% if r.measured.abi is not None %} · ABI {{ r.measured.abi }}{% endif %}{% if r.measured.ap is not None %} · AP {{ r.measured.ap }}{% endif %}{% if r.measured.tp is not None %} · TP {{ r.measured.tp }}{% endif %}</p>{% endif %}
+    {% if r.inflow %}<p class="st-line">Inflow: {{ r.inflow }}</p>{% endif %}
+    {% for n in r.notes %}<p class="st-note">{{ n }}</p>{% endfor %}
+    {% if live %}<span class="st-short" hidden>GLASS {{ r.glass|default:"—" }} · WIfI {{ r.wifi|default:"—" }}{% if r.plan %} · {% if r.plan == 'endo' %}ენდოვასკულური{% elif r.plan == 'open' %}ღია შუნტირება{% elif r.plan == 'unsure' %}განუსაზღვრელი{% elif r.plan == 'unsalvageable' %}გადარჩენადი არ არის{% else %}რევასკ. იშვიათად{% endif %}{% endif %}</span>{% endif %}
+</div>

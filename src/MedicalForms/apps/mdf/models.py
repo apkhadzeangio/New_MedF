@@ -692,6 +692,8 @@ class Case(models.Model):
     updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     decided_at = models.DateTimeField(null=True, blank=True)
     decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    # GLASS / WIfI / PLAN per limb: {'R': {...}, 'L': {...}} (see staging.py)
+    staging = models.JSONField(default=dict, blank=True)
 
     class Meta:
         db_table = 'cases'
