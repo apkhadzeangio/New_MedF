@@ -175,6 +175,7 @@
         <input type="hidden" name="action">
         {% if niv and can_update %}
             <input type="hidden" value="{{ niv.pk }}" name="t">
+            <input type="hidden" value="{{ niv.version }}" name="v">
         {% endif %}
         <input type="hidden" id="form-doe" name="doe" value="{{ niv.doe|default:'' }}">
         <input type="hidden" id="form-dob" name="dob" value="{{ niv.dob|default:'' }}">

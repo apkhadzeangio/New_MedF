@@ -7,10 +7,10 @@ import shutil
 from unittest import skipUnless
 
 from django.contrib.auth.models import User
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.http import QueryDict
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from .models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
@@ -40,6 +40,7 @@ class BaseViewTest(TestCase):
 
     def setUp(self):
         cache.clear()
+        caches['pdf'].clear()
         self.user = User.objects.create_user('doc', password='Secret-pass-123')
         self.client.force_login(self.user)
 
@@ -407,8 +408,10 @@ class StaffAndBackupTests(TestCase):
 
         r = self.client.get(reverse('backup-download'))
         self.assertEqual(r['Content-Type'], 'application/gzip')
+        self.assertNotIn('Content-Encoding', r)            # the browser saves the .gz as it is
+        self.assertIn('attachment; filename="medf-backup-', r['Content-Disposition'])
         import gzip
-        data = json.loads(gzip.decompress(r.content))
+        data = json.loads(gzip.decompress(b''.join(r.streaming_content)))
         self.assertTrue(any(o['model'] == 'mdf.staffprofile' for o in data))
 
         from tempfile import TemporaryDirectory
@@ -443,7 +446,7 @@ class AvatarTests(BaseViewTest):
         ina = User.objects.create_user('ina', password='x')
         profile = StaffProfile.objects.create(user=ina, display_name='ინა')
         self.assertIn('img/staff/ina.', profile.avatar_url)
-        self.assertContains(self.client.get('/logout/', follow=True), 'img/staff/ina.')
+        self.assertContains(self.client.post('/logout/', follow=True), 'img/staff/ina.')
 
 
 class BloodOrderTests(BaseViewTest):
@@ -630,7 +633,7 @@ class DutyNoteTests(BaseViewTest):
     def test_backup_includes_notes(self):
         import gzip
         self.create('21.11.2026 10:00', patient='x', body='y')
-        data = json.loads(gzip.decompress(self.client.get(reverse('backup-download')).content))
+        data = json.loads(gzip.decompress(b''.join(self.client.get(reverse('backup-download')).streaming_content)))
         self.assertTrue(any(o['model'] == 'mdf.dutynote' for o in data))
 
 
@@ -1588,3 +1591,117 @@ class RefineBatch1Tests(BaseViewTest):
         self.assertTrue(DutyReport.objects.filter(duty_date=old).exists())
         purge_old_reports(force=True)             # the daily backup task
         self.assertFalse(DutyReport.objects.filter(duty_date=old).exists())
+
+
+class RefineBatch3Tests(BaseViewTest):
+
+    def test_a8_logout_needs_post(self):
+        page = self.client.get('/logout/')              # a link/bookmark only asks
+        self.assertContains(page, 'method="post"')
+        self.assertIn('_auth_user_id', self.client.session)
+        home = self.client.get('/', follow=True)
+        self.assertContains(home, 'action="/logout/"')  # the menu posts
+        self.client.post('/logout/')
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_a6_roster_confirm_saves_only_what_was_previewed(self):
+        import datetime as dt
+        from .models import RosterDay, RosterPerson
+        page = self.client.get(reverse('roster-generate'), dict(y=2026, m=12, seed=5))
+        fp = page.context['fingerprint']
+        # meanwhile someone fixes 10 December by hand
+        other = RosterPerson.objects.get(name='გიგა')
+        RosterDay.objects.create(date=dt.date(2026, 12, 10), person=other, locked=True, source='manual')
+        resp = self.client.post(reverse('roster-generate'), dict(y=2026, m=12, seed=5, fp=fp))
+        self.assertRedirects(resp, reverse('roster-generate') + '?y=2026&m=12&seed=5', fetch_redirect_response=False)
+        self.assertEqual(RosterDay.objects.filter(date__year=2026, date__month=12).count(), 1)   # nothing saved
+        # the fresh preview saves fine
+        fp = self.client.get(reverse('roster-generate'), dict(y=2026, m=12, seed=5)).context['fingerprint']
+        self.client.post(reverse('roster-generate'), dict(y=2026, m=12, seed=5, fp=fp))
+        self.assertEqual(RosterDay.objects.filter(date__year=2026, date__month=12).count(), 31)
+        self.assertEqual(RosterDay.objects.get(date=dt.date(2026, 12, 10)).person, other)
+
+    def test_a3_parallel_edit_keeps_both_versions(self):
+        niv = self.make_niv(patient_name='ბერიძე ნინო', m1='Aspirin')
+        page = self.client.get(reverse('niv-cover'), {'t': niv.pk})
+        version = niv.version
+        self.assertContains(page, f'value="{version}" name="v"')
+        # a colleague saves first
+        ina = User.objects.create_user('ina', password='x')
+        other = Client()
+        other.force_login(ina)
+        other.post(reverse('niv-create'), dict(t=niv.pk, v=version, action='save', patient_name='ბერიძე ნინო', m1='Heparin'))
+        niv.refresh_from_db()
+        self.assertEqual((niv.m1, niv.updated_by), ('Heparin', ina))
+        # now this doctor saves the old page: the colleague's version stays, a copy is made
+        r = self.client.post(reverse('niv-create'), dict(t=niv.pk, v=version, action='save', patient_name='ბერიძე ნინო', m1='Clopidogrel'))
+        copy = NivForm.objects.exclude(pk=niv.pk).get()
+        self.assertRedirects(r, f"{reverse('niv-cover')}?t={copy.pk}", fetch_redirect_response=False)
+        niv.refresh_from_db()
+        self.assertEqual((niv.m1, copy.m1, copy.updated_by), ('Heparin', 'Clopidogrel', self.user))
+        self.assertContains(self.client.get(r.url), 'ცალკე ასლად')
+        # an up-to-date page saves in place as before
+        r = self.client.post(reverse('niv-create'), dict(t=niv.pk, v=niv.version, action='save', patient_name='ბერიძე ნინო', m1='Warfarin'))
+        self.assertEqual(NivForm.objects.count(), 2)
+        niv.refresh_from_db()
+        self.assertEqual(niv.m1, 'Warfarin')
+
+    def test_a3_print_context_unchanged(self):
+        from .views import NivDocumentView
+        niv = self.make_niv()
+        view = NivDocumentView()
+        view.request = RequestFactory().get('/', {'t': niv.pk})
+        keys = set(view.get_context_data())
+        self.assertNotIn('updated_at', keys)
+        self.assertNotIn('updated_by', keys)
+
+    def test_b1_pdf_cached_until_saved(self):
+        from unittest import mock
+        from django_docxtpl import DocxTemplateView
+        niv = self.make_niv()
+        real = DocxTemplateView.get
+        with mock.patch.object(DocxTemplateView, 'get', autospec=True, side_effect=real) as render:
+            first = self.client.get(reverse('print-niv-cover'), {'t': niv.pk})
+            again = self.client.get(reverse('print-niv-cover'), {'t': niv.pk})
+            self.assertEqual(render.call_count, 1)                   # LibreOffice ran once
+            self.assertEqual(first.content, again.content)
+            self.assertEqual(again['Content-Type'], 'application/pdf')
+            self.client.post(reverse('niv-create'), dict(t=niv.pk, v=niv.version, action='save',
+                                                          patient_name=niv.patient_name, m1='Heparin'))
+            self.client.get(reverse('print-niv-cover'), {'t': niv.pk})
+            self.assertEqual(render.call_count, 2)                   # changed -> printed afresh
+
+    def test_b3_analysis_cached_until_prescriptions_change(self):
+        from . import analysis
+        niv = self.make_niv(diagnosis='აორტის ანევრიზმა', m1='Heparin')
+        self.make_niv(diagnosis='აორტის ანევრიზმა', m1='Aspirin')
+        first = analysis.medicines_for('ანევრიზმა', 'diagnosis')
+        self.assertEqual(first[0], 2)
+        with self.assertNumQueries(2):                       # per call only the "did anything change?" query
+            self.assertEqual(analysis.medicines_for('ანევრიზმა', 'diagnosis'), first)
+            analysis.medicines_for('ანევრიზმა', 'diagnosis')
+        niv.m1 = 'Warfarin'
+        niv.save()
+        names = [m['name'] for m in analysis.medicines_for('ანევრიზმა', 'diagnosis')[1]]
+        self.assertIn('Warfarin', names)
+        niv.delete()
+        self.assertEqual(analysis.medicines_for('ანევრიზმა', 'diagnosis')[0], 1)
+        groups, _ = analysis.overview('terms', '')
+        self.assertEqual(groups[0]['count'], 1)
+
+    def test_a10_today_duty_runs_from_9_to_9(self):
+        import datetime as dt
+        from unittest import mock
+        from zoneinfo import ZoneInfo
+        from .models import RosterDay, RosterPerson
+        from .quotes import today_panel
+        RosterDay.objects.create(date=dt.date(2026, 12, 5), person=RosterPerson.objects.get(name='ია'))
+        RosterDay.objects.create(date=dt.date(2026, 12, 6), person=RosterPerson.objects.get(name='გიგა'))
+        evening = dt.datetime(2026, 12, 5, 20, 0, tzinfo=ZoneInfo('Asia/Tbilisi'))
+        with mock.patch('django.utils.timezone.now', return_value=evening):
+            self.assertEqual(today_panel()['duty'].name, 'ია')       # who is written for 5 December
+        for hour, minute, who in ((8, 59, 'ია'), (9, 0, 'გიგა')):    # next morning: until 9:00 still ია
+            moment = dt.datetime(2026, 12, 6, hour, minute, tzinfo=ZoneInfo('Asia/Tbilisi'))
+            with mock.patch('django.utils.timezone.now', return_value=moment):
+                panel = today_panel()
+                self.assertEqual((panel['duty'].name, panel['date']), (who, dt.date(2026, 12, 6)))

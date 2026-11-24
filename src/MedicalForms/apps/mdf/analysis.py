@@ -3,9 +3,14 @@
 Works on the existing prescriptions (NivForm). Nothing is written to the
 database here.
 """
+import functools
+import hashlib
 import json
 import re
 from collections import Counter, defaultdict
+
+from django.core.cache import cache
+from django.db.models import Count, Max
 
 from .models import NivForm, ROW_COUNT
 
@@ -24,6 +29,26 @@ STOPWORDS = {
 }
 
 WORD_RE = re.compile(r'[^\W\d_]+(?:-[^\W\d_]+)*', re.UNICODE)
+
+
+def data_version():
+    """Changes whenever a prescription is added, saved or deleted (one small query)."""
+    v = NivForm.objects.aggregate(n=Count('id'), last=Max('id'), saved=Max('updated_at'))
+    return f"{v['n']}-{v['last']}-{v['saved'].timestamp() if v['saved'] else 0}"
+
+
+def cached(func):
+    """Remember the result until the prescriptions change (reading them all is the slow part)."""
+    @functools.wraps(func)
+    def wrapper(*args):
+        raw = json.dumps([func.__name__, data_version(), *args], ensure_ascii=False)
+        key = 'analysis:' + hashlib.sha1(raw.encode()).hexdigest()
+        result = cache.get(key)
+        if result is None:
+            result = func(*args)
+            cache.set(key, result, 3600)
+        return result
+    return wrapper
 
 
 def normalize(text):
@@ -66,6 +91,7 @@ MODES = {
 }
 
 
+@cached
 def overview(mode='terms', q='', limit=300):
     """Nosologies found in the "დიაგნოზი" field, with prescription counts.
 
@@ -153,6 +179,7 @@ def _hours_key(r):
     return json.dumps(clean, sort_keys=True)
 
 
+@cached
 def medicines_for(q, field='diagnosis'):
     """Medicines prescribed for the nosology ``q``, most frequent first.
 

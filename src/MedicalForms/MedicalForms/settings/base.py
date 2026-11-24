@@ -220,3 +220,12 @@ LOGGING = {
 
 
 DOCXTPL_TEMPLATE_DIR = BASE_DIR / 'templates'
+
+# In-memory caches of each server process (nothing to install or run).
+# 'pdf' keeps the last printed prescriptions, so printing again is instant;
+# a saved change gives a new key, a reload/deploy empties it.
+CACHES = {
+    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'},
+    'pdf': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'pdf',
+            'TIMEOUT': 12 * 3600, 'OPTIONS': {'MAX_ENTRIES': 40}},
+}
