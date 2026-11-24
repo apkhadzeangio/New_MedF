@@ -6,6 +6,7 @@
 <title>მორიგე ექიმის ჩანაწერი — {{ day.short }}{% if notes|length == 1 and notes.0.patient %} — {{ notes.0.patient }}{% endif %}</title>
 {# theme.css only for the bundled Noto Sans Georgian font #}
 <link rel="stylesheet" href="{% static_v 'css/theme.css' %}">
+<link rel="stylesheet" href="{% static_v 'css/print-tools.css' %}">
 <style>
 @page { size: A4 portrait; margin: 16mm 18mm 16mm 18mm; }
 * { box-sizing: border-box; }
@@ -57,18 +58,8 @@ body {
 .foot .sign span.l { flex: 1 1 auto; border-bottom: 0.25mm solid #111; min-height: 6mm; padding: 0 1.5mm 0.6mm; font-weight: 600; color: #111; }
 .foot .meta { font-size: 9pt; color: #555; text-align: right; }
 
-.ptools {
-    max-width: 210mm; margin: 12mm auto 0; display: flex; gap: 8px; font-family: system-ui, sans-serif;
-}
-.ptools button, .ptools a {
-    font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 6px; border: 1px solid #0d6efd;
-    background: #0d6efd; color: #fff; cursor: pointer; text-decoration: none;
-}
-.ptools a { background: #fff; color: #0d6efd; }
-
 @media print {
     body { background: #fff; }
-    .ptools { display: none; }
     /* the page margins come from @page; long text flows onto the next pages */
     .sheet { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
 }

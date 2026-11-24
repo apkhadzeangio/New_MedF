@@ -1,0 +1,26 @@
+/* Screen-only toolbar shown above standalone print pages */
+.ptools {
+    max-width: 210mm;
+    margin: 12mm auto 0;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-family: system-ui, sans-serif;
+}
+.ptools.wide { max-width: 297mm; }
+.ptools button, .ptools a {
+    font: inherit;
+    font-size: 15px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid #0d6efd;
+    background: #0d6efd;
+    color: #fff;
+    cursor: pointer;
+    text-decoration: none;
+}
+.ptools a { background: #fff; color: #0d6efd; }
+
+@media print {
+    .ptools { display: none; }
+}

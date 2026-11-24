@@ -6,6 +6,7 @@
 <title>ქირურგიული მორიგეობის განრიგი — {{ month_name }} {{ year }}</title>
 {# theme.css only for the bundled Georgian font #}
 <link rel="stylesheet" href="{% static_v 'css/theme.css' %}">
+<link rel="stylesheet" href="{% static_v 'css/print-tools.css' %}">
 <style>
 @page { size: A4 {% if landscape %}landscape{% else %}portrait{% endif %}; margin: 14mm 16mm; }
 html, body { margin: 0; padding: 0; }
@@ -22,18 +23,14 @@ td.d { width: 26mm; white-space: nowrap; }
 td.w { width: 34mm; }
 tr.we td.w { font-weight: 700; }
 .none { color: #000; }
-.ptools { max-width: {% if landscape %}297mm{% else %}210mm{% endif %}; margin: 12mm auto 0; display: flex; gap: 8px; flex-wrap: wrap; font-family: system-ui, sans-serif; }
-.ptools button, .ptools a { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 6px; border: 1px solid #0d6efd; background: #0d6efd; color: #fff; cursor: pointer; text-decoration: none; }
-.ptools a { background: #fff; color: #0d6efd; }
 @media print {
     body { background: #fff; }
-    .ptools { display: none; }
     .sheet { width: auto; margin: 0; padding: 0; box-shadow: none; }
 }
 </style>
 </head>
 <body>
-<div class="ptools">
+<div class="ptools{% if landscape %} wide{% endif %}">
     <button type="button" onclick="window.print()">🖨 ბეჭდვა</button>
     {% if landscape %}<a href="?y={{ year }}&m={{ days.0.date.month }}&preview=1">ვერტიკალურად</a>{% else %}<a href="?y={{ year }}&m={{ days.0.date.month }}&orient=landscape&preview=1">ჰორიზონტალურად</a>{% endif %}
     <a href="javascript:window.close()">დახურვა</a>

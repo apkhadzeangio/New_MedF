@@ -6,17 +6,14 @@
 <title>მორიგეობის რეპორტი — {{ day.short }}</title>
 {# theme.css: the bundled Georgian font and the report (.rp) styles #}
 <link rel="stylesheet" href="{% static_v 'css/theme.css' %}">
+<link rel="stylesheet" href="{% static_v 'css/print-tools.css' %}">
 <style>
 @page { size: A4 portrait; margin: 14mm 15mm; }
 html, body { margin: 0; padding: 0; }
 body { font-family: 'Noto Sans Georgian', 'Sylfaen', sans-serif; background: #e9ecef; color: #111; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .sheet { width: 210mm; min-height: 297mm; margin: 12mm auto; padding: 14mm 15mm; background: #fff; box-shadow: 0 4px 18px rgba(0, 0, 0, .15); }
-.ptools { max-width: 210mm; margin: 12mm auto 0; display: flex; gap: 8px; font-family: system-ui, sans-serif; }
-.ptools button, .ptools a { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 6px; border: 1px solid #0d6efd; background: #0d6efd; color: #fff; cursor: pointer; text-decoration: none; }
-.ptools a { background: #fff; color: #0d6efd; }
 @media print {
     body { background: #fff; }
-    .ptools { display: none; }
     .sheet { width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none; }
 }
 </style>
