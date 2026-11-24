@@ -1,53 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 650" width="520" height="1300">
-<!-- Artery map of the conference cases (right leg, front view; the site mirrors it for the left leg).
-     Edit freely in Figma / Inkscape, but keep: one STROKE path per artery segment with the id seg-<key>,
-     the same 22 keys, and the anatomy in the groups skin / bones / muscles / toes / pelvis / ligament / context.
-     Colours here are only a preview: the site colours the segments itself (normal / stenosis / occlusion ...). -->
-<defs><linearGradient id="skin-gradient" x1="0" x2="1"><stop offset="0" stop-color="#F2E2DA"/><stop offset=".55" stop-color="#FBF4F0"/><stop offset="1" stop-color="#F2E2DA"/></linearGradient></defs>
-<g id="pelvis"><path d="M98,78 C104,46 146,26 184,38 C194,42 198,52 194,62" fill="none" stroke="#DED3C8" stroke-width="4" stroke-linecap="round"/></g>
-<g id="skin"><path d="M92,100 C122,84 176,84 214,106 C210,122 204,138 198,154 C192,200 188,260 184,320 C182,350 184,372 188,392 C190,410 188,424 186,438 C186,470 182,510 176,548 C174,562 174,574 178,584 C182,598 180,618 172,634 C166,646 146,650 132,646 C120,640 114,624 116,606 C118,596 120,590 120,582 C114,560 110,530 106,496 C102,470 102,450 106,430 C108,414 110,400 110,388 C104,350 100,320 98,290 C94,240 86,190 86,150 C86,128 88,112 92,100 Z" fill="url(#skin-gradient)" stroke="#E6CFC4" stroke-width="1.5"/></g>
-<g id="bones"><path d="M154,104 C166,96 182,104 180,118 C178,128 168,132 160,134 C152,140 148,150 146,162 C148,230 152,300 158,366 C166,372 172,384 168,394 C160,402 136,402 124,396 C118,388 124,376 134,368 C132,300 130,230 128,170 C120,160 112,148 116,136 C120,128 132,128 140,130 C144,118 146,108 154,104 Z" fill="#EEE8E2" stroke="#DED3C8"/><path d="M138,384 C138,374 156,374 156,384 C156,394 138,394 138,384 Z" fill="#EEE8E2" stroke="#DED3C8"/><path d="M130,408 C142,403 162,403 170,410 C168,420 162,426 160,440 C160,490 162,540 168,576 C170,586 164,590 156,588 C150,586 146,582 146,576 C146,540 144,490 140,440 C138,426 130,420 130,408 Z" fill="#EEE8E2" stroke="#DED3C8"/><path d="M118,420 C122,415 127,417 127,423 C125,470 125,530 129,578 C127,587 119,587 117,579 C119,530 119,470 117,426 Z" fill="#EEE8E2" stroke="#DED3C8"/></g>
-<g id="muscles" opacity=".62"><path d="M92,150 C86,200 90,270 100,330 C104,356 110,378 118,390 C124,372 126,340 124,300 C122,240 116,190 104,160 C100,152 96,148 92,150 Z" fill="#EDCBC1" stroke="#DFB3A6" stroke-width=".8"/><path d="M120,124 C112,170 114,250 126,330 C130,352 136,370 142,380 C150,366 154,340 152,300 C150,240 144,170 132,126 C128,120 124,120 120,124 Z" fill="#EDCBC1" stroke="#DFB3A6" stroke-width=".8"/><path d="M160,300 C152,330 152,364 162,388 C170,396 180,392 184,380 C186,356 180,326 168,304 C166,300 162,298 160,300 Z" fill="#EDCBC1" stroke="#DFB3A6" stroke-width=".8"/><path d="M168,150 C162,190 160,240 164,290 C170,280 178,250 184,220 C188,190 192,166 196,152 C186,150 176,148 168,150 Z" fill="#EDCBC1" stroke="#DFB3A6" stroke-width=".8"/><path d="M100,102 C120,140 148,220 168,300 C174,330 178,370 180,398 L186,396 C184,366 180,326 174,296 C156,214 128,136 108,100 Z" fill="#EDCBC1" stroke="#DFB3A6" stroke-width=".8"/><path d="M126,418 C118,440 116,480 118,520 C120,546 124,566 128,580 C132,564 134,540 134,510 C134,470 132,438 126,418 Z" fill="#EDCBC1" stroke="#DFB3A6" stroke-width=".8"/><path d="M110,424 C104,450 104,490 108,530 C110,546 114,560 118,570 C118,540 116,500 116,466 C116,446 114,432 110,424 Z" fill="#EDCBC1" stroke="#DFB3A6" stroke-width=".8"/><path d="M168,414 C178,430 184,456 182,486 C180,506 176,520 172,528 C166,508 164,480 164,456 C164,438 166,424 168,414 Z" fill="#EDCBC1" stroke="#DFB3A6" stroke-width=".8"/></g>
-<g id="toes"><path d="M118,634 C118,646 126,648 130,642 M131,642 C132,650 140,651 143,645 M143,646 C145,652 152,652 154,646 M155,645 C158,650 164,649 165,643 M165,642 C170,644 173,638 171,632" fill="none" stroke="#E6CFC4" stroke-width="1.2" stroke-linecap="round"/></g>
-<g id="ligament"><path d="M102,98 C140,112 180,124 214,134" fill="none" stroke="#C9B4A9" stroke-width="1.2" stroke-dasharray="3 3"/></g>
-<g id="context"><path d="M236,0 L236,22" fill="none" stroke="#C0485E" stroke-opacity=".3" stroke-width="5" stroke-linecap="round"/><path d="M192,72 C198,88 202,104 200,120" fill="none" stroke="#C0485E" stroke-opacity=".3" stroke-width="5" stroke-linecap="round"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="-70 -230 420 2006" width="420" height="2006">
+<!-- Artery map of the conference cases: right leg, front view, over the illustration leg-anterior.webp
+     (generated with Figma AI). Keep one STROKE path per segment with the id seg-<key> (22 keys);
+     the site colours them itself and mirrors everything for the left leg. -->
+<image id="illustration" href="leg-anterior.webp" x="0" y="0" width="285" height="1776"/>
+<g id="context"><path d="M300,-230 L300,-175" fill="none" stroke="#C8203F" stroke-opacity=".3" stroke-width="12" stroke-linecap="round"/><path d="M250,-82 C262,-50 270,-20 272,20" fill="none" stroke="#C8203F" stroke-opacity=".3" stroke-width="12" stroke-linecap="round"/></g>
 <g id="segments">
-  <path id="seg-cia" data-name="საერთო თეძოს არტერია" d="M236,22 C228,40 210,58 192,72" fill="none" stroke="#C0485E" stroke-width="7.0" stroke-linecap="round"/>
-  <path id="seg-eia" data-name="გარეთა თეძოს არტერია" d="M192,72 C176,88 160,104 150,124" fill="none" stroke="#C0485E" stroke-width="6.4" stroke-linecap="round"/>
-  <path id="seg-cfa" data-name="საერთო ბარძაყის არტერია" d="M150,124 C147,134 145,144 144,156" fill="none" stroke="#C0485E" stroke-width="6.4" stroke-linecap="round"/>
-  <path id="seg-pfa" data-name="ბარძაყის ღრმა არტერია" d="M144,156 C130,170 120,196 114,236" fill="none" stroke="#C0485E" stroke-width="4.6" stroke-linecap="round"/>
-  <path id="seg-sfa1" data-name="ზედაპირული ბარძაყის — პროქსიმალური" d="M144,156 C146,182 149,206 152,230" fill="none" stroke="#C0485E" stroke-width="5.4" stroke-linecap="round"/>
-  <path id="seg-sfa2" data-name="ზედაპირული ბარძაყის — შუა" d="M152,230 C155,254 158,278 160,302" fill="none" stroke="#C0485E" stroke-width="5.4" stroke-linecap="round"/>
-  <path id="seg-sfa3" data-name="ზედაპირული ბარძაყის — დისტალური" d="M160,302 C162,324 162,342 159,358" fill="none" stroke="#C0485E" stroke-width="5.4" stroke-linecap="round"/>
-  <path id="seg-pop1" data-name="მუხლქვეშა — მუხლზემოთ (P1)" d="M159,358 C155,372 151,384 149,398" fill="none" stroke="#C0485E" stroke-width="5.0" stroke-linecap="round"/>
-  <path id="seg-pop2" data-name="მუხლქვეშა — მუხლქვემოთ (P2–3)" d="M149,398 C148,410 147,420 147,432" fill="none" stroke="#C0485E" stroke-width="5.0" stroke-linecap="round"/>
-  <path id="seg-tpt" data-name="წვივ-მცირე წვივის ღერო" d="M147,432 C148,442 149,450 150,458" fill="none" stroke="#C0485E" stroke-width="4.4" stroke-linecap="round"/>
-  <path id="seg-at1" data-name="წინა წვივის — პროქსიმალური" d="M147,432 C137,436 129,442 127,456" fill="none" stroke="#C0485E" stroke-width="3.9" stroke-linecap="round"/>
-  <path id="seg-at2" data-name="წინა წვივის — შუა" d="M127,456 C125,484 124,510 124,536" fill="none" stroke="#C0485E" stroke-width="3.9" stroke-linecap="round"/>
-  <path id="seg-at3" data-name="წინა წვივის — დისტალური" d="M124,536 C124,556 125,572 127,588" fill="none" stroke="#C0485E" stroke-width="3.6" stroke-linecap="round"/>
-  <path id="seg-pt1" data-name="უკანა წვივის — პროქსიმალური" d="M150,458 C154,474 157,488 159,504" fill="none" stroke="#C0485E" stroke-width="3.9" stroke-linecap="round"/>
-  <path id="seg-pt2" data-name="უკანა წვივის — შუა" d="M159,504 C161,520 163,535 164,550" fill="none" stroke="#C0485E" stroke-width="3.9" stroke-linecap="round"/>
-  <path id="seg-pt3" data-name="უკანა წვივის — დისტალური" d="M164,550 C165,565 167,580 170,594" fill="none" stroke="#C0485E" stroke-width="3.6" stroke-linecap="round"/>
-  <path id="seg-per1" data-name="მცირე წვივის — პროქსიმალური" d="M150,458 C146,474 144,488 143,502" fill="none" stroke="#C0485E" stroke-width="3.6" stroke-linecap="round"/>
-  <path id="seg-per2" data-name="მცირე წვივის — შუა" d="M143,502 C142,518 141,532 141,546" fill="none" stroke="#C0485E" stroke-width="3.6" stroke-linecap="round"/>
-  <path id="seg-per3" data-name="მცირე წვივის — დისტალური" d="M141,546 C141,558 142,568 143,578" fill="none" stroke="#C0485E" stroke-width="3.4" stroke-linecap="round"/>
-  <path id="seg-dp" data-name="ტერფის ზურგის არტერია" d="M127,588 C128,602 130,614 134,624" fill="none" stroke="#C0485E" stroke-width="3.3" stroke-linecap="round"/>
-  <path id="seg-plantar" data-name="ტერფის ლატერალური ძირის" d="M170,594 C169,606 164,616 156,623" fill="none" stroke="#C0485E" stroke-width="3.0" stroke-linecap="round"/>
-  <path id="seg-arch" data-name="ტერფის რკალი" d="M134,624 C138,634 150,634 156,623" fill="none" stroke="#C0485E" stroke-width="2.8" stroke-linecap="round"/>
-</g>
-<g id="labels" font-family="sans-serif" font-size="11" font-weight="700" fill="#33405A">
-  <text id="label-cia" x="214" y="40" text-anchor="end">CIA</text>
-  <text id="label-eia" x="166" y="92" text-anchor="end">EIA</text>
-  <text id="label-cfa" x="132" y="140" text-anchor="end">CFA</text>
-  <text id="label-pfa" x="104" y="214" text-anchor="end">PFA</text>
-  <text id="label-sfa1" x="162" y="196" text-anchor="start">SFA</text>
-  <text id="label-pop1" x="166" y="380" text-anchor="start">POP</text>
-  <text id="label-tpt" x="160" y="446" text-anchor="start">TPT</text>
-  <text id="label-at1" x="114" y="446" text-anchor="end">AT</text>
-  <text id="label-pt1" x="172" y="500" text-anchor="start">PT</text>
-  <text id="label-per1" x="134" y="522" text-anchor="middle" transform="rotate(-90 134 522)">PER</text>
-  <text id="label-dp" x="118" y="616" text-anchor="end">DP</text>
-  <text id="label-plantar" x="176" y="616" text-anchor="start">PL</text>
-  <text id="label-arch" x="145" y="646" text-anchor="middle">ARCH</text>
+  <path id="seg-cia" d="M300,-175 C288,-140 270,-110 250,-82" fill="none" stroke="#C8203F" stroke-width="14" stroke-linecap="round"/>
+  <path id="seg-eia" d="M250,-82 C222,-46 176,10 150,70 C146,82 142,96 140,108" fill="none" stroke="#C8203F" stroke-width="13" stroke-linecap="round"/>
+  <path id="seg-cfa" d="M140,108 C142,124 144,138 146,152" fill="none" stroke="#C8203F" stroke-width="13" stroke-linecap="round"/>
+  <path id="seg-pfa" d="M146,152 C130,176 116,220 108,290" fill="none" stroke="#C8203F" stroke-width="9" stroke-linecap="round"/>
+  <path id="seg-sfa1" d="M146,152 C150,190 156,228 163,268" fill="none" stroke="#C8203F" stroke-width="11" stroke-linecap="round"/>
+  <path id="seg-sfa2" d="M163,268 C172,320 182,372 191,424" fill="none" stroke="#C8203F" stroke-width="11" stroke-linecap="round"/>
+  <path id="seg-sfa3" d="M191,424 C198,470 206,520 208,580" fill="none" stroke="#C8203F" stroke-width="11" stroke-linecap="round"/>
+  <path id="seg-pop1" d="M208,580 C206,650 180,730 160,800 C156,814 152,830 150,850" fill="none" stroke="#C8203F" stroke-width="10" stroke-linecap="round"/>
+  <path id="seg-pop2" d="M150,850 C147,880 144,910 142,940" fill="none" stroke="#C8203F" stroke-width="10" stroke-linecap="round"/>
+  <path id="seg-tpt" d="M142,940 C143,955 145,970 146,985" fill="none" stroke="#C8203F" stroke-width="9" stroke-linecap="round"/>
+  <path id="seg-at1" d="M142,940 C124,944 104,952 95,976" fill="none" stroke="#C8203F" stroke-width="8" stroke-linecap="round"/>
+  <path id="seg-at2" d="M95,976 C91,1040 89,1110 90,1180" fill="none" stroke="#C8203F" stroke-width="8" stroke-linecap="round"/>
+  <path id="seg-at3" d="M90,1180 C92,1280 100,1400 112,1482" fill="none" stroke="#C8203F" stroke-width="7.5" stroke-linecap="round"/>
+  <path id="seg-pt1" d="M146,985 C152,1030 158,1075 162,1120" fill="none" stroke="#C8203F" stroke-width="8" stroke-linecap="round"/>
+  <path id="seg-pt2" d="M162,1120 C167,1180 170,1235 172,1290" fill="none" stroke="#C8203F" stroke-width="8" stroke-linecap="round"/>
+  <path id="seg-pt3" d="M172,1290 C174,1370 175,1450 176,1512" fill="none" stroke="#C8203F" stroke-width="7.5" stroke-linecap="round"/>
+  <path id="seg-per1" d="M146,985 C141,1030 137,1075 134,1120" fill="none" stroke="#C8203F" stroke-width="7.5" stroke-linecap="round"/>
+  <path id="seg-per2" d="M134,1120 C130,1175 128,1228 126,1280" fill="none" stroke="#C8203F" stroke-width="7.5" stroke-linecap="round"/>
+  <path id="seg-per3" d="M126,1280 C124,1340 122,1390 120,1432" fill="none" stroke="#C8203F" stroke-width="7" stroke-linecap="round"/>
+  <path id="seg-dp" d="M112,1482 C120,1530 130,1585 140,1638" fill="none" stroke="#C8203F" stroke-width="7" stroke-linecap="round"/>
+  <path id="seg-plantar" d="M176,1512 C174,1560 158,1600 128,1626 C112,1638 98,1642 88,1646" fill="none" stroke="#C8203F" stroke-width="6.5" stroke-linecap="round"/>
+  <path id="seg-arch" d="M88,1646 C100,1668 124,1672 140,1638" fill="none" stroke="#C8203F" stroke-width="6" stroke-linecap="round"/>
 </g>
 </svg>

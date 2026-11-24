@@ -1,13 +1,7 @@
-{% with a=am.anatomy %}<svg class="am{% if interactive %} am-edit{% endif %}" viewBox="0 0 {{ am.w }} {{ am.h }}" role="img" aria-label="არტერიების რუკა — {{ side_name }}">
-    <defs><linearGradient id="amskin-{{ am.side }}" x1="0" x2="1"><stop offset="0" class="am-sk1"/><stop offset=".55" class="am-sk2"/><stop offset="1" class="am-sk1"/></linearGradient></defs>
-    <g{% if am.side == 'L' %} transform="translate({{ am.w }},0) scale(-1,1)"{% endif %}>
-        <path class="am-pelvis" d="{{ a.pelvis }}"/>
-        <path class="am-skin" d="{{ a.skin }}" fill="url(#amskin-{{ am.side }})"/>
-        {% for b in a.bones %}<path class="am-bone" d="{{ b }}"/>{% endfor %}
-        {% for m in a.muscles %}<path class="am-muscle" d="{{ m }}"/>{% endfor %}
-        <path class="am-toes" d="{{ a.toes }}"/>
-        <path class="am-lig" d="{{ a.ligament }}"/>
-        {% for c in a.context %}<path class="am-ctx" d="{{ c }}"/>{% endfor %}
+{% load static %}<svg class="am{% if interactive %} am-edit{% endif %}" viewBox="{{ am.view }}" role="img" aria-label="არტერიების რუკა — {{ side_name }}">
+    <g{% if am.side == 'L' %} transform="translate({{ am.axis }},0) scale(-1,1)"{% endif %}>
+        <image class="am-img" href="{% static am.image.src %}" x="0" y="0" width="{{ am.image.width }}" height="{{ am.image.height }}" preserveAspectRatio="none"/>
+        {% for c in am.context %}<path class="am-ctx" d="{{ c }}"/>{% endfor %}
         {% for s in am.segments %}
         <g class="{{ s.css }}" style="--w:{{ s.w }}" data-seg="{{ s.key }}" data-state="{{ s.state }}" data-flags="{{ s.flags|join:',' }}"{% if interactive %} tabindex="0" role="button"{% endif %} aria-label="{{ s.name }}">
             <title>{{ s.name }}</title>
@@ -19,6 +13,6 @@
         </g>
         {% endfor %}
     </g>
-    {% for m in am.marks %}<line class="am-mark" x1="{{ m.x1 }}" x2="{{ m.x2 }}" y1="{{ m.y }}" y2="{{ m.y }}"/><text class="am-mtext" x="{{ m.x1 }}" y="{{ m.y|add:'-4' }}" text-anchor="{{ m.anchor }}">{{ m.text }}</text>{% endfor %}
-    {% for l in am.labels %}<text class="am-lab" x="{{ l.x }}" y="{{ l.y }}" text-anchor="{{ l.anchor }}"{% if l.vertical %} transform="rotate(-90 {{ l.x }} {{ l.y }})" dominant-baseline="middle"{% endif %}>{{ l.text }}</text>{% endfor %}
-</svg>{% endwith %}
+    {% for m in am.marks %}<line class="am-mark" x1="{{ m.x1 }}" x2="{{ m.x2 }}" y1="{{ m.y }}" y2="{{ m.y }}"/><text class="am-mtext" x="{{ m.x1 }}" y="{{ m.ty }}" text-anchor="{{ m.anchor }}">{{ m.text }}</text>{% endfor %}
+    {% for l in am.labels %}<text class="am-lab" x="{{ l.x }}" y="{{ l.y }}" text-anchor="{{ l.anchor }}" dominant-baseline="middle"{% if l.vertical %} transform="rotate(-90 {{ l.x }} {{ l.y }})"{% endif %}>{{ l.text }}</text>{% endfor %}
+</svg>
