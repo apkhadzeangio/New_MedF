@@ -1,11 +1,11 @@
-{% load static mdf_tags %}<!DOCTYPE html>
+{% load static mdf_tags static_version %}<!DOCTYPE html>
 <html lang="ka">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>მორიგე ექიმის ჩანაწერი — {{ day.short }}{% if notes|length == 1 and notes.0.patient %} — {{ notes.0.patient }}{% endif %}</title>
 {# theme.css only for the bundled Noto Sans Georgian font #}
-<link rel="stylesheet" href="{% static 'css/theme.css' %}?v=5">
+<link rel="stylesheet" href="{% static_v 'css/theme.css' %}">
 <style>
 @page { size: A4 portrait; margin: 16mm 18mm 16mm 18mm; }
 * { box-sizing: border-box; }

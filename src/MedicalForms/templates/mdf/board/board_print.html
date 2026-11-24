@@ -1,10 +1,10 @@
-{% load static mdf_tags %}<!DOCTYPE html>
+{% load static mdf_tags static_version %}<!DOCTYPE html>
 <html lang="ka">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>პაციენტების დაფა — {{ printed_at|date:"d.m.Y H:i" }}</title>
-<link rel="stylesheet" href="{% static 'css/theme.css' %}?v=17">
+<link rel="stylesheet" href="{% static_v 'css/theme.css' %}">
 <style>
 @page { size: A4 landscape; margin: 10mm 10mm; }
 html, body { margin: 0; padding: 0; }
