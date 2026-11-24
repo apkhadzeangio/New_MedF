@@ -106,7 +106,8 @@ STENOSIS = (
     ('occlusion', 'ოკლუზია (CTO)'),
 )
 LENGTH_CHIPS = (
-    (2.0, '<3 სმ'),
+    (1.5, '<2 სმ'),
+    (2.5, '2–3 სმ'),
     (4.0, '3–5 სმ'),
     (7.5, '5–10 სმ'),
     (15.0, '10–20 სმ'),
@@ -118,6 +119,13 @@ PACSS = (
     (2, 'PACSS 2 — ცალმხრივი ≥5 სმ'),
     (3, 'PACSS 3 — ორმხრივი <5 სმ'),
     (4, 'PACSS 4 — ორმხრივი ≥5 სმ'),
+)
+PACSS_SHORT = (
+    (0, '0 — არა'),
+    (1, '1 — ცალმხ. <5'),
+    (2, '2 — ცალმხ. ≥5'),
+    (3, '3 — ორმხ. <5'),
+    (4, '4 — ორმხ. ≥5'),
 )
 RECONSTITUTION = (
     ('yes', 'აღდგება კოლატერალებით'),
@@ -137,6 +145,7 @@ SEGMENT_FLAGS = (
     ('small_caliber', 'მცირე კალიბრი (<6 მმ)'),
     ('trifurcation', 'ტრიფურკაციაზე გავრცელება'),
 )
+SEGMENT_FLAGS_L2 = tuple(x for x in SEGMENT_FLAGS if x[0] != 'trifurcation')
 
 # 6 foot & ankle angiosomes (Taylor & Palmer 1987; Attinger et al. 2006)
 ANGIOSOMES = (
@@ -774,6 +783,7 @@ def intervention_catalog():
         },
         'segment_groups': grouped,
         'segment_short': SEGMENT_SHORT,
+        'segment_names': {s[0]: s[1] for s in SEGMENTS},
         'segment_order': [s[0] for s in SEGMENTS],
         'segment_next': {k: list(v) for k, v in SEGMENT_NEXT.items()},
     }
@@ -1171,6 +1181,294 @@ def angiosome_status(limb):
     }
 
 
+_DEFAULT_LENGTH_CM = {
+    'aorta': 6.0, 'cia': 6.0, 'iia': 4.0, 'eia': 9.0, 'cfa': 4.0, 'pfa': 8.0,
+    'sfa1': 9.0, 'sfa2': 9.0, 'sfa3': 9.0,
+    'pop1': 4.0, 'pop2': 4.0, 'pop3': 4.0,
+    'tpt': 3.0,
+    'at1': 9.0, 'at2': 9.0, 'at3': 9.0,
+    'pt1': 9.0, 'pt2': 9.0, 'pt3': 9.0,
+    'per1': 9.0, 'per2': 9.0, 'per3': 9.0,
+    'dp': 6.0, 'mpa': 6.0, 'lpa': 6.0, 'arch': 6.0,
+}
+
+
+def _fmt_score(val):
+    rounded = round(float(val), 1)
+    return str(int(rounded)) if rounded.is_integer() else f'{rounded:.1f}'
+
+
+def suggest_from_map(limb):
+    """Suggest GLASS (FP/IP/+1 calc, TAP, P0-P2, Inflow AI/CFA) and SVS Runoff from the arterial map.
+
+    Sources:
+    - Conte et al. (GVG / GLASS, J Vasc Surg 2019): Table 5.2, Figs 5.1-5.3, Recs 5.1-5.2.
+    - Stoner et al. (SVS Reporting Standards, J Vasc Surg 2016): Modified SVS Runoff (1-19) & Foot Score (1-10).
+    - Rocha-Singh et al. (PACSS, Catheter Cardiovasc Interv 2014): bilateral calcification PACSS >= 3 -> +1.
+    Always advisory: never overwrites doctor-selected form values unless explicitly applied.
+    """
+    raw_limb = limb if isinstance(limb, dict) else {}
+    up = upgrade_limb(raw_limb)
+    segs = up['segments']
+    ivs = up['interventions']
+    has_vessel_iv = any(iv['type'] != 'amputation' for iv in ivs)
+    has_map = bool(segs) or has_vessel_iv
+    functioning_bypass = any(iv['type'] == 'bypass' and iv['status'] in ('patent', 'stenosed') for iv in ivs)
+
+    sig = lambda seg: seg.get('stenosis') in ('moderate', 'severe', 'occlusion')
+    occ = lambda seg: seg.get('stenosis') == 'occlusion'
+    estimated = False
+
+    def seg_len(key, track_est=False):
+        nonlocal estimated
+        item = segs.get(key, {})
+        if item.get('length_cm') is not None:
+            return float(item['length_cm'])
+        if track_est and sig(item) and not (occ(item) and key in ('pop1', 'pop2', 'pop3', 'tpt')):
+            estimated = True
+        return _DEFAULT_LENGTH_CM[key]
+
+    # 1. Inflow AI & CFA (GVG Table 5.2)
+    cfa = 'B' if sig(segs.get('cfa', {})) else 'A'
+    ai_keys = ('aorta', 'cia', 'eia')
+    ai_diffuse_isr = any(
+        iv['type'] == 'stent' and iv['status'] in ('isr_2', 'isr_3', 'occluded')
+        and any(k in ai_keys for k in iv.get('segments', ()))
+        for iv in ivs
+    )
+    if (
+        occ(segs.get('aorta', {}))
+        or (occ(segs.get('cia', {})) and occ(segs.get('eia', {})))
+        or any(segs.get(k, {}).get('aneurysm') or segs.get(k, {}).get('small_caliber') for k in ai_keys)
+        or ai_diffuse_isr
+        or all(segs.get(k, {}).get('stenosis') == 'severe' for k in ('cia', 'eia'))
+    ):
+        ai = 'II'
+    elif any(sig(segs.get(k, {})) for k in ai_keys):
+        ai = 'I'
+    else:
+        ai = ''
+
+    # 2. GLASS Femoropopliteal (FP 0-4 & +1 severe calcification, GVG Fig 5.2)
+    sfa_keys = ('sfa1', 'sfa2', 'sfa3')
+    pop_keys = ('pop1', 'pop2', 'pop3')
+    sfa_disease_len = sum(seg_len(k, True) for k in sfa_keys if sig(segs.get(k, {})))
+    sfa_cto_len = sum(seg_len(k, True) for k in sfa_keys if occ(segs.get(k, {})))
+    sfa_separate_ctos = (
+        int(occ(segs.get('sfa1', {})))
+        + int(occ(segs.get('sfa2', {})) and not occ(segs.get('sfa1', {})))
+        + int(occ(segs.get('sfa3', {})) and not occ(segs.get('sfa2', {})))
+    )
+    sfa_flush_cto = occ(segs.get('sfa1', {})) and bool(segs.get('sfa1', {}).get('flush'))
+    pop_disease_len = sum(seg_len(k, True) for k in pop_keys if sig(segs.get(k, {})))
+    pop_any_cto = any(occ(segs.get(k, {})) for k in pop_keys)
+    pop_trifurcation = any(bool(segs.get(k, {}).get('trifurcation')) for k in pop_keys)
+
+    if sfa_cto_len > 20.0 or pop_any_cto or pop_disease_len > 5.0 or pop_trifurcation:
+        fp_grade = 4
+    elif (
+        sfa_disease_len > 20.0
+        or (sfa_flush_cto and sfa_cto_len <= 20.0)
+        or (not sfa_flush_cto and 10.0 <= sfa_cto_len <= 20.0)
+        or 2.0 <= pop_disease_len <= 5.0
+    ):
+        fp_grade = 3
+    elif (
+        10.0 <= sfa_disease_len <= 20.0
+        or (not sfa_flush_cto and 5.0 <= sfa_cto_len < 10.0)
+        or (not sfa_flush_cto and 0.0 < sfa_cto_len < 5.0 and sfa_separate_ctos > 1)
+        or 0.0 < pop_disease_len < 2.0
+    ):
+        fp_grade = 2
+    elif 0.0 < sfa_disease_len < 10.0:
+        fp_grade = 1
+    else:
+        fp_grade = 0
+
+    fp_calc = any(
+        (segs.get(k, {}).get('calc') or 0) >= 3 or bool(segs.get(k, {}).get('coral'))
+        for k in sfa_keys + pop_keys
+    )
+    fp_final = min(4, fp_grade + (1 if fp_calc else 0))
+
+    # 3. Ankle crossing & Pedal arch status (GVG Fig 5.1)
+    at_cross = not occ(segs.get('at3', {})) and not occ(segs.get('dp', {}))
+    pt_cross = not occ(segs.get('pt3', {})) and (not occ(segs.get('mpa', {})) or not occ(segs.get('lpa', {})))
+    per_cross = not occ(segs.get('per3', {})) and (
+        not occ(segs.get('dp', {})) or not occ(segs.get('mpa', {})) or not occ(segs.get('lpa', {}))
+    )
+    crosses_map = {'at': at_cross, 'pt': pt_cross, 'per': per_cross}
+    arch_complete = (
+        not sig(segs.get('arch', {}))
+        and not occ(segs.get('dp', {}))
+        and (not occ(segs.get('mpa', {})) or not occ(segs.get('lpa', {})))
+    )
+    pedal_for = lambda t: ('P0' if arch_complete else 'P1') if crosses_map[t] else 'P2'
+
+    # 4. GLASS Infrapopliteal (IP 0-4 & +1 calc) for all 3 pathways (GVG Fig 5.3)
+    wound_ang = raw_limb.get('wound_angiosome') or ''
+    angio_source = ANGIOSOME_SOURCE.get(wound_ang, '')
+    tap_labels = dict(TAP)
+    tap_short = {'at': 'AT', 'pt': 'PT', 'per': 'PER'}
+    ip_by_tap = {}
+    for t_key, tib_keys in (('at', ('at1', 'at2', 'at3')),
+                            ('pt', ('pt1', 'pt2', 'pt3')),
+                            ('per', ('per1', 'per2', 'per3'))):
+        uses_tpt = t_key in ('pt', 'per')
+        tpt_item = segs.get('tpt', {}) if uses_tpt else {}
+        tpt_cto = uses_tpt and occ(tpt_item)
+        tpt_sten = uses_tpt and sig(tpt_item) and not tpt_cto
+        tpt_len = seg_len('tpt', True) if sig(tpt_item) else 0.0
+
+        total_len = tpt_len + sum(seg_len(k, True) for k in tib_keys if sig(segs.get(k, {})))
+        cto_len = sum(seg_len(k, True) for k in tib_keys if occ(segs.get(k, {})))
+        sten_cnt = sum(1 for k in tib_keys if sig(segs.get(k, {})) and not occ(segs.get(k, {})))
+        cto_runs = (
+            int(occ(segs.get(tib_keys[0], {})))
+            + int(occ(segs.get(tib_keys[1], {})) and not occ(segs.get(tib_keys[0], {})))
+            + int(occ(segs.get(tib_keys[2], {})) and not occ(segs.get(tib_keys[1], {})))
+        )
+        origin_flush = occ(segs.get(tib_keys[0], {})) and bool(segs.get(tib_keys[0], {}).get('flush'))
+
+        if tpt_cto or total_len > 20.0 or cto_len > 10.0:
+            ip_g = 4
+        elif (
+            10.0 <= total_len <= 20.0
+            or 3.0 <= cto_len <= 10.0
+            or (0.0 < cto_len < 3.0 and (origin_flush or tpt_sten or cto_runs > 1))
+        ):
+            ip_g = 3
+        elif (
+            3.0 <= total_len < 10.0
+            or 0.0 < cto_len < 3.0
+            or tpt_sten
+            or (0.0 < total_len < 3.0 and sten_cnt > 1)
+        ):
+            ip_g = 2
+        elif 0.0 < total_len < 3.0:
+            ip_g = 1
+        else:
+            ip_g = 0
+
+        path_keys = (('tpt',) + tib_keys) if uses_tpt else tib_keys
+        ip_c = any(
+            (segs.get(k, {}).get('calc') or 0) >= 3 or bool(segs.get(k, {}).get('coral'))
+            for k in path_keys
+        )
+        ip_f = min(4, ip_g + (1 if ip_c else 0))
+        ip_by_tap[t_key] = {
+            'tap': t_key,
+            'short': tap_short[t_key],
+            'label': tap_labels[t_key],
+            'ip': ip_g,
+            'ip_calc': ip_c,
+            'ip_final': ip_f,
+            'crosses_ankle': crosses_map[t_key],
+            'angiosome_match': angio_source == t_key,
+        }
+
+    direct_pedal_viable = any(
+        ip_by_tap[t]['crosses_ankle'] and ip_by_tap[t]['ip_final'] <= 2
+        for t in ('at', 'pt')
+    )
+    sug_tap = min(
+        ('at', 'pt', 'per'),
+        key=lambda t: (
+            0 if ip_by_tap[t]['crosses_ankle'] else 1,
+            1 if (t == 'per' and direct_pedal_viable and angio_source != 'per') else 0,
+            ip_by_tap[t]['ip_final'],
+            0 if ip_by_tap[t]['angiosome_match'] else 1,
+            ip_by_tap[t]['ip'],
+            0 if t in ('at', 'pt') else 1,
+            ('at', 'pt', 'per').index(t),
+        ),
+    )
+    sug_ip = ip_by_tap[sug_tap]['ip']
+    sug_ip_calc = ip_by_tap[sug_tap]['ip_calc']
+    sug_ip_final = ip_by_tap[sug_tap]['ip_final']
+    sug_pedal = pedal_for(sug_tap)
+    sug_glass = GLASS_MATRIX[fp_final][sug_ip_final]
+
+    cur_tap = raw_limb.get('tap') if raw_limb.get('tap') in tap_labels else ''
+    active_tap = cur_tap or sug_tap
+    active_ip_info = ip_by_tap[active_tap]
+
+    # 5. Modified SVS Runoff Score (1.0-19.0) & Foot Score (1.0-10.0) (Stoner et al. 2016)
+    def vessel_svs(keys, total_vessel_cm):
+        if any(occ(segs.get(k, {})) for k in keys):
+            occ_cm = sum(seg_len(k, False) for k in keys if occ(segs.get(k, {})))
+            return 3.0 if occ_cm > 0.5 * total_vessel_cm else 2.5
+        if any(segs.get(k, {}).get('stenosis') in ('moderate', 'severe') for k in keys):
+            return 2.0
+        if any(segs.get(k, {}).get('stenosis') == 'mild' for k in keys):
+            return 1.0
+        return 0.0
+
+    pop_svs = vessel_svs(pop_keys, 12.0) * 3.0 + 1.0
+    at_svs = vessel_svs(('at1', 'at2', 'at3'), 27.0)
+    pt_svs = vessel_svs(('tpt', 'pt1', 'pt2', 'pt3'), 30.0)
+    per_svs = vessel_svs(('tpt', 'per1', 'per2', 'per3'), 30.0)
+    svs_runoff = round(pop_svs + at_svs + pt_svs + per_svs, 1)
+
+    foot_runoff = round(
+        1.0 + vessel_svs(('dp',), 6.0) + vessel_svs(('mpa',), 6.0) + vessel_svs(('lpa',), 6.0),
+        1,
+    )
+    patent_tibials = [
+        lbl for lbl, keys in (
+            ('AT', ('at1', 'at2', 'at3')),
+            ('PT', ('tpt', 'pt1', 'pt2', 'pt3')),
+            ('PER', ('tpt', 'per1', 'per2', 'per3')),
+        )
+        if not any(occ(segs.get(k, {})) for k in keys)
+    ]
+
+    cur_fp = _int(raw_limb.get('fp'), 0, 4)
+    cur_ip = _int(raw_limb.get('ip'), 0, 4)
+    cur_fp_calc = raw_limb.get('fp_calc') in (True, 'on', '1')
+    cur_ip_calc = raw_limb.get('ip_calc') in (True, 'on', '1')
+    cur_pedal = raw_limb.get('pedal') if raw_limb.get('pedal') in {k for k, _ in PEDAL} else ''
+    cur_ai = raw_limb.get('ai') if raw_limb.get('ai') in {k for k, _ in INFLOW_AI} else ''
+    cur_cfa = raw_limb.get('cfa') if raw_limb.get('cfa') in {k for k, _ in INFLOW_CFA} else 'A'
+
+    differs = (
+        (cur_tap, cur_fp, cur_fp_calc, cur_ip, cur_ip_calc, cur_pedal, cur_ai, cur_cfa)
+        != (sug_tap, fp_grade, fp_calc, sug_ip, sug_ip_calc, sug_pedal, ai, cfa)
+    )
+
+    return {
+        'has_map': has_map,
+        'estimated_length': estimated,
+        'functioning_bypass': functioning_bypass,
+        'tap': sug_tap,
+        'tap_short': tap_short[sug_tap],
+        'tap_label': tap_labels[sug_tap],
+        'active_tap': active_tap,
+        'fp': fp_grade,
+        'fp_calc': fp_calc,
+        'fp_final': fp_final,
+        'ip_by_tap': ip_by_tap,
+        'ip_paths': [ip_by_tap['at'], ip_by_tap['pt'], ip_by_tap['per']],
+        'ip': sug_ip,
+        'ip_calc': sug_ip_calc,
+        'ip_final': sug_ip_final,
+        'active_ip': active_ip_info['ip'],
+        'active_ip_calc': active_ip_info['ip_calc'],
+        'glass': sug_glass,
+        'pedal': sug_pedal,
+        'active_pedal': pedal_for(active_tap),
+        'ai': ai,
+        'cfa': cfa,
+        'runoff_count': len(patent_tibials),
+        'patent_tibials': patent_tibials,
+        'svs_runoff': svs_runoff,
+        'svs_runoff_text': _fmt_score(svs_runoff),
+        'foot_runoff': foot_runoff,
+        'foot_runoff_text': _fmt_score(foot_runoff),
+        'differs': differs,
+    }
+
+
 def compute(limb, measured=None):
     """Everything derived from one limb's entries (all tables above)."""
     measured = measured or {}
@@ -1244,4 +1542,6 @@ def compute(limb, measured=None):
     angio = angiosome_status(limb)
     if angio:
         out['angiosome'] = angio
+    out['suggested'] = suggest_from_map(limb)
     return out
+

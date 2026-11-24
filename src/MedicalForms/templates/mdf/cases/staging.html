@@ -27,12 +27,82 @@
             <div class="st-tools" role="toolbar" aria-label="რა მოვნიშნოთ">
                 {% for key, label in S.STATES %}<button type="button" class="st-tool t-{{ key }}{% if key == 'oc' %} on{% endif %}" data-state="{{ key }}"><i></i>{{ label }}</button>{% endfor %}
                 {% for key, label in S.FLAGS %}<button type="button" class="st-tool t-{{ key }}" data-flag="{{ key }}"><i></i>{{ label }}</button>{% endfor %}
+                <button type="button" class="st-tool t-inspect" data-inspect="1">დეტალები</button>
             </div>
-            <p class="st-hint">აირჩიეთ ზემოთ რა მოვნიშნოთ და დააჭირეთ არტერიის სეგმენტს. ხელახლა დაჭერა — მოხსნა. წარსული ჩარევები იწერება ცალკე ბლოკში.</p>
+            <p class="st-hint">აირჩიეთ ზემოთ რა მოვნიშნოთ და დააჭირეთ არტერიის სეგმენტს — ქვემოთ გაიხსნება სეგმენტის დეტალური პანელიც. ხელახლა დაჭერა — მოხსნა.</p>
             <div class="st-zoom" role="toolbar" aria-label="ზონის გადიდება">
                 {% for zkey, zlabel, zview in zoom_zones %}<button type="button" class="st-zoom-btn{% if zkey == 'all' %} on{% endif %}" data-zoom="{{ zkey }}" data-viewbox="{{ zview }}">{{ zlabel }}</button>{% endfor %}
             </div>
             <div class="st-map">{% include "mdf/cases/_artery_map.html" with interactive=True side_name=side_name %}</div>
+
+            <div class="st-inspector" id="st-seg-inspector" hidden aria-label="სეგმენტის დეტალები">
+                <div class="st-ins-head">
+                    <div class="st-ins-title-wrap">
+                        <b id="st-ins-title"></b>
+                        <em class="st-iv-badge" id="st-ins-shared" hidden>საერთო ორივე ფეხისთვის</em>
+                    </div>
+                    <div class="st-ins-actions">
+                        <button type="button" class="x-btn sm" id="st-ins-reset">გასუფთავება</button>
+                        <button type="button" class="x-btn sm" id="st-ins-close" aria-label="დახურვა">×</button>
+                    </div>
+                </div>
+
+                <div class="st-ins-row">
+                    <small class="st-ins-lbl">შევიწროება</small>
+                    <div class="st-ins-chips" id="st-ins-stenosis">
+                        {% for skey, slabel in S.STENOSIS %}<button type="button" class="st-ins-chip" data-ins-stenosis="{{ skey }}">{{ slabel }}</button>{% endfor %}
+                    </div>
+                </div>
+
+                <div class="st-ins-row" id="st-ins-len-row">
+                    <small class="st-ins-lbl">დაზიანების სიგრძე</small>
+                    <div class="st-ins-len-wrap">
+                        <div class="st-ins-chips" id="st-ins-len-chips">
+                            {% for lval, llabel in S.LENGTH_CHIPS %}<button type="button" class="st-ins-chip" data-ins-len="{{ lval }}">{{ llabel }}</button>{% endfor %}
+                        </div>
+                        <label class="st-ins-cm"><input type="number" id="st-ins-len" class="form-control form-control-sm" min="0.1" max="50" step="0.5" placeholder="სმ" aria-label="სიგრძე სანტიმეტრებში"><span>სმ</span></label>
+                    </div>
+                </div>
+
+                <div class="st-ins-row">
+                    <small class="st-ins-lbl">კალციფიკაცია (PACSS)</small>
+                    <div class="st-ins-chips" id="st-ins-pacss">
+                        {% for pval, plabel in S.PACSS_SHORT %}<button type="button" class="st-ins-chip" data-ins-calc="{{ pval }}">{{ plabel }}</button>{% endfor %}
+                    </div>
+                </div>
+
+                <div class="st-ins-cto" id="st-ins-cto" hidden>
+                    <label class="st-check"><input type="checkbox" id="st-ins-flush"> სათავის (flush) ოკლუზია</label>
+                    <div class="st-ins-row">
+                        <small class="st-ins-lbl">დისტალური აღდგენა</small>
+                        <div class="st-ins-chips" id="st-ins-reconst">
+                            <button type="button" class="st-ins-chip" data-ins-reconst="">არ არის მითითებული</button>
+                            {% for rkey, rlabel in S.RECONSTITUTION %}<button type="button" class="st-ins-chip" data-ins-reconst="{{ rkey }}">{{ rlabel }}</button>{% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <label class="st-check" id="st-ins-trif-wrap" hidden><input type="checkbox" id="st-ins-trif"> ტრიფურკაციაზე გავრცელება (GLASS FP 4)</label>
+
+                <div class="st-ins-more-bar">
+                    <button type="button" class="st-ins-more-btn" id="st-ins-more-btn" aria-expanded="false">+ მორფოლოგია</button>
+                </div>
+
+                <div class="st-ins-more" id="st-ins-more" hidden>
+                    <div class="st-ins-row">
+                        <small class="st-ins-lbl">ფოლაქის ფორმა</small>
+                        <div class="st-ins-chips" id="st-ins-morph">
+                            {% for mkey, mlabel in S.MORPHOLOGY %}<button type="button" class="st-ins-chip" data-ins-morph="{{ mkey }}">{{ mlabel }}</button>{% endfor %}
+                        </div>
+                    </div>
+                    <div class="st-ins-row">
+                        <small class="st-ins-lbl">დამატებითი ნიშნები</small>
+                        <div class="st-ins-chips" id="st-ins-flags">
+                            {% for fkey, flabel in S.SEGMENT_FLAGS_L2 %}<button type="button" class="st-ins-chip" data-ins-flag="{{ fkey }}">{{ flabel }}</button>{% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <div class="st-foot-box">
                 <div class="st-foot-head">
@@ -184,7 +254,8 @@
 
             <div class="st-save">
                 <button type="submit" class="x-btn primary">შენახვა</button>
-                <a class="x-btn" href="{% url 'case' case.pk %}#staging">გაუქმება</a>
+                <a class="x-btn" href="{% url 'case' case.pk %}#staging" data-allow-leave="1">გაუქმება</a>
+                <span class="st-unsaved" id="st-unsaved" hidden>შეუნახავია</span>
                 <span class="st-live" id="st-live" role="status"></span>
             </div>
         </div>

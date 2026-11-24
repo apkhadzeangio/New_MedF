@@ -71,6 +71,32 @@
         return { rx: rx, by: by };
     }
 
+    var formDirty = false;
+    var isSubmitting = false;
+    var allowLeave = false;
+    var unsavedEl = document.getElementById('st-unsaved');
+    var inspectedKey = null;
+    var moreExpanded = false;
+    var L2_FLAGS = ['coral', 'thrombus', 'aneurysm', 'ulcerated', 'small_caliber'];
+
+    function markFormDirty() {
+        formDirty = true;
+        if (unsavedEl) { unsavedEl.hidden = false; }
+    }
+
+    function hasL2Details(item) {
+        if (!item) { return false; }
+        if (item.morph) { return true; }
+        return L2_FLAGS.some(function (f) { return !!item[f]; });
+    }
+
+    function hasRichDetails(item) {
+        if (!item) { return false; }
+        if (item.length_cm != null || item.flush || item.reconstitution || item.trifurcation) { return true; }
+        if (item.calc === 1 || item.calc === 2 || item.calc === 4) { return true; }
+        return hasL2Details(item);
+    }
+
     function paintAll(markDirty) {
         var marks = activeInterventionMarks();
         form.querySelectorAll('.am-edit [data-seg]').forEach(function (g) {
@@ -80,8 +106,15 @@
             if ((item.calc || 0) >= 3 || item.coral || item.ca) { css.push('sg-ca'); }
             if (item.rx || marks.rx[key]) { css.push('sg-rx'); }
             if (item.by || marks.by[key]) { css.push('sg-by'); }
+            if (inspectedKey && key === inspectedKey) { css.push('sg-selected'); }
             if (markDirty) { css.push('am-dirty'); }
             g.setAttribute('class', css.join(' '));
+        });
+    }
+
+    function highlightInspected() {
+        form.querySelectorAll('.am-edit [data-seg]').forEach(function (g) {
+            g.classList.toggle('sg-selected', !!inspectedKey && g.getAttribute('data-seg') === inspectedKey);
         });
     }
 
@@ -89,13 +122,306 @@
         b.addEventListener('click', function () {
             form.querySelectorAll('.st-tool').forEach(function (x) { x.classList.remove('on'); });
             b.classList.add('on');
-            tool = { state: b.getAttribute('data-state'), flag: b.getAttribute('data-flag') };
+            tool = {
+                state: b.getAttribute('data-state'),
+                flag: b.getAttribute('data-flag'),
+                inspect: b.hasAttribute('data-inspect')
+            };
         });
     });
 
+    // ---- Two-level segment inspector (+ მორფოლოგია) -----------------------
+
+    var inspector = document.getElementById('st-seg-inspector');
+    var insTitle = document.getElementById('st-ins-title');
+    var insShared = document.getElementById('st-ins-shared');
+    var insReset = document.getElementById('st-ins-reset');
+    var insClose = document.getElementById('st-ins-close');
+    var insStenosis = document.getElementById('st-ins-stenosis');
+    var insLenChips = document.getElementById('st-ins-len-chips');
+    var insLenInput = document.getElementById('st-ins-len');
+    var insPacss = document.getElementById('st-ins-pacss');
+    var insCto = document.getElementById('st-ins-cto');
+    var insFlush = document.getElementById('st-ins-flush');
+    var insReconst = document.getElementById('st-ins-reconst');
+    var insTrifWrap = document.getElementById('st-ins-trif-wrap');
+    var insTrif = document.getElementById('st-ins-trif');
+    var insMoreBtn = document.getElementById('st-ins-more-btn');
+    var insMore = document.getElementById('st-ins-more');
+    var insMorph = document.getElementById('st-ins-morph');
+    var insFlags = document.getElementById('st-ins-flags');
+
+    function canonicalStenosis(item) {
+        if (!item) { return 'none'; }
+        if (item.stenosis) { return item.stenosis; }
+        if (item.s && stateToV2[item.s]) { return stateToV2[item.s]; }
+        return 'none';
+    }
+
+    function renderInspector() {
+        if (!inspector) { return; }
+        if (!inspectedKey) {
+            inspector.hidden = true;
+            highlightInspected();
+            return;
+        }
+        inspector.hidden = false;
+        var shortMap = (catalog && catalog.segment_short) || {};
+        var nameMap = (catalog && catalog.segment_names) || {};
+        var sShort = shortMap[inspectedKey] || '';
+        var sName = nameMap[inspectedKey] || inspectedKey;
+        if (insTitle) {
+            insTitle.textContent = (sShort && sShort !== sName) ? (sShort + ' — ' + sName) : sName;
+        }
+        if (insShared) { insShared.hidden = inspectedKey !== 'aorta'; }
+
+        var item = segments[inspectedKey] || {};
+        var st = canonicalStenosis(item);
+
+        if (insStenosis) {
+            insStenosis.querySelectorAll('[data-ins-stenosis]').forEach(function (b) {
+                var on = b.getAttribute('data-ins-stenosis') === st;
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+
+        var lenVal = item.length_cm != null ? Number(item.length_cm) : null;
+        if (insLenChips) {
+            insLenChips.querySelectorAll('[data-ins-len]').forEach(function (b) {
+                var chipVal = Number(b.getAttribute('data-ins-len'));
+                var on = lenVal !== null && Math.abs(chipVal - lenVal) < 0.05;
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+        if (insLenInput && document.activeElement !== insLenInput) {
+            insLenInput.value = lenVal !== null ? String(lenVal) : '';
+        }
+
+        var calcVal = item.calc != null ? Number(item.calc) : (item.ca ? 3 : 0);
+        if (insPacss) {
+            insPacss.querySelectorAll('[data-ins-calc]').forEach(function (b) {
+                var on = Number(b.getAttribute('data-ins-calc')) === calcVal;
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+
+        if (insCto) { insCto.hidden = st !== 'occlusion'; }
+        if (insFlush) { insFlush.checked = !!item.flush; }
+        if (insReconst) {
+            var rec = item.reconstitution || '';
+            insReconst.querySelectorAll('[data-ins-reconst]').forEach(function (b) {
+                var on = (b.getAttribute('data-ins-reconst') || '') === rec;
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+
+        if (insTrifWrap) { insTrifWrap.hidden = inspectedKey !== 'pop3'; }
+        if (insTrif) { insTrif.checked = !!item.trifurcation; }
+
+        var l2Count = (item.morph ? 1 : 0) + L2_FLAGS.filter(function (f) { return !!item[f]; }).length;
+        if (insMore) { insMore.hidden = !moreExpanded; }
+        if (insMoreBtn) {
+            insMoreBtn.setAttribute('aria-expanded', moreExpanded ? 'true' : 'false');
+            insMoreBtn.textContent = (moreExpanded ? '− მორფოლოგია' : '+ მორფოლოგია') + (l2Count ? ' (' + l2Count + ')' : '');
+        }
+        if (insMorph) {
+            var m = item.morph || '';
+            insMorph.querySelectorAll('[data-ins-morph]').forEach(function (b) {
+                var on = (b.getAttribute('data-ins-morph') || '') === m;
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+        if (insFlags) {
+            insFlags.querySelectorAll('[data-ins-flag]').forEach(function (b) {
+                var fk = b.getAttribute('data-ins-flag');
+                var on = !!item[fk];
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+
+        highlightInspected();
+    }
+
+    function openInspector(key) {
+        if (inspectedKey !== key) {
+            inspectedKey = key;
+            moreExpanded = hasL2Details(segments[key] || {});
+        }
+        renderInspector();
+    }
+
+    function cleanSegmentItem(item) {
+        delete item.s;
+        delete item.ca;
+        var st = item.stenosis || 'none';
+        if (st === 'none') {
+            delete item.stenosis;
+            delete item.flush;
+            delete item.reconstitution;
+            delete item.morph;
+            if (!item.aneurysm) { delete item.length_cm; }
+        } else if (st !== 'occlusion') {
+            delete item.flush;
+            delete item.reconstitution;
+        }
+        if (!item.calc) { delete item.calc; }
+        if (!item.reconstitution) { delete item.reconstitution; }
+        if (!item.morph) { delete item.morph; }
+        return item;
+    }
+
+    function mutateInspected(mutator) {
+        if (!inspectedKey) { return; }
+        var item = Object.assign({}, segments[inspectedKey] || {});
+        item.stenosis = canonicalStenosis(item);
+        if (item.ca && item.calc == null) { item.calc = 3; }
+        mutator(item);
+        cleanSegmentItem(item);
+        if (Object.keys(item).length) { segments[inspectedKey] = item; } else { delete segments[inspectedKey]; }
+        markFormDirty();
+        paintAll(true);
+        renderInspector();
+        sync();
+        preview(true);
+    }
+
+    if (insClose) {
+        insClose.addEventListener('click', function () {
+            inspectedKey = null;
+            renderInspector();
+        });
+    }
+    if (insReset) {
+        insReset.addEventListener('click', function () {
+            if (!inspectedKey) { return; }
+            delete segments[inspectedKey];
+            markFormDirty();
+            paintAll(true);
+            renderInspector();
+            sync();
+            preview(true);
+        });
+    }
+    if (insStenosis) {
+        insStenosis.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-ins-stenosis]');
+            if (!b) { return; }
+            mutateInspected(function (item) {
+                item.stenosis = b.getAttribute('data-ins-stenosis') || 'none';
+            });
+        });
+    }
+    if (insLenChips) {
+        insLenChips.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-ins-len]');
+            if (!b) { return; }
+            var val = Number(b.getAttribute('data-ins-len'));
+            mutateInspected(function (item) {
+                if ((item.stenosis || 'none') === 'none' && !item.aneurysm) {
+                    item.stenosis = 'severe';
+                }
+                if (item.length_cm != null && Math.abs(Number(item.length_cm) - val) < 0.05) {
+                    delete item.length_cm;
+                } else {
+                    item.length_cm = val;
+                }
+            });
+        });
+    }
+    if (insLenInput) {
+        var applyTypedLen = function () {
+            var raw = String(insLenInput.value || '').trim().replace(',', '.');
+            var num = raw ? parseFloat(raw) : NaN;
+            mutateInspected(function (item) {
+                if (!isNaN(num) && num >= 0.1 && num <= 50) {
+                    if ((item.stenosis || 'none') === 'none' && !item.aneurysm) {
+                        item.stenosis = 'severe';
+                    }
+                    item.length_cm = Math.round(num * 10) / 10;
+                } else if (!raw) {
+                    delete item.length_cm;
+                }
+            });
+        };
+        insLenInput.addEventListener('input', applyTypedLen);
+        insLenInput.addEventListener('change', applyTypedLen);
+    }
+    if (insPacss) {
+        insPacss.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-ins-calc]');
+            if (!b) { return; }
+            var val = Number(b.getAttribute('data-ins-calc')) || 0;
+            mutateInspected(function (item) { item.calc = val; });
+        });
+    }
+    if (insFlush) {
+        insFlush.addEventListener('change', function () {
+            mutateInspected(function (item) {
+                if (insFlush.checked) { item.flush = true; } else { delete item.flush; }
+            });
+        });
+    }
+    if (insReconst) {
+        insReconst.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-ins-reconst]');
+            if (!b) { return; }
+            mutateInspected(function (item) {
+                item.reconstitution = b.getAttribute('data-ins-reconst') || '';
+            });
+        });
+    }
+    if (insTrif) {
+        insTrif.addEventListener('change', function () {
+            mutateInspected(function (item) {
+                if (insTrif.checked) { item.trifurcation = true; } else { delete item.trifurcation; }
+            });
+        });
+    }
+    if (insMoreBtn) {
+        insMoreBtn.addEventListener('click', function () {
+            moreExpanded = !moreExpanded;
+            renderInspector();
+        });
+    }
+    if (insMorph) {
+        insMorph.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-ins-morph]');
+            if (!b) { return; }
+            var m = b.getAttribute('data-ins-morph') || '';
+            mutateInspected(function (item) {
+                if (m && (item.stenosis || 'none') === 'none') { item.stenosis = 'severe'; }
+                item.morph = m;
+            });
+        });
+    }
+    if (insFlags) {
+        insFlags.addEventListener('click', function (e) {
+            var b = e.target.closest('[data-ins-flag]');
+            if (!b) { return; }
+            var fk = b.getAttribute('data-ins-flag');
+            mutateInspected(function (item) {
+                if (item[fk]) { delete item[fk]; } else { item[fk] = true; }
+            });
+        });
+    }
+
     function apply(g) {
         var key = g.getAttribute('data-seg');
-        var item = segments[key] || {};
+        if (tool.inspect) {
+            openInspector(key);
+            return;
+        }
+        var item = Object.assign({}, segments[key] || {});
+        if (tool.state && tool.state !== 'n' && stateCode(item) === tool.state && inspectedKey !== key && hasRichDetails(item)) {
+            openInspector(key);
+            return;
+        }
         delete item.s;
         delete item.ca;
         if (tool.flag === 'ca') {
@@ -120,6 +446,8 @@
             }
         }
         if (Object.keys(item).length) { segments[key] = item; } else { delete segments[key]; }
+        markFormDirty();
+        openInspector(key);
         paintAll(true);
         sync();
         preview(true);
@@ -397,7 +725,9 @@
             delB.addEventListener('click', function () {
                 interventions = interventions.filter(function (x) { return x.id !== iv.id; });
                 if (editingId === iv.id) { closeEditor(); }
+                markFormDirty();
                 renderInterventionsList();
+                renderInspector();
                 paintAll(true);
                 sync();
                 preview(true);
@@ -679,7 +1009,9 @@
 
         syncLumenFromInterventions();
         closeEditor();
+        markFormDirty();
         renderInterventionsList();
+        renderInspector();
         paintAll(true);
         sync();
         preview(true);
@@ -726,6 +1058,36 @@
     if (elCancel) {
         elCancel.addEventListener('click', closeEditor);
     }
+
+    // ---- 1-click fill from map suggestion (never silent) ------------------
+
+    function setRadio(name, val) {
+        var strVal = String(val == null ? '' : val);
+        form.querySelectorAll('input[type="radio"][name="' + name + '"]').forEach(function (r) {
+            r.checked = (r.value === strVal);
+        });
+    }
+
+    function setCheck(name, checked) {
+        var cb = form.querySelector('input[type="checkbox"][name="' + name + '"]');
+        if (cb) { cb.checked = !!checked; }
+    }
+
+    form.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('#st-apply-sug');
+        if (!btn) { return; }
+        setRadio('tap', btn.getAttribute('data-tap'));
+        setRadio('fp', btn.getAttribute('data-fp'));
+        setCheck('fp_calc', btn.getAttribute('data-fp-calc') === '1');
+        setRadio('ip', btn.getAttribute('data-ip'));
+        setCheck('ip_calc', btn.getAttribute('data-ip-calc') === '1');
+        setRadio('pedal', btn.getAttribute('data-pedal'));
+        var aiSel = form.querySelector('select[name="ai"]');
+        if (aiSel) { aiSel.value = btn.getAttribute('data-ai') || ''; }
+        setRadio('cfa', btn.getAttribute('data-cfa') || 'A');
+        markFormDirty();
+        preview(false);
+    });
 
     // ---- Live server preview & form submission ----------------------------
 
@@ -779,6 +1141,7 @@
                                 }
                             }
                         }
+                        highlightInspected();
                     }
                     live();
                 })
@@ -793,11 +1156,13 @@
     }
 
     form.addEventListener('change', function (e) {
-        if (editor && editor.contains(e.target)) { return; }
+        if ((editor && editor.contains(e.target)) || (inspector && inspector.contains(e.target))) { return; }
+        markFormDirty();
         preview(Boolean(e.target && e.target.name === 'wound_angiosome'));
     });
     form.addEventListener('input', function (e) {
-        if (editor && editor.contains(e.target)) { return; }
+        if ((editor && editor.contains(e.target)) || (inspector && inspector.contains(e.target))) { return; }
+        markFormDirty();
         if (e.target.tagName === 'INPUT' && e.target.type !== 'radio') { preview(false); }
     });
     form.addEventListener('submit', function (e) {
@@ -809,6 +1174,27 @@
             }
         }
         sync();
+        isSubmitting = true;
+    });
+
+    window.addEventListener('beforeunload', function (e) {
+        if ((formDirty || editorDirty) && !isSubmitting && !allowLeave) {
+            e.preventDefault();
+            e.returnValue = '';
+        }
+    });
+    document.addEventListener('click', function (e) {
+        if ((!formDirty && !editorDirty) || isSubmitting || allowLeave) { return; }
+        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
+        var link = e.target.closest && e.target.closest('a[href]');
+        if (!link || link.hasAttribute('data-allow-leave') || link.target === '_blank' || link.hasAttribute('download')) { return; }
+        var href = link.getAttribute('href') || '';
+        if (!href || href.charAt(0) === '#' || href.indexOf('javascript:') === 0) { return; }
+        if (!window.confirm('ცვლილებები შენახული არ არის. ნამდვილად გსურთ სხვა გვერდზე გადასვლა შენახვის გარეშე?')) {
+            e.preventDefault();
+        } else {
+            allowLeave = true;
+        }
     });
 
     renderInterventionsList();

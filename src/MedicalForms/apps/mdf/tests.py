@@ -2584,3 +2584,141 @@ class StagingFootAngiosomesTests(PrivateMediaTest):
             self.assertContains(rendered, 'am-angio-zone')
             self.assertContains(rendered, 'პირდაპირი (ანგიოსომაზე მიმართული) რევასკულარიზაცია')
 
+
+class StagingSuggestionAndInspectorTests(PrivateMediaTest):
+    """T5: suggest_from_map() (GVG Figs 5.1-5.3, Table 5.2, SVS Runoff 1-19), inspector & manual override safety."""
+
+    def test_suggest_from_map_inflow_fp_and_calc_boundaries(self):
+        from .staging import suggest_from_map
+
+        empty = suggest_from_map({})
+        self.assertFalse(empty['has_map'])
+        self.assertEqual((empty['svs_runoff'], empty['foot_runoff'], empty['runoff_count']), (1.0, 1.0, 3))
+
+        # Inflow Table 5.2
+        self.assertEqual(suggest_from_map({'segments': {'cia': {'stenosis': 'occlusion'}}})['ai'], 'I')
+        self.assertEqual(suggest_from_map({'segments': {'cia': {'stenosis': 'occlusion'},
+                                                        'eia': {'stenosis': 'occlusion'}}})['ai'], 'II')
+        self.assertEqual(suggest_from_map({'segments': {'aorta': {'stenosis': 'occlusion'}}})['ai'], 'II')
+        self.assertEqual(suggest_from_map({'segments': {'cia': {'aneurysm': True}}})['ai'], 'II')
+        self.assertEqual(suggest_from_map({'segments': {'eia': {'small_caliber': True}}})['ai'], 'II')
+        self.assertEqual(suggest_from_map({'interventions': [
+            {'type': 'stent', 'subtype': 'bms', 'segments': ['eia'], 'status': 'isr_2'},
+        ]})['ai'], 'II')
+        self.assertEqual(suggest_from_map({'segments': {'cfa': {'stenosis': 'moderate'}}})['cfa'], 'B')
+
+        # GLASS FP Fig 5.2 boundaries
+        fp_of = lambda segs: suggest_from_map({'segments': segs})['fp']
+        self.assertEqual(fp_of({'sfa2': {'stenosis': 'mild'}}), 0)
+        self.assertEqual(fp_of({'sfa2': {'stenosis': 'severe', 'length_cm': 4.0}}), 1)
+        self.assertEqual(fp_of({'sfa2': {'stenosis': 'occlusion', 'length_cm': 3.0}}), 1)
+        self.assertEqual(fp_of({'sfa1': {'stenosis': 'occlusion', 'length_cm': 3.0, 'flush': True}}), 3)
+        self.assertEqual(fp_of({'sfa1': {'stenosis': 'occlusion', 'length_cm': 2.0},
+                                'sfa3': {'stenosis': 'occlusion', 'length_cm': 2.0}}), 2)
+        self.assertEqual(fp_of({'sfa2': {'stenosis': 'occlusion', 'length_cm': 7.5}}), 2)
+        self.assertEqual(fp_of({'sfa1': {'stenosis': 'severe', 'length_cm': 15.0}}), 2)
+        self.assertEqual(fp_of({'sfa2': {'stenosis': 'occlusion', 'length_cm': 15.0}}), 3)
+        self.assertEqual(fp_of({'sfa1': {'stenosis': 'severe', 'length_cm': 25.0}}), 3)
+        self.assertEqual(fp_of({'sfa1': {'stenosis': 'occlusion', 'length_cm': 25.0}}), 4)
+        self.assertEqual(fp_of({'pop2': {'stenosis': 'severe', 'length_cm': 1.5}}), 2)
+        self.assertEqual(fp_of({'pop2': {'stenosis': 'severe', 'length_cm': 3.0}}), 3)
+        self.assertEqual(fp_of({'pop2': {'stenosis': 'severe', 'length_cm': 6.0}}), 4)
+        self.assertEqual(fp_of({'pop3': {'stenosis': 'severe', 'length_cm': 1.5, 'trifurcation': True}}), 4)
+        self.assertEqual(fp_of({'pop1': {'stenosis': 'occlusion', 'length_cm': 1.5}}), 4)
+
+        # PACSS >= 3 or coral -> +1 calcification modifier
+        self.assertFalse(suggest_from_map({'segments': {'sfa2': {'stenosis': 'severe', 'calc': 2}}})['fp_calc'])
+        self.assertTrue(suggest_from_map({'segments': {'sfa2': {'stenosis': 'severe', 'calc': 3}}})['fp_calc'])
+        self.assertTrue(suggest_from_map({'segments': {'pop2': {'coral': True}}})['fp_calc'])
+
+    def test_suggest_from_map_ip_tap_pedal_and_svs_runoff(self):
+        from .staging import suggest_from_map
+
+        # TPT CTO makes PT & PER IP 4 while leaving AT IP 0 -> suggests AT and reflects TPT loss in SVS runoff
+        s_tpt = suggest_from_map({'segments': {'tpt': {'stenosis': 'occlusion'}}})
+        self.assertEqual(s_tpt['ip_by_tap']['at']['ip'], 0)
+        self.assertEqual(s_tpt['ip_by_tap']['pt']['ip'], 4)
+        self.assertEqual(s_tpt['ip_by_tap']['per']['ip'], 4)
+        self.assertEqual(s_tpt['tap'], 'at')
+        self.assertEqual((s_tpt['svs_runoff'], s_tpt['runoff_count'], s_tpt['estimated_length']), (6.0, 1, False))
+
+        # Tibial focal <3 cm stenosis (IP 1), non-ostial focal CTO <3 cm (IP 2), ostial flush CTO <3 cm (IP 3)
+        self.assertEqual(suggest_from_map({'segments': {'at2': {'stenosis': 'severe', 'length_cm': 2.0}}})
+                         ['ip_by_tap']['at']['ip'], 1)
+        self.assertEqual(suggest_from_map({'segments': {'at2': {'stenosis': 'occlusion', 'length_cm': 2.0}}})
+                         ['ip_by_tap']['at']['ip'], 2)
+        self.assertEqual(suggest_from_map({'segments': {'at1': {'stenosis': 'occlusion', 'length_cm': 2.0, 'flush': True}}})
+                         ['ip_by_tap']['at']['ip'], 3)
+        self.assertEqual(suggest_from_map({'segments': {'tpt': {'stenosis': 'severe', 'length_cm': 2.0}}})
+                         ['ip_by_tap']['pt']['ip'], 2)
+
+        # Wound angiosome breaks tie when AT and PT have equal IP grade
+        s_tie = suggest_from_map({
+            'segments': {'at2': {'stenosis': 'severe', 'length_cm': 2.0},
+                         'pt2': {'stenosis': 'severe', 'length_cm': 2.0}},
+            'wound_angiosome': 'medial_plantar',
+        })
+        self.assertEqual(s_tie['tap'], 'pt')
+        self.assertEqual(s_tie['pedal'], 'P0')
+
+        # When both AT and PT have severe IP >= 3 disease, patent peroneal becomes TAP
+        self.assertEqual(suggest_from_map({
+            'segments': {'at1': {'stenosis': 'occlusion'}, 'pt1': {'stenosis': 'occlusion'}},
+        })['tap'], 'per')
+
+        # Pedal P1 when arch is occluded; P2 when no artery crosses ankle into foot
+        self.assertEqual(suggest_from_map({'segments': {'arch': {'stenosis': 'occlusion'}}})['pedal'], 'P1')
+        self.assertEqual(suggest_from_map({'segments': {
+            'dp': {'stenosis': 'occlusion'}, 'mpa': {'stenosis': 'occlusion'}, 'lpa': {'stenosis': 'occlusion'},
+        }})['pedal'], 'P2')
+
+        # Modified SVS Runoff (1.0 - 19.0) & Foot Score (1.0 - 10.0) (Stoner et al. 2016)
+        worst = suggest_from_map({'segments': {
+            'pop1': {'stenosis': 'occlusion'}, 'pop2': {'stenosis': 'occlusion'}, 'pop3': {'stenosis': 'occlusion'},
+            'at1': {'stenosis': 'occlusion'}, 'at2': {'stenosis': 'occlusion'},
+            'pt1': {'stenosis': 'occlusion'}, 'pt2': {'stenosis': 'occlusion'},
+            'per1': {'stenosis': 'occlusion'}, 'per2': {'stenosis': 'occlusion'},
+            'dp': {'stenosis': 'occlusion'}, 'mpa': {'stenosis': 'occlusion'}, 'lpa': {'stenosis': 'occlusion'},
+        }})
+        self.assertEqual((worst['svs_runoff'], worst['foot_runoff'], worst['runoff_count']), (19.0, 10.0, 0))
+
+        mixed = suggest_from_map({'segments': {
+            'pop1': {'stenosis': 'occlusion'},       # 4 / 12 cm <= 0.5 -> 2.5 * 3 + 1 = 8.5
+            'at2': {'stenosis': 'moderate'},         # + 2.0
+            'pt2': {'stenosis': 'mild'},             # + 1.0 (PER = 0.0)
+        }})
+        self.assertEqual((mixed['svs_runoff'], mixed['svs_runoff_text'], mixed['runoff_count']), (11.5, '11.5', 3))
+
+    def test_manual_selections_never_silently_overwritten_and_page_renders_inspector(self):
+        case = self.make_case(side='R')
+        url = reverse('case-staging', args=[case.pk, 'R'])
+        page = self.client.get(url)
+        self.assertContains(page, 'id="st-seg-inspector"')
+        self.assertContains(page, '+ მორფოლოგია')
+        self.assertContains(page, 'data-inspect="1"')
+
+        # Map points to FP 4 & TAP AT, while surgeon explicitly selected FP 1, IP 1, TAP PT -> GLASS I preserved!
+        payload = {
+            'segments': json.dumps({'pop2': {'stenosis': 'occlusion'}, 'tpt': {'stenosis': 'occlusion'}}),
+            'interventions': json.dumps([]),
+            'tap': 'pt', 'fp': '1', 'ip': '1', 'pedal': 'P0',
+            'w': '1', 'i': '2', 'fi': '0', 'risk': 'avg', 'vein': 'yes', 'cfa': 'A',
+        }
+        preview = self.client.post(url, {**payload, 'preview': '1'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        self.assertIn('glass-I', preview['html'])
+        self.assertIn('id="st-apply-sug"', preview['html'])
+        self.assertIn('რუკიდან შევსება', preview['html'])
+        self.assertIn('SVS ქულა:', preview['html'])
+
+        self.client.post(url, payload)
+        case.refresh_from_db()
+        saved = case.staging['R']
+        self.assertEqual((saved['fp'], saved['ip'], saved['tap']), (1, 1, 'pt'))
+
+        # Read-only detail & presentation show SVS runoff summary, never the edit-only suggestion button
+        for rendered in (self.client.get(reverse('case', args=[case.pk])),
+                         self.client.get(reverse('cases-present'), {'ids': case.pk})):
+            self.assertContains(rendered, 'SVS ქულა:')
+            self.assertNotContains(rendered, 'id="st-apply-sug"')
+
+

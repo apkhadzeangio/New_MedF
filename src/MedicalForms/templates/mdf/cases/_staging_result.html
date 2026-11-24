@@ -26,6 +26,33 @@
     {% if r.angiosome %}
     <p class="st-line st-angio-line">ანგიოსომა: <b>{{ r.angiosome.label }}</b> · <em class="st-iv-badge tone-{{ r.angiosome.tone }}">{{ r.angiosome.text }}</em></p>
     {% endif %}
+    {% if r.suggested.has_map %}
+    <p class="st-line st-runoff-line">გამავლობა: <b>{{ r.suggested.runoff_count }}/3 წვივის არტერია{% if r.suggested.patent_tibials %} ({{ r.suggested.patent_tibials|join:", " }}){% endif %}</b> · SVS ქულა: <b>{{ r.suggested.svs_runoff_text }}</b>/19 · ტერფი: <b>{{ r.suggested.foot_runoff_text }}</b>/10</p>
+    {% endif %}
+    {% if live and r.suggested.has_map %}
+    <div class="st-sug{% if not r.suggested.differs %} synced{% endif %}" id="st-sug-box">
+        <div class="st-sug-top">
+            <div class="st-sug-main">
+                <small>რუკის მიხედვით შეთავაზება{% if r.suggested.glass %} (GLASS {{ r.suggested.glass }}){% endif %}</small>
+                <b>TAP {{ r.suggested.tap_short }} · FP {{ r.suggested.fp }}{% if r.suggested.fp_calc %} (+1){% endif %} · IP {{ r.suggested.ip }}{% if r.suggested.ip_calc %} (+1){% endif %} · {{ r.suggested.pedal }} · {% if r.suggested.ai %}AI {{ r.suggested.ai }}{% else %}AI —{% endif %} / CFA {{ r.suggested.cfa }}</b>
+            </div>
+            <button type="button" class="x-btn sm{% if r.suggested.differs %} primary{% endif %}" id="st-apply-sug"
+                data-tap="{{ r.suggested.tap }}"
+                data-fp="{{ r.suggested.fp }}"
+                data-fp-calc="{% if r.suggested.fp_calc %}1{% else %}0{% endif %}"
+                data-ip="{{ r.suggested.ip }}"
+                data-ip-calc="{% if r.suggested.ip_calc %}1{% else %}0{% endif %}"
+                data-pedal="{{ r.suggested.pedal }}"
+                data-ai="{{ r.suggested.ai }}"
+                data-cfa="{{ r.suggested.cfa }}">{% if r.suggested.differs %}რუკიდან შევსება{% else %}✓ შევსებულია{% endif %}</button>
+        </div>
+        <div class="st-sug-paths">
+            {% for p in r.suggested.ip_paths %}<span class="st-sug-path{% if p.tap == r.suggested.tap %} best{% endif %}"><b>{{ p.short }}:</b> IP {{ p.ip }}{% if p.ip_calc %}+1{% endif %}{% if not p.crosses_ankle %} (კოჭს არ კვეთს){% endif %}{% if p.angiosome_match %} · ჭრილობის ანგიოსომა{% endif %}</span>{% endfor %}
+        </div>
+        {% if r.suggested.estimated_length %}<small class="st-sug-note">სავარაუდო სიგრძით — სურვილისამებრ დააზუსტეთ სმ სეგმენტის პანელში.</small>{% endif %}
+        {% if r.suggested.functioning_bypass %}<small class="st-sug-note warn">კიდურზე ფუნქციონირებს შუნტი — შეთავაზება ითვლის მხოლოდ ნატიურ არტერიებს.</small>{% endif %}
+    </div>
+    {% endif %}
     {% for n in r.notes %}<p class="st-note">{{ n }}</p>{% endfor %}
     {% if live %}<span class="st-short" hidden>GLASS {{ r.glass|default:"—" }} · WIfI {{ r.wifi|default:"—" }}{% if r.plan %} · {% if r.plan == 'endo' %}ენდოვასკულური{% elif r.plan == 'open' %}ღია შუნტირება{% elif r.plan == 'unsure' %}განუსაზღვრელი{% elif r.plan == 'unsalvageable' %}გადარჩენადი არ არის{% else %}რევასკ. იშვიათად{% endif %}{% endif %}</span>{% endif %}
 </div>
