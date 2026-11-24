@@ -1612,3 +1612,15 @@ class RefineBatch3Tests(BaseViewTest):
         self.assertEqual(analysis.medicines_for('ანევრიზმა', 'diagnosis')[0], 1)
         groups, _ = analysis.overview('terms', '')
         self.assertEqual(groups[0]['count'], 1)
+
+    def test_a10_today_duty_is_the_calendar_day_even_in_the_evening(self):
+        import datetime as dt
+        from unittest import mock
+        from zoneinfo import ZoneInfo
+        from .models import RosterDay, RosterPerson
+        from .quotes import today_panel
+        RosterDay.objects.create(date=dt.date(2026, 12, 5), person=RosterPerson.objects.get(name='ია'))
+        RosterDay.objects.create(date=dt.date(2026, 12, 6), person=RosterPerson.objects.get(name='გიგა'))
+        evening = dt.datetime(2026, 12, 5, 20, 0, tzinfo=ZoneInfo('Asia/Tbilisi'))
+        with mock.patch('django.utils.timezone.now', return_value=evening):
+            self.assertEqual(today_panel()['duty'].name, 'ია')       # who is written for 5 December
