@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>არტერიული რუკის პროტოტიპი — აკადემიური სტანდარტი (სინთეზური მონაცემები)</title>
+<style>
+:root {
+  --ink: #1B2437;
+  --ink-2: #33405A;
+  --muted: #5A6478;
+  --line: #D5D9E3;
+  --line-soft: #ECEEF3;
+  --page: #F3F4F8;
+  --card: #FFFFFF;
+  --accent: #B42B5E;
+  --accent-soft: #FCEEF3;
+  --ok: #1F8A5B;
+  --warn: #B54708;
+  --bad: #B42318;
+  --radius: 14px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Noto Sans Georgian', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  line-height: 1.45;
+}
+body.theme-present {
+  --page: #0E131C;
+  --card: #141B28;
+  --ink: #F1F4F9;
+  --ink-2: #C9D1DF;
+  --muted: #8F9AAF;
+  --line: #263348;
+  --line-soft: #1B2436;
+  --accent-soft: #361A29;
+}
+.wrap { max-width: 1420px; margin: 0 auto; padding: 16px 20px 36px; display: flex; flex-direction: column; gap: 14px; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.top h1 { margin: 0 auto 0 0; font-size: 22px; font-weight: 700; }
+.top h1 small { font-size: 13px; color: var(--muted); font-weight: 500; margin-left: 6px; }
+.pills { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.pill {
+  height: 36px; padding: 0 13px; border-radius: 999px; border: 1.5px solid var(--line);
+  background: var(--card); color: var(--ink-2); font: inherit; font-size: 13.5px; font-weight: 600;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.pill.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pill:hover:not(.on) { border-color: var(--accent); }
+
+.presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.preset-btn {
+  padding: 5px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--card);
+  color: var(--ink-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.preset-btn.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+.layout { display: grid; grid-template-columns: minmax(340px, 500px) minmax(320px, 380px) minmax(300px, 1fr); gap: 14px; align-items: start; }
+.layout.compare-mode { grid-template-columns: 280px minmax(340px, 470px) minmax(300px, 1fr); }
+.card {
+  background: var(--card); border: 1px solid var(--line-soft); border-radius: var(--radius);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .06);
+}
+.card h2 { margin: 0; font-size: 15.5px; font-weight: 700; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.card h2 span { font-size: 12px; font-weight: 500; color: var(--muted); }
+
+/* Map canvas frame */
+.map-stage {
+  position: relative; border-radius: 12px; overflow: hidden;
+  background: linear-gradient(180deg, #FAF8F5 0%, #F3EFE9 100%);
+  border: 1px solid var(--line);
+  display: flex; justify-content: center; align-items: center;
+}
+body.theme-present .map-stage {
+  background: linear-gradient(180deg, #121824 0%, #0D121B 100%);
+}
+.map-stage.dsa {
+  background: radial-gradient(circle at 50% 42%, #232934 0%, #11151C 88%) !important;
+  border-color: #2E3848;
+}
+.map-svg { display: block; width: 100%; max-height: 760px; height: auto; user-select: none; }
+
+/* Zoom pills for 390px phone ergonomics */
+.zoom-bar { display: flex; gap: 5px; flex-wrap: wrap; }
+.zoom-btn {
+  flex: 1 1 auto; height: 30px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--line);
+  background: var(--card); color: var(--ink-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.zoom-btn.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+body.theme-present .zoom-btn.on { background: var(--accent); border-color: var(--accent); }
+
+/* Interactive hit targets */
+.seg-hit { fill: none; stroke: transparent; stroke-width: 28px; stroke-linecap: round; cursor: pointer; }
+.seg-hit:hover { stroke: rgba(180, 43, 94, 0.16); }
+.seg-selected { stroke: rgba(180, 43, 94, 0.30) !important; }
+
+/* Old v1 sketch column (only shown in compare mode) */
+.old-col { display: none; }
+.compare-mode .old-col { display: flex; }
+.compare-mode .foot-col { display: none; }
+.old-box { background: #FAF9F7; border: 1px solid var(--line); border-radius: 12px; padding: 8px; text-align: center; }
+.old-note { font-size: 12px; color: var(--muted); margin: 0; }
+
+/* Foot inset & angiosomes */
+.foot-stage {
+  border-radius: 12px; border: 1px solid var(--line);
+  background: linear-gradient(180deg, #FAF8F5 0%, #F2EDE6 100%);
+  padding: 6px;
+}
+body.theme-present .foot-stage { background: #111723; }
+.foot-stage.dsa { background: radial-gradient(circle at 50% 50%, #232934 0%, #11151C 90%) !important; }
+.angio-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.angio-chip {
+  padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card);
+  font: inherit; font-size: 12px; text-align: left; cursor: pointer; color: var(--ink-2);
+  display: flex; flex-direction: column; gap: 1px;
+}
+.angio-chip b { font-size: 12.5px; color: var(--ink); }
+.angio-chip small { font-size: 11px; color: var(--muted); }
+.angio-chip.on { border-color: var(--accent); background: var(--accent-soft); }
+
+/* Right column: Auto-suggested GLASS/Runoff + 2-tap Segment Editor + Interventions */
+.badges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.badge {
+  padding: 8px 10px; border-radius: 10px; background: var(--line-soft);
+  border-left: 4px solid var(--accent); display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.badge small { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .02em; }
+.badge b { font-size: 17px; line-height: 1.2; word-break: break-word; }
+.badge em { font-style: normal; font-size: 11.5px; color: var(--ink-2); }
+.badge.ok { border-left-color: var(--ok); }
+.badge.warn { border-left-color: #D97706; }
+.badge.bad { border-left-color: var(--bad); }
+
+.sug-box {
+  padding: 9px 11px; border-radius: 10px; border: 1px dashed var(--accent);
+  background: var(--accent-soft); font-size: 12.5px; display: flex; flex-direction: column; gap: 5px;
+}
+.sug-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; }
+.tap-pills { display: flex; gap: 5px; flex-wrap: wrap; }
+.tap-pill {
+  padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink-2); cursor: pointer;
+}
+.tap-pill.rec { border-color: var(--ok); color: var(--ok); }
+.tap-pill.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+body.theme-present .tap-pill.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* 2-Tap Segment Inspector */
+.ed-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
+.ed-head b { font-size: 15px; color: var(--accent); }
+.ed-head code { font-size: 12px; color: var(--muted); }
+.ed-lbl { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip {
+  height: 32px; padding: 0 10px; border-radius: 8px; border: 1.5px solid var(--line);
+  background: var(--card); color: var(--ink-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+/* Prior interventions list */
+.iv-list { display: flex; flex-direction: column; gap: 7px; }
+.iv-item {
+  padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; position: relative;
+}
+.iv-item .iv-top { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
+.iv-tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; font-weight: 700; }
+.iv-tag.patent { background: #EAF7F0; color: #1F8A5B; }
+.iv-tag.stenosed { background: #FFF4E5; color: #B54708; }
+.iv-tag.occluded { background: #FDECEA; color: #B42318; }
+body.theme-present .iv-tag.patent { background: #132A20; color: #5FD19C; }
+body.theme-present .iv-tag.stenosed { background: #2C2111; color: #F5B454; }
+body.theme-present .iv-tag.occluded { background: #2C1518; color: #FF7A6B; }
+
+/* Legend */
+.legend { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 12px; color: var(--muted); padding-top: 4px; border-top: 1px solid var(--line-soft); }
+.lg { display: inline-flex; align-items: center; gap: 6px; }
+.lg i { display: inline-block; width: 22px; height: 8px; border-radius: 4px; }
+
+@media (max-width: 1080px) {
+  .layout, .layout.compare-mode { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .wrap { padding: 12px; }
+  .badges, .angio-grid { grid-template-columns: minmax(0, 1fr); }
+  .preset-btn { width: 100%; text-align: left; }
+}
+@media print {
+  .top .pills, .presets, .zoom-bar { display: none; }
+  body { background: #fff; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>არტერიული რუკის პროტოტიპი <small>· სინთეზური მაგალითი · GVG/GLASS 2019 · SVS 2016 · PACSS</small></h1>
+    <div class="pills" role="tablist" aria-label="ვიზუალური რეჟიმი">
+      <button type="button" class="pill on" data-mode="anat">ანატომიური (B1)</button>
+      <button type="button" class="pill" data-mode="dsa">ანგიოგრაფია · DSA (B2)</button>
+      <button type="button" class="pill" data-mode="present">მოხსენება · მუქი</button>
+      <button type="button" class="pill" data-mode="compare">ძველთან შედარება</button>
+    </div>
+  </div>
+
+  <div class="presets">
+    <span>კლინიკური სცენარი (სინთეზური):</span>
+    <button type="button" class="preset-btn on" data-preset="clti">1. მრავალდონიანი CLTI: SFA flush CTO + PACSS 4 + P2 სტენოზი</button>
+    <button type="button" class="preset-btn" data-preset="bypass">2. წარსული აუტოვენური შუნტი (failing graft) + CFA პატჩი</button>
+    <button type="button" class="preset-btn" data-preset="isr">3. SFA სტენტის რესტენოზი (Tosaka II) + არმირებული PTFE შუნტი</button>
+  </div>
+
+  <div class="layout" id="main-layout">
+    <!-- Optional comparison column: how v1 plain strokes look -->
+    <div class="card old-col">
+      <h2>დღევანდელი რუკა (v1) <span>უბრალო ხაზები</span></h2>
+      <div class="old-box">
+        <svg viewBox="40 -190 290 1900" style="height:640px;width:auto;max-width:100%">
+          <rect x="45" y="-185" width="280" height="1890" rx="14" fill="#F4EFEA"/>
+          <!-- Plain uniform strokes as in current _artery_map.html -->
+          <g fill="none" stroke-linecap="round">
+            <path d="M300,-175 C288,-140 270,-110 250,-82" stroke="#C8203F" stroke-width="14"/>
+            <path d="M250,-82 C222,-46 176,10 146,108" stroke="#E3AE2E" stroke-width="13"/>
+            <path d="M146,108 L148,154" stroke="#C8203F" stroke-width="13"/>
+            <path d="M148,154 C130,180 114,225 106,295" stroke="#C8203F" stroke-width="9"/>
+            <path d="M148,154 C156,205 166,255 174,300" stroke="#2B303B" stroke-width="11" stroke-dasharray="6 7"/>
+            <!-- White marching-ants calcification halo -->
+            <path d="M174,300 C184,365 194,425 202,480" stroke="#fff" stroke-width="25" stroke-dasharray="2.5 3.5"/>
+            <path d="M174,300 C184,365 194,425 202,480" stroke="#2B303B" stroke-width="11" stroke-dasharray="6 7"/>
+            <path d="M202,480 C208,530 210,565 206,600" stroke="#E0701C" stroke-width="11"/>
+            <path d="M206,600 C196,680 168,765 152,850" stroke="#C8203F" stroke-width="10"/>
+            <path d="M152,850 L146,940" stroke="#E0701C" stroke-width="10"/>
+            <path d="M146,940 C124,948 102,960 95,990 C90,1120 96,1340 114,1490" stroke="#C8203F" stroke-width="8"/>
+            <path d="M146,940 L152,988" stroke="#2B303B" stroke-width="9" stroke-dasharray="6 7"/>
+            <path d="M152,988 C162,1100 172,1310 176,1510" stroke="#2B303B" stroke-width="8" stroke-dasharray="6 7"/>
+            <path d="M152,988 C138,1100 128,1280 122,1435" stroke="#E3AE2E" stroke-width="7.5"/>
+            <path d="M114,1490 L138,1638" stroke="#C8203F" stroke-width="7"/>
+            <path d="M176,1510 C170,1575 135,1625 90,1646" stroke="#E0701C" stroke-width="6.5"/>
+            <path d="M90,1646 C105,1670 126,1670 138,1638" stroke="#C8203F" stroke-width="6"/>
+          </g>
+        </svg>
+      </div>
+      <p class="old-note"><b>დღევანდელი პრობლემები:</b> 1) ბიფურკაციებზე მრგვალი ხაზები ერთმანეთს აჯდება; 2) სტენოზს არ აქვს სანათურის შევიწროება; 3) ოკლუზიას არ აქვს კოლატერალები და აღდგენა; 4) შუნტი არ იხატება ცალკე რკალად; 5) ტერფის რკალი შეკუმშულია.</p>
+    </div>
+
+    <!-- Proposed Main Limb Map (B1 + B2) -->
+    <div class="card">
+      <h2>
+        <label style="display:inline-flex;align-items:center;gap:8px">
+          მთლიანი კიდურის რუკა — მარჯვენა (წინა ხედი)
+        </label>
+        <span id="mode-caption">ცვლადი სისქის სისხლძარღვები + სანათურის პათოლოგია</span>
+      </h2>
+      <div class="zoom-bar" role="toolbar" aria-label="ზონის გადიდება (ტელეფონისთვის)">
+        <button type="button" class="zoom-btn on" data-zoom="all">მთლიანი</button>
+        <button type="button" class="zoom-btn" data-zoom="inflow">აორტო-თეძო &amp; CFA</button>
+        <button type="button" class="zoom-btn" data-zoom="fp">ბარძაყ-მუხლქვეშა (P1–P3)</button>
+        <button type="button" class="zoom-btn" data-zoom="btk">წვივი &amp; კოჭი</button>
+      </div>
+      <div class="map-stage" id="limb-stage">
+        <svg id="limb-svg" class="map-svg" viewBox="20 -240 350 1940" role="img" aria-label="ქვემო კიდურის არტერიული ხე"></svg>
+      </div>
+      <div class="legend">
+        <span class="lg"><i style="background:linear-gradient(90deg,#A61B34,#E03E58,#A61B34)"></i>გამავალი სანათური</span>
+        <span class="lg"><i style="background:linear-gradient(90deg,#D9B66B 30%,#C8203F 30% 70%,#D9B66B 70%)"></i>სტენოზი (ფოლაქი)</span>
+        <span class="lg"><i style="background:#3A2630;border:1px solid #8A6A75"></i>ოკლუზია (CTO) + კოლატერალი</span>
+        <span class="lg"><i style="background:#F8FAFC;border:1.5px solid #475569"></i>კალციფიკაცია (PACSS)</span>
+        <span class="lg"><i style="background:repeating-linear-gradient(45deg,#60A5FA 0 2px,transparent 2px 5px);border:1px solid #2563EB"></i>სტენტი</span>
+        <span class="lg"><i style="background:#0F9D68"></i>აუტოვენური შუნტი</span>
+        <span class="lg"><i style="background:repeating-linear-gradient(90deg,#0284C7 0 3px,#E0F2FE 3px 5px)"></i>PTFE პროთეზი</span>
+      </div>
+    </div>
+
+    <!-- Proposed Foot & Pedal Arch Lateral-Oblique Inset + 6 Angiosomes (B3) -->
+    <div class="card foot-col">
+      <h2>ტერფის რკალი (ლატერალურ-ირიბი ხედი) <span>GLASS P0–P2 · 6 ანგიოსომა</span></h2>
+      <div class="foot-stage" id="foot-stage">
+        <svg id="foot-svg" viewBox="0 0 360 300" style="width:100%;height:auto;display:block" role="img" aria-label="ტერფის არტერიული რკალი და ანგიოსომები"></svg>
+      </div>
+      <div class="ed-lbl">ჭრილობის ლოკალიზაცია — ანგიოსომა (Attinger 2006):</div>
+      <div class="angio-grid" id="angio-grid">
+        <button type="button" class="angio-chip" data-angio="dorsal"><b>1. ტერფის ზურგი</b><small>AT → Dorsalis pedis (DP)</small></button>
+        <button type="button" class="angio-chip on" data-angio="medial_plantar"><b>2. მედიალური ძირი / I თითი</b><small>PT → Medial plantar (MPA)</small></button>
+        <button type="button" class="angio-chip" data-angio="lateral_plantar"><b>3. ლატერალური ძირი / თითები</b><small>PT → Lateral plantar (LPA)</small></button>
+        <button type="button" class="angio-chip" data-angio="medial_heel"><b>4. ქუსლი — მედიალური</b><small>PT → Calcaneal br.</small></button>
+        <button type="button" class="angio-chip" data-angio="lateral_heel"><b>5. ქუსლი — ლატერალური</b><small>PER → Calcaneal br.</small></button>
+        <button type="button" class="angio-chip" data-angio="lateral_ankle"><b>6. კოჭის წინა-ლატერალური</b><small>PER → Ant. perforating</small></button>
+      </div>
+      <p style="margin:2px 0 0;font-size:12px;color:var(--muted)" id="angio-advice"></p>
+    </div>
+
+    <!-- Right Column: Auto-Suggested GLASS / Runoff + Quick 2-Tap Segment Editor + Prior Interventions -->
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <h2>რუკიდან შემოთავაზებული შეფასება <span>ექიმი ადასტურებს</span></h2>
+        <div class="badges" id="summary-badges"></div>
+        <div class="sug-box" id="tap-box"></div>
+      </div>
+
+      <div class="card" id="seg-editor">
+        <div class="ed-head">
+          <div>
+            <div style="font-size:11px;color:var(--muted);font-weight:600">დააჭირეთ ნებისმიერ არტერიას რუკაზე:</div>
+            <b id="ed-name">—</b>
+          </div>
+          <code id="ed-code"></code>
+        </div>
+
+        <div class="ed-lbl">1. შევიწროების ხარისხი (SVS 2016 / GLASS):</div>
+        <div class="chip-row" id="ed-stenosis"></div>
+
+        <div class="ed-lbl">2. დაზიანების სიგრძე (GLASS-ის ზღვრები):</div>
+        <div class="chip-row" id="ed-length"></div>
+
+        <div class="ed-lbl">3. კალციფიკაცია — PACSS (Rocha-Singh 2014):</div>
+        <div class="chip-row" id="ed-calc"></div>
+
+        <div class="ed-lbl">4. მორფოლოგია / ოკლუზიის დეტალები:</div>
+        <div class="chip-row" id="ed-flags"></div>
+      </div>
+
+      <div class="card">
+        <h2>ამ კიდურზე ჩატარებული ჩარევები <span>ისტორია (C)</span></h2>
+        <div class="iv-list" id="iv-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ------------------------------------------------------------------
+   * 1. Anatomical centerline geometry (Right leg, anterior view + foot)
+   *    Medial = right side (x ~ 200..300), Lateral = left side (x ~ 85..140)
+   * ------------------------------------------------------------------ */
+  var SEG_META = [
+    { key: 'aorta', name: 'ინფრარენული აორტა', short: 'Ao', group: 'inflow', r0: 9.5, r1: 8.8, deep: false,
+      pts: [[295,-225],[295,-198],[295,-175]], lbl: [318,-205,'start'] },
+    { key: 'cia', name: 'საერთო თეძოს არტერია (CIA)', short: 'CIA', group: 'inflow', r0: 7.4, r1: 6.8, deep: false,
+      pts: [[295,-175],[276,-136],[252,-92]], lbl: [236,-138,'end'] },
+    { key: 'iia', name: 'შიგნითა თეძოს არტერია (IIA)', short: 'IIA', group: 'inflow', r0: 4.8, r1: 3.6, deep: true,
+      pts: [[252,-92],[266,-52],[274,-8],[274,28]], lbl: [286,-16,'start'] },
+    { key: 'eia', name: 'გარეთა თეძოს არტერია (EIA)', short: 'EIA', group: 'inflow', r0: 6.6, r1: 6.2, deep: false,
+      pts: [[252,-92],[216,-36],[172,32],[148,108]], lbl: [182,-26,'end'] },
+    { key: 'cfa', name: 'საერთო ბარძაყის არტერია (CFA)', short: 'CFA', group: 'inflow', r0: 6.2, r1: 6.0, deep: false,
+      pts: [[148,108],[149,134],[150,162]], lbl: [128,136,'end'] },
+    { key: 'pfa', name: 'ბარძაყის ღრმა არტერია (PFA)', short: 'PFA', group: 'inflow', r0: 4.8, r1: 2.4, deep: true,
+      pts: [[150,162],[128,196],[110,252],[102,330]], lbl: [92,262,'end'] },
+    { key: 'sfa1', name: 'ზედაპირული ბარძაყის — პროქსიმალური (SFA 1)', short: 'SFA', group: 'fp', r0: 5.4, r1: 5.1, deep: false,
+      pts: [[150,162],[158,215],[168,275],[178,320]], lbl: [192,235,'start'] },
+    { key: 'sfa2', name: 'ზედაპირული ბარძაყის — შუა (SFA 2)', short: '', group: 'fp', r0: 5.1, r1: 4.8, deep: false,
+      pts: [[178,320],[190,382],[200,440],[206,490]], lbl: null },
+    { key: 'sfa3', name: 'ზედაპირული ბარძაყის — დისტალური / ადუქტორული (SFA 3)', short: '', group: 'fp', r0: 4.8, r1: 4.6, deep: false,
+      pts: [[206,490],[211,542],[210,588],[204,630]], lbl: null },
+    { key: 'pop1', name: 'მუხლქვეშა — P1 (სუპრაგენიკულური)', short: 'P1', group: 'fp', r0: 4.6, r1: 4.4, deep: true,
+      pts: [[204,630],[194,685],[176,742],[162,792]], lbl: [212,712,'start'] },
+    { key: 'pop2', name: 'მუხლქვეშა — P2 (რეტროგენიკულური / სახსრის ხაზი)', short: 'P2', group: 'fp', r0: 4.4, r1: 4.2, deep: true,
+      pts: [[162,792],[154,832],[150,875]], lbl: [174,838,'start'] },
+    { key: 'pop3', name: 'მუხლქვეშა — P3 (ინფრაგენიკულური ტრიფურკაციამდე)', short: 'P3', group: 'fp', r0: 4.2, r1: 4.0, deep: true,
+      pts: [[150,875],[148,912],[147,946]], lbl: [172,914,'start'] },
+    { key: 'at1', name: 'წინა წვივის — პროქსიმალური (AT 1)', short: 'AT', group: 'ip', r0: 3.3, r1: 3.1, deep: false,
+      pts: [[147,946],[122,954],[102,976],[96,1045]], lbl: [80,995,'end'] },
+    { key: 'at2', name: 'წინა წვივის — შუა (AT 2)', short: '', group: 'ip', r0: 3.1, r1: 2.9, deep: false,
+      pts: [[96,1045],[92,1135],[94,1235]], lbl: null },
+    { key: 'at3', name: 'წინა წვივის — დისტალური (AT 3)', short: '', group: 'ip', r0: 2.9, r1: 2.7, deep: false,
+      pts: [[94,1235],[99,1345],[108,1435],[116,1510]], lbl: null },
+    { key: 'tpt', name: 'წვივ-მცირე წვივის ღერო (TP trunk)', short: 'TPT', group: 'ip', r0: 3.7, r1: 3.5, deep: true,
+      pts: [[147,946],[150,972],[153,998]], lbl: [168,975,'start'] },
+    { key: 'pt1', name: 'უკანა წვივის — პროქსიმალური (PT 1)', short: 'PT', group: 'ip', r0: 3.2, r1: 3.0, deep: true,
+      pts: [[153,998],[162,1060],[168,1135]], lbl: [194,1145,'start'] },
+    { key: 'pt2', name: 'უკანა წვივის — შუა (PT 2)', short: '', group: 'ip', r0: 3.0, r1: 2.8, deep: true,
+      pts: [[168,1135],[174,1225],[178,1320]], lbl: null },
+    { key: 'pt3', name: 'უკანა წვივის — დისტალური / რეტრომალეოლური (PT 3)', short: '', group: 'ip', r0: 2.8, r1: 2.6, deep: true,
+      pts: [[178,1320],[181,1415],[182,1515]], lbl: null },
+    { key: 'per1', name: 'მცირე წვივის — პროქსიმალური (PER 1)', short: 'PER', group: 'ip', r0: 3.0, r1: 2.8, deep: true,
+      pts: [[153,998],[144,1055],[138,1130]], lbl: [125,1185,'end'] },
+    { key: 'per2', name: 'მცირე წვივის — შუა (PER 2)', short: '', group: 'ip', r0: 2.8, r1: 2.6, deep: true,
+      pts: [[138,1130],[133,1215],[129,1305]], lbl: null },
+    { key: 'per3', name: 'მცირე წვივის — დისტალური (PER 3)', short: '', group: 'ip', r0: 2.6, r1: 2.2, deep: true,
+      pts: [[129,1305],[126,1380],[124,1455]], lbl: null },
+    { key: 'dp', name: 'ტერფის ზურგის არტერია (Dorsalis pedis — DP)', short: 'DP', group: 'pedal', r0: 2.6, r1: 2.2, deep: false,
+      pts: [[116,1510],[124,1562],[134,1622]], lbl: [104,1582,'end'] },
+    { key: 'mpa', name: 'მედიალური პლანტარული არტერია (MPA)', short: 'MPA', group: 'pedal', r0: 2.3, r1: 1.9, deep: true,
+      pts: [[182,1515],[178,1568],[164,1618]], lbl: [196,1565,'start'] },
+    { key: 'lpa', name: 'ლატერალური პლანტარული არტერია (LPA)', short: 'LPA', group: 'pedal', r0: 2.5, r1: 2.1, deep: true,
+      pts: [[182,1515],[166,1575],[128,1622],[94,1640]], lbl: [192,1608,'start'] },
+    { key: 'arch', name: 'ტერფის ღრმა პლანტარული რკალი (Pedal Arch)', short: 'ARCH', group: 'pedal', r0: 2.1, r1: 2.1, deep: true,
+      pts: [[94,1640],[112,1664],[128,1654],[134,1622]], lbl: [118,1682,'middle'] }
+  ];
+  var SEG_BY_KEY = {};
+  SEG_META.forEach(function (s) { SEG_BY_KEY[s.key] = s; });
+
+  /* Lateral-oblique foot inset coordinates (360 x 300) */
+  var FOOT_SEGS = [
+    { key: 'at3', short: 'AT', r0: 3.8, r1: 3.4, pts: [[118,18],[122,56],[130,96]], lbl: [136,52,'start'] },
+    { key: 'pt3', short: 'PT', r0: 3.8, r1: 3.5, pts: [[64,18],[68,66],[76,118]], lbl: [50,62,'end'] },
+    { key: 'per3', short: 'PER', r0: 3.2, r1: 2.5, pts: [[92,18],[94,64],[98,112]], lbl: [94,12,'middle'] },
+    { key: 'dp', short: 'DP', r0: 3.4, r1: 2.8, pts: [[130,96],[178,128],[232,160],[266,184]], lbl: [212,132,'start'] },
+    { key: 'mpa', short: 'MPA', r0: 2.8, r1: 2.3, pts: [[76,118],[132,158],[204,192],[274,206]], lbl: [165,172,'start'] },
+    { key: 'lpa', short: 'LPA', r0: 3.1, r1: 2.6, pts: [[76,118],[116,186],[184,234],[248,240]], lbl: [145,248,'middle'] },
+    { key: 'arch', short: 'ARCH', r0: 2.6, r1: 2.6, pts: [[248,240],[272,226],[274,202],[266,184]], lbl: [294,216,'start'] }
+  ];
+
+  /* Three realistic synthetic vascular conference presets */
+  var PRESETS = {
+    clti: {
+      tap: 'at',
+      angiosome: 'medial_plantar',
+      selected: 'sfa1',
+      segments: {
+        eia:  { stenosis: 'mild', length_cm: 3, calc: 1, morph: 'eccentric' },
+        sfa1: { stenosis: 'occlusion', length_cm: 8, calc: 4, flush: true, recon: 'none' },
+        sfa2: { stenosis: 'occlusion', length_cm: 9, calc: 4, recon: 'yes' },
+        sfa3: { stenosis: 'moderate', length_cm: 4, calc: 2, morph: 'eccentric' },
+        pop2: { stenosis: 'severe', length_cm: 3, calc: 2, morph: 'concentric' },
+        tpt:  { stenosis: 'occlusion', length_cm: 3, calc: 3, recon: 'none' },
+        pt1:  { stenosis: 'occlusion', length_cm: 10, calc: 3, recon: 'none' },
+        pt2:  { stenosis: 'occlusion', length_cm: 10, calc: 2, recon: 'yes' },
+        per1: { stenosis: 'moderate', length_cm: 4, calc: 1 },
+        at2:  { stenosis: 'mild', length_cm: 2, calc: 1 },
+        lpa:  { stenosis: 'severe', length_cm: 3, calc: 2 }
+      },
+      interventions: [
+        { type: 'angioplasty', title: 'EIA ბალონური ანგიოპლასტიკა (DCB)', date: '2023-04', status: 'patent', statusText: 'გამავალი', segments: ['eia'] },
+        { type: 'amputation', title: 'მარჯვენა I თითის ამპუტაცია', date: '2026-10', status: 'nonhealing', statusText: 'შეუხორცებელი ჭრილობა (W2)', segments: [] }
+      ]
+    },
+    bypass: {
+      tap: 'pt',
+      angiosome: 'medial_heel',
+      selected: 'pop3',
+      segments: {
+        cfa:  { stenosis: 'none', calc: 1 },
+        sfa1: { stenosis: 'occlusion', length_cm: 10, calc: 3, flush: true, recon: 'none' },
+        sfa2: { stenosis: 'occlusion', length_cm: 10, calc: 3, recon: 'none' },
+        sfa3: { stenosis: 'occlusion', length_cm: 8, calc: 2, recon: 'none' },
+        pop1: { stenosis: 'occlusion', length_cm: 6, calc: 2, recon: 'yes' },
+        pop3: { stenosis: 'severe', length_cm: 2, calc: 1, morph: 'eccentric' },
+        at1:  { stenosis: 'occlusion', length_cm: 10, calc: 2, flush: true, recon: 'none' },
+        at2:  { stenosis: 'occlusion', length_cm: 10, calc: 2, recon: 'none' }
+      },
+      interventions: [
+        { type: 'endarterectomy', subtype: 'patch_bovine', title: 'CFA ენდარტერექტომია + პროფუნდაპლასტიკა (ქსენოპატჩი)', date: '2022-06', status: 'patent', statusText: 'გამავალი', segments: ['cfa'] },
+        { type: 'bypass', conduitGroup: 'vein', conduit: 'gsv_reversed', cuff: '', prox: 'cfa', dist: 'pop3',
+          title: 'CFA → P3 შუნტირება (რევერსირებული დიდი კანქვეშა ვენა)', date: '2022-06', status: 'stenosed', statusText: 'დისტ. ანასტომოზის სტენოზი 75%', segments: [] }
+      ]
+    },
+    isr: {
+      tap: 'per',
+      angiosome: 'lateral_heel',
+      selected: 'sfa2',
+      segments: {
+        cia:  { stenosis: 'none', calc: 2 },
+        sfa2: { stenosis: 'severe', length_cm: 8, calc: 2, morph: 'concentric' },
+        sfa3: { stenosis: 'severe', length_cm: 6, calc: 2, morph: 'concentric' },
+        at1:  { stenosis: 'occlusion', length_cm: 10, calc: 3, recon: 'none' },
+        at2:  { stenosis: 'occlusion', length_cm: 10, calc: 3, recon: 'none' },
+        at3:  { stenosis: 'occlusion', length_cm: 8, calc: 2, recon: 'none' },
+        pt1:  { stenosis: 'occlusion', length_cm: 10, calc: 4, recon: 'none' },
+        pt2:  { stenosis: 'occlusion', length_cm: 10, calc: 4, recon: 'none' },
+        dp:   { stenosis: 'occlusion', length_cm: 5, calc: 2, recon: 'none' },
+        arch: { stenosis: 'severe', length_cm: 3, calc: 2 }
+      },
+      interventions: [
+        { type: 'stent', subtype: 'bms', title: 'CIA ლითონის სტენტი (BMS)', date: '2020', status: 'patent', statusText: 'გამავალი', segments: ['cia'] },
+        { type: 'stent', subtype: 'des', title: 'SFA შუა-დისტალური სტენტი (DES, 14 სმ)', date: '2024-02', status: 'stenosed', statusText: 'Tosaka II დიფუზური ISR (>5 სმ)', segments: ['sfa2', 'sfa3'] },
+        { type: 'bypass', conduitGroup: 'prosthetic', conduit: 'ptfe_ringed', cuff: 'miller', prox: 'cfa', dist: 'pop1',
+          title: 'ძველი CFA → P1 არმირებული PTFE შუნტი', date: '2019', status: 'occluded', statusText: 'თრომბირებული', segments: [] }
+      ]
+    }
+  };
+
+  var state = {
+    mode: 'anat',
+    zoom: 'all',
+    preset: 'clti',
+    data: JSON.parse(JSON.stringify(PRESETS.clti))
+  };
+
+  /* ------------------------------------------------------------------
+   * 2. Variable-width spline sampling & luminal polygon builder
+   * ------------------------------------------------------------------ */
+  function samplePolyline(pts, n) {
+    /* Quadratic/Catmull smoothing through control points -> n samples [x, y, nx, ny, t] */
+    var out = [];
+    for (var i = 0; i <= n; i++) {
+      var t = i / n;
+      var p = evalSpline(pts, t);
+      var p1 = evalSpline(pts, Math.min(1, t + 0.01));
+      var p0 = evalSpline(pts, Math.max(0, t - 0.01));
+      var dx = p1[0] - p0[0], dy = p1[1] - p0[1];
+      var len = Math.hypot(dx, dy) || 1;
+      out.push({ x: p[0], y: p[1], nx: -dy / len, ny: dx / len, t: t });
+    }
+    return out;
+  }
+
+  function evalSpline(pts, t) {
+    if (pts.length === 2) {
+      return [pts[0][0] + (pts[1][0] - pts[0][0]) * t, pts[0][1] + (pts[1][1] - pts[0][1]) * t];
+    }
+    if (pts.length === 3) {
+      var u = 1 - t;
+      return [
+        u * u * pts[0][0] + 2 * u * t * pts[1][0] + t * t * pts[2][0],
+        u * u * pts[0][1] + 2 * u * t * pts[1][1] + t * t * pts[2][1]
+      ];
+    }
+    /* 4 points: cubic Bezier */
+    var u3 = 1 - t;
+    return [
+      u3*u3*u3*pts[0][0] + 3*u3*u3*t*pts[1][0] + 3*u3*t*t*pts[2][0] + t*t*t*pts[3][0],
+      u3*u3*u3*pts[0][1] + 3*u3*u3*t*pts[1][1] + 3*u3*t*t*pts[2][1] + t*t*t*pts[3][1]
+    ];
+  }
+
+  function tubePolygon(samples, rLeftFn, rRightFn, t0, t1) {
+    var sub = samples.filter(function (s) { return s.t >= (t0 || 0) - 1e-6 && s.t <= (t1 === undefined ? 1 : t1) + 1e-6; });
+    if (sub.length < 2) return '';
+    var L = [], R = [];
+    sub.forEach(function (s) {
+      var rl = rLeftFn(s.t), rr = rRightFn(s.t);
+      L.push((s.x - s.nx * rl).toFixed(1) + ',' + (s.y - s.ny * rl).toFixed(1));
+      R.unshift((s.x + s.nx * rr).toFixed(1) + ',' + (s.y + s.ny * rr).toFixed(1));
+    });
+    return 'M' + L.join(' L') + ' L' + R.join(' L') + ' Z';
+  }
+
+  function centerPath(samples, offsetFn) {
+    return 'M' + samples.map(function (s) {
+      var off = offsetFn ? offsetFn(s.t) : 0;
+      return (s.x + s.nx * off).toFixed(1) + ',' + (s.y + s.ny * off).toFixed(1);
+    }).join(' L');
+  }
+
+  function stenosisFactor(grade) {
+    if (grade === 'mild') return 0.36;
+    if (grade === 'moderate') return 0.60;
+    if (grade === 'severe') return 0.80;
+    return 0;
+  }
+
+  /* ------------------------------------------------------------------
+   * 3. Render Main Limb SVG (3-layer anatomical union + pathology + grafts)
+   * ------------------------------------------------------------------ */
+  function renderLimb() {
+    var svg = document.getElementById('limb-svg');
+    var dsa = state.mode === 'dsa';
+    var dark = state.mode === 'present' || dsa;
+    var segData = state.data.segments;
+
+    var colors = dsa ? {
+      limbFill: '#161B24', limbStroke: '#283140',
+      boneFill: 'rgba(210, 222, 240, 0.08)', boneStroke: 'rgba(210, 222, 240, 0.20)',
+      adv: '#2A3342', plaque: '#1D2430',
+      lumen: '#F1F5F9', lumenDeep: '#CBD5E1', highlight: 'rgba(255,255,255,0.45)',
+      ctoCore: '#151A22', collateral: '#94A3B8',
+      calcFill: '#FACC15', calcStroke: '#FEF08A',
+      label: '#E2E8F0', labelHalo: '#0F141C', landmark: '#64748B'
+    } : (dark ? {
+      limbFill: '#1E2430', limbStroke: '#313B4E',
+      boneFill: 'rgba(226, 232, 240, 0.07)', boneStroke: 'rgba(226, 232, 240, 0.16)',
+      adv: '#591C2B', plaque: '#D4B06A',
+      lumen: '#F43F5E', lumenDeep: '#D62F4C', highlight: 'rgba(255,255,255,0.38)',
+      ctoCore: '#2B1D26', collateral: '#FB7185',
+      calcFill: '#F8FAFC', calcStroke: '#475569',
+      label: '#F1F5F9', labelHalo: '#0E131C', landmark: '#7F8BA2'
+    } : {
+      limbFill: '#F4EAE0', limbStroke: '#DECBB8',
+      boneFill: 'rgba(255, 252, 247, 0.72)', boneStroke: '#D5C4B0',
+      adv: '#6E1727', plaque: '#E5C478',
+      lumen: '#CF1F3E', lumenDeep: '#B31B36', highlight: 'rgba(255,255,255,0.48)',
+      ctoCore: '#3B252E', collateral: '#C8203F',
+      calcFill: '#FFFFFF', calcStroke: '#334155',
+      label: '#1B2437', labelHalo: '#FFFFFF', landmark: '#7C8599'
+    });
+
+    var h = [];
+    h.push('<defs>');
+    h.push('<filter id="soft-shadow" x="-15%" y="-5%" width="130%" height="110%"><feDropShadow dx="0" dy="1" stdDeviation="1.4" flood-opacity="0.22"/></filter>');
+    h.push('</defs>');
+
+    /* A. Anatomical limb contour & translucent skeletal landmarks (pelvis, femur, patella, tibia, fibula, foot) */
+    h.push('<g pointer-events="none">');
+    /* Soft limb silhouette */
+    h.push('<path d="M92,-40 C68,90 58,280 72,480 C82,630 88,760 84,880 C74,1020 68,1190 84,1360 C92,1445 96,1505 84,1575 C72,1635 76,1678 104,1690 C138,1704 176,1688 184,1648 C190,1608 192,1555 196,1505 C206,1360 222,1180 214,995 C210,910 214,820 226,710 C246,540 266,350 264,170 C262,85 280,-10 315,-65 Z" fill="' + colors.limbFill + '" stroke="' + colors.limbStroke + '" stroke-width="2"/>');
+    /* Pelvis / Iliac wing hint */
+    h.push('<path d="M235,-165 C180,-168 125,-130 112,-78 C104,-42 128,-5 168,18 C202,38 242,20 268,-25" fill="' + colors.boneFill + '" stroke="' + colors.boneStroke + '" stroke-width="1.6"/>');
+    /* Inguinal ligament landmark */
+    h.push('<line x1="108" y1="68" x2="238" y2="142" stroke="' + colors.landmark + '" stroke-width="1.4" stroke-dasharray="5 4" opacity="0.65"/>');
+    h.push('<text x="104" y="62" font-size="13" fill="' + colors.landmark + '">საზარდულის იოგი</text>');
+    /* Femur */
+    h.push('<path d="M126,118 C108,112 96,128 102,152 L114,205 L136,755 C124,785 124,828 140,842 L182,842 C198,828 196,785 180,755 L146,205 C154,172 150,130 126,118 Z" fill="' + colors.boneFill + '" stroke="' + colors.boneStroke + '" stroke-width="1.5"/>');
+    /* Patella (knee cap) */
+    h.push('<ellipse cx="156" cy="818" rx="22" ry="26" fill="' + colors.boneFill + '" stroke="' + colors.boneStroke + '" stroke-width="1.5" stroke-dasharray="3 2"/>');
+    /* Tibia & Fibula */
+    h.push('<path d="M134,856 L186,856 C188,900 180,945 176,1010 L176,1495 C182,1512 180,1528 168,1530 L132,1525 C126,1510 130,1490 134,1465 L140,990 C136,940 130,895 134,856 Z" fill="' + colors.boneFill + '" stroke="' + colors.boneStroke + '" stroke-width="1.5"/>');
+    h.push('<path d="M110,892 L124,892 L120,1518 L104,1522 L106,1490 Z" fill="' + colors.boneFill + '" stroke="' + colors.boneStroke + '" stroke-width="1.4"/>');
+
+    /* Key Surgical / SVS Landmarks (Adductor hiatus, P1/P2/P3 knee joint lines, Ankle malleolar line) */
+    var marks = [
+      { y: 630, text: 'ადუქტორული ხვრელი (SFA→P1)' },
+      { y: 792, text: 'კვირისტავის ზედა კიდე (P1→P2)' },
+      { y: 850, text: 'მუხლის სახსრის ნაპრალი (P2→P3)' },
+      { y: 1512, text: 'კოჭის ხაზი (IM: P0–P2)' }
+    ];
+    marks.forEach(function (m) {
+      h.push('<line x1="42" x2="328" y1="' + m.y + '" y2="' + m.y + '" stroke="' + colors.landmark + '" stroke-width="1.1" stroke-dasharray="3 5" opacity="0.55"/>');
+      h.push('<text x="44" y="' + (m.y - 5) + '" font-size="12.5" fill="' + colors.landmark + '">' + m.text + '</text>');
+    });
+    h.push('</g>');
+
+    /* Precompute samples for every segment */
+    var sampled = {};
+    SEG_META.forEach(function (s) {
+      sampled[s.key] = samplePolyline(s.pts, 28);
+    });
+
+    /* LAYER 1: Continuous Adventitial Wall (union of all segments -> seamless bifurcations!) */
+    h.push('<g filter="url(#soft-shadow)">');
+    SEG_META.forEach(function (s) {
+      var smp = sampled[s.key];
+      var rFn = function (t) { return s.r0 + (s.r1 - s.r0) * t + 1.5; };
+      var op = s.deep && !dsa ? '0.84' : '1';
+      h.push('<path d="' + tubePolygon(smp, rFn, rFn) + '" fill="' + colors.adv + '" opacity="' + op + '"/>');
+    });
+    /* Junction smoothing circles at major bifurcations */
+    [['aorta',1],['cia',1],['cfa',1],['pop3',1],['tpt',1],['pt3',1]].forEach(function ( pair ) {
+      var seg = SEG_BY_KEY[pair[0]];
+      var pt = seg.pts[seg.pts.length - 1];
+      h.push('<circle cx="' + pt[0] + '" cy="' + pt[1] + '" r="' + (seg.r1 + 1.4) + '" fill="' + colors.adv + '"/>');
+    });
+    h.push('</g>');
+
+    /* LAYER 2: Intimal Plaque / Thrombosed Bed inside diseased segments */
+    SEG_META.forEach(function (s) {
+      var d = segData[s.key] || {};
+      var st = d.stenosis || 'none';
+      if (st === 'none') return;
+      var smp = sampled[s.key];
+      var rInner = function (t) { return s.r0 + (s.r1 - s.r0) * t; };
+      var bedColor = st === 'occlusion' ? colors.ctoCore : colors.plaque;
+      h.push('<path d="' + tubePolygon(smp, rInner, rInner) + '" fill="' + bedColor + '"/>');
+    });
+
+    /* LAYER 3: Patent Blood Lumen (pinches smoothly at stenoses; stops at CTO cap & reconstitutes!) */
+    SEG_META.forEach(function (s) {
+      var d = segData[s.key] || {};
+      var st = d.stenosis || 'none';
+      var smp = sampled[s.key];
+      var baseR = function (t) { return s.r0 + (s.r1 - s.r0) * t; };
+      var fill = s.deep ? colors.lumenDeep : colors.lumen;
+
+      if (st === 'occlusion') {
+        /* Proximal stump unless flush occlusion */
+        if (!d.flush) {
+          h.push('<path d="' + tubePolygon(smp,
+            function (t) { return baseR(t) * Math.max(0.15, 1 - t * 5.5); },
+            function (t) { return baseR(t) * Math.max(0.15, 1 - t * 5.5); }, 0, 0.16) + '" fill="' + fill + '"/>');
+        }
+        /* Distal reconstitution via collaterals */
+        if (d.recon === 'yes') {
+          h.push('<path d="' + tubePolygon(smp,
+            function (t) { return baseR(t) * Math.max(0.15, (t - 0.78) * 4.5); },
+            function (t) { return baseR(t) * Math.max(0.15, (t - 0.78) * 4.5); }, 0.78, 1.0) + '" fill="' + fill + '"/>');
+        }
+        return;
+      }
+
+      var sf = stenosisFactor(st);
+      var eccentric = d.morph === 'eccentric';
+      var rLeft = function (t) {
+        var r = baseR(t);
+        if (!sf) return r;
+        var bell = Math.exp(-Math.pow((t - 0.5) / 0.26, 2));
+        return r * (1 - (eccentric ? sf * 1.45 : sf) * bell);
+      };
+      var rRight = function (t) {
+        var r = baseR(t);
+        if (!sf) return r;
+        var bell = Math.exp(-Math.pow((t - 0.5) / 0.26, 2));
+        return r * (1 - (eccentric ? sf * 0.25 : sf) * bell);
+      };
+      h.push('<path d="' + tubePolygon(smp, rLeft, rRight) + '" fill="' + fill + '"/>');
+      /* Cylindrical specular highlight along patent tube */
+      if (!dsa) {
+        h.push('<path d="' + centerPath(smp, function (t) { return -rLeft(t) * 0.38; }) + '" fill="none" stroke="' + colors.highlight + '" stroke-width="' + Math.max(1.0, s.r0 * 0.26).toFixed(1) + '" stroke-linecap="round"/>');
+      }
+    });
+
+    /* Seamless bifurcation lumen caps for healthy junctions */
+    [['aorta','cia'],['cia','eia'],['cfa','sfa1'],['pop3','at1'],['tpt','pt1']].forEach(function (pair) {
+      var pSeg = SEG_BY_KEY[pair[0]], cSeg = SEG_BY_KEY[pair[1]];
+      var pd = segData[pair[0]] || {}, cd = segData[pair[1]] || {};
+      if (pd.stenosis !== 'occlusion' && !(cd.stenosis === 'occlusion' && cd.flush)) {
+        var pt = pSeg.pts[pSeg.pts.length - 1];
+        h.push('<circle cx="' + pt[0] + '" cy="' + pt[1] + '" r="' + (cSeg.r0 * 0.92).toFixed(1) + '" fill="' + colors.lumen + '"/>');
+      }
+    });
+
+    /* Corkscrew Collateral Arcades around CTOs (e.g. PFA -> distal SFA / geniculars) */
+    if ((segData.sfa1 && segData.sfa1.stenosis === 'occlusion') || (segData.sfa2 && segData.sfa2.stenosis === 'occlusion')) {
+      var reconY = (segData.sfa2 && segData.sfa2.recon === 'yes') ? 475 : 770;
+      var reconX = (segData.sfa2 && segData.sfa2.recon === 'yes') ? 204 : 168;
+      h.push('<path d="M112,265 C86,305 118,335 96,375 C78,410 124,435 118,465 C135,482 172,' + (reconY - 8) + ' ' + reconX + ',' + reconY + '" fill="none" stroke="' + colors.collateral + '" stroke-width="2.1" stroke-dasharray="4 2.5" opacity="0.9"/>');
+      h.push('<circle cx="' + reconX + '" cy="' + reconY + '" r="3.5" fill="' + colors.collateral + '"/>');
+    }
+
+    /* LAYER 4: PACSS Wall Calcification (1-4), Stents, Endarterectomy Patches, & Bypass Grafts */
+    SEG_META.forEach(function (s) {
+      var d = segData[s.key] || {};
+      var ca = d.calc || 0;
+      if (!ca) return;
+      var smp = sampled[s.key];
+      var tStart = (ca === 1 || ca === 3) ? 0.28 : 0.08;
+      var tEnd = (ca === 1 || ca === 3) ? 0.68 : 0.92;
+      var sub = smp.filter(function (p) { return p.t >= tStart && p.t <= tEnd; });
+      var rWall = function (t) { return s.r0 + (s.r1 - s.r0) * t + 0.9; };
+      /* Left wall calcium crust (PACSS 1..4) */
+      var leftPts = sub.map(function (p) {
+        var r = rWall(p.t);
+        return (p.x - p.nx * r).toFixed(1) + ',' + (p.y - p.ny * r).toFixed(1);
+      }).join(' L');
+      h.push('<path d="M' + leftPts + '" fill="none" stroke="' + colors.calcStroke + '" stroke-width="4.2" stroke-dasharray="5 2.5" stroke-linecap="round"/>');
+      h.push('<path d="M' + leftPts + '" fill="none" stroke="' + colors.calcFill + '" stroke-width="2.4" stroke-dasharray="5 2.5" stroke-linecap="round"/>');
+      /* Right wall calcium crust (bilateral: PACSS 3 & 4) */
+      if (ca >= 3) {
+        var rightPts = sub.map(function (p) {
+          var r = rWall(p.t);
+          return (p.x + p.nx * r).toFixed(1) + ',' + (p.y + p.ny * r).toFixed(1);
+        }).join(' L');
+        h.push('<path d="M' + rightPts + '" fill="none" stroke="' + colors.calcStroke + '" stroke-width="4.2" stroke-dasharray="4.5 2.5" stroke-linecap="round"/>');
+        h.push('<path d="M' + rightPts + '" fill="none" stroke="' + colors.calcFill + '" stroke-width="2.4" stroke-dasharray="4.5 2.5" stroke-linecap="round"/>');
+      }
+    });
+
+    /* Prior Interventions rendered distinctly */
+    (state.data.interventions || []).forEach(function (iv) {
+      if (iv.type === 'stent') {
+        (iv.segments || []).forEach(function (key) {
+          var s = SEG_BY_KEY[key];
+          if (!s) return;
+          var smp = sampled[key];
+          var strutColor = iv.status === 'patent' ? '#60A5FA' : '#F59E0B';
+          /* Crisscross nitinol diamond mesh along the segment */
+          var zigA = [], zigB = [];
+          smp.forEach(function (p, idx) {
+            if (idx < 1 || idx > smp.length - 2) return;
+            var r = (s.r0 + (s.r1 - s.r0) * p.t) * 0.95;
+            var sgn = (idx % 2 === 0) ? 1 : -1;
+            zigA.push((p.x + p.nx * r * sgn).toFixed(1) + ',' + (p.y + p.ny * r * sgn).toFixed(1));
+            zigB.push((p.x - p.nx * r * sgn).toFixed(1) + ',' + (p.y - p.ny * r * sgn).toFixed(1));
+          });
+          h.push('<path d="M' + zigA.join(' L') + '" fill="none" stroke="' + strutColor + '" stroke-width="1.35" opacity="0.92"/>');
+          h.push('<path d="M' + zigB.join(' L') + '" fill="none" stroke="' + strutColor + '" stroke-width="1.35" opacity="0.92"/>');
+          /* Radiopaque proximal/distal stent markers */
+          [smp[1], smp[smp.length - 2]].forEach(function (endP) {
+            var r = s.r0 + 1.2;
+            h.push('<circle cx="' + (endP.x - endP.nx * r).toFixed(1) + '" cy="' + (endP.y - endP.ny * r).toFixed(1) + '" r="2.1" fill="#38BDF8" stroke="#0F172A" stroke-width="0.8"/>');
+            h.push('<circle cx="' + (endP.x + endP.nx * r).toFixed(1) + '" cy="' + (endP.y + endP.ny * r).toFixed(1) + '" r="2.1" fill="#38BDF8" stroke="#0F172A" stroke-width="0.8"/>');
+          });
+        });
+      } else if (iv.type === 'endarterectomy') {
+        /* Fusiform surgical patch + suture ticks over CFA */
+        var cfaPts = sampled.cfa;
+        var mid = cfaPts[14];
+        h.push('<ellipse cx="' + mid.x + '" cy="' + mid.y + '" rx="9.5" ry="26" fill="rgba(251, 191, 36, 0.28)" stroke="#D97706" stroke-width="1.8" stroke-dasharray="3 2.2"/>');
+      } else if (iv.type === 'bypass') {
+        var proxSeg = SEG_BY_KEY[iv.prox], distSeg = SEG_BY_KEY[iv.dist];
+        if (!proxSeg || !distSeg) return;
+        var p0 = proxSeg.pts[1], p3 = distSeg.pts[1];
+        var isVein = iv.conduitGroup === 'vein';
+        /* Medial subfascial arch for autologous vein (x ~ 275); lateral tunnel for prosthetic PTFE (x ~ 66) */
+        var bowX = isVein ? 278 : 68;
+        var dy = p3[1] - p0[1];
+        var graftPts = [p0, [bowX, p0[1] + dy * 0.25], [bowX, p0[1] + dy * 0.78], p3];
+        var gSmp = samplePolyline(graftPts, 40);
+        var gOuter = iv.status === 'occluded' ? '#475569' : (isVein ? '#065F46' : '#0369A1');
+        var gInner = iv.status === 'occluded' ? '#94A3B8' : (isVein ? '#10B981' : '#38BDF8');
+
+        h.push('<path d="' + tubePolygon(gSmp, function () { return 5.2; }, function () { return 5.2; }) + '" fill="' + gOuter + '" filter="url(#soft-shadow)"/>');
+        h.push('<path d="' + tubePolygon(gSmp,
+          function (t) {
+            if (iv.status === 'stenosed' && t > 0.84) return 5.2 * 0.30;
+            return 3.4;
+          },
+          function (t) {
+            if (iv.status === 'stenosed' && t > 0.84) return 5.2 * 0.30;
+            return 3.4;
+          }) + '" fill="' + gInner + '"' + (iv.status === 'occluded' ? ' stroke-dasharray="5 4" opacity="0.55"' : '') + '/>');
+
+        /* External rings for ringed PTFE */
+        if (iv.conduit === 'ptfe_ringed') {
+          for (var ri = 3; ri < gSmp.length - 3; ri += 2) {
+            var rp = gSmp[ri];
+            h.push('<line x1="' + (rp.x - rp.nx * 5.4).toFixed(1) + '" y1="' + (rp.y - rp.ny * 5.4).toFixed(1) + '" x2="' + (rp.x + rp.nx * 5.4).toFixed(1) + '" y2="' + (rp.y + rp.ny * 5.4).toFixed(1) + '" stroke="#E0F2FE" stroke-width="1.3"/>');
+          }
+        }
+        /* Cobra-head end-to-side anastomosis hoods + optional Miller vein cuff */
+        [p0, p3].forEach(function (ap, idx) {
+          h.push('<circle cx="' + ap[0] + '" cy="' + ap[1] + '" r="7.5" fill="' + gInner + '" stroke="' + gOuter + '" stroke-width="2.2"/>');
+          if (idx === 1 && iv.cuff === 'miller') {
+            h.push('<ellipse cx="' + ap[0] + '" cy="' + ap[1] + '" rx="10" ry="6" fill="none" stroke="#10B981" stroke-width="2.2"/>');
+          }
+        });
+        var midG = gSmp[20];
+        var gLabel = isVein ? 'GSV შუნტი' : 'PTFE შუნტი';
+        h.push('<text x="' + (midG.x + (isVein ? 10 : -10)) + '" y="' + midG.y + '" text-anchor="' + (isVein ? 'start' : 'end') + '" font-size="14" font-weight="700" fill="' + gInner + '" stroke="' + colors.labelHalo + '" stroke-width="4" paint-order="stroke">' + gLabel + '</text>');
+      }
+    });
+
+    /* Anatomical short labels + interactive hit targets */
+    SEG_META.forEach(function (s) {
+      if (s.lbl) {
+        h.push('<text x="' + s.lbl[0] + '" y="' + s.lbl[1] + '" text-anchor="' + s.lbl[2] + '" font-size="15.5" font-weight="800" fill="' + colors.label + '" stroke="' + colors.labelHalo + '" stroke-width="4.5" paint-order="stroke" pointer-events="none">' + s.short + '</text>');
+      }
+      var smp = sampled[s.key];
+      var sel = state.data.selected === s.key ? ' seg-selected' : '';
+      h.push('<path class="seg-hit' + sel + '" data-seg="' + s.key + '" d="' + centerPath(smp) + '"><title>' + s.name + '</title></path>');
+    });
+
+    svg.innerHTML = h.join('');
+    svg.querySelectorAll('.seg-hit').forEach(function (el) {
+      el.addEventListener('click', function () {
+        state.data.selected = el.getAttribute('data-seg');
+        renderAll();
+      });
+    });
+  }
+
+  /* ------------------------------------------------------------------
+   * 4. Render Lateral-Oblique Foot & Pedal Arch + 6 Angiosomes Inset
+   * ------------------------------------------------------------------ */
+  function renderFoot() {
+    var svg = document.getElementById('foot-svg');
+    var dsa = state.mode === 'dsa';
+    var dark = state.mode === 'present' || dsa;
+    var segData = state.data.segments;
+    var ang = state.data.angiosome;
+
+    var limbFill = dsa ? '#161B24' : (dark ? '#1E2430' : '#F4EAE0');
+    var limbStroke = dsa ? '#2D3748' : (dark ? '#334155' : '#D9C4AE');
+    var adv = dsa ? '#2A3342' : '#6E1727';
+    var lumen = dsa ? '#F1F5F9' : (dark ? '#F43F5E' : '#CF1F3E');
+    var plaque = dsa ? '#1D2430' : '#E5C478';
+    var cto = dsa ? '#141922' : '#3B252E';
+    var lblColor = dsa || dark ? '#F1F5F9' : '#1B2437';
+    var lblHalo = dsa || dark ? '#0F141C' : '#FFFFFF';
+
+    var h = [];
+    /* Lateral-oblique foot silhouette */
+    h.push('<path d="M42,14 L145,14 L152,88 C196,118 258,148 312,178 C336,192 340,222 316,240 C282,262 192,268 108,262 C52,258 26,232 28,188 C30,152 44,118 44,82 Z" fill="' + limbFill + '" stroke="' + limbStroke + '" stroke-width="2"/>');
+
+    /* Highlighted Angiosome Territory Zone */
+    var angioZones = {
+      dorsal:          { d: 'M142,96 C195,122 258,152 314,182 C318,196 296,204 252,194 C198,176 154,142 132,114 Z', label: 'დორსალური ანგიოსომა (DP)' },
+      medial_plantar:  { d: 'M128,158 C186,182 254,196 318,206 C322,226 294,238 242,232 C184,222 140,196 118,174 Z', label: 'მედიალური პლანტარული ანგიოსომა (MPA)' },
+      lateral_plantar: { d: 'M108,196 C168,224 238,236 304,238 C286,258 205,264 128,256 C104,244 98,218 108,196 Z', label: 'ლატერალური პლანტარული ანგიოსომა (LPA)' },
+      medial_heel:     { d: 'M32,168 C58,162 92,178 106,214 C112,244 86,260 54,254 C30,246 24,205 32,168 Z', label: 'ქუსლის მედიალური ანგიოსომა (PT)' },
+      lateral_heel:    { d: 'M34,136 C64,132 96,150 102,186 C86,205 52,205 32,184 Z', label: 'ქუსლის ლატერალური ანგიოსომა (PER)' },
+      lateral_ankle:   { d: 'M82,66 C114,62 146,80 148,112 C126,126 94,120 80,96 Z', label: 'კოჭის წინა-ლატერალური ანგიოსომა (PER)' }
+    };
+    var az = angioZones[ang];
+    if (az) {
+      h.push('<path d="' + az.d + '" fill="rgba(180, 43, 94, 0.22)" stroke="#B42B5E" stroke-width="1.6" stroke-dasharray="4 3"/>');
+      h.push('<text x="16" y="288" font-size="11.5" font-weight="700" fill="#B42B5E">ჭრილობის ზონა: ' + az.label + '</text>');
+    }
+
+    /* Ankle joint plafond line */
+    h.push('<line x1="34" y1="86" x2="162" y2="86" stroke="#64748B" stroke-width="1.3" stroke-dasharray="4 3"/>');
+    h.push('<text x="166" y="89" font-size="11" fill="#64748B">კოჭის ხაზი</text>');
+
+    var sampledF = {};
+    FOOT_SEGS.forEach(function (s) { sampledF[s.key] = samplePolyline(s.pts, 22); });
+
+    /* Adventitia */
+    FOOT_SEGS.forEach(function (s) {
+      var rFn = function (t) { return s.r0 + (s.r1 - s.r0) * t + 1.3; };
+      h.push('<path d="' + tubePolygon(sampledF[s.key], rFn, rFn) + '" fill="' + adv + '"/>');
+    });
+    /* Plaque / CTO & Lumen */
+    FOOT_SEGS.forEach(function (s) {
+      var d = segData[s.key] || {};
+      var st = d.stenosis || 'none';
+      var smp = sampledF[s.key];
+      var baseR = function (t) { return s.r0 + (s.r1 - s.r0) * t; };
+      if (st !== 'none') {
+        h.push('<path d="' + tubePolygon(smp, baseR, baseR) + '" fill="' + (st === 'occlusion' ? cto : plaque) + '"/>');
+      }
+      if (st !== 'occlusion') {
+        var sf = stenosisFactor(st);
+        var rPinch = function (t) { return baseR(t) * (1 - sf * Math.exp(-Math.pow((t - 0.5) / 0.28, 2))); };
+        h.push('<path d="' + tubePolygon(smp, rPinch, rPinch) + '" fill="' + lumen + '"/>');
+      }
+      h.push('<text x="' + s.lbl[0] + '" y="' + s.lbl[1] + '" text-anchor="' + s.lbl[2] + '" font-size="12" font-weight="800" fill="' + lblColor + '" stroke="' + lblHalo + '" stroke-width="3.5" paint-order="stroke" pointer-events="none">' + s.short + '</text>');
+      h.push('<path class="seg-hit" data-seg="' + s.key + '" d="' + centerPath(smp) + '"/>');
+    });
+
+    /* Peroneal calcaneal & anterior perforating communicating branches */
+    h.push('<path d="M98,112 C86,144 66,178 52,212" fill="none" stroke="' + lumen + '" stroke-width="2" stroke-dasharray="3 2"/>');
+    h.push('<path d="M98,104 C112,106 122,104 132,102" fill="none" stroke="' + lumen + '" stroke-width="2" stroke-dasharray="3 2"/>');
+
+    svg.innerHTML = h.join('');
+    svg.querySelectorAll('.seg-hit').forEach(function (el) {
+      el.addEventListener('click', function () {
+        state.data.selected = el.getAttribute('data-seg');
+        renderAll();
+      });
+    });
+  }
+
+  /* ------------------------------------------------------------------
+   * 5. Deterministic GLASS / Pedal / SVS Runoff / TAP Suggestion Engine
+   * ------------------------------------------------------------------ */
+  function sig(d) {
+    return d && (d.stenosis === 'moderate' || d.stenosis === 'severe' || d.stenosis === 'occlusion');
+  }
+  function occ(d) {
+    return d && d.stenosis === 'occlusion';
+  }
+
+  function suggestFromMap() {
+    var segs = state.data.segments;
+    /* FP grade (GVG 2019 Fig 5.2) */
+    var sfaDis = 0, sfaOcc = 0, sfaFlush = false, fpCalc = false;
+    ['sfa1', 'sfa2', 'sfa3'].forEach(function (k) {
+      var d = segs[k] || {};
+      var len = d.length_cm || (sig(d) ? 9 : 0);
+      if (sig(d)) sfaDis += len;
+      if (occ(d)) sfaOcc += len;
+      if (k === 'sfa1' && occ(d) && d.flush) sfaFlush = true;
+      if ((d.calc || 0) >= 3) fpCalc = true;
+    });
+    var popDis = 0, popOcc = false, trif = false;
+    ['pop1', 'pop2', 'pop3'].forEach(function (k) {
+      var d = segs[k] || {};
+      var len = d.length_cm || (sig(d) ? 3 : 0);
+      if (sig(d)) popDis += len;
+      if (occ(d)) popOcc = true;
+      if (d.trifurcation) trif = true;
+      if ((d.calc || 0) >= 3) fpCalc = true;
+    });
+
+    var fpBase = 0;
+    if (popOcc || popDis > 5 || trif || sfaOcc > 20) fpBase = 4;
+    else if (sfaDis > 20 || (sfaFlush && sfaOcc <= 20) || (sfaOcc >= 10 && sfaOcc <= 20) || (popDis >= 2 && popDis <= 5)) fpBase = 3;
+    else if (sfaDis >= 10 || (sfaOcc >= 5 && sfaOcc < 10) || (popDis > 0 && popDis < 2)) fpBase = 2;
+    else if (sfaDis > 0 || sfaOcc > 0) fpBase = 1;
+    var fpFinal = Math.min(4, fpBase + (fpCalc ? 1 : 0));
+
+    /* IP grade per candidate tibial pathway (GVG 2019 Fig 5.3) */
+    function gradeIP(pathKey) {
+      var keys = pathKey === 'at' ? ['at1','at2','at3'] : (pathKey === 'pt' ? ['tpt','pt1','pt2','pt3'] : ['tpt','per1','per2','per3']);
+      var dis = 0, cto = 0, tptOcc = pathKey !== 'at' && occ(segs.tpt), tptDis = pathKey !== 'at' && sig(segs.tpt);
+      var origOcc = occ(segs[pathKey + '1']) && (segs[pathKey + '1'] || {}).flush;
+      var calc = false;
+      keys.forEach(function (k) {
+        var d = segs[k] || {};
+        var len = d.length_cm || (sig(d) ? (k === 'tpt' ? 3 : 9) : 0);
+        if (sig(d)) dis += len;
+        if (occ(d)) cto += len;
+        if ((d.calc || 0) >= 3) calc = true;
+      });
+      var g = 0;
+      if (tptOcc || dis > 20 || cto > 10) g = 4;
+      else if (dis >= 10 || (cto >= 3 && cto <= 10) || origOcc) g = 3;
+      else if (dis >= 3 || (cto > 0 && cto < 3) || tptDis) g = 2;
+      else if (dis > 0) g = 1;
+      return { base: g, calc: calc, final: Math.min(4, g + (calc ? 1 : 0)) };
+    }
+
+    var ipByPath = { at: gradeIP('at'), pt: gradeIP('pt'), per: gradeIP('per') };
+
+    /* Angiosome source artery */
+    var angioSource = {
+      dorsal: 'at', medial_plantar: 'pt', lateral_plantar: 'pt',
+      medial_heel: 'pt', lateral_heel: 'per', lateral_ankle: 'per'
+    }[state.data.angiosome] || 'at';
+
+    /* Suggested TAP: lowest IP final grade among vessels reaching foot, tie-broken by direct angiosome */
+    var bestTap = ['at', 'pt', 'per'].slice().sort(function (a, b) {
+      var da = ipByPath[a].final - (a === angioSource ? 0.25 : 0);
+      var db = ipByPath[b].final - (b === angioSource ? 0.25 : 0);
+      return da - db;
+    })[0];
+
+    var chosenTap = state.data.tap || bestTap;
+    var ipChosen = ipByPath[chosenTap];
+
+    /* GLASS Stage Matrix (Table 5.3) */
+    var matrix = {
+      4: ['III','III','III','III','III'],
+      3: ['II','II','II','III','III'],
+      2: ['I','II','II','II','III'],
+      1: ['I','I','II','II','III'],
+      0: [null,'I','I','II','III']
+    };
+    var glass = matrix[fpFinal][ipChosen.final];
+
+    /* Pedal P0 / P1 / P2 (Fig 5.1) */
+    var crossesAnkle = !occ(segs.at3) && !occ(segs.dp) || !occ(segs.pt3) && (!occ(segs.mpa) || !occ(segs.lpa));
+    var archIntact = !sig(segs.arch) && !occ(segs.dp) && !occ(segs.lpa);
+    var pedal = !crossesAnkle ? 'P2' : (archIntact ? 'P0' : 'P1');
+
+    /* SVS Ankle Runoff count (0..3) & Modified SVS Runoff Score (Stoner 2016: 1..19) */
+    var patentTibials = ['at','pt','per'].filter(function (p) {
+      return !occ(segs[p + '1']) && !occ(segs[p + '2']) && !occ(segs[p + '3']) && (p === 'at' || !occ(segs.tpt));
+    });
+    function vesselSVS(keys) {
+      var nOcc = keys.filter(function (k) { return occ(segs[k]); }).length;
+      if (nOcc > keys.length / 2) return 3;
+      if (nOcc > 0) return 2.5;
+      if (keys.some(function (k) { return sig(segs[k]); })) return 2;
+      if (keys.some(function (k) { return (segs[k] || {}).stenosis === 'mild'; })) return 1;
+      return 0;
+    }
+    var popSVS = vesselSVS(['pop1','pop2','pop3']);
+    var svsRunoff = (popSVS * 3 + 1) + vesselSVS(['at1','at2','at3']) + vesselSVS(['pt1','pt2','pt3']) + vesselSVS(['per1','per2','per3']);
+
+    return {
+      fpBase: fpBase, fpCalc: fpCalc, fpFinal: fpFinal,
+      ipByPath: ipByPath, ipChosen: ipChosen,
+      bestTap: bestTap, chosenTap: chosenTap, angioSource: angioSource,
+      glass: glass, pedal: pedal,
+      runoffCount: patentTibials.length, svsRunoff: svsRunoff
+    };
+  }
+
+  /* ------------------------------------------------------------------
+   * 6. Render Right Panel (Summary Badges, TAP Selector, 2-Tap Editor, History)
+   * ------------------------------------------------------------------ */
+  function renderPanels() {
+    var sug = suggestFromMap();
+    var gCls = sug.glass === 'I' ? 'ok' : (sug.glass === 'II' ? 'warn' : 'bad');
+
+    document.getElementById('summary-badges').innerHTML =
+      '<div class="badge ' + gCls + '"><small>GLASS (შეთავაზება)</small><b>' + (sug.glass || 'NA') + ' · ' + sug.pedal + '</b>' +
+      '<em>FP ' + sug.fpFinal + (sug.fpCalc ? ' (+1 კალც.)' : '') + ' · IP ' + sug.ipChosen.final + (sug.ipChosen.calc ? ' (+1 კალც.)' : '') + '</em></div>' +
+      '<div class="badge ' + (sug.runoffCount >= 2 ? 'ok' : (sug.runoffCount === 1 ? 'warn' : 'bad')) + '"><small>წვივის გამავლობა</small><b>' + sug.runoffCount + ' / 3</b>' +
+      '<em>SVS Runoff: ' + sug.svsRunoff.toFixed(1) + ' / 19</em></div>' +
+      '<div class="badge ' + (sug.chosenTap === sug.angioSource ? 'ok' : 'warn') + '"><small>ანგიოსომური კავშირი</small><b>' +
+      (sug.chosenTap === sug.angioSource ? 'პირდაპირი' : 'არაპირდაპირი') + '</b>' +
+      '<em>' + (sug.pedal === 'P0' ? 'რკალი ინტაქტურია (P0)' : 'რკალი დაზიანებულია (' + sug.pedal + ')') + '</em></div>';
+
+    var tapNames = { at: 'AT (წინა წვივის)', pt: 'PT (უკანა წვივის)', per: 'PER (მცირე წვივის)' };
+    document.getElementById('tap-box').innerHTML =
+      '<div class="sug-row"><b>სამიზნე არტერიის გზა (TAP — GVG 2019):</b><span>შემოთავაზებულია: <b>' + tapNames[sug.bestTap] + '</b></span></div>' +
+      '<div class="tap-pills">' + ['at','pt','per'].map(function (k) {
+        var cls = 'tap-pill' + (sug.chosenTap === k ? ' on' : '') + (sug.bestTap === k ? ' rec' : '');
+        var direct = k === sug.angioSource ? ' · ჭრილობის ანგიოსომა' : '';
+        return '<button type="button" class="' + cls + '" data-tap="' + k + '">' + k.toUpperCase() + ': IP ' + sug.ipByPath[k].final + direct + '</button>';
+      }).join('') + '</div>';
+
+    document.querySelectorAll('[data-tap]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.data.tap = b.getAttribute('data-tap');
+        renderAll();
+      });
+    });
+
+    document.getElementById('angio-advice').textContent =
+      sug.chosenTap === sug.angioSource
+        ? '✓ არჩეული TAP (' + sug.chosenTap.toUpperCase() + ') პირდაპირ კვებავს ჭრილობის ანგიოსომას.'
+        : (sug.pedal === 'P0'
+            ? 'ℹ არაპირდაპირი რევასკულარიზაცია ინტაქტური ტერფის რკალის (P0) გავლით.'
+            : '⚠ არაპირდაპირი რევასკულარიზაცია დაზიანებული რკალის (' + sug.pedal + ') ფონზე — შეაფასეთ პირდაპირი გზა.');
+
+    /* 2-Tap Segment Inspector */
+    var key = state.data.selected || 'sfa1';
+    var meta = SEG_BY_KEY[key];
+    var d = state.data.segments[key] || {};
+    document.getElementById('ed-name').textContent = meta.name;
+    document.getElementById('ed-code').textContent = key.toUpperCase();
+
+    var stOpts = [
+      ['none', 'ნორმა (<20%)'],
+      ['mild', '20–49%'],
+      ['moderate', '50–69%'],
+      ['severe', '70–99%'],
+      ['occlusion', 'ოკლუზია (CTO)']
+    ];
+    document.getElementById('ed-stenosis').innerHTML = stOpts.map(function (o) {
+      var cur = d.stenosis || 'none';
+      return '<button type="button" class="chip' + (cur === o[0] ? ' on' : '') + '" data-st="' + o[0] + '">' + o[1] + '</button>';
+    }).join('');
+
+    var lenOpts = [[2, '<3 სმ'], [4, '3–5 სმ'], [8, '5–10 სმ'], [15, '10–20 სმ'], [24, '>20 სმ']];
+    document.getElementById('ed-length').innerHTML = lenOpts.map(function (o) {
+      return '<button type="button" class="chip' + (d.length_cm === o[0] ? ' on' : '') + '" data-len="' + o[0] + '">' + o[1] + '</button>';
+    }).join('');
+
+    var caOpts = [[0,'PACSS 0 (არა)'],[1,'1: ცალმხრ. <5სმ'],[2,'2: ცალმხრ. ≥5სმ'],[3,'3: ორმხრ. <5სმ'],[4,'4: ორმხრ. ≥5სმ']];
+    document.getElementById('ed-calc').innerHTML = caOpts.map(function (o) {
+      var cur = d.calc || 0;
+      return '<button type="button" class="chip' + (cur === o[0] ? ' on' : '') + '" data-ca="' + o[0] + '">' + o[1] + '</button>';
+    }).join('');
+
+    var isOcc = d.stenosis === 'occlusion';
+    var flagHtml = '';
+    if (isOcc) {
+      flagHtml += '<button type="button" class="chip' + (d.flush ? ' on' : '') + '" data-toggle="flush">Flush (სათავიდანვე)</button>';
+      flagHtml += '<button type="button" class="chip' + (d.recon === 'yes' ? ' on' : '') + '" data-recon="yes">დისტალური აღდგენით</button>';
+    } else if (d.stenosis && d.stenosis !== 'none') {
+      flagHtml += '<button type="button" class="chip' + (d.morph === 'eccentric' ? ' on' : '') + '" data-morph="eccentric">ექსცენტრული ფოლაქი</button>';
+      flagHtml += '<button type="button" class="chip' + (d.morph === 'concentric' ? ' on' : '') + '" data-morph="concentric">კონცენტრული</button>';
+    } else {
+      flagHtml = '<span style="font-size:12px;color:var(--muted)">აირჩიეთ სტენოზი ან ოკლუზია დამატებითი მორფოლოგიისთვის.</span>';
+    }
+    document.getElementById('ed-flags').innerHTML = flagHtml;
+
+    function ensureSeg() {
+      if (!state.data.segments[key]) state.data.segments[key] = {};
+      return state.data.segments[key];
+    }
+    document.querySelectorAll('[data-st]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var v = b.getAttribute('data-st');
+        var item = ensureSeg();
+        item.stenosis = v;
+        if (v !== 'none' && !item.length_cm) item.length_cm = 8;
+        renderAll();
+      });
+    });
+    document.querySelectorAll('[data-len]').forEach(function (b) {
+      b.addEventListener('click', function () { ensureSeg().length_cm = parseInt(b.getAttribute('data-len'), 10); renderAll(); });
+    });
+    document.querySelectorAll('[data-ca]').forEach(function (b) {
+      b.addEventListener('click', function () { ensureSeg().calc = parseInt(b.getAttribute('data-ca'), 10); renderAll(); });
+    });
+    document.querySelectorAll('[data-toggle="flush"]').forEach(function (b) {
+      b.addEventListener('click', function () { var it = ensureSeg(); it.flush = !it.flush; renderAll(); });
+    });
+    document.querySelectorAll('[data-recon]').forEach(function (b) {
+      b.addEventListener('click', function () { var it = ensureSeg(); it.recon = it.recon === 'yes' ? 'none' : 'yes'; renderAll(); });
+    });
+    document.querySelectorAll('[data-morph]').forEach(function (b) {
+      b.addEventListener('click', function () { var it = ensureSeg(); it.morph = b.getAttribute('data-morph'); renderAll(); });
+    });
+
+    /* Prior Interventions list */
+    document.getElementById('iv-list').innerHTML = (state.data.interventions || []).map(function (iv) {
+      var cls = iv.status === 'patent' ? 'patent' : (iv.status === 'occluded' ? 'occluded' : 'stenosed');
+      return '<div class="iv-item"><div class="iv-top"><span>' + iv.title + '</span><span class="iv-tag ' + cls + '">' + iv.statusText + '</span></div>' +
+        '<span style="color:var(--muted);font-size:11.5px">თარიღი: ' + iv.date + '</span></div>';
+    }).join('');
+  }
+
+  function applyModeAndZoom() {
+    document.body.classList.toggle('theme-present', state.mode === 'present');
+    document.getElementById('limb-stage').classList.toggle('dsa', state.mode === 'dsa');
+    document.getElementById('foot-stage').classList.toggle('dsa', state.mode === 'dsa');
+    document.getElementById('main-layout').classList.toggle('compare-mode', state.mode === 'compare');
+
+    var views = {
+      all:    '20 -240 350 1940',
+      inflow: '55 -235 285 620',
+      fp:     '55 130 265 860',
+      btk:    '50 890 250 820'
+    };
+    document.getElementById('limb-svg').setAttribute('viewBox', views[state.zoom] || views.all);
+  }
+
+  function renderAll() {
+    applyModeAndZoom();
+    renderLimb();
+    renderFoot();
+    renderPanels();
+  }
+
+  /* Toolbar wiring */
+  document.querySelectorAll('[data-mode]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('[data-mode]').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      state.mode = b.getAttribute('data-mode');
+      renderAll();
+    });
+  });
+  document.querySelectorAll('[data-zoom]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('[data-zoom]').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      state.zoom = b.getAttribute('data-zoom');
+      renderAll();
+    });
+  });
+  document.querySelectorAll('[data-preset]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('[data-preset]').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      var p = b.getAttribute('data-preset');
+      state.preset = p;
+      state.data = JSON.parse(JSON.stringify(PRESETS[p]));
+      renderAll();
+    });
+  });
+  document.querySelectorAll('[data-angio]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('[data-angio]').forEach(function (x) { x.classList.remove('on'); });
+      b.classList.add('on');
+      state.data.angiosome = b.getAttribute('data-angio');
+      renderAll();
+    });
+  });
+
+  renderAll();
+}());
+</script>
+</body>
+</html>
