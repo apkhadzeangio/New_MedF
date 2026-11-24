@@ -17,7 +17,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="დაფა">
     <link rel="stylesheet" href="{% static_v 'css/bootstrap.min.css' %}">
-    <link rel="stylesheet" href="{% static 'css/jquery-ui.min.css' %}">
+    {% block vendor_styles %}{% endblock %}
     <link rel="stylesheet" href="{% static_v 'css/style.css' %}">
     <link rel="stylesheet" href="{% static_v 'css/theme.css' %}">
 
@@ -42,7 +42,7 @@
 <script src="{% static_v 'js/popper.min.js' %}"></script>
 <!-- bootstrap -->
 <script src="{% static_v 'js/bootstrap.min.js' %}"></script>
-<script src="{% static 'js/jquery-ui.min.js' %}"></script>
+{% block vendor_scripts %}{% endblock %}
 <script src="{% static 'js/notify.min.js' %}"></script>
 <script src="{% static 'js/clipboard.min.js' %}"></script>
 <script src="{% static_v 'js/custom.js' %}"></script>
