@@ -162,3 +162,6 @@ cython_debug/
 # Medical Forms
 staticfiles/
 *.sqlite3
+tools/out/
+tools/screenshots/
+tools/pdfs/
