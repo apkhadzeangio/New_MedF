@@ -1613,7 +1613,7 @@ class RefineBatch3Tests(BaseViewTest):
         groups, _ = analysis.overview('terms', '')
         self.assertEqual(groups[0]['count'], 1)
 
-    def test_a10_today_duty_is_the_calendar_day_even_in_the_evening(self):
+    def test_a10_today_duty_runs_from_9_to_9(self):
         import datetime as dt
         from unittest import mock
         from zoneinfo import ZoneInfo
@@ -1624,3 +1624,8 @@ class RefineBatch3Tests(BaseViewTest):
         evening = dt.datetime(2026, 12, 5, 20, 0, tzinfo=ZoneInfo('Asia/Tbilisi'))
         with mock.patch('django.utils.timezone.now', return_value=evening):
             self.assertEqual(today_panel()['duty'].name, 'ია')       # who is written for 5 December
+        for hour, minute, who in ((8, 59, 'ია'), (9, 0, 'გიგა')):    # next morning: until 9:00 still ია
+            moment = dt.datetime(2026, 12, 6, hour, minute, tzinfo=ZoneInfo('Asia/Tbilisi'))
+            with mock.patch('django.utils.timezone.now', return_value=moment):
+                panel = today_panel()
+                self.assertEqual((panel['duty'].name, panel['date']), (who, dt.date(2026, 12, 6)))

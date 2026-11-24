@@ -5,6 +5,7 @@ Quotes are added on /quotes/ — one by one, or many at once in the format
     N | ციტატა | ავტორი | წყაროს ბმული
 (the format of the list the clinic prepares).
 """
+import datetime
 import re
 
 from django.contrib import messages
@@ -31,10 +32,16 @@ def quote_of_the_day(day=None):
     return Quote.objects.get(pk=ids[day.toordinal() % len(ids)])
 
 
+# A duty lasts from 09:00 of its day until 09:00 of the next day.
+SHIFT_START_HOUR = 9
+
+
 def today_panel():
-    """For the right side: today's date and who is on duty (from the roster)."""
-    day = timezone.localdate()
-    rec = RosterDay.objects.filter(date=day).select_related('person').first()
+    """For the right side: today's date and who is on duty right now (from the roster)."""
+    now = timezone.localtime()
+    day = now.date()
+    shift = day - datetime.timedelta(days=1) if now.hour < SHIFT_START_HOUR else day
+    rec = RosterDay.objects.filter(date=shift).select_related('person').first()
     return {'date': day, 'weekday': WEEKDAYS[day.weekday()], 'month': MONTHS_GEN[day.month - 1],
             'duty': rec.person if rec and rec.person else None}
 
