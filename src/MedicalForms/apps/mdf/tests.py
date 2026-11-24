@@ -2722,3 +2722,51 @@ class StagingSuggestionAndInspectorTests(PrivateMediaTest):
             self.assertNotContains(rendered, 'id="st-apply-sug"')
 
 
+class StagingDsaPresentAndPrintTests(PrivateMediaTest):
+    """T6: Anatomical <-> DSA toggle, dedicated per-limb presentation slides, D on all slides, and A4 print."""
+
+    def test_dsa_toggle_and_print_controls_on_staging_and_detail(self):
+        case = self.make_case(side='R')
+        unstaged_detail = self.client.get(reverse('case', args=[case.pk]))
+        self.assertContains(unstaged_detail, 'cs-print-doc')
+        self.assertContains(unstaged_detail, 'id="cs-print-btn"')
+        self.assertNotContains(unstaged_detail, 'data-map-view="dsa"')
+
+        staging_page = self.client.get(reverse('case-staging', args=[case.pk, 'R']))
+        self.assertContains(staging_page, 'cs-print-doc')
+        self.assertContains(staging_page, 'data-map-view="anat"')
+        self.assertContains(staging_page, 'data-map-view="dsa"')
+
+        self.client.post(reverse('case-staging', args=[case.pk, 'R']), {
+            'segments': json.dumps({'sfa2': {'stenosis': 'occlusion'}}),
+            'fp': '2', 'ip': '0', 'pedal': 'P0', 'tap': 'at', 'cfa': 'A',
+        })
+        staged_detail = self.client.get(reverse('case', args=[case.pk]))
+        self.assertContains(staged_detail, 'data-map-view="dsa"')
+
+    def test_bilateral_presentation_renders_separate_limb_slides_and_decision_footers(self):
+        from .models import DopplerStudy
+        from .staging import save_limb
+
+        st_map = {}
+        st_map = save_limb(st_map, 'R', {'segments': {'sfa1': {'stenosis': 'occlusion'}}, 'fp': 3, 'ip': 1, 'tap': 'at'})
+        st_map = save_limb(st_map, 'L', {'segments': {'pt2': {'stenosis': 'severe'}}, 'fp': 0, 'ip': 2, 'tap': 'pt'})
+        case = self.make_case(side='B', staging=st_map)
+        DopplerStudy.objects.create(
+            case=case, performed_on='2026-11-20', created_by=self.user,
+            data={'indices': {'R': {'abi_dp': 0.52}, 'L': {'abi_pt': 0.68}}, 'pressures': {}, 'waveforms': {}},
+        )
+
+        pres = self.client.get(reverse('cases-present'), {'ids': case.pk})
+        html = pres.content.decode()
+        self.assertContains(pres, 'id="pz-dsa"')
+        self.assertContains(pres, 'data-side="R"')
+        self.assertContains(pres, 'data-side="L"')
+        # Two separate staging slides (one per limb)
+        self.assertEqual(html.count('class="pz-slide pz-stage-slide"'), 2)
+        # Decision footer present on main slide + 2 staging slides + 1 Doppler slide = 4 footers
+        self.assertEqual(html.count('class="pz-decide-toggle"'), 4)
+        self.assertEqual(html.count(f'data-decision="{reverse("case-decision", args=[case.pk])}"'), 4)
+
+
+

@@ -12,7 +12,8 @@
 <body class="cs-present{% if anon %} anon{% endif %}">
 <div class="pz-bar">
     <span class="pz-count"><b id="pz-i">1</b> / {{ cases|length }}</span>
-    <span class="pz-hint">← → ქეისი · ↑ ↓ ფოტო · F სრული ეკრანი · A სახელის დამალვა · D გადაწყვეტილება</span>
+    <span class="pz-hint">← → სლაიდი · ↑ ↓ ფოტო · V ანგიოგრაფია (DSA) · F სრული ეკრანი · A სახელის დამალვა · D გადაწყვეტილება</span>
+    <button type="button" class="pz-btn" id="pz-dsa" aria-pressed="false" title="ანატომიური / ანგიოგრაფიის (DSA) ხედი (V)">DSA ხედი</button>
     <button type="button" class="pz-btn" id="pz-anon" aria-pressed="{% if anon %}true{% else %}false{% endif %}" title="სრული სახელის ნაცვლად ინიციალები (A)">ინიციალები</button>
     <button type="button" class="pz-btn" id="pz-full" title="სრული ეკრანი (F)">სრული ეკრანი</button>
     <a class="pz-btn" href="{{ back }}" title="გასვლა">✕</a>
@@ -51,24 +52,31 @@
             </div>
             {% endif %}
         </div>
-        <footer class="pz-decide {% if c.decision %}done{% endif %}">
-            <button type="button" class="pz-decide-toggle"><span class="pz-decide-label">გადაწყვეტილება</span><span class="pz-decide-text">{{ c.decision|default:"— ჯერ არ არის (D)" }}</span></button>
-            <form class="pz-decide-form" hidden>
-                <textarea name="decision" rows="3" placeholder="კონფერენციის გადაწყვეტილება…">{{ c.decision }}</textarea>
-                <div><button type="submit" class="pz-btn primary">შენახვა</button> <button type="button" class="pz-btn pz-cancel">გაუქმება</button> <span class="pz-saved" role="status"></span></div>
-            </form>
-        </footer>
+        {% include "mdf/cases/_present_decide.html" with c=c %}
     </section>
-    {% if c.staging_views %}
-    <section class="pz-slide pz-stage-slide" data-case="{{ forloop.counter }}" aria-label="სტადირება" hidden>
-        <header class="pz-head"><h1><span class="pz-full">{{ c.patient_name }}</span><span class="pz-init">{{ c.initials }}</span> <small>· სტადირება</small></h1></header>
-        {% include "mdf/cases/_staging_summary.html" with stagings=c.staging_views %}
+    {% for st in c.staging_views %}
+    <section class="pz-slide pz-stage-slide" data-case="{{ forloop.parentloop.counter }}" data-pk="{{ c.pk }}" data-decision="{% url 'case-decision' c.pk %}" data-side="{{ st.side }}" aria-label="სტადირება — {{ st.name }}" hidden>
+        <header class="pz-head pz-stage-head">
+            <h1><span class="pz-full">{{ c.patient_name }}</span><span class="pz-init">{{ c.initials }}</span> <small>· სტადირება — {{ st.name }} კიდური</small></h1>
+            <div class="st-view-switch dark" role="group" aria-label="რუკის რეჟიმი">
+                <button type="button" class="st-view-btn on" data-map-view="anat">ანატომიური</button>
+                <button type="button" class="st-view-btn" data-map-view="dsa">ანგიოგრაფია (DSA)</button>
+            </div>
+        </header>
+        <div class="pz-stage-main">
+            {% include "mdf/cases/_staging_limb.html" %}
+            <div class="st-legend" aria-hidden="true">
+                <span class="lg-n"><i></i>ნორმა</span><span class="lg-mild"><i></i>&lt;50%</span><span class="lg-st"><i></i>≥50%</span><span class="lg-oc"><i></i>ოკლუზია</span><span class="lg-ca"><i></i>კალციფიკაცია</span><span class="lg-rx"><i></i>სტენტი / პლასტიკა</span><span class="lg-by"><i></i>შუნტი</span>
+            </div>
+        </div>
+        {% include "mdf/cases/_present_decide.html" with c=c %}
     </section>
-    {% endif %}
+    {% endfor %}
     {% for dv in c.doppler_views %}
-    <section class="pz-slide pz-dop" data-case="{{ forloop.parentloop.counter }}" aria-label="დოპლეროგრაფია" hidden>
+    <section class="pz-slide pz-dop" data-case="{{ forloop.parentloop.counter }}" data-pk="{{ c.pk }}" data-decision="{% url 'case-decision' c.pk %}" aria-label="დოპლეროგრაფია" hidden>
         <header class="pz-head"><h1><span class="pz-full">{{ c.patient_name }}</span><span class="pz-init">{{ c.initials }}</span></h1></header>
         {% include "mdf/cases/_doppler.html" with editable=False %}
+        {% include "mdf/cases/_present_decide.html" with c=c %}
     </section>
     {% endfor %}
     {% endfor %}

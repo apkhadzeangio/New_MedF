@@ -459,6 +459,27 @@
     var currentZoom = 'all';
     var currentViewBox = null;
 
+    function setMapView(mode) {
+        if (!mapCard) { return; }
+        var dsa = mode === 'dsa';
+        mapCard.classList.toggle('am-dsa-mode', dsa);
+        mapCard.querySelectorAll('[data-map-view]').forEach(function (b) {
+            var on = b.getAttribute('data-map-view') === (dsa ? 'dsa' : 'anat');
+            b.classList.toggle('on', on);
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        try { window.localStorage.setItem('cases-map-view', dsa ? 'dsa' : 'anat'); } catch (e) {}
+    }
+
+    if (mapCard) {
+        mapCard.querySelectorAll('[data-map-view]').forEach(function (b) {
+            b.addEventListener('click', function () { setMapView(b.getAttribute('data-map-view')); });
+        });
+        try {
+            if (window.localStorage.getItem('cases-map-view') === 'dsa') { setMapView('dsa'); }
+        } catch (e) {}
+    }
+
     function applyZoom() {
         if (!mapBox) { return; }
         var svg = mapBox.querySelector('svg.am');

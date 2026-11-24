@@ -1,0 +1,7 @@
+<footer class="pz-decide {% if c.decision %}done{% endif %}">
+    <button type="button" class="pz-decide-toggle"><span class="pz-decide-label">გადაწყვეტილება</span><span class="pz-decide-text">{{ c.decision|default:"— ჯერ არ არის (D)" }}</span></button>
+    <form class="pz-decide-form" hidden>
+        <textarea name="decision" rows="3" placeholder="კონფერენციის გადაწყვეტილება…">{{ c.decision }}</textarea>
+        <div><button type="submit" class="pz-btn primary">შენახვა</button> <button type="button" class="pz-btn pz-cancel">გაუქმება</button> <span class="pz-saved" role="status"></span></div>
+    </form>
+</footer>

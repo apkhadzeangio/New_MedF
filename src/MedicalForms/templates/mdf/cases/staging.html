@@ -2,6 +2,7 @@
 {% load static_version %}
 
 {% block title %}{{ case.patient_name }} — სტადირება{% endblock %}
+{% block body_class %}cs-print-doc{% endblock %}
 {% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/cases.css' %}">{% endblock %}
 
 {% block content %}
@@ -23,7 +24,13 @@
         <input type="hidden" name="interventions" value="">
 
         <section class="x-card st-map-card" aria-label="არტერიების რუკა">
-            <h2>არტერიების რუკა — {{ side_name }}</h2>
+            <div class="st-map-head">
+                <h2>არტერიების რუკა — {{ side_name }}</h2>
+                <div class="st-view-switch" role="group" aria-label="რუკის რეჟიმი">
+                    <button type="button" class="st-view-btn on" data-map-view="anat">ანატომიური</button>
+                    <button type="button" class="st-view-btn" data-map-view="dsa">ანგიოგრაფია (DSA)</button>
+                </div>
+            </div>
             <div class="st-tools" role="toolbar" aria-label="რა მოვნიშნოთ">
                 {% for key, label in S.STATES %}<button type="button" class="st-tool t-{{ key }}{% if key == 'oc' %} on{% endif %}" data-state="{{ key }}"><i></i>{{ label }}</button>{% endfor %}
                 {% for key, label in S.FLAGS %}<button type="button" class="st-tool t-{{ key }}" data-flag="{{ key }}"><i></i>{{ label }}</button>{% endfor %}

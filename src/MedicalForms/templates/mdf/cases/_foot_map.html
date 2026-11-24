@@ -47,5 +47,5 @@
 
     {% for amp in fm.amputations %}<text class="am-amp-lbl foot{% if not amp.healed %} bad{% endif %}" x="{{ amp.x }}" y="{{ amp.y }}" text-anchor="middle">{{ amp.text }}</text>{% endfor %}
     {% for l in fm.labels %}<text class="am-lab foot" x="{{ l.x }}" y="{{ l.y }}" text-anchor="{{ l.anchor }}" dominant-baseline="middle">{{ l.text }}</text>{% endfor %}
-    {% if fm.angiosome %}<text class="am-angio-lbl" x="14" y="286">ჭრილობა: {{ fm.angiosome.label }}</text>{% endif %}
+    {% if fm.angiosome %}<text class="am-angio-lbl" x="10" y="286">ჭრილობა: {{ fm.angiosome.label }}</text>{% endif %}
 </svg>

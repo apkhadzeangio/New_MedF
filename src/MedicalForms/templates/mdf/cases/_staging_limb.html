@@ -1,0 +1,35 @@
+<div class="st-sum">
+    <div class="st-sum-map">
+        <div class="st-sum-leg">
+            <h3>{{ st.name }}</h3>
+            {% include "mdf/cases/_artery_map.html" with am=st.am side_name=st.name interactive=False %}
+        </div>
+        {% if st.fm %}
+        <div class="st-sum-foot">
+            <small class="st-sum-foot-lbl">ტერფის რკალი</small>
+            {% include "mdf/cases/_foot_map.html" with fm=st.fm side_name=st.name interactive=False %}
+        </div>
+        {% endif %}
+    </div>
+    <div class="st-sum-res">
+        {% include "mdf/cases/_staging_result.html" with r=st.r limb=st.limb %}
+        {% if st.limb.tap %}<p class="st-line">TAP: {% if st.limb.tap == 'at' %}წინა წვივის{% elif st.limb.tap == 'pt' %}უკანა წვივის{% else %}მცირე წვივის{% endif %}</p>{% endif %}
+        {% if st.interventions %}
+        <div class="st-iv-sum">
+            <small class="st-iv-sum-head">წარსული ჩარევები</small>
+            <ul class="st-iv-list compact">
+                {% for iv in st.interventions %}
+                <li class="st-iv-item tone-{{ iv.tone }}">
+                    <div class="st-iv-main">
+                        <b>{{ iv.title }}</b>{% if iv.detail %} <span class="st-iv-detail">· {{ iv.detail }}</span>{% endif %}{% if iv.date_display %} <time class="st-iv-date">{{ iv.date_display }}</time>{% endif %}
+                        <em class="st-iv-badge tone-{{ iv.tone }}">{{ iv.status_label }}</em>
+                    </div>
+                    {% if iv.note %}<div class="st-iv-note">{{ iv.note }}</div>{% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% if st.limb.note %}<p class="st-line">{{ st.limb.note }}</p>{% endif %}
+    </div>
+</div>

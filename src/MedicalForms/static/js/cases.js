@@ -228,8 +228,15 @@
                     .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.json(); })
                     .then(function () {
                         var text = form.decision.value.trim();
-                        decide.classList.toggle('done', !!text);
-                        decide.querySelector('.pz-decide-text').textContent = text || '— ჯერ არ არის (D)';
+                        document.querySelectorAll('.pz-slide[data-pk="' + slide.dataset.pk + '"]').forEach(function (peer) {
+                            var pd = peer.querySelector('.pz-decide');
+                            if (!pd) { return; }
+                            pd.classList.toggle('done', !!text);
+                            var ptxt = pd.querySelector('.pz-decide-text');
+                            if (ptxt) { ptxt.textContent = text || '— ჯერ არ არის (D)'; }
+                            var pta = pd.querySelector('textarea[name="decision"]');
+                            if (pta && pta !== form.decision) { pta.value = form.decision.value; }
+                        });
                         var li = document.querySelector('.pz-summary li[data-pk="' + slide.dataset.pk + '"] .pz-sum-decision');
                         if (li) { li.textContent = text || '—'; }
                         saved.textContent = 'შენახულია';
@@ -249,6 +256,27 @@
             setAnon(!document.body.classList.contains('anon'));
         });
         if (store('cases-anon') === '1') { setAnon(true); }
+
+        var dsaBarBtn = document.getElementById('pz-dsa');
+        function setDsa(on) {
+            document.body.classList.toggle('am-dsa-mode', on);
+            if (dsaBarBtn) { dsaBarBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+            document.querySelectorAll('.pz-stage-slide [data-map-view]').forEach(function (b) {
+                var active = (b.getAttribute('data-map-view') === 'dsa') === on;
+                b.classList.toggle('on', active);
+                b.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
+            store('cases-map-view', on ? 'dsa' : 'anat');
+        }
+        if (dsaBarBtn) {
+            dsaBarBtn.addEventListener('click', function () {
+                setDsa(!document.body.classList.contains('am-dsa-mode'));
+            });
+        }
+        document.querySelectorAll('.pz-stage-slide [data-map-view]').forEach(function (b) {
+            b.addEventListener('click', function () { setDsa(b.getAttribute('data-map-view') === 'dsa'); });
+        });
+        if (store('cases-map-view') === 'dsa') { setDsa(true); }
 
         function fullscreen() {
             if (document.fullscreenElement) { document.exitFullscreen(); }
@@ -274,6 +302,7 @@
                 case 'End': show(slides.length - 1); break;
                 case 'f': case 'F': case 'ფ': fullscreen(); break;
                 case 'a': case 'A': case 'ა': setAnon(!document.body.classList.contains('anon')); break;
+                case 'v': case 'V': case 'ვ': setDsa(!document.body.classList.contains('am-dsa-mode')); break;
                 case 'd': case 'D': case 'დ':
                     var t = slide.querySelector('.pz-decide-toggle');
                     if (t) { t.click(); }
@@ -297,7 +326,33 @@
         show(start > 0 ? start - 1 : 0);
     }
 
+    function initDetailControls() {
+        var printBtn = document.getElementById('cs-print-btn');
+        if (printBtn) {
+            printBtn.addEventListener('click', function () { window.print(); });
+        }
+        var stagingCard = document.getElementById('staging');
+        if (!stagingCard) { return; }
+        var viewBtns = stagingCard.querySelectorAll('[data-map-view]');
+        if (!viewBtns.length) { return; }
+        function setCardView(mode) {
+            var dsa = mode === 'dsa';
+            stagingCard.classList.toggle('am-dsa-mode', dsa);
+            viewBtns.forEach(function (b) {
+                var on = b.getAttribute('data-map-view') === (dsa ? 'dsa' : 'anat');
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+            store('cases-map-view', dsa ? 'dsa' : 'anat');
+        }
+        viewBtns.forEach(function (b) {
+            b.addEventListener('click', function () { setCardView(b.getAttribute('data-map-view')); });
+        });
+        if (store('cases-map-view') === 'dsa') { setCardView('dsa'); }
+    }
+
     initUpload();
     initViewer();
+    initDetailControls();
     initPresent();
 }());
