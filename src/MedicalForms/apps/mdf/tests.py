@@ -3143,3 +3143,329 @@ class PreopTests(PrivateMediaTest):
         self.assertFalse(os.path.exists(img_path))
         self.assertFalse(os.path.exists(pdf_path))
 
+
+class PreopCeaAndAbfTests(PrivateMediaTest):
+    """Carotid Endarterectomy (CEA — ESVS 2023) & Aortobifemoral Bypass (ABF — ESVS 2024 / GVG) tests."""
+
+    def test_cea_esvs_2023_symptomatic_flow_laryngoscopy_antiplatelet_and_14day_window(self):
+        from .models import PreopPatient
+        from .preop import STATUS_ALERT, STATUS_READY, evaluate, generate_anamnesis
+
+        # 1-click Case transfer auto-detects Symptomatic Right CEA and 5-day urgent target
+        case = self.make_case(
+            patient_name='ნოზაძე მერაბი', age=68, sex='M', side='R',
+            diagnosis='მარჯვენა შიგნითა საძილე არტერიის სიმპტომური სტენოზი (TIA)',
+            decision='კაროტიდული ენდარტერექტომია',
+        )
+        r = self.client.get(reverse('preop-new'), {'case': case.pk})
+        p = PreopPatient.objects.get(case=case)
+        self.assertRedirects(r, reverse('preop-patient', args=[p.pk]))
+        self.assertEqual((p.pathway, p.op_subtype, p.side), ('cea', 'cea_symp', 'R'))
+        self.assertEqual(evaluate(p)['target_days'], 5)
+
+        # Questionnaire: 16 days since TIA (>14d window), prior thyroid surgery, NO antiplatelet
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'questionnaire',
+            'side': 'R',
+            'cea_symp_event': '1',
+            'cea_days_since_event': '16',
+            'cea_event_text': 'მარცხენა მტევნის გარდამავალი სისუსტე',
+            'cea_prior_neck': '1',
+            'cea_prior_neck_text': 'თირეოიდექტომია 2019',
+            'mets_ok': '1',
+            'htn': '1',
+            'cta_disc': '1',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertEqual(ev['status'], STATUS_ALERT)
+        self.assertTrue(ev['needs_neuro'])
+        self.assertTrue(ev['needs_laryngoscopy'])
+        self.assertTrue(ev['needs_brain_ct'])
+        self.assertFalse(ev['needs_spirometry'])
+        joined_red = ' | '.join(ev['red_flags'])
+        self.assertIn('14-დღიანი', joined_red)
+        self.assertIn('ანტიაგრეგანტს', joined_red)
+
+        # Within 14-day window (5d ago) + Aspirin, but Stage 1 has BP 186/112 & contralateral 85% stenosis
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'questionnaire',
+            'side': 'R',
+            'cea_symp_event': '1',
+            'cea_days_since_event': '5',
+            'cea_event_text': 'მარცხენა მტევნის გარდამავალი სისუსტე',
+            'cea_prior_neck': '1',
+            'cea_prior_neck_text': 'თირეოიდექტომია 2019',
+            'mets_ok': '1',
+            'htn': '1',
+            'med_aspirin': '1',
+            'cta_disc': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'bp_sys': '186', 'bp_dia': '112', 'hr': '68', 'spo2': '98',
+            'hb': '142', 'wbc': '6.8', 'plt': '230', 'inr': '1.02',
+            'creat': '84', 'k': '4.3', 'na': '140', 'glucose': '5.4',
+            'urine_wbc': '1',
+            'carotid_r': '82', 'carotid_l': '85',
+            'cea_cta_status': 'concordant',
+            'brain_imaging': 'normal_small',
+            'cxr': 'normal', 'ecg': 'normal', 'lvef': '58',
+            'cta_disc': '1',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertTrue(ev['s1_core_done'])
+        self.assertEqual(ev['key_badge'], 'R 82%')
+        joined_red = ' | '.join(ev['red_flags'])
+        self.assertIn('ჰიპერპერფუზიის', joined_red)
+        self.assertIn('კონტრალატერალური', joined_red)
+
+        # Ipsilateral 100% occlusion triggers non-operative occlusion Red Flag
+        p.studies['carotid_r'] = 100
+        p.save()
+        self.assertIn('სრული ოკლუზია (100%)', ' | '.join(evaluate(p)['red_flags']))
+
+        # Stabilized BP + contralateral 35%; vocal cord palsy triggers Red Flag, normal clears to READY
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'bp_sys': '136', 'bp_dia': '80', 'hr': '68', 'spo2': '98',
+            'hb': '142', 'wbc': '6.8', 'plt': '230', 'inr': '1.02',
+            'creat': '84', 'k': '4.3', 'na': '140', 'glucose': '5.4',
+            'urine_wbc': '1',
+            'carotid_r': '82', 'carotid_l': '35',
+            'cea_cta_status': 'concordant',
+            'brain_imaging': 'normal_small',
+            'cxr': 'normal', 'ecg': 'normal', 'lvef': '58',
+            'cta_disc': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage2',
+            'neuro_consult_done': '1',
+            'laryngoscopy_res': 'palsy',
+            'anesth_done': '1',
+            'cardiologist': 'ლიკა ინჯია',
+            'cardio_decision': 'cleared',
+        })
+        p.refresh_from_db()
+        self.assertIn('სახმო იოგის პარეზი', ' | '.join(evaluate(p)['red_flags']))
+
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage2',
+            'neuro_consult_done': '1',
+            'laryngoscopy_res': 'normal',
+            'anesth_done': '1',
+            'cardiologist': 'ლიკა ინჯია',
+            'cardio_decision': 'cleared',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertEqual(ev['status'], STATUS_READY)
+        anam = generate_anamnesis(p, ev)
+        self.assertIn('მარჯვენა კაროტიდული ენდარტერექტომია', anam)
+        self.assertIn('R ICA 82%', anam)
+        self.assertIn('სახმო იოგები მოძრავია', anam)
+
+        # Prescription prefill marks neuro=True and formats carotid diagnosis
+        rx = self.client.get(reverse('niv-cover'), {'preop': p.pk})
+        self.assertContains(rx, 'მარჯვენა შიგნითა საძილე არტერიის სიმპტომური სტენოზი (82%)')
+        self.assertTrue(rx.context['niv'].neuro)
+
+    def test_abf_esvs_2024_clti_wet_gangrene_groin_outflow_spirometry_and_pathway_filters(self):
+        from .models import PreopPatient
+        from .preop import STATUS_ALERT, STATUS_READY, evaluate, generate_anamnesis
+
+        # Case transfer auto-detects ABF CLTI with 7-day target
+        case = self.make_case(
+            patient_name='ლომიძე ვახტანგი', age=64, sex='M', side='B',
+            diagnosis='ლერიშის სინდრომი, ქვემო კიდურების კრიტიკული იშემია (CLTI)',
+            decision='აორტო-ბიფემორალური შუნტირება',
+        )
+        self.client.get(reverse('preop-new'), {'case': case.pk})
+        p = PreopPatient.objects.get(case=case)
+        self.assertEqual((p.pathway, p.op_subtype), ('abf', 'abf_clti'))
+        self.assertEqual(evaluate(p)['target_days'], 7)
+
+        # Step 1: Wet foot infection + groin intertrigo -> synthetic graft sepsis Red Flags
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'questionnaire',
+            'abf_claud_m': '25',
+            'abf_duration': '8 თვე',
+            'abf_buttock_pain': '1',
+            'abf_rest_pain': '1',
+            'abf_ulcer': '1',
+            'abf_ulcer_text': 'მარჯვენა I თითის წყლული',
+            'abf_wet_infection': '1',
+            'abf_groin_issue': '1',
+            'abf_prior_vasc': '1',
+            'abf_prior_vasc_text': 'მარჯვენა CIA სტენტი 2022',
+            'mets_ok': '1',
+            'smoker': '1',
+            'med_aspirin': '1',
+            'cta_disc': '1',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertEqual(ev['status'], STATUS_ALERT)
+        self.assertTrue(ev['needs_spirometry'])
+        self.assertTrue(ev['needs_blood'])
+        self.assertTrue(ev['needs_wound_care'])
+        joined_red = ' | '.join(ev['red_flags'])
+        self.assertIn('სველი ნეკროზი', joined_red)
+        self.assertIn('ინტერტრიგო', joined_red)
+
+        # Step 2: Dry ulcer + clean groin, but Stage 1 has juxtarenal occlusion, poor outflow & albumin 27
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'questionnaire',
+            'abf_claud_m': '25',
+            'abf_duration': '8 თვე',
+            'abf_buttock_pain': '1',
+            'abf_rest_pain': '1',
+            'abf_ulcer': '1',
+            'abf_ulcer_text': 'მარჯვენა I თითის მშრალი ნეკროზი',
+            'abf_prior_vasc': '1',
+            'abf_prior_vasc_text': 'მარჯვენა CIA სტენტი 2022',
+            'mets_ok': '1',
+            'smoker': '1',
+            'med_aspirin': '1',
+            'cta_disc': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'abi_r': '0.32', 'abi_l': '0.41',
+            'abf_clamp_zone': 'juxtarenal_calcified',
+            'abf_outflow': 'poor_outflow',
+            'bp_sys': '140', 'bp_dia': '84', 'hr': '76', 'spo2': '96',
+            'hb': '132', 'wbc': '7.9', 'plt': '245', 'inr': '1.04',
+            'creat': '90', 'k': '4.4', 'na': '139', 'glucose': '5.8', 'albumin': '27',
+            'urine_wbc': '3',
+            'carotid_r': '35', 'carotid_l': '20',
+            'cxr': 'normal', 'ecg': 'normal', 'lvef': '55',
+            'cta_disc': '1',
+            'blood_group': 'O (I) Rh (+)',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertTrue(ev['s1_core_done'])
+        self.assertEqual(ev['key_badge'], 'ABI 0.32')
+        joined_red = ' | '.join(ev['red_flags'])
+        self.assertIn('იუქსტარენალური', joined_red)
+        self.assertIn('Outflow', joined_red)
+        self.assertIn('ჰიპოალბუმინემია', joined_red)
+
+        # Step 3: Infrarenal clamp + profunda stenosis (Amber profundaplasty note) + albumin 38 + Stage 2 done -> READY
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'abi_r': '0.32', 'abi_l': '0.41',
+            'abf_clamp_zone': 'infrarenal',
+            'abf_outflow': 'profunda_stenosis',
+            'bp_sys': '140', 'bp_dia': '84', 'hr': '76', 'spo2': '96',
+            'hb': '132', 'wbc': '7.9', 'plt': '245', 'inr': '1.04',
+            'creat': '90', 'k': '4.4', 'na': '139', 'glucose': '5.8', 'albumin': '38',
+            'urine_wbc': '3',
+            'carotid_r': '35', 'carotid_l': '20',
+            'cxr': 'normal', 'ecg': 'normal', 'lvef': '55',
+            'cta_disc': '1',
+            'blood_group': 'O (I) Rh (+)',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage2',
+            'spiro_fev1': '74',
+            'wound_care_done': '1',
+            'blood_reserved': '1',
+            'anesth_done': '1',
+            'cardiologist': 'ლიკა ინჯია',
+            'cardio_decision': 'cleared',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertEqual(ev['status'], STATUS_READY)
+        self.assertIn('პროფუნდოპლასტიკა', ' | '.join(ev['amber_flags']))
+        anam = generate_anamnesis(p, ev)
+        self.assertIn('აორტო-ბიფემორალური შუნტირება', anam)
+        self.assertIn('ABI R 0.32', anam)
+
+        # Pathway filters on Tweek weekly view and Cardiology Audit view
+        cal_abf = self.client.get(reverse('preop'), {'pathway': 'abf'})
+        self.assertContains(cal_abf, 'ლომიძე ვახტანგი')
+        cal_cea = self.client.get(reverse('preop'), {'pathway': 'cea'})
+        self.assertNotContains(cal_cea, 'ლომიძე ვახტანგი')
+
+        audit_abf = self.client.get(reverse('preop-audit'), {'pathway': 'abf'})
+        self.assertContains(audit_abf, 'ლომიძე ვახტანგი')
+
+        blood = self.client.get(reverse('blood-order'), {'preop': p.pk})
+        self.assertContains(blood, 'აორტო-ილიაკური ოკლუზიური დაავადება')
+        self.assertContains(blood, 'O (I) Rh (+)')
+
+    def test_cea_crescendo_thrombolysis_brain_hemorrhage_and_cardio_audit_stroke_window(self):
+        import datetime
+        from django.utils import timezone
+        from .models import PreopPatient
+        from .preop import evaluate
+
+        six_days_ago = (timezone.localdate() - datetime.timedelta(days=5)).isoformat()
+        self.client.post(reverse('preop-new'), {
+            'patient_name': 'ჭანტურია ნინო',
+            'age': '71',
+            'sex': 'F',
+            'side': 'L',
+            'slot': six_days_ago,
+            'op_subtype': 'cea_symp',
+            'surgeon': str(self.user.pk),
+        })
+        p = PreopPatient.objects.get(patient_name='ჭანტურია ნინო')
+        self.assertEqual((p.pathway, p.side), ('cea', 'L'))
+
+        # Crescendo TIA + thrombolysis <6d + disabling stroke + >5 prep days -> all flagged
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'questionnaire',
+            'side': 'L',
+            'cea_symp_event': '1',
+            'cea_days_since_event': '4',
+            'cea_crescendo': '1',
+            'cea_thrombolysis': '1',
+            'cea_disabling_stroke': '1',
+            'mets_ok': '1',
+            'med_aspirin': '1',
+            'cta_disc': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'bp_sys': '130', 'bp_dia': '80', 'hr': '72', 'spo2': '97',
+            'hb': '128', 'wbc': '7.1', 'plt': '215', 'inr': '1.0',
+            'creat': '75', 'k': '4.1', 'na': '140', 'glucose': '5.2',
+            'urine_wbc': '2',
+            'carotid_r': '20', 'carotid_l': '78',
+            'cea_cta_status': 'high_calcified',
+            'brain_imaging': 'large_or_hemorrhage',
+            'cxr': 'normal', 'ecg': 'normal', 'lvef': '60',
+            'cta_disc': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage2',
+            'cardiologist': 'გარე კარდიოლოგი',
+            'cardio_decision': 'stress',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertTrue(ev['over_target_days'])
+        self.assertTrue(ev['cardio_non_compliant'])
+        red_blob = ' | '.join(ev['red_flags'])
+        self.assertIn('Crescendo TIA', red_blob)
+        self.assertIn('თრომბოლიზისი', red_blob)
+        self.assertIn('mRS >= 3', red_blob)
+        self.assertIn('>1/3 MCA', red_blob)
+        self.assertIn('ESC 2022 Class III', red_blob)
+
+        page = self.client.get(reverse('preop-patient', args=[p.pk]), {'tab': 's2'})
+        self.assertContains(page, '14-დღიანი თერაპიული ფანჯრის')
+
+        # Elective Claudication ABF uses 14-day prep target; Asymptomatic CEA uses 10-day prep target
+        p_asymp = PreopPatient.objects.create(patient_name='ასიმპტომური ტესტი', op_subtype='cea_asymp', side='L')
+        self.assertEqual((p_asymp.pathway, evaluate(p_asymp)['target_days']), ('cea', 10))
+        p_claud = PreopPatient.objects.create(patient_name='ლერიშის ტესტი', op_subtype='abf_claud')
+        self.assertEqual((p_claud.pathway, evaluate(p_claud)['target_days']), ('abf', 14))
+
+
+

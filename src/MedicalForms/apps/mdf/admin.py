@@ -112,9 +112,9 @@ class PreopFileInline(admin.TabularInline):
 
 @admin.register(PreopPatient)
 class PreopPatientAdmin(admin.ModelAdmin):
-    list_display = ['patient_name', 'op_subtype', 'surgeon', 'visit_date', 'someday_list',
+    list_display = ['patient_name', 'pathway', 'op_subtype', 'side', 'surgeon', 'visit_date', 'someday_list',
                     'cardiologist', 'cardio_decision', 'approved_at', 'archived']
-    list_filter = ['op_subtype', 'cardio_decision', 'archived']
+    list_filter = ['pathway', 'op_subtype', 'cardio_decision', 'archived']
     search_fields = ('patient_name', 'cardiologist', 'anamnesis')
     inlines = [PreopFileInline]
 

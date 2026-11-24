@@ -12,8 +12,17 @@
             <input type="hidden" name="slot" value="{{ day.iso }}">
             <input type="text" name="patient_name" class="tw-quick-inp" placeholder="+ პაციენტის სახელი და გვარი..." autocomplete="off">
             <div class="tw-quick-extra">
-                <select name="op_subtype" aria-label="ოპერაცია">
-                    {% for val, lbl in op_subtypes %}<option value="{{ val }}">AAA — {{ lbl }}</option>{% endfor %}
+                <select name="op_subtype" class="js-op-sub" aria-label="ოპერაცია">
+                    {% for grp_lbl, items in op_subtype_groups %}
+                    <optgroup label="{{ grp_lbl }}">
+                        {% for val, lbl in items %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                </select>
+                <select name="side" class="js-op-side" aria-label="მხარე" hidden>
+                    <option value="">მხარე...</option>
+                    <option value="R">მარჯვენა (R)</option>
+                    <option value="L">მარცხენა (L)</option>
                 </select>
                 <select name="surgeon" aria-label="ქირურგი">
                     <option value="">ქირურგი...</option>

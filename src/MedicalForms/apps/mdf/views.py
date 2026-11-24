@@ -154,13 +154,14 @@ def board_prefill(request):
         if p:
             q = p.questionnaire or {}
             has_allergy = bool(q.get('allergy_iodine') or q.get('allergy_other'))
+            has_neuro = bool(q.get('neuro') or q.get('cea_symp_event') or p.op_subtype == 'cea_symp')
             return NivForm(
                 title=p.patient_name,
                 patient_name=p.patient_name,
                 diagnosis=p.diagnosis_text,
                 diabetes=bool(q.get('dm')),
                 allergy=has_allergy,
-                neuro=bool(q.get('neuro')),
+                neuro=has_neuro,
             )
     try:
         p = BoardPatient.objects.get(pk=int(request.GET.get('board', '')))

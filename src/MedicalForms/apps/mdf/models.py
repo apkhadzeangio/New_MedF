@@ -769,15 +769,31 @@ def _delete_private_files(sender, instance, **kwargs):
 # --------------------------------------------------------------------------
 
 class PreopPatient(models.Model):
-    """A patient scheduled for preoperative workup (Phase 1: Infrarenal AAA)."""
+    """A patient scheduled for preoperative workup (Infrarenal AAA, CEA, ABF)."""
 
     class Pathway(models.TextChoices):
         AAA_INFRA = 'aaa_infra', 'ინფრარენალური მუცლის აორტის ანევრიზმა'
+        CEA = 'cea', 'კაროტიდული ენდარტერექტომია'
+        ABF = 'abf', 'აორტო-ბიფემორალური შუნტირება'
 
     class OpSubtype(models.TextChoices):
         OPEN = 'open', 'ღია რეზექცია'
         EVAR = 'evar', 'ენდოვასკულური (EVAR)'
         TBD = 'tbd', 'ტაქტიკა ზუსტდება'
+        CEA_SYMP = 'cea_symp', 'სიმპტომური (TIA / ინსულტი ≤6 თვ)'
+        CEA_ASYMP = 'cea_asymp', 'ასიმპტომური'
+        ABF_CLTI = 'abf_clti', 'კრიტიკული იშემია (CLTI)'
+        ABF_CLAUD = 'abf_claud', 'მძიმე კოჭლობა (ლერიში)'
+
+    SUBTYPE_PATHWAY = {
+        'open': 'aaa_infra',
+        'evar': 'aaa_infra',
+        'tbd': 'aaa_infra',
+        'cea_symp': 'cea',
+        'cea_asymp': 'cea',
+        'abf_clti': 'abf',
+        'abf_claud': 'abf',
+    }
 
     class SomedayList(models.TextChoices):
         NONE = '', '—'
@@ -799,6 +815,7 @@ class PreopPatient(models.Model):
     patient_name = models.CharField('პაციენტი', max_length=150)
     age = models.PositiveSmallIntegerField('ასაკი', null=True, blank=True)
     sex = models.CharField('სქესი', max_length=1, choices=Case.Sex.choices, blank=True, default='M')
+    side = models.CharField('მხარე', max_length=1, choices=Case.Side.choices, blank=True, default='')
     phone = models.CharField('ტელეფონი', max_length=50, blank=True)
 
     pathway = models.CharField(
@@ -864,14 +881,44 @@ class PreopPatient(models.Model):
     def __str__(self):
         return self.patient_name
 
+    def save(self, *args, **kwargs):
+        mapped = self.SUBTYPE_PATHWAY.get(self.op_subtype)
+        if mapped:
+            self.pathway = mapped
+            uf = kwargs.get('update_fields')
+            if uf is not None and 'op_subtype' in uf and 'pathway' not in uf:
+                kwargs['update_fields'] = list(uf) + ['pathway']
+        super().save(*args, **kwargs)
+
     @property
     def planned_operation_label(self):
-        short = {'open': 'AAA — ღია რეზექცია', 'evar': 'AAA — EVAR', 'tbd': 'AAA — ტაქტიკა ზუსტდება'}
+        side_lbl = {'R': ' (მარჯვ.)', 'L': ' (მარცხ.)', 'B': ' (ორმხრ.)'}.get(self.side, '')
+        short = {
+            'open': 'AAA — ღია რეზექცია',
+            'evar': 'AAA — EVAR',
+            'tbd': 'AAA — ტაქტიკა ზუსტდება',
+            'cea_symp': f'CEA{side_lbl} — სიმპტომური',
+            'cea_asymp': f'CEA{side_lbl} — ასიმპტომური',
+            'abf_clti': 'ABF — კრიტიკული იშემია',
+            'abf_claud': 'ABF — ლერიშის სინდრომი',
+        }
         return short.get(self.op_subtype, self.get_op_subtype_display())
 
     @property
     def diagnosis_text(self):
-        mm = (self.studies or {}).get('aaa_mm')
+        s = self.studies or {}
+        if self.pathway == self.Pathway.CEA:
+            side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა '}.get(self.side, '')
+            symp_word = 'სიმპტომური ' if self.op_subtype == self.OpSubtype.CEA_SYMP else ''
+            pct = s.get('carotid_r') if self.side == 'R' else (
+                s.get('carotid_l') if self.side == 'L' else (s.get('carotid_r') or s.get('carotid_l'))
+            )
+            pct_str = f' ({pct}%)' if pct is not None and pct != '' else ''
+            return f'{side_word}შიგნითა საძილე არტერიის {symp_word}სტენოზი{pct_str}'
+        if self.pathway == self.Pathway.ABF:
+            stage = 'კრიტიკული იშემია (CLTI)' if self.op_subtype == self.OpSubtype.ABF_CLTI else 'ხანგამოშვებითი კოჭლობა'
+            return f'აორტო-ილიაკური ოკლუზიური დაავადება (ლერიშის სინდრომი), {stage}'
+        mm = s.get('aaa_mm')
         base = 'მუცლის აორტის ინფრარენალური ანევრიზმა'
         return f'{base} ({mm} მმ)' if mm else base
 
@@ -881,11 +928,11 @@ class PreopFile(models.Model):
 
     class Category(models.TextChoices):
         LABS = 'labs', 'ლაბორატორია / ანალიზები'
-        CTA = 'cta', 'კტ-ანგიოგრაფია'
+        CTA = 'cta', 'კტ / მრტ / ანგიოგრაფია'
         CARDIO = 'cardio', 'ეკგ / ექო / კარდიოლოგი'
-        DUPLEX = 'duplex', 'საძილეების დუპლექსი'
+        DUPLEX = 'duplex', 'დუპლექს-სკანირება / ABI'
         PULM = 'pulm', 'რენტგენი / სპირომეტრია'
-        CONSULT = 'consult', 'ანესთეზიოლოგი / სხვა კონსულტაცია'
+        CONSULT = 'consult', 'ნევროლოგი / ლარინგოსკოპია / ანესთეზიოლოგი'
 
     patient = models.ForeignKey(PreopPatient, on_delete=models.CASCADE, related_name='files')
     category = models.CharField('კატეგორია', max_length=20, choices=Category.choices, default=Category.LABS)
