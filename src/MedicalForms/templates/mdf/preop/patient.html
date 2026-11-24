@@ -38,15 +38,21 @@
             </div>
 
             <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="x-btn sm" id="btn-copy-self" data-self-path="{{ self_fill_path }}" title="დააკოპირეთ კითხვარის ბმული პაციენტისთვის (SMS / WhatsApp / Viber)">
+                    პაციენტის ბმული
+                </button>
+                <a class="x-btn sm" href="{{ self_fill_path }}" target="_blank" rel="noopener" title="პაციენტის კითხვარის გახსნა პლანშეტზე / ცალკე ფანჯარაში">↗</a>
                 <a class="x-btn sm ok" href="{% url 'board-patient-new' %}?name={{ p.patient_name|urlencode }}&diagnosis={{ p.diagnosis_text|urlencode }}" title="პაციენტების დაფაზე გადაყვანა">
                     დაფაზე მიღება
                 </a>
                 <a class="x-btn sm" href="{% url 'niv-cover' %}?preop={{ p.pk }}" title="ახალი დანიშნულება ამ პაციენტზე">
                     დანიშნულება
                 </a>
+                {% if not ev.is_venous %}
                 <a class="x-btn sm blood" href="{% url 'blood-order' %}?preop={{ p.pk }}" title="სისხლის შეკვეთის ბლანკი">
                     სისხლი
                 </a>
+                {% endif %}
                 <a class="x-btn sm" href="{% url 'consent-list' %}" title="ოპერაციის ინფორმირებული თანხმობა">
                     თანხმობა
                 </a>
@@ -152,10 +158,10 @@
             1. კითხვარები {% if q.filled %}✓{% endif %}
         </button>
         <button type="button" class="po-tab {% if tab == 's1' %}on{% endif %}" data-tab="s1">
-            2. საფეხური 1: ანალიზები და კვლევები {% if ev.s1_core_done %}✓{% endif %}{% if total_files %} ({{ total_files }}){% endif %}
+            2. საფეხური 1: {% if ev.is_venous %}დუპლექსი და ანალიზები{% else %}ანალიზები და კვლევები{% endif %} {% if ev.s1_core_done %}✓{% endif %}{% if total_files %} ({{ total_files }}){% endif %}
         </button>
         <button type="button" class="po-tab {% if tab == 's2' %}on{% endif %}" data-tab="s2">
-            3. საფეხური 2 და კარდიოლოგი ({{ ev.done_count }}/{{ ev.total_count }})
+            3. საფეხური 2 — გეგმა ({{ ev.done_count }}/{{ ev.total_count }})
         </button>
         <button type="button" class="po-tab {% if tab == 'doc' %}on{% endif %}" data-tab="doc">
             4. ანამნეზი და ექიმის დასტური {% if p.approved_at %}✓{% endif %}
@@ -356,8 +362,118 @@
                 </div>
             </section>
 
+            {% elif ev.pathway == 'venous' %}
+            <!-- PATHWAY A3: VENOUS SURGERY — EVLA & PHLEBECTOMY (ESVS 2022) -->
+            <section class="x-card">
+                <h2><span class="num">ა</span> ვენური ქირურგიის (EVLA / ფლებექტომია) სპეციფიკური კითხვარი (7 კითხვა)</h2>
+                <div class="po-q-list">
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">1. რომელ კიდურზე იგეგმება ჩარევა და როგორია კლინიკური სტადია (CEAP)?</span>
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <select name="side" class="form-select form-select-sm" style="width:155px">
+                                    <option value="">აირჩიეთ მხარე...</option>
+                                    <option value="R" {% if p.side == 'R' %}selected{% endif %}>მარჯვენა (R)</option>
+                                    <option value="L" {% if p.side == 'L' %}selected{% endif %}>მარცხენა (L)</option>
+                                    <option value="B" {% if p.side == 'B' %}selected{% endif %}>ორმხრივი (B)</option>
+                                </select>
+                                <select name="ven_ceap" class="form-select form-select-sm" style="width:auto;max-width:340px">
+                                    {% for cval, clbl in ceap_choices %}
+                                    <option value="{{ cval }}" {% if q.ven_ceap == cval %}selected{% endif %}>{{ clbl }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">2. გქონიათ თუ არა წარსულში ღრმა ვენების თრომბოზი (DVT), ფილტვის ემბოლია ან დადგენილი თრომბოფილია?</span>
+                            <div class="yn-switch" data-toggle-sub="sub-ven-dvt">
+                                <label><input type="radio" name="ven_dvt_history" value="0" {% if not q.ven_dvt_history %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="ven_dvt_history" value="1" {% if q.ven_dvt_history %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                        <div class="po-q-sub" id="sub-ven-dvt" {% if not q.ven_dvt_history and not q.ven_thrombophilia %}hidden{% endif %}>
+                            <input type="text" name="ven_dvt_text" value="{{ q.ven_dvt_text }}" placeholder="რომელ წელს და რომელ კიდურზე..." class="form-control form-control-sm" style="flex:1 1 240px">
+                            <label class="chip-check" style="height:34px;border-color:#FECDCA">
+                                <input type="checkbox" name="ven_thrombophilia" value="1" {% if q.ven_thrombophilia %}checked{% endif %}>თრომბოფილია / ოჯახური თრომბოზები
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">3. ბოლო დღეებში ხომ არ გაჩნდა ვენის გასწვრივ მტკივნეული სიწითლე/გამკვრივება (მწვავე თრომბოფლებიტი) ან სისხლდენა კვანძიდან?</span>
+                            <div class="d-flex flex-wrap gap-2">
+                                <label class="chip-check" style="height:36px;border-color:#FECDCA">
+                                    <input type="checkbox" name="ven_acute_svt" value="1" {% if q.ven_acute_svt %}checked{% endif %}>მწვავე თრომბოფლებიტი (SVT)
+                                </label>
+                                <label class="chip-check" style="height:36px;border-color:#FECDCA">
+                                    <input type="checkbox" name="ven_bleeding" value="1" {% if q.ven_bleeding %}checked{% endif %}>სისხლდენა კვანძიდან
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">4. გაქვთ თუ არა ალერგია ლიდოკაინზე, ნოვოკაინზე ან სხვა ადგილობრივ საანესთეზიო წამალზე? <small class="text-muted">(ტუმესცენტური ანესთეზია!)</small></span>
+                            <div class="yn-switch">
+                                <label><input type="radio" name="ven_lidocaine_allergy" value="0" {% if not q.ven_lidocaine_allergy %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="ven_lidocaine_allergy" value="1" {% if q.ven_lidocaine_allergy %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">5. გაქვთ თუ არა წვივზე მწვავე კანის ინფექცია (წითელი ქარი, ჩირქოვანი ეგზემა) ან სიარულისას კუნთების იშემიური ტკივილი (კოჭლობა)?</span>
+                            <div class="d-flex flex-wrap gap-2">
+                                <label class="chip-check" style="height:36px">
+                                    <input type="checkbox" name="ven_skin_infection" value="1" {% if q.ven_skin_infection %}checked{% endif %}>მწვავე კანის ანთება / წითელი ქარი
+                                </label>
+                                <label class="chip-check" style="height:36px">
+                                    <input type="checkbox" name="claudication" value="1" {% if q.claudication %}checked{% endif %}>კოჭლობა სიარულისას (ჩართავს ABI-ს)
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">6. ჩატარებული გაქვთ თუ არა წარსულში ამავე კიდურზე ვენების ოპერაცია, ლაზერი ან სკლეროთერაპია?</span>
+                            <div class="yn-switch" data-toggle-sub="sub-ven-rec">
+                                <label><input type="radio" name="ven_recurrent" value="0" {% if not q.ven_recurrent %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="ven_recurrent" value="1" {% if q.ven_recurrent %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                        <div class="po-q-sub" id="sub-ven-rec" {% if not q.ven_recurrent %}hidden{% endif %}>
+                            <input type="text" name="ven_recurrent_text" value="{{ q.ven_recurrent_text }}" placeholder="რა ჩარევა და როდის (მაგ. ფლებექტომია 2016, სკლეროთერაპია)..." class="form-control form-control-sm">
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">7. დამატებითი თრომბოემბოლიური (Caprini) და რეპროდუქციული ფაქტორები:</span>
+                            <div class="d-flex flex-wrap gap-2">
+                                <label class="chip-check" style="height:36px">
+                                    <input type="checkbox" name="ven_hormones" value="1" {% if q.ven_hormones %}checked{% endif %}>კონტრაცეპტივი / ჰორმონული თერაპია
+                                </label>
+                                <label class="chip-check" style="height:36px">
+                                    <input type="checkbox" name="ven_cancer_immob" value="1" {% if q.ven_cancer_immob %}checked{% endif %}>ონკოლოგია / შეზღუდული მობილობა
+                                </label>
+                                <label class="chip-check" style="height:36px;border-color:#FECDCA">
+                                    <input type="checkbox" name="ven_pregnant" value="1" {% if q.ven_pregnant %}checked{% endif %}>ორსულობა / ლაქტაცია (&lt;3 თვ)
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {% else %}
-            <!-- PATHWAY A3: INFRARENAL AAA (ESVS 2024) -->
+            <!-- PATHWAY A4: INFRARENAL AAA (ESVS 2024) -->
             <section class="x-card">
                 <h2><span class="num">ა</span> ინფრარენალური AAA-ს სპეციფიკური კითხვარი (5 კითხვა)</h2>
                 <div class="po-q-list">
@@ -505,7 +621,7 @@
 
                     <div class="po-q-item">
                         <div class="po-q-main">
-                            <span class="po-q-text">7. გქონიათ კუჭის/12-გოჯას წყლული, სისხლდენა ან შავი განავალი? <small class="text-muted">(ავტომატურად ამატებს გასტროსკოპიას)</small></span>
+                            <span class="po-q-text">7. გქონიათ კუჭის/12-გოჯას წყლული, სისხლდენა ან შავი განავალი?</span>
                             <div class="yn-switch">
                                 <label><input type="radio" name="ulcer" value="0" {% if not q.ulcer %}checked{% endif %}>არა</label>
                                 <label><input type="radio" name="ulcer" value="1" {% if q.ulcer %}checked{% endif %}>კი</label>
@@ -516,7 +632,7 @@
                     <div class="po-q-item">
                         <div class="po-q-text">
                             8. სისხლის გამათხელებლები და მუდმივად მისაღები მედიკამენტები:
-                            {% if ev.pathway == 'cea' %}<small class="text-muted">(ESVS 2023 Class I: ასპირინი CEA-ს წინ არ იხსნება!)</small>{% endif %}
+                            {% if ev.pathway == 'cea' %}<small class="text-muted">(ESVS 2023 Class I: ასპირინი CEA-ს წინ არ იხსნება!)</small>{% elif p.op_subtype == 'evla' %}<small class="text-muted">(ESVS 2022: EVLA შესაძლებელია ანტიკოაგულაციის მოუხსნელადაც)</small>{% endif %}
                         </div>
                         <div class="d-flex flex-wrap gap-2">
                             <label class="chip-check" style="height:36px"><input type="checkbox" name="med_aspirin" value="1" {% if q.med_aspirin %}checked{% endif %}>ასპირინი / კარდიომაგნილი</label>
@@ -524,14 +640,16 @@
                             <label class="chip-check" style="height:36px"><input type="checkbox" name="med_doac" value="1" {% if q.med_doac %}checked{% endif %}>ქსარელტო / ელიქვისი</label>
                             <label class="chip-check" style="height:36px"><input type="checkbox" name="med_warfarin" value="1" {% if q.med_warfarin %}checked{% endif %}>ვარფარინი</label>
                         </div>
-                        <input type="text" name="other_meds" value="{{ q.other_meds }}" placeholder="სხვა მუდმივი მედიკამენტები (მაგ. პერინდოპრილი, ატორვასტატინი)..." class="form-control form-control-sm">
+                        <input type="text" name="other_meds" value="{{ q.other_meds }}" placeholder="სხვა მუდმივი მედიკამენტები (მაგ. პერინდოპრილი, დიოსმინი/დეტრალექსი)..." class="form-control form-control-sm">
                     </div>
 
                     <div class="po-q-item">
                         <div class="po-q-main">
-                            <span class="po-q-text">9. ალერგია მედიკამენტებზე ან იოდზე / კონტრასტზე:</span>
+                            <span class="po-q-text">9. ალერგია მედიკამენტებზე{% if not ev.is_venous %} ან იოდზე / კონტრასტზე{% endif %}:</span>
                             <div class="d-flex flex-wrap gap-2">
+                                {% if not ev.is_venous %}
                                 <label class="chip-check" style="height:36px"><input type="checkbox" name="allergy_iodine" value="1" {% if q.allergy_iodine %}checked{% endif %}>ალერგია იოდზე / კონტრასტზე</label>
+                                {% endif %}
                                 <label class="chip-check" style="height:36px"><input type="checkbox" name="allergy_other" value="1" id="chk-allergy-other" {% if q.allergy_other %}checked{% endif %}>სხვა წამლის ალერგია</label>
                             </div>
                         </div>
@@ -570,10 +688,15 @@
             <input type="hidden" name="section" value="stage1">
 
             <section class="x-card">
-                <h2>ვიტალური მონაცემები მიღებისას</h2>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">ვიტალური მონაცემები მიღებისას</h2>
+                    {% if ev.bmi is not None %}
+                    <span class="po-badge {% if ev.bmi >= 30 %}st-in_progress{% else %}st-ready{% endif %}">BMI: {{ ev.bmi }} კგ/მ²</span>
+                    {% endif %}
+                </div>
                 <div class="grid-4">
                     <label class="fld">სისტოლური წნევა (mmHg)
-                        <input type="number" name="bp_sys" value="{{ s.bp_sys|default_if_none:'' }}" placeholder="135" class="form-control">
+                        <input type="number" name="bp_sys" value="{{ s.bp_sys|default_if_none:'' }}" placeholder="130" class="form-control">
                     </label>
                     <label class="fld">დიასტოლური წნევა (mmHg)
                         <input type="number" name="bp_dia" value="{{ s.bp_dia|default_if_none:'' }}" placeholder="80" class="form-control">
@@ -582,7 +705,7 @@
                         <input type="number" name="hr" value="{{ s.hr|default_if_none:'' }}" placeholder="72" class="form-control">
                     </label>
                     <label class="fld">სატურაცია SpO₂ (%)
-                        <input type="number" name="spo2" value="{{ s.spo2|default_if_none:'' }}" placeholder="97" class="form-control">
+                        <input type="number" name="spo2" value="{{ s.spo2|default_if_none:'' }}" placeholder="98" class="form-control">
                     </label>
                 </div>
                 <div class="d-flex flex-wrap align-items-center gap-3">
@@ -596,6 +719,53 @@
                 </div>
             </section>
 
+            {% if ev.is_venous %}
+            <!-- LEAN VENOUS LAB PANEL -->
+            <section class="x-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">საფეხური 1: დღის სტაციონარის / ვენური საბაზისო ანალიზები</h2>
+                    {% if ev.egfr is not None %}
+                    <span class="po-badge st-in_progress">eGFR: {{ ev.egfr }} მლ/წთ</span>
+                    {% endif %}
+                </div>
+                <p class="small text-muted m-0">EVLA-სა და ფლებექტომიაზე ივსება მხოლოდ მსუბუქი საბაზისო პაკეტი (ზედმეტი რუტინული კვლევების გარეშე).</p>
+
+                <div class="grid-4">
+                    <label class="fld">ჰემოგლობინი — Hb (გ/ლ ან გ/დლ)
+                        <input type="number" step="any" name="hb" value="{{ s.hb|default_if_none:'' }}" placeholder="მაგ. 132" class="form-control">
+                    </label>
+                    <label class="fld">ლეიკოციტები — WBC (×10⁹/L)
+                        <input type="number" step="any" name="wbc" value="{{ s.wbc|default_if_none:'' }}" placeholder="მაგ. 6.8" class="form-control">
+                    </label>
+                    <label class="fld">თრომბოციტები — PLT (×10⁹/L)
+                        <input type="number" step="any" name="plt" value="{{ s.plt|default_if_none:'' }}" placeholder="მაგ. 240" class="form-control">
+                    </label>
+                    <label class="fld">INR (კოაგულოგრამა)
+                        <input type="number" step="any" name="inr" value="{{ s.inr|default_if_none:'' }}" placeholder="მაგ. 1.02" class="form-control">
+                    </label>
+
+                    <label class="fld">გლუკოზა უზმოდ (მმოლ/ლ)
+                        <input type="number" step="any" name="glucose" value="{{ s.glucose|default_if_none:'' }}" placeholder="მაგ. 5.1" class="form-control">
+                    </label>
+                    <label class="fld">კრეატინინი{% if ev.is_phleb %} (სავალდებულო){% else %} (ჩვენებით){% endif %}
+                        <input type="number" step="any" name="creat" value="{{ s.creat|default_if_none:'' }}" placeholder="მაგ. 78" class="form-control">
+                    </label>
+                    <label class="fld">სისხლის ჯგუფი და რეზუსი
+                        <select name="blood_group" class="form-select">
+                            <option value="">—</option>
+                            {% for bg in blood_groups %}
+                            <option value="{{ bg }}" {% if s.blood_group == bg %}selected{% endif %}>{{ bg }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <div class="d-flex flex-wrap align-items-end gap-2">
+                        <label class="chip-check"><input type="checkbox" name="aptt_prolonged" value="1" {% if s.aptt_prolonged %}checked{% endif %}>APTT გახანგრძლივებული</label>
+                        <label class="chip-check"><input type="checkbox" name="viral_positive" value="1" {% if s.viral_positive %}checked{% endif %}>ვირუსული მარკერი (+)</label>
+                    </div>
+                </div>
+            </section>
+            {% else %}
+            <!-- MAJOR ARTERIAL LAB PANEL (AAA / CEA / ABF) -->
             <section class="x-card">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <h2 class="m-0">საფეხური 1: თავდაპირველი ლაბორატორიული ანალიზები</h2>
@@ -669,11 +839,49 @@
                     </div>
                 </div>
             </section>
+            {% endif %}
 
             <section class="x-card">
                 <h2>საფეხური 1: სავალდებულო ინსტრუმენტული კვლევები ({{ ev.pathway_short }})</h2>
 
-                {% if ev.pathway == 'cea' %}
+                {% if ev.pathway == 'venous' %}
+                <!-- VENOUS Stage 1: Standing Venous Duplex + Conditional/Spinal ECG -->
+                <div class="grid-4">
+                    <label class="fld" style="grid-column:span 2">ქვემო კიდურების ვენების დუპლექს-სკანირება (ფეხზე დგომით)
+                        <select name="ven_duplex_status" class="form-select">
+                            <option value="pending" {% if s.ven_duplex_status == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა / შესატანია</option>
+                            <option value="deep_patent_reflux" {% if s.ven_duplex_status == 'deep_patent_reflux' %}selected{% endif %}>✓ ღრმა ვენები გამავალია, დადასტურებულია ზედაპირული რეფლუქსი</option>
+                            <option value="acute_dvt" {% if s.ven_duplex_status == 'acute_dvt' %}selected{% endif %}>მწვავე ღრმა ვენების თრომბოზი — DVT (უკუჩვენება!)</option>
+                            <option value="deep_obstruction" {% if s.ven_duplex_status == 'deep_obstruction' %}selected{% endif %}>ღრმა ვენების ოკლუზია — კოლატერალური ვენა (უკუჩვენება!)</option>
+                            <option value="superficial_thrombus" {% if s.ven_duplex_status == 'superficial_thrombus' %}selected{% endif %}>მწვავე აღმავალი თრომბოფლებიტი (SFJ/SPJ-სთან ახლოს!)</option>
+                        </select>
+                    </label>
+                    <label class="fld">სამიზნე ვენური აუზი
+                        <select name="ven_target_vein" class="form-select">
+                            <option value="gsv" {% if s.ven_target_vein == 'gsv' %}selected{% endif %}>დიდი საჩინო ვენა (GSV)</option>
+                            <option value="ssv" {% if s.ven_target_vein == 'ssv' %}selected{% endif %}>მცირე საჩინო ვენა (SSV)</option>
+                            <option value="gsv_ssv" {% if s.ven_target_vein == 'gsv_ssv' %}selected{% endif %}>GSV + SSV ერთდროულად</option>
+                            <option value="aagsv_trib" {% if s.ven_target_vein == 'aagsv_trib' %}selected{% endif %}>დამატებითი საჩინო / შენაკადები / პერფორანტები</option>
+                        </select>
+                    </label>
+                    <label class="fld">საჩინო ვენის დიამეტრი (მმ)
+                        <input type="number" step="0.1" name="ven_gsv_mm" value="{{ s.ven_gsv_mm|default_if_none:'' }}" placeholder="მაგ. 8.5" min="1" max="50" class="form-control">
+                    </label>
+                </div>
+                <div class="grid-3">
+                    <label class="fld">ელექტროკარდიოგრამა — ეკგ ({% if ev.needs_ecg_venous %}სავალდებულოა{% else %}არასავალდებულო ჯანმრთელ &lt;50 წ. EVLA-ზე{% endif %})
+                        <select name="ecg" class="form-select">
+                            <option value="pending" {% if s.ecg == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.ecg == 'normal' %}selected{% endif %}>სინუსური / მწვავე იშემიის გარეშე</option>
+                            <option value="ischemia_arrhythmia" {% if s.ecg == 'ischemia_arrhythmia' %}selected{% endif %}>ახალი იშემია / არითმია / AV-ბლოკადა</option>
+                        </select>
+                    </label>
+                    <div class="d-flex align-items-end text-muted small" style="grid-column:span 2;padding-bottom:6px">
+                        ESVS 2022 / ESC 2022: რენტგენი, ექოკარდიოგრაფია, საძილეების დუპლექსი და სპირომეტრია ვენურ ჩარევებზე რუტინულად არ ინიშნება.
+                    </div>
+                </div>
+
+                {% elif ev.pathway == 'cea' %}
                 <!-- CEA Stage 1 Imaging -->
                 <div class="grid-4">
                     <label class="fld">მარჯვენა საძილე — ICA სტენოზი (%){% if p.side == 'R' %} · საოპერაციო{% endif %}
@@ -879,7 +1087,7 @@
                 </div>
             </div>
             {% empty %}
-            <p class="text-muted m-0 small">ატვირთეთ ანალიზების, ეკგ-ს, ექოს ან კონსულტაციების ფოტო / PDF — შეინახება დაცულ საქაღალდეში.</p>
+            <p class="text-muted m-0 small">ატვირთეთ ვენების დუპლექსის, ანალიზების, ეკგ-ს ან კონსულტაციების ფოტო / PDF — შეინახება დაცულ საქაღალდეში.</p>
             {% endfor %}
         </section>
     </div>
@@ -898,13 +1106,42 @@
                 <div class="d-flex flex-column gap-2">
                     <div class="po-task-row {% if q.filled %}done{% endif %}">
                         <span><strong>1. წინასაოპერაციო კითხვარები</strong> (ზოგადი + {{ ev.pathway_short }})</span>
-                        <span>{% if q.filled %}✓ შევსებულია{% else %}შესავსებია (ტაბი 1){% endif %}</span>
+                        <span>{% if q.filled %}✓ შევსებულია ({{ q.filled_by }}){% else %}შესავსებია (ტაბი 1 ან პაციენტის ბმული){% endif %}</span>
                     </div>
 
                     <div class="po-task-row {% if ev.s1_core_done %}done{% endif %}">
-                        <span><strong>2. საფეხური 1-ის სავალდებულო კვლევები</strong> (ანალიზები, შარდი, ეკგ, რენტგენი, საძილეები, ექო, CTA{% if ev.pathway == 'cea' and ev.needs_brain_ct %}, ტვინის CT/MRI{% elif ev.pathway == 'abf' %}, ABI{% endif %})</span>
+                        <span>
+                            <strong>2. საფეხური 1-ის სავალდებულო კვლევები</strong>
+                            ({% if ev.is_venous %}ვენების დუპლექსი, სისხლი, კოაგულოგრამა, გლუკოზა{% if ev.needs_ecg_venous %}, ეკგ{% endif %}{% else %}ანალიზები, შარდი, ეკგ, რენტგენი, საძილეები, ექო, CTA{% if ev.pathway == 'cea' and ev.needs_brain_ct %}, ტვინის CT/MRI{% elif ev.pathway == 'abf' %}, ABI{% endif %}{% endif %})
+                        </span>
                         <span>{% if ev.s1_core_done %}✓ შეტანილია{% else %}შესავსებია (ტაბი 2){% endif %}</span>
                     </div>
+
+                    {% if ev.is_venous and ev.needs_abi_check %}
+                    <div class="po-task-row {% if ev.min_abi is not None %}done{% endif %}">
+                        <span><strong>არტერიული სკრინინგი — ABI</strong> <small class="text-muted">(კოჭლობის / C5–C6 წყლულის გამო კომპრესიამდე სავალდებულოა ABI &ge; 0.8)</small></span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="small">R:</span>
+                            <input type="number" step="0.01" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="1.05" class="form-control form-control-sm" style="width:82px">
+                            <span class="small">L:</span>
+                            <input type="number" step="0.01" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="1.02" class="form-control form-control-sm" style="width:82px">
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if ev.is_venous and ev.needs_vte_prophylaxis %}
+                    <div class="po-task-row {% if s.vte_prophylaxis_planned %}done{% endif %}">
+                        <span><strong>ინდივიდუალური თრომბოპროფილაქტიკა (LMWH / DOAC)</strong> <small class="text-muted">(Caprini / ESVS 2022 რისკ-ფაქტორების გამო)</small></span>
+                        <label class="chip-check" style="height:34px"><input type="checkbox" name="vte_prophylaxis_planned" value="1" {% if s.vte_prophylaxis_planned %}checked{% endif %}>სქემა შეთანხმებულია ქირურგთან ✓</label>
+                    </div>
+                    {% endif %}
+
+                    {% if ev.is_venous and ev.min_abi is None or ev.is_venous and ev.min_abi >= 0.8 %}
+                    <div class="po-task-row {% if s.compression_ready %}done{% endif %}">
+                        <span><strong>2 კლასის კომპრესიული ტრიკოტაჟი (წინდა / გეტრი, 20–30 mmHg)</strong> <small class="text-muted">(ზომის შერჩევა ჩარევამდე)</small></span>
+                        <label class="chip-check" style="height:34px"><input type="checkbox" name="compression_ready" value="1" {% if s.compression_ready %}checked{% endif %}>შერჩეულია / მზადაა ✓</label>
+                    </div>
+                    {% endif %}
 
                     {% if ev.pathway == 'cea' and ev.needs_neuro %}
                     <div class="po-task-row {% if s.neuro_consult_done %}done{% endif %}">
@@ -947,14 +1184,16 @@
 
                     {% if ev.uti_suspected %}
                     <div class="po-task-row {% if s.urine_culture_done %}done{% endif %}">
-                        <span><strong>შარდის ბაქტერიოლოგია / სანაციის შეთანხმება ქირურგთან</strong> <small class="text-muted">(შარდის/ინფექციის ცვლილების გამო)</small></span>
+                        <span><strong>ინფექციის / შარდის სანაციის შეთანხმება ქირურგთან</strong></span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="urine_culture_done" value="1" {% if s.urine_culture_done %}checked{% endif %}>შესრულდა / შეთანხმდა</label>
                     </div>
                     {% endif %}
 
-                    {% if ev.pathway == 'abf' and ev.needs_wound_care %}
+                    {% if ev.needs_wound_care %}
                     <div class="po-task-row {% if s.wound_care_done %}done{% endif %}">
-                        <span><strong>ტერფის ნაცხი / საზარდულის კანის სანაცია</strong> <small class="text-muted">(სინთეზური ბიფურკაციული პროთეზის დაცვა)</small></span>
+                        <span>
+                            <strong>{% if ev.is_venous %}ვენური წყლულის / კანის მოვლის შეთანხმება ქირურგთან{% else %}ტერფის ნაცხი / საზარდულის კანის სანაცია{% endif %}</strong>
+                        </span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="wound_care_done" value="1" {% if s.wound_care_done %}checked{% endif %}>შესრულდა / შეთანხმდა ქირურგთან</label>
                     </div>
                     {% endif %}
@@ -977,25 +1216,44 @@
                     <div class="po-task-row {% if s.med_hold_agreed %}done{% endif %}">
                         <div>
                             <strong>მედიკამენტების მიღების/შეჩერების დღის შეთანხმება ქირურგთან</strong>
-                            <div class="small text-muted">პროგრამა წამალს თვითნებურად არ ცვლის (შენიშვნა: ასპირინის მონოთერაპია ESVS 2023–2024-ით გრძელდება).</div>
+                            <div class="small text-muted">
+                                {% if p.op_subtype == 'evla' %}ESVS 2022 Class IIa: EVLA შესაძლებელია ანტიკოაგულაციის მოუხსნელადაც — დააზუსტეთ ქირურგთან.{% elif ev.is_phleb %}ფლებექტომიაზე (სპინალური გაუტკივარება) ანტიკოაგულანტის/კლოპიდოგრელის შეჩერება სავალდებულოა!{% else %}პროგრამა წამალს თვითნებურად არ ცვლის (ასპირინის მონოთერაპია ESVS 2023–2024-ით გრძელდება).{% endif %}
+                            </div>
                         </div>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="med_hold_agreed" value="1" {% if s.med_hold_agreed %}checked{% endif %}>შეთანხმებულია ქირურგთან</label>
                     </div>
                     {% endif %}
 
+                    {% if ev.needs_anesth %}
                     <div class="po-task-row {% if s.anesth_done %}done{% endif %}">
-                        <span><strong>ანესთეზიოლოგის წინასაოპერაციო კონსულტაცია</strong></span>
+                        <span><strong>ანესთეზიოლოგის წინასაოპერაციო კონსულტაცია</strong>{% if ev.is_phleb %} <small class="text-muted">(სპინალური / ზოგადი გაუტკივარება)</small>{% endif %}</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="anesth_done" value="1" {% if s.anesth_done %}checked{% endif %}>კონსულტაცია ჩატარდა ✓</label>
                     </div>
+                    {% else %}
+                    <div class="po-task-row done">
+                        <span><strong>ტუმესცენტური ადგილობრივი ანესთეზია (EVLA)</strong> — <small class="text-muted">რუტინული ანესთეზიოლოგი არ ესაჭიროება</small></span>
+                        <label class="chip-check" style="height:32px"><input type="checkbox" name="anesth_done" value="1" {% if s.anesth_done %}checked{% endif %}>სედაცია / ანესთეზიოლოგი ჩაერთო</label>
+                    </div>
+                    {% endif %}
                 </div>
+
+                {% if ev.is_venous and not ev.needs_cardio %}
+                <label class="fld pt-2">ექთნის სამუშაო შენიშვნა
+                    <textarea name="nurse_note" rows="2" class="form-control" style="height:auto;padding:8px 12px" placeholder="მაგ. პაციენტი მოვა 09:30-ზე 2 კლასის კომპრესიული წინდით...">{{ s.nurse_note }}</textarea>
+                </label>
+                <div class="d-flex justify-content-end pt-1">
+                    <button type="submit" class="x-btn primary">გეგმის შენახვა</button>
+                </div>
+                {% endif %}
             </section>
 
             <!-- Cardiology Consultation & Audit -->
+            {% if ev.needs_cardio %}
             <section class="x-card">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <h2 class="m-0">კარდიოლოგის კონსულტაცია და აუდიტი</h2>
                     <span class="po-badge {% if ev.guideline_justifies_extra_cardio %}st-in_progress{% else %}st-ready{% endif %}">
-                        ESC 2022 ფონი: {% if ev.guideline_justifies_extra_cardio %}მაღალი კლინიკური რისკი / &lt;4 METs{% else %}სტაბილური, &ge;4 METs, LVEF &ge;50%{% endif %}
+                        ESC 2022 ფონი: {% if ev.guideline_justifies_extra_cardio %}მაღალი კლინიკური რისკი / &lt;4 METs{% else %}სტაბილური, &ge;4 METs{% endif %}
                     </span>
                 </div>
 
@@ -1026,22 +1284,54 @@
                 {% if ev.cardio_non_compliant %}
                 <div class="po-alert red">
                     <span>
-                        <strong>აუდიტის ჩანაწერი (ESC 2022 Class III):</strong> პაციენტი კარდიოლოგიურად ასიმპტომურია, ადის 2 სართულზე (&ge;4 METs) და LVEF &ge;50%.
-                        დამატებითი სტრეს-ტესტი / კორონაროგრაფია ზრდის დაყოვნებისა და
-                        {% if ev.pathway == 'cea' %}14-დღიანი თერაპიული ფანჯრის გაშვების / განმეორებითი ინსულტის{% elif ev.pathway == 'abf' %}კრიტიკული იშემიის პროგრესირების{% else %}ანევრიზმის რუპტურის{% endif %}
-                        რისკს — სავალდებულოა ქირურგთან შეთანხმება!
+                        <strong>აუდიტის ჩანაწერი (ESC 2022 Class III):</strong> პაციენტი კარდიოლოგიურად სტაბილურია (&ge;4 METs).
+                        დამატებითი სტრეს-ტესტი / კორონაროგრაფია
+                        {% if ev.pathway == 'cea' %}ზრდის 14-დღიანი თერაპიული ფანჯრის გაშვების / განმეორებითი ინსულტის რისკს{% elif ev.pathway == 'abf' %}აყოვნებს კიდურის რევასკულარიზაციას{% elif ev.is_venous %}არ არის ნაჩვენები დაბალი რისკის (&lt;1% MACE) ვენურ ჩარევაზე{% else %}ზრდის დაყოვნებისა და ანევრიზმის რუპტურის რისკს{% endif %}
+                        — სავალდებულოა ქირურგთან შეთანხმება!
                     </span>
                 </div>
                 {% endif %}
 
                 <label class="fld">ექთნის სამუშაო შენიშვნა
-                    <textarea name="nurse_note" rows="2" class="form-control" style="height:auto;padding:8px 12px" placeholder="მაგ. პაციენტი მოიტანს კტ დისკს ხვალ 11:00-ზე...">{{ s.nurse_note }}</textarea>
+                    <textarea name="nurse_note" rows="2" class="form-control" style="height:auto;padding:8px 12px" placeholder="მაგ. პაციენტი მოიტანს დისკს ხვალ 11:00-ზე...">{{ s.nurse_note }}</textarea>
                 </label>
 
                 <div class="d-flex justify-content-end">
                     <button type="submit" class="x-btn primary">გეგმისა და კონსულტაციების შენახვა</button>
                 </div>
             </section>
+            {% else %}
+            <details class="x-card">
+                <summary class="fw-semibold" style="cursor:pointer">
+                    ESC 2022: დაბალი რისკის (&lt;1%) ვენური ჩარევა — რუტინული კარდიოლოგი არ ესაჭიროება (საჭიროებისას დააწკაპეთ ჩასაწერად)
+                </summary>
+                <div class="grid-3 pt-3">
+                    <label class="fld">კარდიოლოგი
+                        <select name="cardiologist" class="form-select">
+                            {% for cname in cardiologists %}
+                            <option value="{{ cname }}" {% if p.cardiologist == cname %}selected{% endif %}>{{ cname }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="fld">სხვა კარდიოლოგი
+                        <input type="text" name="cardiologist_custom" placeholder="გვარი, სახელი..." class="form-control">
+                    </label>
+                    <label class="fld">კარდიოლოგის გადაწყვეტილება
+                        <select name="cardio_decision" class="form-select">
+                            {% for dval, dlbl in cardio_decisions %}
+                            <option value="{{ dval }}" {% if p.cardio_decision == dval %}selected{% endif %}>{{ dlbl }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+                <label class="fld pt-2">კარდიოლოგის კომენტარი
+                    <input type="text" name="cardio_note" value="{{ p.cardio_note }}" class="form-control">
+                </label>
+                <div class="d-flex justify-content-end pt-2">
+                    <button type="submit" class="x-btn sm primary">კარდიოლოგის ჩანაწერის შენახვა</button>
+                </div>
+            </details>
+            {% endif %}
         </form>
     </div>
 
@@ -1116,6 +1406,23 @@
             } catch (e) {}
         });
     });
+
+    // Copy signed Patient Self-Fill URL
+    var copyBtn = document.getElementById('btn-copy-self');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+            var fullUrl = window.location.origin + copyBtn.dataset.selfPath;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(fullUrl).then(function () {
+                    var orig = copyBtn.textContent;
+                    copyBtn.textContent = '✓ ბმული დაკოპირდა';
+                    setTimeout(function () { copyBtn.textContent = orig; }, 2200);
+                });
+            } else {
+                window.prompt('დააკოპირეთ ბმული პაციენტისთვის:', fullUrl);
+            }
+        });
+    }
 
     // Placement kind toggle (dated vs Someday list)
     var slotSel = document.getElementById('slot-kind-sel');

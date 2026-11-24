@@ -7,7 +7,7 @@
 {% block content %}
 <div class="app-main">
     <div class="page-head">
-        <h1>წინასაოპერაციო <span class="count">AAA · CEA · ABF</span></h1>
+        <h1>წინასაოპერაციო <span class="count">AAA · CEA · ABF · EVLA / ფლებექტომია</span></h1>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <div class="tw-pills">
                 {% for pkey, plbl, pcnt in pathway_pills %}
@@ -99,6 +99,7 @@
                             <option value="">მხარე...</option>
                             <option value="R">მარჯვენა (R)</option>
                             <option value="L">მარცხენა (L)</option>
+                            <option value="B">ორმხრივი (B)</option>
                         </select>
                         <select name="surgeon" aria-label="ქირურგი">
                             <option value="">ქირურგი...</option>
@@ -125,7 +126,10 @@
         var sub = form.querySelector('.js-op-sub');
         var side = form.querySelector('.js-op-side');
         if (sub && side) {
-            var sync = function () { side.hidden = (sub.value.indexOf('cea_') !== 0); };
+            var sync = function () {
+                var v = sub.value;
+                side.hidden = !(v.indexOf('cea_') === 0 || v === 'evla' || v === 'phlebectomy');
+            };
             sub.addEventListener('change', sync);
             sync();
         }

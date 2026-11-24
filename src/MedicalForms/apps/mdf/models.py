@@ -769,12 +769,13 @@ def _delete_private_files(sender, instance, **kwargs):
 # --------------------------------------------------------------------------
 
 class PreopPatient(models.Model):
-    """A patient scheduled for preoperative workup (Infrarenal AAA, CEA, ABF)."""
+    """A patient scheduled for preoperative workup (AAA, CEA, ABF, EVLA / Phlebectomy)."""
 
     class Pathway(models.TextChoices):
         AAA_INFRA = 'aaa_infra', 'ინფრარენალური მუცლის აორტის ანევრიზმა'
         CEA = 'cea', 'კაროტიდული ენდარტერექტომია'
         ABF = 'abf', 'აორტო-ბიფემორალური შუნტირება'
+        VENOUS = 'venous', 'ქრონიკული ვენური უკმარისობა (EVLA / ფლებექტომია)'
 
     class OpSubtype(models.TextChoices):
         OPEN = 'open', 'ღია რეზექცია'
@@ -784,6 +785,8 @@ class PreopPatient(models.Model):
         CEA_ASYMP = 'cea_asymp', 'ასიმპტომური'
         ABF_CLTI = 'abf_clti', 'კრიტიკული იშემია (CLTI)'
         ABF_CLAUD = 'abf_claud', 'მძიმე კოჭლობა (ლერიში)'
+        EVLA = 'evla', 'ენდოვენური ლაზერული აბლაცია (EVLA)'
+        PHLEB = 'phlebectomy', 'ფლებექტომია (კომბინირებული / კროსექტომია)'
 
     SUBTYPE_PATHWAY = {
         'open': 'aaa_infra',
@@ -793,6 +796,8 @@ class PreopPatient(models.Model):
         'cea_asymp': 'cea',
         'abf_clti': 'abf',
         'abf_claud': 'abf',
+        'evla': 'venous',
+        'phlebectomy': 'venous',
     }
 
     class SomedayList(models.TextChoices):
@@ -901,6 +906,8 @@ class PreopPatient(models.Model):
             'cea_asymp': f'CEA{side_lbl} — ასიმპტომური',
             'abf_clti': 'ABF — კრიტიკული იშემია',
             'abf_claud': 'ABF — ლერიშის სინდრომი',
+            'evla': f'EVLA{side_lbl} — ლაზერული აბლაცია',
+            'phlebectomy': f'ფლებექტომია{side_lbl}',
         }
         return short.get(self.op_subtype, self.get_op_subtype_display())
 
@@ -918,6 +925,11 @@ class PreopPatient(models.Model):
         if self.pathway == self.Pathway.ABF:
             stage = 'კრიტიკული იშემია (CLTI)' if self.op_subtype == self.OpSubtype.ABF_CLTI else 'ხანგამოშვებითი კოჭლობა'
             return f'აორტო-ილიაკური ოკლუზიური დაავადება (ლერიშის სინდრომი), {stage}'
+        if self.pathway == self.Pathway.VENOUS:
+            side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა ', 'B': 'ორმხრივი '}.get(self.side, '')
+            ceap = (self.questionnaire or {}).get('ven_ceap') or ''
+            ceap_str = f' (CEAP {ceap})' if ceap else ''
+            return f'{side_word}ქვემო კიდურების ვენების ვარიკოზული დაავადება{ceap_str}'
         mm = s.get('aaa_mm')
         base = 'მუცლის აორტის ინფრარენალური ანევრიზმა'
         return f'{base} ({mm} მმ)' if mm else base

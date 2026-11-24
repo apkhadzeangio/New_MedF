@@ -3468,4 +3468,169 @@ class PreopCeaAndAbfTests(PrivateMediaTest):
         self.assertEqual((p_claud.pathway, evaluate(p_claud)['target_days']), ('abf', 14))
 
 
+class PreopVenousTests(PrivateMediaTest):
+    """EVLA & Phlebectomy (ESVS 2022 / ESC 2022) lean day-surgery pathway & Patient Self-Fill Link."""
+
+    def test_evla_lean_day_surgery_and_signed_patient_self_fill_link(self):
+        from django.utils import timezone
+        from .models import PreopPatient
+        from .preop import STATUS_READY, evaluate, generate_anamnesis, make_self_fill_token
+
+        self.client.post(reverse('preop-new'), {
+            'patient_name': 'ჯაფარიძე სალომე',
+            'slot': timezone.localdate().isoformat(),
+            'op_subtype': 'evla',
+            'side': 'L',
+            'surgeon': str(self.user.pk),
+        })
+        p = PreopPatient.objects.get(patient_name='ჯაფარიძე სალომე')
+        self.assertEqual((p.pathway, p.op_subtype, p.side, p.sex), ('venous', 'evla', 'L', 'F'))
+
+        # Unauthenticated patient fills own questionnaire via signed token; bad token gets 404
+        token = make_self_fill_token(p)
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('preop-self-fill', args=['tampered-token'])).status_code, 404)
+
+        sf_get = self.client.get(reverse('preop-self-fill', args=[token]))
+        self.assertEqual(sf_get.status_code, 200)
+        self.assertContains(sf_get, 'ჯაფარიძე სალომე')
+
+        sf_post = self.client.post(reverse('preop-self-fill', args=[token]), {
+            'age': '34',
+            'weight_kg': '62',
+            'height_cm': '168',
+            'side': 'L',
+            'ven_ceap': 'C2',
+            'mets_ok': '1',
+        }, follow=True)
+        self.assertContains(sf_post, 'კითხვარი შენახულია')
+
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertTrue(ev['q']['filled'])
+        self.assertEqual(ev['q']['filled_by'], 'პაციენტი (ბმულით)')
+        # Healthy young EVLA does NOT demand routine ECG, Spirometry, Cardiology, or Anesthesiology!
+        self.assertFalse(ev['needs_ecg_venous'])
+        self.assertFalse(ev['needs_spirometry'])
+        self.assertFalse(ev['needs_cardio'])
+        self.assertFalse(ev['needs_anesth'])
+        self.assertEqual(ev['total_count'], 3)  # Q + Stage 1 + Class II Compression Stocking
+
+        # Nurse enters lean Stage 1 + Compression Stocking ready -> STATUS_READY!
+        self.client.force_login(self.user)
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'hb': '132', 'wbc': '6.4', 'plt': '245', 'inr': '1.01', 'glucose': '4.9',
+            'ven_duplex_status': 'deep_patent_reflux',
+            'ven_target_vein': 'gsv',
+            'ven_gsv_mm': '7.5',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage2',
+            'compression_ready': '1',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertEqual(ev['status'], STATUS_READY)
+        self.assertEqual(ev['done_count'], 3)
+        anam = generate_anamnesis(p, ev)
+        self.assertIn('ენდოვენური ლაზერული აბლაცია', anam)
+        self.assertIn('დიდი საჩინო ვენა (GSV)', anam)
+        self.assertIn('7.5 მმ', anam)
+
+        # ESVS 2022 Class IIa: Warfarin with INR 2.4 on EVLA raises Amber coordination note, NOT coagulation Red Flag
+        p.questionnaire['med_warfarin'] = True
+        p.studies['inr'] = 2.4
+        p.save()
+        ev_w = evaluate(p)
+        self.assertFalse(any('INR > 1.35' in m for m in ev_w['red_flags']))
+        self.assertTrue(any('ESVS 2022' in m for m in ev_w['amber_flags']))
+
+    def test_phlebectomy_contraindications_dvt_lidocaine_pregnancy_abi_and_vte_prophylaxis(self):
+        from .models import PreopPatient
+        from .preop import STATUS_ALERT, STATUS_READY, evaluate
+
+        # Case transfer auto-detects Phlebectomy
+        case = self.make_case(
+            patient_name='კიკნაძე ნანა', age=62, sex='F', side='R',
+            diagnosis='მარჯვენა ქვემო კიდურის ვენების ვარიკოზული დაავადება',
+            decision='კომბინირებული ფლებექტომია',
+        )
+        self.client.get(reverse('preop-new'), {'case': case.pk})
+        p = PreopPatient.objects.get(case=case)
+        self.assertEqual((p.pathway, p.op_subtype, p.side), ('venous', 'phlebectomy', 'R'))
+
+        # Contraindications: lidocaine allergy + pregnancy + skin infection + DVT + DOAC on spinal phlebectomy
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'questionnaire',
+            'side': 'R',
+            'ven_ceap': 'C4',
+            'ven_dvt_history': '1',
+            'ven_lidocaine_allergy': '1',
+            'ven_skin_infection': '1',
+            'ven_pregnant': '1',
+            'claudication': '1',
+            'med_doac': '1',
+            'mets_ok': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'weight_kg': '94', 'height_cm': '165',
+            'hb': '128', 'plt': '220', 'inr': '1.05', 'glucose': '5.3', 'creat': '74',
+            'ven_duplex_status': 'acute_dvt',
+            'ecg': 'normal',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage2',
+            'abi_r': '0.72', 'abi_l': '0.95',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertEqual(ev['status'], STATUS_ALERT)
+        self.assertTrue(ev['needs_vte_prophylaxis'])
+        self.assertTrue(ev['needs_abi_check'])
+        self.assertTrue(ev['needs_anesth'])
+        red_blob = ' | '.join(ev['red_flags'])
+        self.assertIn('DVT', red_blob)
+        self.assertIn('ლიდოკაინზე', red_blob)
+        self.assertIn('ორსულობა', red_blob)
+        self.assertIn('წითელი ქარი', red_blob)
+        self.assertIn('ABI 0.72 < 0.80', red_blob)
+        self.assertIn('სპინალური ანესთეზიისა და ფლებექტომიის', red_blob)
+
+        # NIV prescription prefill carries lidocaine allergy -> allergy=True and CEAP C4 diagnosis
+        rx = self.client.get(reverse('niv-cover'), {'preop': p.pk})
+        self.assertTrue(rx.context['niv'].allergy)
+        self.assertContains(rx, 'CEAP C4')
+
+        # Resolve contraindications: deep veins patent, normal ABI 1.05, VTE prophylaxis + med hold + anesth + compression -> READY
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'questionnaire',
+            'side': 'R',
+            'ven_ceap': 'C4',
+            'ven_dvt_history': '1',
+            'claudication': '1',
+            'med_doac': '1',
+            'mets_ok': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'weight_kg': '94', 'height_cm': '165',
+            'hb': '128', 'plt': '220', 'inr': '1.05', 'glucose': '5.3', 'creat': '74',
+            'ven_duplex_status': 'deep_patent_reflux',
+            'ecg': 'normal',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage2',
+            'abi_r': '1.05', 'abi_l': '1.02',
+            'vte_prophylaxis_planned': '1',
+            'compression_ready': '1',
+            'med_hold_agreed': '1',
+            'anesth_done': '1',
+        })
+        p.refresh_from_db()
+        self.assertEqual(evaluate(p)['status'], STATUS_READY)
+
+
+
 
