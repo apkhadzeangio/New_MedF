@@ -341,13 +341,15 @@ body.cs-present {
 /* ---- staging: artery map, GLASS / WIfI / PLAN ------------------------ */
 .am {
     --am-sk1: #F2E2DA; --am-sk2: #FBF4F0; --am-skin-line: #E6CFC4; --am-bone: #EEE8E2; --am-bone-line: #DED3C8;
-    --am-lig: #C9B4A9; --am-ink: #33405A; --am-muted: #8A93A6;
+    --am-lig: #C9B4A9; --am-ink: #33405A; --am-muted: #8A93A6; --am-muscle: #EDCBC1; --am-muscle-line: #DFB3A6;
     --am-n: #C0485E; --am-mild: #E3AE2E; --am-st: #E0701C; --am-oc: #3B4252; --am-ca: #A7ADB9; --am-rx: #2F5DA8; --am-by: #1F8A5B;
     display: block; width: 100%; height: auto; max-height: 640px; font-family: inherit;
 }
 .am-sk1 { stop-color: var(--am-sk1); } .am-sk2 { stop-color: var(--am-sk2); }
 .am-skin { stroke: var(--am-skin-line); stroke-width: 1.5; }
 .am-bone { fill: var(--am-bone); stroke: var(--am-bone-line); stroke-width: 1; }
+.am-muscle { fill: var(--am-muscle); stroke: var(--am-muscle-line); stroke-width: .8; opacity: .62; }
+.am-toes { fill: none; stroke: var(--am-skin-line); stroke-width: 1.2; stroke-linecap: round; }
 .am-pelvis { fill: none; stroke: var(--am-bone-line); stroke-width: 4; stroke-linecap: round; }
 .am-lig { fill: none; stroke: var(--am-lig); stroke-width: 1.2; stroke-dasharray: 3 3; }
 .am-ctx { fill: none; stroke: var(--am-n); stroke-width: 5; stroke-linecap: round; opacity: .3; }
@@ -454,6 +456,7 @@ body.cs-present {
 /* staging in the dark presentation */
 .cs-present .am {
     --am-sk1: #1B2332; --am-sk2: #232D40; --am-skin-line: #2D394F; --am-bone: #263049; --am-bone-line: #34415E; --am-lig: #4A5672;
+    --am-muscle: #2A3550; --am-muscle-line: #3A4766;
     --am-ink: #DDE3EE; --am-muted: #7F8BA2; --am-n: #E0607A; --am-oc: #9AA4B8; --am-ca: #E6EAF1; --am-rx: #7FA8F0; --am-by: #5FD19C;
     max-height: 72vh;
 }
