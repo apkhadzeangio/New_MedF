@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% load static_version %}
+
+{% block title %}კარდიოლოგის აუდიტი — წინასაოპერაციო{% endblock %}
+{% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/preop.css' %}">{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <a href="{% url 'preop' %}" class="small">← წინასაოპერაციო კალენდარი</a>
+
+    <div class="page-head">
+        <h1>კარდიოლოგიური კონსულტაციებისა და ვადების აუდიტი <span class="count">ინფრარენალური AAA</span></h1>
+    </div>
+
+    <section class="x-card">
+        <p class="lead-muted" style="font-size:14px">
+            <strong>ESC 2022 / ESVS 2024 სტანდარტი:</strong> კარდიოლოგიურად სტაბილურ, ასიმპტომურ პაციენტთან დამაკმაყოფილებელი ფუნქციური ამტანობით
+            (<code>&ge; 4 METs</code> — ადის 2 სართულზე) და შენახული განდევნის ფრაქციით (<code>LVEF &ge; 50%</code>) რუტინული სტრეს-ტესტი და კორონაროგრაფია
+            <strong>არ არის ნაჩვენები (Class III)</strong>, რადგან აყოვნებს ოპერაციას და ზრდის ანევრიზმის რუპტურის რისკს.
+        </p>
+
+        <div class="au-kpis">
+            <div class="au-kpi">
+                <small>სულ AAA პაციენტი</small>
+                <b>{{ total_aaa }}</b>
+            </div>
+            <div class="au-kpi">
+                <small>კარდიოლოგთან ნანახი</small>
+                <b>{{ cardio_seen_total }}</b>
+            </div>
+            <div class="au-kpi {% if non_compliant_total %}bad{% endif %}">
+                <small>ESC 2022-ის გარეშე CAG / სტრეს-ტესტი</small>
+                <b>{{ non_compliant_total }}</b>
+            </div>
+            <div class="au-kpi {% if over_7_total %}bad{% endif %}">
+                <small>&gt; {{ target_days }} დღე გახანგრძლივებული</small>
+                <b>{{ over_7_total }}</b>
+            </div>
+        </div>
+
+        <div class="table-responsive pt-2">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr class="text-muted small">
+                        <th>კარდიოლოგი</th>
+                        <th>შეფასებული პაციენტი</th>
+                        <th>პირდაპირ დაშვებული</th>
+                        <th>სტრეს-ტესტი / CAG / სტენტი</th>
+                        <th>მათ შორის ESC 2022-ის გარეშე</th>
+                        <th>საშ. მომზადების ვადა</th>
+                        <th>&gt; {{ target_days }} დღე</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in table_rows %}
+                    <tr>
+                        <td class="fw-bold">{{ row.name }}</td>
+                        <td>{{ row.total }}</td>
+                        <td style="color:var(--ok);font-weight:600">{{ row.cleared }}</td>
+                        <td>{{ row.extra }}{% if row.total %} <span class="text-muted small">({{ row.extra_pct }}%)</span>{% endif %}</td>
+                        <td {% if row.non_compliant %}style="color:#D92D20;font-weight:700"{% endif %}>{{ row.non_compliant }}</td>
+                        <td>{% if row.avg_days is not None %}{{ row.avg_days }} დღე{% else %}—{% endif %}</td>
+                        <td {% if row.over_7 %}style="color:#D92D20;font-weight:700"{% endif %}>{{ row.over_7 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="x-card">
+        <h2>პაციენტების დეტალური ჟურნალი</h2>
+        {% if patient_rows %}
+        <div class="d-flex flex-column gap-2">
+            {% for p in patient_rows %}
+            <a href="{% url 'preop-patient' p.pk %}?tab=s2" class="tw-row st-{{ p.ev.status }}" style="border:1px solid var(--line-soft);border-left-width:4px;border-radius:10px">
+                <div class="tw-row-main">
+                    <div class="tw-row-top">
+                        <span class="tw-pname">{{ p.patient_name }}</span>
+                        {% if p.ev.aaa_mm %}<span class="tw-mm {% if p.ev.aaa_mm >= 70 %}giant{% endif %}">{{ p.ev.aaa_mm|floatformat:"0" }} მმ</span>{% endif %}
+                        <span class="small text-muted">· {{ p.cardiologist|default:"ლიკა ინჯია" }} → <strong>{{ p.get_cardio_decision_display }}</strong></span>
+                    </div>
+                    {% if p.cardio_note %}<div class="tw-row-sub">{{ p.cardio_note }}</div>{% endif %}
+                </div>
+                <div class="tw-row-meta">
+                    <span class="tw-clock {% if p.ev.over_7_days %}late{% endif %}">დღე {{ p.ev.days_elapsed }}/{{ target_days }}</span>
+                    {% if p.cardio_decision != 'cleared' %}
+                        {% if p.ev.cardio_non_compliant %}
+                        <span class="po-badge st-needs_doctor" style="font-size:12px;padding:2px 8px">ESC 2022 Class III</span>
+                        {% else %}
+                        <span class="po-badge st-in_progress" style="font-size:12px;padding:2px 8px">კლინიკურად დასაბუთებული</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="po-badge st-ready" style="font-size:12px;padding:2px 8px">დაშვებულია</span>
+                    {% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted m-0">კარდიოლოგის მიერ შეფასებული პაციენტები ჯერ არ არის ჩაწერილი.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

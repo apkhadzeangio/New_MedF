@@ -1,0 +1,22 @@
+<a href="{% url 'preop-patient' p.pk %}" class="tw-row st-{{ p.ev.status }}"
+   draggable="true" data-move-url="{% url 'preop-move' p.pk %}"
+   title="{{ p.patient_name }} — {{ p.ev.status_label }}">
+    <div class="tw-row-main">
+        <div class="tw-row-top">
+            <span class="dot dot-{{ p.ev.status }}" style="width:7px;height:7px;border-radius:50%;flex:none"></span>
+            <span class="tw-pname {% if p.approved_at %}approved{% endif %}">{{ p.patient_name }}</span>
+            {% if p.ev.aaa_mm %}
+            <span class="tw-mm {% if p.ev.aaa_mm >= 70 %}giant{% endif %}">{{ p.ev.aaa_mm|floatformat:"0" }} მმ</span>
+            {% endif %}
+        </div>
+        <div class="tw-row-sub">
+            {{ p.planned_operation_label }}{% if p.surgeon_name %} · ექ. {{ p.surgeon_name }}{% endif %}
+        </div>
+    </div>
+    <div class="tw-row-meta">
+        {% if p.ev.days_elapsed > 0 %}
+        <span class="tw-clock {% if p.ev.over_7_days %}late{% endif %}">დღე {{ p.ev.days_elapsed }}/7</span>
+        {% endif %}
+        <span class="tw-prog">{{ p.ev.done_count }}/{{ p.ev.total_count }}</span>
+    </div>
+</a>

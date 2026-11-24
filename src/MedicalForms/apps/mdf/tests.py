@@ -2927,4 +2927,219 @@ class StagingSplitWorkflowAndProtocolTests(PrivateMediaTest):
 
 
 
+class PreopTests(PrivateMediaTest):
+    """Tweek-style preoperative calendar, Infrarenal AAA nurse POA, and Cardiology Audit."""
+
+    def test_tweek_calendar_case_transfer_and_clock_persistence(self):
+        import datetime
+        from django.utils import timezone
+        from .models import PreopPatient
+        from .preop import evaluate
+
+        # Menu shows "წინასაოპერაციო"
+        cal = self.client.get(reverse('preop'))
+        self.assertEqual(cal.status_code, 200)
+        self.assertContains(cal, 'წინასაოპერაციო')
+        self.assertContains(cal, 'ინფრარენალური AAA')
+
+        # 1-click transfer from a Conference Case -> Someday "conf" list (no duplicate on second click)
+        case = self.make_case(patient_name='ბერიძე გიორგი', age=69, sex='M', decision='EVAR')
+        r1 = self.client.get(reverse('preop-new'), {'case': case.pk})
+        p = PreopPatient.objects.get(case=case)
+        self.assertRedirects(r1, reverse('preop-patient', args=[p.pk]))
+        self.assertEqual((p.op_subtype, p.someday_list), ('evar', 'conf'))
+        r2 = self.client.get(reverse('preop-new'), {'case': case.pk})
+        self.assertEqual(PreopPatient.objects.filter(case=case).count(), 1)
+        self.assertRedirects(r2, reverse('preop-patient', args=[p.pk]))
+
+        # Inline quick-add onto a visit date 9 days ago -> overdue (>7 days) Red Flag
+        nine_days_ago = (timezone.localdate() - datetime.timedelta(days=8)).isoformat()
+        self.client.post(reverse('preop-new'), {
+            'patient_name': 'მაისურაძე ოთარი',
+            'slot': nine_days_ago,
+            'op_subtype': 'open',
+            'surgeon': str(self.user.pk),
+        })
+        late = PreopPatient.objects.get(patient_name='მაისურაძე ოთარი')
+        self.assertEqual(evaluate(late)['days_elapsed'], 9)
+
+        # Drag-and-drop move to tomorrow does NOT reset started_on or the 7-day rupture clock
+        tomorrow = (timezone.localdate() + datetime.timedelta(days=1)).isoformat()
+        mv = self.client.post(
+            reverse('preop-move', args=[late.pk]),
+            {'slot': tomorrow},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+        late.refresh_from_db()
+        self.assertEqual(str(late.visit_date), tomorrow)
+        self.assertEqual(mv['days_elapsed'], 9)
+
+    def test_aaa_thresholds_two_stage_flow_anamnesis_and_cardiology_audit(self):
+        from django.utils import timezone
+        from .models import PreopPatient
+        from .preop import STATUS_ALERT, STATUS_NO_Q, STATUS_PROGRESS, STATUS_READY, evaluate
+        from .views import BACKUP_MODELS
+
+        self.assertIn('mdf.preoppatient', BACKUP_MODELS)
+        self.assertIn('mdf.preopfile', BACKUP_MODELS)
+
+        today = timezone.localdate().isoformat()
+        self.client.post(reverse('preop-new'), {
+            'patient_name': 'კაპანაძე თამაზი',
+            'age': '70',
+            'sex': 'M',
+            'slot': today,
+            'op_subtype': 'open',
+            'surgeon': str(self.user.pk),
+        })
+        p = PreopPatient.objects.get(patient_name='კაპანაძე თამაზი')
+        self.assertEqual(evaluate(p)['status'], STATUS_NO_Q)
+
+        # Step 1: Nurse fills questionnaires (asymptomatic AAA 60mm, >=4 METs, ulcer history, clopidogrel)
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'questionnaire',
+            'mets_ok': '1',
+            'htn': '1',
+            'ulcer': '1',
+            'smoker': '1',
+            'med_aspirin': '1',
+            'med_clopidogrel': '1',
+            'other_meds': 'პერინდოპრილი 5 მგ',
+            'aaa_mm': '60',
+            'cta_months': '1',
+            'cta_disc': '1',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertEqual(ev['status'], STATUS_PROGRESS)
+        self.assertTrue(ev['needs_gastro'])
+        self.assertTrue(ev['needs_spirometry'])
+        self.assertTrue(ev['needs_med_hold'])
+
+        # Step 2: Stage 1 labs with pyuria (urine WBC 18) -> triggers UTI prosthetic-graft Red Flag
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'aaa_mm': '60', 'cta_months': '1', 'cta_disc': '1',
+            'bp_sys': '135', 'bp_dia': '82', 'hr': '70', 'spo2': '97',
+            'hb': '13.6',           # g/dL auto-normalized to 136 g/L
+            'wbc': '7.5', 'plt': '210', 'inr': '1.05',
+            'creat': '88.4',        # 1.0 mg/dL -> normal eGFR >= 60
+            'k': '4.2', 'na': '140', 'glucose': '5.5', 'albumin': '39',
+            'urine_wbc': '18',
+            'carotid_r': '30', 'carotid_l': '25',
+            'cxr': 'normal', 'ecg': 'normal', 'lvef': '56',
+            'blood_group': 'A (II) Rh (+)',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertEqual(ev['hb_gl'], 136.0)
+        self.assertGreaterEqual(ev['egfr'], 60)
+        self.assertTrue(ev['uti_suspected'])
+        self.assertEqual(ev['status'], STATUS_ALERT)
+
+        # Clean urinalysis, but cardiologist orders CAG in asymptomatic >=4 METs LVEF 56% patient -> ESC 2022 Class III audit flag!
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'aaa_mm': '60', 'cta_months': '1', 'cta_disc': '1',
+            'bp_sys': '135', 'bp_dia': '82', 'hr': '70', 'spo2': '97',
+            'hb': '136', 'wbc': '7.5', 'plt': '210', 'inr': '1.05',
+            'creat': '88.4', 'k': '4.2', 'na': '140', 'glucose': '5.5', 'albumin': '39',
+            'urine_wbc': '2',
+            'carotid_r': '30', 'carotid_l': '25',
+            'cxr': 'normal', 'ecg': 'normal', 'lvef': '56',
+            'blood_group': 'A (II) Rh (+)',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage2',
+            'spiro_fev1': '78',
+            'gastro_result': 'remission',
+            'blood_reserved': '1',
+            'med_hold_agreed': '1',
+            'anesth_done': '1',
+            'cardiologist': 'გარე კარდიოლოგი',
+            'cardio_decision': 'cag',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertTrue(ev['cardio_non_compliant'])
+        self.assertEqual(ev['status'], STATUS_ALERT)
+
+        audit_page = self.client.get(reverse('preop-audit'))
+        self.assertContains(audit_page, 'ESC 2022 Class III')
+        self.assertContains(audit_page, 'ლიკა ინჯია')
+
+        # Lika Injia clears the patient -> all tasks complete -> STATUS_READY!
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage2',
+            'spiro_fev1': '78',
+            'gastro_result': 'remission',
+            'blood_reserved': '1',
+            'med_hold_agreed': '1',
+            'anesth_done': '1',
+            'cardiologist': 'ლიკა ინჯია',
+            'cardio_decision': 'cleared',
+        })
+        p.refresh_from_db()
+        ev = evaluate(p)
+        self.assertFalse(ev['cardio_non_compliant'])
+        self.assertEqual(ev['status'], STATUS_READY)
+
+        # Auto-anamnesis & Surgeon sign-off moves patient to Ready Someday list
+        page = self.client.get(reverse('preop-patient', args=[p.pk]), {'tab': 'doc'})
+        self.assertContains(page, '60 მმ')
+        self.assertContains(page, 'კლოპიდოგრელი')
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'signoff',
+            'action': 'approve',
+            'move_ready': '1',
+            'anamnesis': 'დადასტურებული მოკლე ანამნეზი.',
+        })
+        p.refresh_from_db()
+        self.assertIsNotNone(p.approved_at)
+        self.assertEqual(p.someday_list, 'ready')
+
+        # Handoff prefills to Prescription and Blood Order
+        rx = self.client.get(reverse('niv-cover'), {'preop': p.pk})
+        self.assertContains(rx, 'კაპანაძე თამაზი')
+        blood = self.client.get(reverse('blood-order'), {'preop': p.pk})
+        self.assertContains(blood, 'A (II) Rh (+)')
+
+    def test_private_photo_and_pdf_uploads_and_cleanup(self):
+        import os
+        from PIL import Image
+        from .models import PreopFile, PreopPatient
+
+        p = PreopPatient.objects.create(patient_name='გელაშვილი ზურაბი', created_by=self.user)
+        buf = io.BytesIO()
+        Image.new('RGB', (400, 300), (200, 210, 220)).save(buf, 'PNG')
+        buf.seek(0)
+        buf.name = 'ecg.png'
+
+        pdf_buf = io.BytesIO(b'%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n')
+        pdf_buf.name = 'labs.pdf'
+
+        self.client.post(reverse('preop-files', args=[p.pk]), {
+            'category': 'labs',
+            'caption': 'სისხლის საერთო',
+            'file': [buf, pdf_buf],
+        })
+        self.assertEqual(PreopFile.objects.filter(patient=p).count(), 2)
+        img_rec = PreopFile.objects.get(patient=p, is_pdf=False)
+        pdf_rec = PreopFile.objects.get(patient=p, is_pdf=True)
+        img_path = img_rec.file.path
+        pdf_path = pdf_rec.file.path
+
+        self.assertEqual(self.client.get(reverse('preop-file', args=[img_rec.pk]))['Content-Type'], 'image/jpeg')
+        self.assertEqual(self.client.get(reverse('preop-file', args=[pdf_rec.pk]))['Content-Type'], 'application/pdf')
+
+        # Unauthenticated users cannot read private preoperative files
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('preop-file', args=[pdf_rec.pk])).status_code, 302)
+
+        # Deleting patient deletes underlying private files on disk
+        self.client.force_login(self.user)
+        self.client.post(reverse('preop-move', args=[p.pk]), {'action': 'delete'})
+        self.assertFalse(PreopPatient.objects.filter(pk=p.pk).exists())
+        self.assertFalse(os.path.exists(img_path))
+        self.assertFalse(os.path.exists(pdf_path))
 

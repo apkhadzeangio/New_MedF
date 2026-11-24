@@ -1,0 +1,30 @@
+<section class="tw-day {% if day.is_today %}is-today{% endif %}" data-slot="{{ day.iso }}">
+    <div class="tw-day-head">
+        <span class="tw-day-name">{{ day.weekday }}{% if day.is_today %} · დღეს{% endif %}</span>
+        <span class="tw-day-date">{{ day.short_date }}</span>
+    </div>
+    <div class="tw-lines">
+        {% for p in day.patients %}
+            {% include "mdf/preop/_patient_row.html" with p=p %}
+        {% endfor %}
+        <form method="post" action="{% url 'preop-new' %}" class="tw-quick">
+            {% csrf_token %}
+            <input type="hidden" name="slot" value="{{ day.iso }}">
+            <input type="text" name="patient_name" class="tw-quick-inp" placeholder="+ პაციენტის სახელი და გვარი..." autocomplete="off">
+            <div class="tw-quick-extra">
+                <select name="op_subtype" aria-label="ოპერაცია">
+                    {% for val, lbl in op_subtypes %}<option value="{{ val }}">AAA — {{ lbl }}</option>{% endfor %}
+                </select>
+                <select name="surgeon" aria-label="ქირურგი">
+                    <option value="">ქირურგი...</option>
+                    {% for uid, uname in doctors %}<option value="{{ uid }}">{{ uname }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="tw-quick-btn">ჩაწერა</button>
+                <button type="submit" name="open_card" value="1" class="tw-quick-btn" style="background:var(--ink)">+ კითხვარი</button>
+            </div>
+        </form>
+        {% for _ in day.empty_lines %}
+        <div class="tw-empty-line"></div>
+        {% endfor %}
+    </div>
+</section>

@@ -762,3 +762,151 @@ def _delete_private_files(sender, instance, **kwargs):
         field = getattr(instance, name, None)
         if field and field.name:
             field.storage.delete(field.name)
+
+
+# --------------------------------------------------------------------------
+# Preoperative assessment ("წინასაოპერაციო"): Tweek-style calendar + nurse POA
+# --------------------------------------------------------------------------
+
+class PreopPatient(models.Model):
+    """A patient scheduled for preoperative workup (Phase 1: Infrarenal AAA)."""
+
+    class Pathway(models.TextChoices):
+        AAA_INFRA = 'aaa_infra', 'ინფრარენალური მუცლის აორტის ანევრიზმა'
+
+    class OpSubtype(models.TextChoices):
+        OPEN = 'open', 'ღია რეზექცია'
+        EVAR = 'evar', 'ენდოვასკულური (EVAR)'
+        TBD = 'tbd', 'ტაქტიკა ზუსტდება'
+
+    class SomedayList(models.TextChoices):
+        NONE = '', '—'
+        CONF = 'conf', 'კონფერენციიდან ჩასაწერი'
+        HOLD = 'hold', 'გადადებული / მკურნალობაზე'
+        READY = 'ready', 'მზადაა — ელოდება ოპერაციის თარიღს'
+
+    class CardioDecision(models.TextChoices):
+        NONE = '', 'კონსულტაცია ჯერ არ ჩატარებულა'
+        CLEARED = 'cleared', 'ოპერაცია ნებადართულია (დამატებითი კვლევის გარეშე)'
+        STRESS = 'stress', 'მოითხოვა სტრეს-ტესტი / ჰოლტერი'
+        CAG = 'cag', 'მოითხოვა კორონაროგრაფია (CAG / CT-CAG)'
+        PCI = 'pci', 'მოითხოვა სტენტირება (PCI) / ოპერაციის გადადება'
+
+    case = models.ForeignKey(
+        Case, verbose_name='ქეისი', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='preops'
+    )
+    patient_name = models.CharField('პაციენტი', max_length=150)
+    age = models.PositiveSmallIntegerField('ასაკი', null=True, blank=True)
+    sex = models.CharField('სქესი', max_length=1, choices=Case.Sex.choices, blank=True, default='M')
+    phone = models.CharField('ტელეფონი', max_length=50, blank=True)
+
+    pathway = models.CharField(
+        'ნოზოლოგია', max_length=20, choices=Pathway.choices,
+        default=Pathway.AAA_INFRA, db_index=True
+    )
+    op_subtype = models.CharField(
+        'ოპერაციის ტიპი', max_length=20, choices=OpSubtype.choices, default=OpSubtype.OPEN
+    )
+    surgeon = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name='ქირურგი', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+'
+    )
+
+    visit_date = models.DateField('კვლევებზე მოსვლის თარიღი', null=True, blank=True, db_index=True)
+    someday_list = models.CharField(
+        'უთარიღო სია', max_length=20, choices=SomedayList.choices,
+        blank=True, default='', db_index=True
+    )
+    started_on = models.DateField('მომზადების ათვლის თარიღი', null=True, blank=True)
+
+    questionnaire = models.JSONField('კითხვარები', default=dict, blank=True)
+    studies = models.JSONField('ანალიზები და კვლევები', default=dict, blank=True)
+
+    cardiologist = models.CharField('კარდიოლოგი', max_length=100, blank=True, default='ლიკა ინჯია')
+    cardio_decision = models.CharField(
+        'კარდიოლოგის გადაწყვეტილება', max_length=20,
+        choices=CardioDecision.choices, blank=True, default=''
+    )
+    cardio_date = models.DateField('კარდიოლოგის თარიღი', null=True, blank=True)
+    cardio_note = models.CharField('კარდიოლოგის შენიშვნა', max_length=255, blank=True)
+
+    anamnesis = models.TextField('ანამნეზი', blank=True)
+    alerts_ack_at = models.DateTimeField('გაფრთხილება ნანახია', null=True, blank=True)
+    alerts_ack_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+'
+    )
+    approved_at = models.DateTimeField('ექიმის დასტური', null=True, blank=True, db_index=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+'
+    )
+    archived = models.BooleanField('არქივშია', default=False, db_index=True)
+
+    created_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+'
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+'
+    )
+
+    class Meta:
+        db_table = 'preop_patients'
+        ordering = ('visit_date', 'id')
+        verbose_name = 'წინასაოპერაციო პაციენტი'
+        verbose_name_plural = 'წინასაოპერაციო პაციენტები'
+
+    def __str__(self):
+        return self.patient_name
+
+    @property
+    def planned_operation_label(self):
+        short = {'open': 'AAA — ღია რეზექცია', 'evar': 'AAA — EVAR', 'tbd': 'AAA — ტაქტიკა ზუსტდება'}
+        return short.get(self.op_subtype, self.get_op_subtype_display())
+
+    @property
+    def diagnosis_text(self):
+        mm = (self.studies or {}).get('aaa_mm')
+        base = 'მუცლის აორტის ინფრარენალური ანევრიზმა'
+        return f'{base} ({mm} მმ)' if mm else base
+
+
+class PreopFile(models.Model):
+    """An uploaded lab sheet, imaging report, or consultant note stored privately."""
+
+    class Category(models.TextChoices):
+        LABS = 'labs', 'ლაბორატორია / ანალიზები'
+        CTA = 'cta', 'კტ-ანგიოგრაფია'
+        CARDIO = 'cardio', 'ეკგ / ექო / კარდიოლოგი'
+        DUPLEX = 'duplex', 'საძილეების დუპლექსი'
+        PULM = 'pulm', 'რენტგენი / სპირომეტრია'
+        CONSULT = 'consult', 'ანესთეზიოლოგი / სხვა კონსულტაცია'
+
+    patient = models.ForeignKey(PreopPatient, on_delete=models.CASCADE, related_name='files')
+    category = models.CharField('კატეგორია', max_length=20, choices=Category.choices, default=Category.LABS)
+    file = models.FileField(storage=private_storage, upload_to='preop/%Y/%m/')
+    thumb = models.FileField(storage=private_storage, upload_to='preop/%Y/%m/', blank=True)
+    is_pdf = models.BooleanField(default=False)
+    original_name = models.CharField('ფაილი', max_length=200, blank=True)
+    caption = models.CharField('წარწერა', max_length=200, blank=True)
+    uploaded_on = models.DateField('თარიღი', default=timezone.localdate)
+    created_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+'
+    )
+
+    class Meta:
+        db_table = 'preop_files'
+        ordering = ('-uploaded_on', '-id')
+        verbose_name = 'წინასაოპერაციო ფაილი'
+        verbose_name_plural = 'წინასაოპერაციო ფაილები'
+
+
+post_delete.connect(_delete_private_files, sender=PreopFile)
+

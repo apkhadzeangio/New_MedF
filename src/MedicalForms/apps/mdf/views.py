@@ -147,8 +147,21 @@ def templates_for_page():
 
 
 def board_prefill(request):
-    """A new, unsaved prescription with the patient's data from the board (?board=<id>)."""
-    from .models import BoardPatient
+    """A new, unsaved prescription with the patient's data from the board (?board=<id>) or preop (?preop=<id>)."""
+    from .models import BoardPatient, PreopPatient
+    if request.GET.get('preop', '').isdigit():
+        p = PreopPatient.objects.filter(pk=int(request.GET['preop'])).first()
+        if p:
+            q = p.questionnaire or {}
+            has_allergy = bool(q.get('allergy_iodine') or q.get('allergy_other'))
+            return NivForm(
+                title=p.patient_name,
+                patient_name=p.patient_name,
+                diagnosis=p.diagnosis_text,
+                diabetes=bool(q.get('dm')),
+                allergy=has_allergy,
+                neuro=bool(q.get('neuro')),
+            )
     try:
         p = BoardPatient.objects.get(pk=int(request.GET.get('board', '')))
     except (TypeError, ValueError, BoardPatient.DoesNotExist):
@@ -665,6 +678,7 @@ BACKUP_MODELS = [
     'mdf.rosterperson', 'mdf.rosterday', 'mdf.rosterlog',
     'mdf.quote',
     'mdf.case', 'mdf.casephoto', 'mdf.dopplerstudy',   # their files are in PRIVATE_MEDIA_ROOT (not in this file)
+    'mdf.preoppatient', 'mdf.preopfile',               # preoperative records (files in PRIVATE_MEDIA_ROOT)
     'mdf.dutynote',             # the old duty notes (read-only history)
 ]
 # Not backed up on purpose: duty reports (must disappear after a month),

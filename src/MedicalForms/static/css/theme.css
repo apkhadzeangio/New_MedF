@@ -131,9 +131,9 @@ body.login-page { background: var(--page); }
 .app-nav .brand { background: #fff; border-radius: 10px; padding: 4px 8px; margin-right: 10px; display: inline-flex; }
 .app-nav .brand img { height: 30px; display: block; }
 .app-nav .links { display: flex; flex-wrap: wrap; gap: 4px; }
-/* eight menu links on one line (the menu is at most 1360px wide); full names on hover */
+/* menu links on one line (the menu is at most 1360px wide); full names on hover */
 .app-nav .links a {
-    color: #C9CFDC; text-decoration: none; padding: 8px 9px; border-radius: 999px; font-size: 14px; white-space: nowrap;
+    color: #C9CFDC; text-decoration: none; padding: 8px 8px; border-radius: 999px; font-size: 13.5px; white-space: nowrap;
 }
 .app-nav .nav-long { display: none; }
 .app-nav .links a:hover { color: #fff; background: rgba(255, 255, 255, .08); }

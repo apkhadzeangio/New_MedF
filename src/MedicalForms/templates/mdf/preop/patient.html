@@ -1,0 +1,796 @@
+{% extends 'base.html' %}
+{% load static_version mdf_tags %}
+
+{% block title %}{{ p.patient_name }} — წინასაოპერაციო{% endblock %}
+{% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/preop.css' %}">{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <a href="{% url 'preop' %}{% if p.visit_date %}?week={{ p.visit_date|date:'Y-m-d' }}{% endif %}" class="small">← წინასაოპერაციო კალენდარი</a>
+        {% if p.case %}
+        <a href="{% url 'case' p.case.pk %}" class="small">კონფერენციის ქეისი →</a>
+        {% endif %}
+    </div>
+
+    <!-- Patient Header & Handoff Actions -->
+    <section class="x-card po-head-card">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div class="po-title-row">
+                <h1>{{ p.patient_name }}</h1>
+                <span class="po-badge st-{{ ev.status }}">
+                    <span class="dot dot-{{ ev.status }}" style="width:8px;height:8px;border-radius:50%"></span>
+                    {{ ev.status_label }}
+                </span>
+                {% if ev.days_elapsed > 0 %}
+                <span class="tw-clock {% if ev.over_7_days %}late{% endif %}" style="font-size:13px;padding:4px 10px">
+                    დღე {{ ev.days_elapsed }} / 7
+                </span>
+                {% endif %}
+                {% if p.approved_at %}
+                <span class="small text-muted">დაადასტურა: {{ p.approved_by|who }} ({{ p.approved_at|date:"d.m.Y H:i" }})</span>
+                {% endif %}
+            </div>
+
+            <div class="d-flex flex-wrap gap-2">
+                <a class="x-btn sm ok" href="{% url 'board-patient-new' %}?name={{ p.patient_name|urlencode }}&diagnosis={{ p.diagnosis_text|urlencode }}" title="პაციენტების დაფაზე გადაყვანა">
+                    დაფაზე მიღება
+                </a>
+                <a class="x-btn sm" href="{% url 'niv-cover' %}?preop={{ p.pk }}" title="ახალი დანიშნულება ამ პაციენტზე">
+                    დანიშნულება
+                </a>
+                <a class="x-btn sm blood" href="{% url 'blood-order' %}?preop={{ p.pk }}" title="სისხლის შეკვეთის ბლანკი">
+                    სისხლი
+                </a>
+                <a class="x-btn sm" href="{% url 'consent-list' %}" title="ოპერაციის ინფორმირებული თანხმობა">
+                    თანხმობა
+                </a>
+            </div>
+        </div>
+
+        <form method="post" class="d-flex flex-column gap-2 pt-1 border-top" style="border-color:var(--line-soft)!important">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="header">
+            <input type="hidden" name="tab" value="{{ tab }}" id="hdr-tab-inp">
+            <div class="grid-4">
+                <label class="fld">პაციენტი (გვარი, სახელი)
+                    <input type="text" name="patient_name" value="{{ p.patient_name }}" class="form-control" required>
+                </label>
+                <div class="d-flex gap-2">
+                    <label class="fld" style="flex:1">ასაკი
+                        <input type="number" name="age" value="{{ p.age|default_if_none:'' }}" min="1" max="120" class="form-control">
+                    </label>
+                    <label class="fld" style="flex:1">სქესი
+                        <select name="sex" class="form-select">
+                            <option value="M" {% if p.sex != 'F' %}selected{% endif %}>კაცი</option>
+                            <option value="F" {% if p.sex == 'F' %}selected{% endif %}>ქალი</option>
+                        </select>
+                    </label>
+                </div>
+                <label class="fld">დაგეგმილი ოპერაცია (AAA)
+                    <select name="op_subtype" class="form-select">
+                        {% for val, lbl in op_subtypes %}
+                        <option value="{{ val }}" {% if p.op_subtype == val %}selected{% endif %}>AAA — {{ lbl }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="fld">ქირურგი
+                    <select name="surgeon" class="form-select">
+                        <option value="">—</option>
+                        {% for uid, uname in doctors %}
+                        <option value="{{ uid }}" {% if p.surgeon_id == uid %}selected{% endif %}>{{ uname }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+            <div class="d-flex flex-wrap align-items-end gap-2 pt-1">
+                <label class="fld" style="width:190px">განთავსება კალენდარში
+                    <select name="slot_kind" id="slot-kind-sel" class="form-select">
+                        <option value="dated" {% if not p.someday_list %}selected{% endif %}>კონკრეტულ დღეზე</option>
+                        {% for skey, slbl in someday_choices %}
+                        <option value="someday:{{ skey }}" {% if p.someday_list == skey %}selected{% endif %}>{{ slbl }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="fld" id="visit-date-wrap" style="width:170px" {% if p.someday_list %}hidden{% endif %}>მოსვლის თარიღი
+                    <input type="date" name="visit_date" value="{{ p.visit_date|date:'Y-m-d'|default:today|date:'Y-m-d' }}" class="form-control">
+                </label>
+                <label class="fld" style="width:180px">ტელეფონი
+                    <input type="text" name="phone" value="{{ p.phone }}" placeholder="5XX XX XX XX" class="form-control">
+                </label>
+                <button type="submit" class="x-btn sm">განახლება</button>
+                <div class="ms-auto d-flex gap-2">
+                    <button type="submit" formaction="{% url 'preop-move' p.pk %}" name="action" value="archive" class="x-btn sm">
+                        {% if p.archived %}არქივიდან დაბრუნება{% else %}არქივში{% endif %}
+                    </button>
+                    <button type="submit" formaction="{% url 'preop-move' p.pk %}" name="action" value="delete" class="x-btn sm danger"
+                            onclick="return confirm('წავშალოთ {{ p.patient_name|escapejs }} წინასაოპერაციო სიიდან?');">
+                        წაშლა
+                    </button>
+                </div>
+            </div>
+        </form>
+    </section>
+
+    <!-- Protocol Alerts (Red & Amber Flags) -->
+    {% if ev.red_flags or ev.amber_flags %}
+    <div class="po-alerts" role="region" aria-label="კლინიკური გაფრთხილებები">
+        {% for msg in ev.red_flags %}
+        <div class="po-alert red">
+            <span><strong>აცნობეთ ქირურგს:</strong> {{ msg }}</span>
+        </div>
+        {% endfor %}
+        {% for msg in ev.amber_flags %}
+        <div class="po-alert amber">
+            <span>{{ msg }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- 4 Step Workspace Tabs -->
+    <nav class="po-tabs" aria-label="მომზადების ეტაპები">
+        <button type="button" class="po-tab {% if tab == 'q' %}on{% endif %}" data-tab="q">
+            1. კითხვარები {% if q.filled %}✓{% endif %}
+        </button>
+        <button type="button" class="po-tab {% if tab == 's1' %}on{% endif %}" data-tab="s1">
+            2. საფეხური 1: ანალიზები და კვლევები {% if ev.s1_core_done %}✓{% endif %}{% if total_files %} ({{ total_files }}){% endif %}
+        </button>
+        <button type="button" class="po-tab {% if tab == 's2' %}on{% endif %}" data-tab="s2">
+            3. საფეხური 2 და კარდიოლოგი ({{ ev.done_count }}/{{ ev.total_count }})
+        </button>
+        <button type="button" class="po-tab {% if tab == 'doc' %}on{% endif %}" data-tab="doc">
+            4. ანამნეზი და ექიმის დასტური {% if p.approved_at %}✓{% endif %}
+        </button>
+    </nav>
+
+    <!-- ==================================================================
+         TAB 1: QUESTIONNAIRES (15 concise questions with smart branching)
+         ================================================================== -->
+    <div class="po-pane" data-pane="q" {% if tab != 'q' %}hidden{% endif %}>
+        <form method="post" class="d-flex flex-column gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="questionnaire">
+
+            <section class="x-card">
+                <h2><span class="num">ა</span> ინფრარენალური AAA-ს სპეციფიკური კითხვარი (5 კითხვა)</h2>
+                <div class="po-q-list">
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">1. ბოლო დღეებში ან კვირებში ხომ არ დაგეწყოთ/გაგიძლიერდათ მუცლის, წელის ან გვერდის ტკივილი?</span>
+                            <div class="yn-switch">
+                                <label><input type="radio" name="aaa_pain" value="0" {% if not q.aaa_pain %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="aaa_pain" value="1" {% if q.aaa_pain %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">2. ანევრიზმის მაქსიმალური დიამეტრი (მმ) და ბოლო კტ-ანგიოგრაფიის ხანდაზმულობა:</span>
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <input type="number" step="any" name="aaa_mm" value="{{ s.aaa_mm|default_if_none:'' }}" placeholder="მაგ. 58" class="form-control form-control-sm" style="width:95px">
+                                <span class="small text-muted">მმ ·</span>
+                                <input type="number" name="cta_months" value="{{ s.cta_months|default_if_none:'' }}" placeholder="1" class="form-control form-control-sm" style="width:75px">
+                                <span class="small text-muted">თვის წინ ·</span>
+                                <label class="chip-check" style="height:34px;padding:0 12px">
+                                    <input type="checkbox" name="cta_disc" value="1" {% if s.cta_disc %}checked{% endif %}>DICOM დისკი აქვს
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">3. გაკეთებული გაქვთ თუ არა ოპერაცია მუცლის ღრუზე ან საზარდულის არეში?</span>
+                            <div class="yn-switch" data-toggle-sub="sub-abdo">
+                                <label><input type="radio" name="prev_abdo_surg" value="0" {% if not q.prev_abdo_surg %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="prev_abdo_surg" value="1" {% if q.prev_abdo_surg %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                        <div class="po-q-sub" id="sub-abdo" {% if not q.prev_abdo_surg %}hidden{% endif %}>
+                            <input type="text" name="prev_abdo_text" value="{{ q.prev_abdo_text }}" placeholder="რომელი ოპერაცია და როდის (მაგ. ქოლეცისტექტომია 2018, საზარდულის თიაქარი)..." class="form-control form-control-sm">
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">4. გეწყებათ თუ არა სიარულისას ფეხების ან დუნდულოების ტკივილი (ხანგამოშვებითი კოჭლობა)?</span>
+                            <div class="yn-switch">
+                                <label><input type="radio" name="claudication" value="0" {% if not q.claudication %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="claudication" value="1" {% if q.claudication %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">5. ხომ არ გაქვთ ამჟამად სიცხე, შარდვის წვა, კანის ჩირქოვანი კერა ან მწვავე კბილის ანთება?</span>
+                            <div class="yn-switch" data-toggle-sub="sub-inf">
+                                <label><input type="radio" name="active_infection" value="0" {% if not q.active_infection %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="active_infection" value="1" {% if q.active_infection %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                        <div class="po-q-sub" id="sub-inf" {% if not q.active_infection %}hidden{% endif %}>
+                            <input type="text" name="infection_text" value="{{ q.infection_text }}" placeholder="დააზუსტეთ სიმპტომი / კერა..." class="form-control form-control-sm">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="x-card">
+                <h2><span class="num">ბ</span> ზოგადი და ანესთეზიოლოგიური სკრინინგი (10 კითხვა)</h2>
+                <div class="po-q-list">
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">1. ახერხებთ თუ არა 2 სართულზე ასვლას გაუჩერებლად, ქოშინისა და მკერდში ტკივილის გარეშე (&ge; 4 METs)?</span>
+                            <div class="yn-switch mets">
+                                <label><input type="radio" name="mets_ok" value="1" {% if q.mets_ok %}checked{% endif %}>კი (&ge;4 METs)</label>
+                                <label><input type="radio" name="mets_ok" value="0" {% if not q.mets_ok %}checked{% endif %}>ვერ ადის</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">2. გაწუხებთ გულის ტკივილი/არითმია, ან გადატანილი გაქვთ ინფარქტი / სტენტირება / შუნტირება?</span>
+                            <div class="yn-switch" data-toggle-sub="sub-cad">
+                                <label><input type="radio" name="cad" value="0" {% if not q.cad %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="cad" value="1" {% if q.cad %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                        <div class="po-q-sub" id="sub-cad" {% if not q.cad %}hidden{% endif %}>
+                            <input type="text" name="cad_detail" value="{{ q.cad_detail }}" placeholder="რა და როდის (მაგ. ინფარქტი და სტენტირება 2022 წ.)..." class="form-control form-control-sm" style="flex:1 1 260px">
+                            <label class="chip-check" style="height:34px;border-color:#FECDCA">
+                                <input type="checkbox" name="recent_stent" value="1" {% if q.recent_stent %}checked{% endif %}>სტენტი ჩადგმულია ბოლო 6 თვეში!
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">3. გაწუხებთ თუ არა მაღალი არტერიული წნევა?</span>
+                            <div class="yn-switch">
+                                <label><input type="radio" name="htn" value="0" {% if not q.htn %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="htn" value="1" {% if q.htn %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">4. გაქვთ ქრონიკული ხველა/ქოშინი, ბრონქული ასთმა, COPD ან იყენებთ ინჰალატორს?</span>
+                            <div class="yn-switch" data-toggle-sub="sub-pulm">
+                                <label><input type="radio" name="pulm" value="0" {% if not q.pulm %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="pulm" value="1" {% if q.pulm %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                        <div class="po-q-sub" id="sub-pulm" {% if not q.pulm %}hidden{% endif %}>
+                            <input type="text" name="pulm_detail" value="{{ q.pulm_detail }}" placeholder="დააზუსტეთ (მაგ. COPD, სალბუტამოლის ინჰალატორი)..." class="form-control form-control-sm">
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">5. გაქვთ თუ არა შაქრიანი დიაბეტი?</span>
+                            <div class="yn-switch" data-toggle-sub="sub-dm">
+                                <label><input type="radio" name="dm" value="0" {% if not q.dm %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="dm" value="1" {% if q.dm %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                        <div class="po-q-sub" id="sub-dm" {% if not q.dm %}hidden{% endif %}>
+                            <label class="chip-check" style="height:34px"><input type="checkbox" name="metformin" value="1" {% if q.metformin %}checked{% endif %}>მეტფორმინი</label>
+                            <label class="chip-check" style="height:34px"><input type="checkbox" name="sglt2" value="1" {% if q.sglt2 %}checked{% endif %}>ჯარდიანსი / ფორსიგა (SGLT2)</label>
+                            <label class="chip-check" style="height:34px"><input type="checkbox" name="dm_insulin" value="1" {% if q.dm_insulin %}checked{% endif %}>ინსულინზეა</label>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">6. გქონიათ თუ არა ინსულტი, გარდამავალი იშემია (TIA) ან გონების კარგვის ეპიზოდი?</span>
+                            <div class="yn-switch">
+                                <label><input type="radio" name="neuro" value="0" {% if not q.neuro %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="neuro" value="1" {% if q.neuro %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">7. გქონიათ კუჭის/12-გოჯას წყლული, სისხლდენა ან შავი განავალი? <small class="text-muted">(ავტომატურად ამატებს გასტროსკოპიას)</small></span>
+                            <div class="yn-switch">
+                                <label><input type="radio" name="ulcer" value="0" {% if not q.ulcer %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="ulcer" value="1" {% if q.ulcer %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-text">8. სისხლის გამათხელებლები და მუდმივად მისაღები მედიკამენტები:</div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <label class="chip-check" style="height:36px"><input type="checkbox" name="med_aspirin" value="1" {% if q.med_aspirin %}checked{% endif %}>ასპირინი / კარდიომაგნილი</label>
+                            <label class="chip-check" style="height:36px"><input type="checkbox" name="med_clopidogrel" value="1" {% if q.med_clopidogrel %}checked{% endif %}>კლოპიდოგრელი / ტიკაგრელორი</label>
+                            <label class="chip-check" style="height:36px"><input type="checkbox" name="med_doac" value="1" {% if q.med_doac %}checked{% endif %}>ქსარელტო / ელიქვისი</label>
+                            <label class="chip-check" style="height:36px"><input type="checkbox" name="med_warfarin" value="1" {% if q.med_warfarin %}checked{% endif %}>ვარფარინი</label>
+                        </div>
+                        <input type="text" name="other_meds" value="{{ q.other_meds }}" placeholder="სხვა მუდმივი მედიკამენტები (მაგ. პერინდოპრილი, ატორვასტატინი)..." class="form-control form-control-sm">
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">9. ალერგია მედიკამენტებზე ან იოდზე / კონტრასტზე:</span>
+                            <div class="d-flex flex-wrap gap-2">
+                                <label class="chip-check" style="height:36px"><input type="checkbox" name="allergy_iodine" value="1" {% if q.allergy_iodine %}checked{% endif %}>ალერგია იოდზე / კონტრასტზე</label>
+                                <label class="chip-check" style="height:36px"><input type="checkbox" name="allergy_other" value="1" id="chk-allergy-other" {% if q.allergy_other %}checked{% endif %}>სხვა წამლის ალერგია</label>
+                            </div>
+                        </div>
+                        <div class="po-q-sub" id="sub-allergy" {% if not q.allergy_other %}hidden{% endif %}>
+                            <input type="text" name="allergy_text" value="{{ q.allergy_text }}" placeholder="რომელ პრეპარატზე და რა რეაქცია..." class="form-control form-control-sm">
+                        </div>
+                    </div>
+
+                    <div class="po-q-item">
+                        <div class="po-q-main">
+                            <span class="po-q-text">10. ანესთეზიის დეტალები და ჩვევები:</span>
+                            <div class="d-flex flex-wrap gap-2">
+                                <label class="chip-check" style="height:36px"><input type="checkbox" name="smoker" value="1" {% if q.smoker %}checked{% endif %}>მწეველი</label>
+                                <label class="chip-check" style="height:36px"><input type="checkbox" name="pacemaker" value="1" {% if q.pacemaker %}checked{% endif %}>კარდიოსტიმულატორი / იმპლანტი</label>
+                                <label class="chip-check" style="height:36px"><input type="checkbox" name="loose_teeth" value="1" {% if q.loose_teeth %}checked{% endif %}>პროთეზი / მერყევი კბილები</label>
+                                <label class="chip-check" style="height:36px"><input type="checkbox" name="anesth_issue" value="1" {% if q.anesth_issue %}checked{% endif %}>გართულება წარსულ ნარკოზზე</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-2">
+                    {% if q.filled %}<span class="small text-muted">შევსებულია: {{ q.filled_by }}, {{ q.filled_at }}</span>{% else %}<span></span>{% endif %}
+                    <button type="submit" class="x-btn primary">კითხვარების შენახვა → საფეხური 1</button>
+                </div>
+            </section>
+        </form>
+    </div>
+
+    <!-- ==================================================================
+         TAB 2: STAGE 1 — VITALS, BASELINE LABS, IMAGING & FILE UPLOADS
+         ================================================================== -->
+    <div class="po-pane" data-pane="s1" {% if tab != 's1' %}hidden{% endif %}>
+        <form method="post" class="d-flex flex-column gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="stage1">
+
+            <section class="x-card">
+                <h2>ვიტალური მონაცემები მიღებისას</h2>
+                <div class="grid-4">
+                    <label class="fld">სისტოლური წნევა (mmHg)
+                        <input type="number" name="bp_sys" value="{{ s.bp_sys|default_if_none:'' }}" placeholder="135" class="form-control">
+                    </label>
+                    <label class="fld">დიასტოლური წნევა (mmHg)
+                        <input type="number" name="bp_dia" value="{{ s.bp_dia|default_if_none:'' }}" placeholder="80" class="form-control">
+                    </label>
+                    <label class="fld">პულსი (/წთ)
+                        <input type="number" name="hr" value="{{ s.hr|default_if_none:'' }}" placeholder="72" class="form-control">
+                    </label>
+                    <label class="fld">სატურაცია SpO₂ (%)
+                        <input type="number" name="spo2" value="{{ s.spo2|default_if_none:'' }}" placeholder="97" class="form-control">
+                    </label>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-3">
+                    <label class="chip-check"><input type="checkbox" name="irregular_hr" value="1" {% if s.irregular_hr %}checked{% endif %}>არარეგულარული პულსი (არითმია)</label>
+                    <label class="fld" style="width:130px">წონა (კგ)
+                        <input type="number" step="any" name="weight_kg" value="{{ s.weight_kg|default_if_none:'' }}" class="form-control">
+                    </label>
+                    <label class="fld" style="width:130px">სიმაღლე (სმ)
+                        <input type="number" name="height_cm" value="{{ s.height_cm|default_if_none:'' }}" class="form-control">
+                    </label>
+                </div>
+            </section>
+
+            <section class="x-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">საფეხური 1: თავდაპირველი ლაბორატორიული ანალიზები</h2>
+                    <span class="po-badge st-in_progress">
+                        ავტომატური eGFR (CKD-EPI): {% if ev.egfr is not None %}{{ ev.egfr }} მლ/წთ{% else %}—{% endif %}
+                    </span>
+                </div>
+                <p class="small text-muted m-0">ექთანი წერს ფაქტობრივ მაჩვენებლებს — პროგრამა თავად ამოწმებს ზღვრებს და საჭიროებისას ამატებს დამატებით კვლევას ან გაფრთხილებას.</p>
+
+                <div class="grid-4">
+                    <label class="fld">ჰემოგლობინი — Hb (გ/ლ ან გ/დლ)
+                        <input type="number" step="any" name="hb" value="{{ s.hb|default_if_none:'' }}" placeholder="მაგ. 135" class="form-control">
+                    </label>
+                    <label class="fld">ლეიკოციტები — WBC (×10⁹/L)
+                        <input type="number" step="any" name="wbc" value="{{ s.wbc|default_if_none:'' }}" placeholder="მაგ. 7.2" class="form-control">
+                    </label>
+                    <label class="fld">თრომბოციტები — PLT (×10⁹/L)
+                        <input type="number" step="any" name="plt" value="{{ s.plt|default_if_none:'' }}" placeholder="მაგ. 220" class="form-control">
+                    </label>
+                    <label class="fld">სისხლის ჯგუფი და რეზუსი
+                        <select name="blood_group" class="form-select">
+                            <option value="">—</option>
+                            {% for bg in blood_groups %}
+                            <option value="{{ bg }}" {% if s.blood_group == bg %}selected{% endif %}>{{ bg }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+
+                    <label class="fld">INR (კოაგულოგრამა)
+                        <input type="number" step="any" name="inr" value="{{ s.inr|default_if_none:'' }}" placeholder="მაგ. 1.05" class="form-control">
+                    </label>
+                    <label class="fld">ფიბრინოგენი (გ/ლ)
+                        <input type="number" step="any" name="fibrinogen" value="{{ s.fibrinogen|default_if_none:'' }}" placeholder="მაგ. 3.1" class="form-control">
+                    </label>
+                    <label class="fld">კრეატინინი (მკმოლ/ლ ან მგ/დლ)
+                        <input type="number" step="any" name="creat" value="{{ s.creat|default_if_none:'' }}" placeholder="მაგ. 92" class="form-control">
+                    </label>
+                    <label class="fld">კალიუმი — K⁺ (მმოლ/ლ)
+                        <input type="number" step="any" name="k" value="{{ s.k|default_if_none:'' }}" placeholder="მაგ. 4.3" class="form-control">
+                    </label>
+
+                    <label class="fld">ნატრიუმი — Na⁺ (მმოლ/ლ)
+                        <input type="number" step="any" name="na" value="{{ s.na|default_if_none:'' }}" placeholder="მაგ. 140" class="form-control">
+                    </label>
+                    <label class="fld">გლუკოზა უზმოდ (მმოლ/ლ)
+                        <input type="number" step="any" name="glucose" value="{{ s.glucose|default_if_none:'' }}" placeholder="მაგ. 5.5" class="form-control">
+                    </label>
+                    <label class="fld">HbA1c (%, დიაბეტისას)
+                        <input type="number" step="any" name="hba1c" value="{{ s.hba1c|default_if_none:'' }}" placeholder="მაგ. 6.8" class="form-control">
+                    </label>
+                    <label class="fld">ალბუმინი (გ/ლ)
+                        <input type="number" step="any" name="albumin" value="{{ s.albumin|default_if_none:'' }}" placeholder="მაგ. 38" class="form-control">
+                    </label>
+                </div>
+
+                <div class="grid-3 pt-2 border-top" style="border-color:var(--line-soft)!important">
+                    <label class="fld">შარდში ლეიკოციტები (მხ/არ)
+                        <input type="number" step="any" name="urine_wbc" value="{{ s.urine_wbc|default_if_none:'' }}" placeholder="მაგ. 2" class="form-control">
+                    </label>
+                    <label class="fld">ღვიძლის ფუნქციები (ALT / AST / ბილირუბინი)
+                        <select name="liver_status" class="form-select">
+                            <option value="normal" {% if s.liver_status == 'normal' %}selected{% endif %}>ნორმაში (&lt;2× ULN)</option>
+                            <option value="2x" {% if s.liver_status == '2x' %}selected{% endif %}>ზომიერი მატება (2–3× ULN)</option>
+                            <option value="3x" {% if s.liver_status == '3x' %}selected{% endif %}>მნიშვნელოვანი მატება (&ge;3× ULN)</option>
+                        </select>
+                    </label>
+                    <div class="d-flex flex-wrap align-items-end gap-2">
+                        <label class="chip-check"><input type="checkbox" name="urine_nitrite" value="1" {% if s.urine_nitrite %}checked{% endif %}>შარდში ნიტრიტები (+) / ბაქტერიები</label>
+                        <label class="chip-check"><input type="checkbox" name="aptt_prolonged" value="1" {% if s.aptt_prolonged %}checked{% endif %}>APTT გახანგრძლივებული</label>
+                        <label class="chip-check"><input type="checkbox" name="viral_positive" value="1" {% if s.viral_positive %}checked{% endif %}>ვირუსული მარკერი (+)</label>
+                    </div>
+                </div>
+            </section>
+
+            <section class="x-card">
+                <h2>საფეხური 1: სავალდებულო ინსტრუმენტული კვლევები</h2>
+                <div class="grid-4">
+                    <label class="fld">მარჯვენა საძილე — ICA სტენოზი (%)
+                        <input type="number" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 25" min="0" max="100" class="form-control">
+                    </label>
+                    <label class="fld">მარცხენა საძილე — ICA სტენოზი (%)
+                        <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
+                    </label>
+                    <label class="fld">ექოკარდიოგრაფია — LVEF (%)
+                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="90" class="form-control">
+                    </label>
+                    <label class="fld">ანევრიზმის დიამეტრი CTA-ზე (მმ)
+                        <input type="number" step="any" name="aaa_mm" value="{{ s.aaa_mm|default_if_none:'' }}" placeholder="მაგ. 60" class="form-control">
+                    </label>
+                </div>
+
+                <div class="grid-3">
+                    <label class="fld">გულმკერდის რენტგენი (ყველასთან)
+                        <select name="cxr" class="form-select">
+                            <option value="pending" {% if s.cxr == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.cxr == 'normal' %}selected{% endif %}>ნორმა / მწვავე კეროვანი ცვლილების გარეშე</option>
+                            <option value="emphysema" {% if s.cxr == 'emphysema' %}selected{% endif %}>ემფიზემა / ქრ. ბრონქიტი (ჩართავს სპირომეტრიას)</option>
+                            <option value="infiltrate" {% if s.cxr == 'infiltrate' %}selected{% endif %}>ინფილტრაცია / გამონაჟონი / წარმონაქმნი</option>
+                        </select>
+                    </label>
+                    <label class="fld">ელექტროკარდიოგრამა (ეკგ)
+                        <select name="ecg" class="form-select">
+                            <option value="pending" {% if s.ecg == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.ecg == 'normal' %}selected{% endif %}>სინუსური / მწვავე იშემიის გარეშე</option>
+                            <option value="ischemia_arrhythmia" {% if s.ecg == 'ischemia_arrhythmia' %}selected{% endif %}>ახალი იშემია / არითმია / AV-ბლოკადა</option>
+                        </select>
+                    </label>
+                    <div class="d-flex flex-wrap align-items-end gap-2">
+                        <label class="chip-check"><input type="checkbox" name="carotid_symp" value="1" {% if s.carotid_symp %}checked{% endif %}>სიმპტომური საძილე (TIA &le;6 თვ)</label>
+                        <label class="chip-check"><input type="checkbox" name="echo_valve_issue" value="1" {% if s.echo_valve_issue %}checked{% endif %}>მძიმე სარქვლოვანი მანკი / PH</label>
+                        <label class="chip-check"><input type="checkbox" name="cta_disc" value="1" {% if s.cta_disc %}checked{% endif %}>CTA დისკი ადგილზეა</label>
+                    </div>
+                </div>
+
+                <input type="hidden" name="cta_months" value="{{ s.cta_months|default_if_none:'' }}">
+                <div class="d-flex justify-content-end pt-1">
+                    <button type="submit" class="x-btn primary">შენახვა და გადამოწმება → საფეხური 2</button>
+                </div>
+            </section>
+        </form>
+
+        <!-- File / Photo Uploads (stored privately in PRIVATE_MEDIA_ROOT) -->
+        <section class="x-card mt-3" id="files">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <h2 class="m-0">ატვირთული ანალიზები და კვლევები ({{ total_files }})</h2>
+                <form method="post" action="{% url 'preop-files' p.pk %}" enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="tab" value="s1">
+                    <select name="category" class="form-select form-select-sm" style="width:auto">
+                        {% for ckey, clbl in file_categories %}<option value="{{ ckey }}">{{ clbl }}</option>{% endfor %}
+                    </select>
+                    <input type="text" name="caption" placeholder="წარწერა (არასავალდებულო)" class="form-control form-control-sm" style="width:185px">
+                    <label class="x-btn sm primary mb-0">
+                        გადაღება
+                        <input type="file" name="file" accept="image/*" capture="environment" hidden onchange="this.form.submit()">
+                    </label>
+                    <label class="x-btn sm mb-0">
+                        ფოტო / PDF
+                        <input type="file" name="file" accept="image/*,application/pdf,.pdf" multiple hidden onchange="this.form.submit()">
+                    </label>
+                </form>
+            </div>
+
+            {% for grp in files_by_cat %}
+            <div class="d-flex flex-column gap-2 pt-2">
+                <div class="small fw-bold text-muted">{{ grp.label }} ({{ grp.files|length }})</div>
+                <div class="po-files-grid">
+                    {% for f in grp.files %}
+                    <div class="po-file-card">
+                        {% if f.is_pdf %}
+                        <a href="{% url 'preop-file' f.pk %}" target="_blank" rel="noopener" class="po-pdf-box">PDF გახსნა</a>
+                        {% else %}
+                        <a href="{% url 'preop-file' f.pk %}" target="_blank" rel="noopener">
+                            <img src="{% url 'preop-file-thumb' f.pk %}" alt="" loading="lazy">
+                        </a>
+                        {% endif %}
+                        <div class="text-truncate" title="{{ f.caption|default:f.original_name }}">
+                            {{ f.caption|default:f.original_name|default:"ფაილი" }}
+                        </div>
+                        <div class="d-flex align-items-center justify-content-between text-muted">
+                            <span>{{ f.uploaded_on|date:"d.m.Y" }}</span>
+                            <form method="post" action="{% url 'preop-file-delete' f.pk %}" class="m-0" onsubmit="return confirm('წავშალოთ ეს ფაილი?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-link btn-sm p-0 text-danger text-decoration-none">✕</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-muted m-0 small">ატვირთეთ ანალიზების, ეკგ-ს, ექოს ან კონსულტაციების ფოტო / PDF — შეინახება დაცულ საქაღალდეში.</p>
+            {% endfor %}
+        </section>
+    </div>
+
+    <!-- ==================================================================
+         TAB 3: STAGE 2 — DYNAMIC PROTOCOL TASKS & CARDIOLOGY AUDIT
+         ================================================================== -->
+    <div class="po-pane" data-pane="s2" {% if tab != 's2' %}hidden{% endif %}>
+        <form method="post" class="d-flex flex-column gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="stage2">
+
+            <section class="x-card">
+                <h2>პროტოკოლით განსაზღვრული წინასაოპერაციო გეგმა ({{ ev.done_count }}/{{ ev.total_count }})</h2>
+
+                <div class="d-flex flex-column gap-2">
+                    <div class="po-task-row {% if q.filled %}done{% endif %}">
+                        <span><strong>1. წინასაოპერაციო კითხვარები</strong> (ზოგადი + AAA)</span>
+                        <span>{% if q.filled %}✓ შევსებულია{% else %}შესავსებია (ტაბი 1){% endif %}</span>
+                    </div>
+
+                    <div class="po-task-row {% if ev.s1_core_done %}done{% endif %}">
+                        <span><strong>2. საფეხური 1-ის საბაზისო კვლევები</strong> (ანალიზები, შარდი, ეკგ, რენტგენი, საძილეები, ექო, CTA)</span>
+                        <span>{% if ev.s1_core_done %}✓ შეტანილია{% else %}შესავსებია (ტაბი 2){% endif %}</span>
+                    </div>
+
+                    {% if ev.needs_spirometry %}
+                    <div class="po-task-row {% if s.spiro_fev1 is not None %}done{% endif %}">
+                        <span><strong>სპირომეტრია</strong> <small class="text-muted">(ავტომატურად ჩაირთო პროტოკოლით)</small></span>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="small">FEV1 (%):</span>
+                            <input type="number" name="spiro_fev1" value="{{ s.spiro_fev1|default_if_none:'' }}" placeholder="მაგ. 75" class="form-control form-control-sm" style="width:95px">
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if ev.needs_gastro %}
+                    <div class="po-task-row {% if s.gastro_result != 'pending' %}done{% endif %}">
+                        <span><strong>გასტროსკოპია (ეგდს)</strong> <small class="text-muted">(წყლულის ანამნეზის / Hb &lt; 110-ის გამო)</small></span>
+                        <select name="gastro_result" class="form-select form-select-sm" style="width:auto">
+                            <option value="pending" {% if s.gastro_result == 'pending' %}selected{% endif %}>ჩასატარებელია</option>
+                            <option value="remission" {% if s.gastro_result == 'remission' %}selected{% endif %}>✓ ნორმა / რემისია</option>
+                            <option value="acute_ulcer" {% if s.gastro_result == 'acute_ulcer' %}selected{% endif %}>მწვავე წყლული / ეროზია (Red Flag)</option>
+                        </select>
+                    </div>
+                    {% endif %}
+
+                    {% if ev.uti_suspected %}
+                    <div class="po-task-row {% if s.urine_culture_done %}done{% endif %}">
+                        <span><strong>შარდის ბაქტერიოლოგია / სანაციის შეთანხმება ქირურგთან</strong> <small class="text-muted">(შარდის ცვლილების გამო)</small></span>
+                        <label class="chip-check" style="height:34px"><input type="checkbox" name="urine_culture_done" value="1" {% if s.urine_culture_done %}checked{% endif %}>შესრულდა / შეთანხმდა</label>
+                    </div>
+                    {% endif %}
+
+                    {% if p.op_subtype == 'open' or p.op_subtype == 'tbd' %}
+                    <div class="po-task-row {% if s.blood_reserved %}done{% endif %}">
+                        <span><strong>სისხლის კომპონენტების რეზერვი</strong> <small class="text-muted">(ღია AAA პროტოკოლი)</small></span>
+                        <label class="chip-check" style="height:34px"><input type="checkbox" name="blood_reserved" value="1" {% if s.blood_reserved %}checked{% endif %}>რეზერვი მზადაა</label>
+                    </div>
+                    {% endif %}
+
+                    {% if p.op_subtype == 'evar' %}
+                    <div class="po-task-row {% if s.evar_sized %}done{% endif %}">
+                        <span><strong>EVAR სტენტ-გრაფტის ზომების დათვლა და საწყობში მზაობა</strong></span>
+                        <label class="chip-check" style="height:34px"><input type="checkbox" name="evar_sized" value="1" {% if s.evar_sized %}checked{% endif %}>ზომები დათვლილია / გრაფტი მზადაა</label>
+                    </div>
+                    {% endif %}
+
+                    {% if ev.needs_med_hold %}
+                    <div class="po-task-row {% if s.med_hold_agreed %}done{% endif %}">
+                        <div>
+                            <strong>მედიკამენტების შეჩერების დღის შეთანხმება ქირურგთან</strong>
+                            <div class="small text-muted">პროგრამა წამალს თვითნებურად არ ცვლის (შენიშვნა: ასპირინის მონოთერაპია ESVS 2024-ით გრძელდება).</div>
+                        </div>
+                        <label class="chip-check" style="height:34px"><input type="checkbox" name="med_hold_agreed" value="1" {% if s.med_hold_agreed %}checked{% endif %}>შეთანხმებულია ქირურგთან</label>
+                    </div>
+                    {% endif %}
+
+                    <div class="po-task-row {% if s.anesth_done %}done{% endif %}">
+                        <span><strong>ანესთეზიოლოგის წინასაოპერაციო კონსულტაცია</strong></span>
+                        <label class="chip-check" style="height:34px"><input type="checkbox" name="anesth_done" value="1" {% if s.anesth_done %}checked{% endif %}>კონსულტაცია ჩატარდა ✓</label>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Cardiology Consultation & Audit -->
+            <section class="x-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">კარდიოლოგის კონსულტაცია და აუდიტი</h2>
+                    <span class="po-badge {% if ev.guideline_justifies_extra_cardio %}st-in_progress{% else %}st-ready{% endif %}">
+                        ESC 2022 ფონი: {% if ev.guideline_justifies_extra_cardio %}მაღალი კლინიკური რისკი / &lt;4 METs{% else %}სტაბილური, &ge;4 METs, LVEF &ge;50%{% endif %}
+                    </span>
+                </div>
+
+                <div class="grid-3">
+                    <label class="fld">კარდიოლოგი
+                        <select name="cardiologist" class="form-select">
+                            {% for cname in cardiologists %}
+                            <option value="{{ cname }}" {% if p.cardiologist == cname %}selected{% endif %}>{{ cname }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="fld">სხვა კარდიოლოგი (თუ სიაში არაა)
+                        <input type="text" name="cardiologist_custom" placeholder="გვარი, სახელი..." class="form-control">
+                    </label>
+                    <label class="fld">კარდიოლოგის გადაწყვეტილება
+                        <select name="cardio_decision" class="form-select">
+                            {% for dval, dlbl in cardio_decisions %}
+                            <option value="{{ dval }}" {% if p.cardio_decision == dval %}selected{% endif %}>{{ dlbl }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <label class="fld">კარდიოლოგის კომენტარი / დანიშნულების მოკლე ჩანაწერი
+                    <input type="text" name="cardio_note" value="{{ p.cardio_note }}" placeholder="მაგ. ოპერაციული მკურნალობა ნებადართულია, ბეტა-ბლოკატორის გაგრძელებით..." class="form-control">
+                </label>
+
+                {% if ev.cardio_non_compliant %}
+                <div class="po-alert red">
+                    <span><strong>აუდიტის ჩანაწერი (ESC 2022 Class III):</strong> პაციენტი კარდიოლოგიურად ასიმპტომურია, ადის 2 სართულზე (&ge;4 METs) და LVEF &ge;50%. დამატებითი სტრეს-ტესტი / კორონაროგრაფია ზრდის დაყოვნებისა და ანევრიზმის რუპტურის რისკს — სავალდებულოა ქირურგთან შეთანხმება!</span>
+                </div>
+                {% endif %}
+
+                <label class="fld">ექთნის სამუშაო შენიშვნა
+                    <textarea name="nurse_note" rows="2" class="form-control" style="height:auto;padding:8px 12px" placeholder="მაგ. პაციენტი მოიტანს კტ დისკს ხვალ 11:00-ზე...">{{ s.nurse_note }}</textarea>
+                </label>
+
+                <div class="d-flex justify-content-end">
+                    <button type="submit" class="x-btn primary">გეგმისა და კონსულტაციების შენახვა</button>
+                </div>
+            </section>
+        </form>
+    </div>
+
+    <!-- ==================================================================
+         TAB 4: AUTO-GENERATED ANAMNESIS & SURGEON SIGN-OFF
+         ================================================================== -->
+    <div class="po-pane" data-pane="doc" {% if tab != 'doc' %}hidden{% endif %}>
+        <form method="post" class="d-flex flex-column gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="signoff">
+
+            <section class="x-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">ავტომატურად ფორმირებული მოწესრიგებული ანამნეზი</h2>
+                    <button type="submit" name="action" value="regenerate" class="x-btn sm">თავიდან აწყობა კითხვარიდან</button>
+                </div>
+                <p class="small text-muted m-0">ექიმს შეუძლია გადაამოწმოს, ჩაასწოროს ტექსტი და დაადასტუროს პაციენტის მზაობა ოპერაციისთვის.</p>
+                <textarea name="anamnesis" rows="8" class="form-control" style="height:auto;padding:12px;line-height:1.6">{{ shown_anamnesis }}</textarea>
+                <div class="d-flex justify-content-end">
+                    <button type="submit" name="action" value="save_anamnesis" class="x-btn sm">ანამნეზის ტექსტის შენახვა</button>
+                </div>
+            </section>
+
+            <section class="x-card">
+                <h2>ქირურგის შეფასება და დადასტურება</h2>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <label class="chip-check">
+                        <input type="checkbox" name="move_ready" value="1" {% if not p.approved_at %}checked{% endif %}>
+                        დადასტურებისას გადავიდეს „მზადაა — ელოდება ოპერაციის თარიღს“ სიაში
+                    </label>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if ev.has_unacked_red %}
+                        <button type="submit" name="action" value="ack_alerts" class="x-btn">
+                            ✓ გაფრთხილებებს გავეცანი (ქირურგი)
+                        </button>
+                        {% endif %}
+                        {% if p.approved_at %}
+                        <button type="submit" name="action" value="unapprove" class="x-btn">
+                            დადასტურების მოხსნა
+                        </button>
+                        {% else %}
+                        <button type="submit" name="action" value="approve" class="x-btn primary">
+                            ✓ ვადასტურებ — მზადაა ოპერაციისთვის
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    // Fast client-side tab switching + URL ?tab= sync
+    var tabs = document.querySelectorAll('.po-tab[data-tab]');
+    var panes = document.querySelectorAll('.po-pane[data-pane]');
+    var hdrTab = document.getElementById('hdr-tab-inp');
+    tabs.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var t = btn.dataset.tab;
+            tabs.forEach(function (b) { b.classList.toggle('on', b === btn); });
+            panes.forEach(function (p) { p.hidden = (p.dataset.pane !== t); });
+            if (hdrTab) hdrTab.value = t;
+            try {
+                var u = new URL(window.location.href);
+                u.searchParams.set('tab', t);
+                window.history.replaceState(null, '', u.toString());
+            } catch (e) {}
+        });
+    });
+
+    // Placement kind toggle (dated vs Someday list)
+    var slotSel = document.getElementById('slot-kind-sel');
+    var vdWrap = document.getElementById('visit-date-wrap');
+    if (slotSel && vdWrap) {
+        slotSel.addEventListener('change', function () {
+            vdWrap.hidden = (slotSel.value !== 'dated');
+        });
+    }
+
+    // Smart branching sub-fields in questionnaires
+    document.querySelectorAll('[data-toggle-sub]').forEach(function (sw) {
+        var sub = document.getElementById(sw.dataset.toggleSub);
+        if (!sub) return;
+        sw.querySelectorAll('input[type="radio"]').forEach(function (r) {
+            r.addEventListener('change', function () {
+                sub.hidden = (r.value !== '1' || !r.checked);
+            });
+        });
+    });
+
+    var chkAllergy = document.getElementById('chk-allergy-other');
+    var subAllergy = document.getElementById('sub-allergy');
+    if (chkAllergy && subAllergy) {
+        chkAllergy.addEventListener('change', function () {
+            subAllergy.hidden = !chkAllergy.checked;
+        });
+    }
+})();
+</script>
+{% endblock %}

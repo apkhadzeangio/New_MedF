@@ -89,6 +89,18 @@ class BloodOrderView(LoginRequiredMixin, GetObjectMixin, generic.FormView):
 
     def get_initial(self):
         values = initial_values(self.request, self.get_object())
+        if not self.get_object() and self.request.GET.get('preop', '').isdigit():
+            from .models import PreopPatient
+            pre = PreopPatient.objects.filter(pk=int(self.request.GET['preop'])).first()
+            if pre:
+                bg = (pre.studies or {}).get('blood_group') or ''
+                values.update(
+                    patient_name=pre.patient_name,
+                    diagnosis=pre.diagnosis_text,
+                    blood_group=bg,
+                    phone=pre.phone or '',
+                )
+                return values
         board = board_patient(self.request)
         if board and not self.get_object():
             values.update(patient_name=board.name, diagnosis=board.diagnosis)

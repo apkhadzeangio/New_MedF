@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import blood, board, cases, consent, duty, medicines, pwa, quotes, roster, views
+from . import blood, board, cases, consent, duty, medicines, preop, pwa, quotes, roster, views
 
 urlpatterns = [
     path('', views.LoginView.as_view(), name='login'),
@@ -90,6 +90,17 @@ urlpatterns = [
     path('duty/note/<int:pk>/print/', duty.DutyPrintView.as_view(), name='duty-note-print'),
     path('duty/<str:day>/', duty.DutyDayView.as_view(), name='duty-day'),
     path('duty/<str:day>/print/', duty.DutyPrintView.as_view(), name='duty-day-print'),
+
+    # Preoperative assessment (Tweek-style weekly calendar + nurse POA + cardiology audit)
+    path('preop/', preop.PreopWeekView.as_view(), name='preop'),
+    path('preop/audit/', preop.PreopAuditView.as_view(), name='preop-audit'),
+    path('preop/new/', preop.PreopCreateView.as_view(), name='preop-new'),
+    path('preop/<int:pk>/', preop.PreopPatientView.as_view(), name='preop-patient'),
+    path('preop/<int:pk>/move/', preop.PreopMoveView.as_view(), name='preop-move'),
+    path('preop/<int:pk>/files/', preop.PreopFileUploadView.as_view(), name='preop-files'),
+    path('preop/file/<int:pk>/', preop.PreopFileView.as_view(), name='preop-file'),
+    path('preop/file/<int:pk>/thumb/', preop.PreopFileView.as_view(), {'size': 'thumb'}, name='preop-file-thumb'),
+    path('preop/file/<int:pk>/delete/', preop.PreopFileDeleteView.as_view(), name='preop-file-delete'),
 
     path('api/medicines/', views.MedicineAPIView.as_view(), name='medicines'),
     path('api/notes/', views.NoteAPIView.as_view(), name='notes'),

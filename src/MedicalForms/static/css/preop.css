@@ -1,0 +1,221 @@
+/* =====================================================================
+   Preoperative Assessment ("წინასაოპერაციო") — Tweek.so style + Nurse POA
+   ===================================================================== */
+
+.tw-topbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+    background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 12px 16px;
+}
+.tw-week-nav { display: inline-flex; align-items: center; gap: 6px; }
+.tw-week-title { font-size: 17px; font-weight: 700; color: var(--ink); padding: 0 6px; min-width: 210px; text-align: center; }
+
+.tw-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tw-pill {
+    display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px;
+    border-radius: 999px; border: 1px solid var(--line); background: #fff;
+    color: var(--ink-2); font-size: 13.5px; font-weight: 500; text-decoration: none;
+    transition: background .12s, border-color .12s;
+}
+.tw-pill:hover { border-color: #9AA3B8; color: var(--ink); }
+.tw-pill.on { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 600; }
+.tw-pill .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-no_questionnaire { background: #98A2B3; }
+.dot-in_progress { background: var(--ward); }
+.dot-needs_doctor { background: #D92D20; }
+.dot-ready { background: var(--ok); }
+
+/* Overdue (>7 days) alert strip */
+.tw-overdue-bar {
+    background: #FEF3F2; border: 1px solid #FECDCA; border-radius: var(--radius);
+    padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    color: #912018; font-size: 14px;
+}
+.tw-overdue-bar a { color: #912018; font-weight: 700; text-decoration: underline; }
+
+/* Tweek 2x3 Weekly Grid (Mon, Tue, Wed / Thu, Fri, Sat+Sun stacked) */
+.tw-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: stretch;
+}
+@media (max-width: 1020px) { .tw-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .tw-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.tw-wknd-stack { display: flex; flex-direction: column; gap: 14px; }
+.tw-wknd-stack .tw-day { flex: 1 1 0; }
+
+.tw-day {
+    background: #fff; border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 14px 16px 12px; display: flex; flex-direction: column;
+    border: 2px solid transparent; transition: border-color .12s, background .12s;
+}
+.tw-day.tw-drop-over { border-color: var(--accent); background: #FFF9FB; }
+
+.tw-day-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding-bottom: 7px; margin-bottom: 2px; border-bottom: 2px solid var(--ink);
+}
+.tw-day.is-today .tw-day-head { border-bottom-color: var(--accent); }
+.tw-day-name { font-size: 16px; font-weight: 700; color: var(--ink); }
+.tw-day.is-today .tw-day-name { color: var(--accent); }
+.tw-day-date { font-size: 13px; font-weight: 600; color: var(--muted); }
+
+/* Ruled paper rows inside each day */
+.tw-lines { display: flex; flex-direction: column; flex: 1 1 auto; }
+.tw-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    min-height: 40px; padding: 6px 8px 6px 10px;
+    border-bottom: 1px solid var(--line-soft); border-left: 4px solid #CBD5E1;
+    text-decoration: none; color: var(--ink); border-radius: 0 6px 6px 0;
+    transition: background .1s; cursor: pointer;
+}
+.tw-row:hover { background: #F8F9FC; color: var(--ink); }
+.tw-row.dragging { opacity: .45; }
+.tw-row.st-no_questionnaire { border-left-color: #98A2B3; }
+.tw-row.st-in_progress { border-left-color: var(--ward); }
+.tw-row.st-needs_doctor { border-left-color: #D92D20; background: #FFF8F7; }
+.tw-row.st-ready { border-left-color: var(--ok); background: #F6FEF9; }
+
+.tw-row-main { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 1px; }
+.tw-row-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tw-pname { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tw-pname.approved { text-decoration: line-through; opacity: .72; }
+.tw-row-sub { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tw-row-meta { display: inline-flex; align-items: center; gap: 5px; flex: none; }
+.tw-mm {
+    font-size: 11.5px; font-weight: 600; padding: 1px 6px; border-radius: 6px;
+    background: var(--page); color: var(--ink-2);
+}
+.tw-mm.giant { background: #FEE4E2; color: #B42318; font-weight: 700; }
+.tw-clock {
+    font-size: 11.5px; font-weight: 600; padding: 1px 6px; border-radius: 6px;
+    background: var(--page); color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.tw-clock.late { background: #D92D20; color: #fff; font-weight: 700; }
+.tw-prog { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Inline Tweek quick-add line */
+.tw-quick { border-bottom: 1px solid var(--line-soft); padding: 3px 0; }
+.tw-quick-inp {
+    width: 100%; height: 32px; border: 0; outline: none; background: transparent;
+    font: inherit; font-size: 13.5px; color: var(--ink); padding: 0 6px;
+}
+.tw-quick-inp::placeholder { color: #98A2B3; }
+.tw-quick-extra {
+    display: none; flex-wrap: wrap; gap: 6px; padding: 6px 4px 4px; align-items: center;
+}
+.tw-quick:focus-within .tw-quick-extra { display: flex; }
+.tw-quick-extra select {
+    height: 30px; border: 1px solid var(--line); border-radius: 7px; font-size: 12.5px;
+    padding: 0 8px; background: #fff; color: var(--ink);
+}
+.tw-quick-btn {
+    height: 30px; padding: 0 10px; border-radius: 7px; border: 0;
+    background: var(--accent); color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.tw-empty-line { min-height: 36px; border-bottom: 1px solid var(--line-soft); }
+
+/* Someday section */
+.tw-someday-head {
+    font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--muted); margin-top: 6px;
+}
+.tw-someday-card .tw-day-head { border-bottom: 1px solid var(--line); }
+.tw-someday-card .tw-day-name { font-size: 14.5px; }
+
+/* =====================================================================
+   Patient Preoperative Workspace (/preop/<id>/)
+   ===================================================================== */
+.po-head-card { gap: 12px; }
+.po-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.po-title-row h1 { margin: 0; font-size: 24px; font-weight: 700; }
+
+.po-badge {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px;
+    border-radius: 999px; font-size: 13px; font-weight: 600;
+}
+.po-badge.st-no_questionnaire { background: #F2F4F7; color: #344054; }
+.po-badge.st-in_progress { background: var(--ward-soft); color: var(--ward); }
+.po-badge.st-needs_doctor { background: #FEE4E2; color: #B42318; }
+.po-badge.st-ready { background: #EAF7F0; color: var(--ok); }
+
+.po-alerts { display: flex; flex-direction: column; gap: 8px; }
+.po-alert {
+    padding: 11px 14px; border-radius: 12px; font-size: 14px; line-height: 1.45;
+    display: flex; align-items: flex-start; gap: 10px;
+}
+.po-alert.red { background: #FEF3F2; border: 1px solid #FECDCA; color: #912018; font-weight: 500; }
+.po-alert.amber { background: #FFFAEB; border: 1px solid #FEDF89; color: #93370D; }
+
+/* Step Tabs */
+.po-tabs {
+    display: flex; flex-wrap: wrap; gap: 6px; background: #fff; padding: 6px;
+    border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.po-tab {
+    flex: 1 1 auto; min-height: 40px; padding: 6px 14px; border-radius: 10px; border: 0;
+    background: transparent; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    text-decoration: none;
+}
+.po-tab:hover { color: var(--ink); background: var(--page); }
+.po-tab.on { background: var(--ink); color: #fff; }
+
+/* Smart Yes/No rows in Questionnaires */
+.po-q-list { display: flex; flex-direction: column; }
+.po-q-item {
+    padding: 10px 0; border-bottom: 1px solid var(--line-soft);
+    display: flex; flex-direction: column; gap: 8px;
+}
+.po-q-item:last-child { border-bottom: 0; }
+.po-q-main { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.po-q-text { font-size: 14.5px; font-weight: 500; color: var(--ink); flex: 1 1 280px; }
+.po-q-sub {
+    padding: 8px 12px; background: var(--page); border-radius: 10px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+}
+.po-q-sub[hidden] { display: none !important; }
+
+.yn-switch {
+    display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: #fff;
+}
+.yn-switch label {
+    padding: 5px 14px; font-size: 13.5px; font-weight: 600; color: var(--muted);
+    cursor: pointer; margin: 0; user-select: none;
+}
+.yn-switch input { display: none; }
+.yn-switch label:has(input[value="0"]:checked) { background: #E4E7EC; color: var(--ink); }
+.yn-switch label:has(input[value="1"]:checked) { background: var(--accent); color: #fff; }
+.yn-switch.mets label:has(input[value="1"]:checked) { background: var(--ok); color: #fff; }
+.yn-switch.mets label:has(input[value="0"]:checked) { background: #D92D20; color: #fff; }
+
+/* Stage 2 Task Checklist */
+.po-task-row {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line-soft); background: #FAFBFD;
+}
+.po-task-row.done { background: #F6FEF9; border-color: #A9D8C1; }
+
+/* Uploaded Files Grid */
+.po-files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.po-file-card {
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: #fff;
+    display: flex; flex-direction: column; gap: 6px; font-size: 12.5px;
+}
+.po-file-card img { width: 100%; height: 105px; object-fit: cover; border-radius: 6px; background: var(--page); }
+.po-pdf-box {
+    height: 105px; border-radius: 6px; background: var(--accent-soft); color: var(--accent-dark);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px; text-decoration: none;
+}
+
+/* Cardiology Audit KPI cards */
+.au-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 820px) { .au-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.au-kpi {
+    background: var(--page); border-radius: 12px; padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 4px;
+}
+.au-kpi small { font-size: 12.5px; color: var(--muted); font-weight: 500; }
+.au-kpi b { font-size: 26px; font-weight: 700; color: var(--ink); line-height: 1.1; }
+.au-kpi.bad b { color: #D92D20; }

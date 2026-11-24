@@ -1,0 +1,153 @@
+{% extends 'base.html' %}
+{% load static_version %}
+
+{% block title %}წინასაოპერაციო — კვირის კალენდარი{% endblock %}
+{% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/preop.css' %}">{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="page-head">
+        <h1>წინასაოპერაციო <span class="count">ინფრარენალური AAA</span></h1>
+        <a class="x-btn sm" href="{% url 'preop-audit' %}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>კარდიოლოგის აუდიტი
+        </a>
+    </div>
+
+    {% if overdue_patients %}
+    <div class="tw-overdue-bar" role="alert">
+        <span><strong>ყურადღება — 7 დღეზე მეტად გახანგრძლივებული მომზადება (რუპტურის რისკი):</strong></span>
+        {% for op in overdue_patients %}
+        <a href="{% url 'preop-patient' op.pk %}">{{ op.patient_name }} (დღე {{ op.ev.days_elapsed }}/7)</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Top Tweek Bar: Week Navigation + Status Filter Pills + Quick Search -->
+    <div class="tw-topbar">
+        <div class="tw-week-nav">
+            <a class="x-btn sm x-icon" href="?week={{ prev_week }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}" title="წინა კვირა">←</a>
+            <span class="tw-week-title">{{ week_title }}</span>
+            <a class="x-btn sm x-icon" href="?week={{ next_week }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}" title="შემდეგი კვირა">→</a>
+            <a class="x-btn sm" href="?week={{ today|date:'Y-m-d' }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}">დღეს</a>
+        </div>
+
+        <div class="tw-pills">
+            {% for key, label, count in filter_pills %}
+            <a href="?week={{ monday|date:'Y-m-d' }}&status={{ key }}{% if q %}&q={{ q|urlencode }}{% endif %}"
+               class="tw-pill {% if status_filter == key %}on{% endif %}">
+                {% if key != 'all' %}<span class="dot dot-{{ key }}"></span>{% endif %}
+                <span>{{ label }} ({{ count }})</span>
+            </a>
+            {% endfor %}
+        </div>
+
+        <form method="get" class="ms-auto d-flex gap-2" style="min-width:210px">
+            <input type="hidden" name="week" value="{{ monday|date:'Y-m-d' }}">
+            {% if status_filter != 'all' %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+            <input type="search" name="q" value="{{ q }}" placeholder="ძებნა გვარით..." class="form-control form-control-sm" style="border-radius:999px;padding:0 14px;height:34px">
+        </form>
+    </div>
+
+    <!-- Tweek Signature 2x3 Weekly Grid (Mon, Tue, Wed / Thu, Fri, Sat+Sun stacked) -->
+    <div class="tw-grid" id="tw-calendar">
+        {% for day in days_mon_fri %}
+            {% include "mdf/preop/_day_card.html" with day=day %}
+        {% endfor %}
+        <div class="tw-wknd-stack">
+            {% include "mdf/preop/_day_card.html" with day=day_sat %}
+            {% include "mdf/preop/_day_card.html" with day=day_sun %}
+        </div>
+    </div>
+
+    <!-- Tweek Undated Someday Lists -->
+    <div class="tw-someday-head">უთარიღო სიები (Someday)</div>
+    <div class="tw-grid">
+        {% for col in someday_cols %}
+        <section class="tw-day tw-someday-card" data-slot="someday:{{ col.key }}">
+            <div class="tw-day-head">
+                <span class="tw-day-name">{{ col.label }}</span>
+                <span class="tw-day-date">{{ col.patients|length }}</span>
+            </div>
+            <div class="tw-lines">
+                {% for p in col.patients %}
+                    {% include "mdf/preop/_patient_row.html" with p=p %}
+                {% endfor %}
+                <form method="post" action="{% url 'preop-new' %}" class="tw-quick">
+                    {% csrf_token %}
+                    <input type="hidden" name="slot" value="someday:{{ col.key }}">
+                    <input type="text" name="patient_name" class="tw-quick-inp" placeholder="+ პაციენტის დამატება..." autocomplete="off">
+                    <div class="tw-quick-extra">
+                        <select name="op_subtype" aria-label="ოპერაცია">
+                            {% for val, lbl in op_subtypes %}<option value="{{ val }}">AAA — {{ lbl }}</option>{% endfor %}
+                        </select>
+                        <select name="surgeon" aria-label="ქირურგი">
+                            <option value="">ქირურგი...</option>
+                            {% for uid, uname in doctors %}<option value="{{ uid }}">{{ uname }}</option>{% endfor %}
+                        </select>
+                        <button type="submit" class="tw-quick-btn">ჩაწერა</button>
+                        <button type="submit" name="open_card" value="1" class="tw-quick-btn" style="background:var(--ink)">+ კითხვარი</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    var csrf = '{{ csrf_token }}';
+    var dragged = null;
+
+    document.querySelectorAll('.tw-row[draggable="true"]').forEach(function (row) {
+        row.addEventListener('dragstart', function (e) {
+            dragged = row;
+            row.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', row.dataset.moveUrl);
+        });
+        row.addEventListener('dragend', function () {
+            row.classList.remove('dragging');
+            dragged = null;
+            document.querySelectorAll('.tw-drop-over').forEach(function (el) { el.classList.remove('tw-drop-over'); });
+        });
+    });
+
+    document.querySelectorAll('.tw-day[data-slot]').forEach(function (col) {
+        col.addEventListener('dragover', function (e) {
+            if (!dragged) return;
+            e.preventDefault();
+            col.classList.add('tw-drop-over');
+        });
+        col.addEventListener('dragleave', function (e) {
+            if (!col.contains(e.relatedTarget)) col.classList.remove('tw-drop-over');
+        });
+        col.addEventListener('drop', function (e) {
+            if (!dragged) return;
+            e.preventDefault();
+            col.classList.remove('tw-drop-over');
+            var slot = col.dataset.slot;
+            var url = dragged.dataset.moveUrl;
+            var lines = col.querySelector('.tw-lines');
+            var quick = lines.querySelector('.tw-quick');
+            lines.insertBefore(dragged, quick);
+
+            var fd = new FormData();
+            fd.append('csrfmiddlewaretoken', csrf);
+            fd.append('slot', slot);
+            fetch(url, {
+                method: 'POST',
+                headers: {'X-Requested-With': 'XMLHttpRequest'},
+                body: fd
+            }).then(function (r) {
+                if (!r.ok) window.location.reload();
+            }).catch(function () {
+                window.location.reload();
+            });
+        });
+    });
+})();
+</script>
+{% endblock %}

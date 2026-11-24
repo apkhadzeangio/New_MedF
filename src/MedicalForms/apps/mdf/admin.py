@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 
 from .models import (BoardEntry, BoardPatient, ConsentForm, RosterDay, RosterLog, RosterPerson, DutyNote, DutyReport, Medicine, NivForm,
-                     PrescriptionTemplate, StaffProfile)
+                     PreopFile, PreopPatient, PrescriptionTemplate, StaffProfile)
 
 admin.site.site_header = 'Medical Forms - ადმინისტრირება'
 admin.site.site_title = 'Medical Forms'
@@ -101,3 +101,20 @@ class RosterDayAdmin(admin.ModelAdmin):
 @admin.register(RosterLog)
 class RosterLogAdmin(admin.ModelAdmin):
     list_display = ['at', 'date', 'text', 'user']
+
+
+class PreopFileInline(admin.TabularInline):
+    model = PreopFile
+    extra = 0
+    fields = ('uploaded_on', 'category', 'original_name', 'caption', 'is_pdf', 'created_by')
+    readonly_fields = ('is_pdf', 'created_by')
+
+
+@admin.register(PreopPatient)
+class PreopPatientAdmin(admin.ModelAdmin):
+    list_display = ['patient_name', 'op_subtype', 'surgeon', 'visit_date', 'someday_list',
+                    'cardiologist', 'cardio_decision', 'approved_at', 'archived']
+    list_filter = ['op_subtype', 'cardio_decision', 'archived']
+    search_fields = ('patient_name', 'cardiologist', 'anamnesis')
+    inlines = [PreopFileInline]
+
