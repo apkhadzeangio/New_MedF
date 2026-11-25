@@ -1,0 +1,692 @@
+    <div class="po-pane" data-pane="s1" {% if tab != 's1' %}hidden{% endif %}>
+        <form method="post" class="d-flex flex-column gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="stage1">
+
+            <section class="x-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">ვიტალური მონაცემები მიღებისას</h2>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% if ev.bp_arm_diff is not None %}
+                        <span class="po-badge {% if ev.bp_arm_diff >= 20 %}st-alert{% else %}st-ready{% endif %}">მკლავების ΔBP: {{ ev.bp_arm_diff }} mmHg</span>
+                        {% endif %}
+                        {% if ev.bmi is not None %}
+                        <span class="po-badge {% if ev.bmi >= 30 %}st-in_progress{% else %}st-ready{% endif %}">BMI: {{ ev.bmi }} კგ/მ²</span>
+                        {% endif %}
+                        {% if ev.is_venous %}
+                        <span class="po-badge {% if ev.caprini_score >= 5 %}st-alert{% else %}st-in_progress{% endif %}">Caprini: {{ ev.caprini_score }} ქულა ({{ ev.caprini_tier }})</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="grid-4">
+                    <label class="fld">მარჯვენა / ძირითადი სისტოლური (mmHg)
+                        <input type="number" name="bp_sys" value="{{ s.bp_sys|default_if_none:'' }}" placeholder="130" class="form-control">
+                    </label>
+                    <label class="fld">მარჯვენა / ძირითადი დიასტოლური (mmHg)
+                        <input type="number" name="bp_dia" value="{{ s.bp_dia|default_if_none:'' }}" placeholder="80" class="form-control">
+                    </label>
+                    <label class="fld">პულსი (/წთ)
+                        <input type="number" name="hr" value="{{ s.hr|default_if_none:'' }}" placeholder="72" class="form-control">
+                    </label>
+                    <label class="fld">სატურაცია SpO₂ (%)
+                        <input type="number" name="spo2" value="{{ s.spo2|default_if_none:'' }}" placeholder="98" class="form-control">
+                    </label>
+                </div>
+                <div class="d-flex flex-wrap align-items-end gap-3">
+                    <label class="chip-check"><input type="checkbox" name="irregular_hr" value="1" {% if s.irregular_hr %}checked{% endif %}>არარეგულარული პულსი (არითმია)</label>
+                    <label class="fld" style="width:170px">მარცხენა სისტოლური{% if ev.pathway == 'cea' %} (CEA!){% endif %}
+                        <input type="number" name="bp_sys_l" value="{{ s.bp_sys_l|default_if_none:'' }}" placeholder="128" class="form-control">
+                    </label>
+                    <label class="fld" style="width:170px">მარცხენა დიასტოლური
+                        <input type="number" name="bp_dia_l" value="{{ s.bp_dia_l|default_if_none:'' }}" placeholder="78" class="form-control">
+                    </label>
+                    <label class="fld" style="width:115px">წონა (კგ)
+                        <input type="number" step="any" name="weight_kg" value="{{ s.weight_kg|default_if_none:'' }}" class="form-control">
+                    </label>
+                    <label class="fld" style="width:115px">სიმაღლე (სმ)
+                        <input type="number" name="height_cm" value="{{ s.height_cm|default_if_none:'' }}" class="form-control">
+                    </label>
+                </div>
+            </section>
+
+            {% if ev.is_venous or ev.is_pta %}
+            <!-- LEAN VENOUS / ENDOVASCULAR PTA LAB PANEL -->
+            <section class="x-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">საფეხური 1: {% if ev.is_pta %}ენდოვასკულური (PTA / სტენტირება){% else %}დღის სტაციონარის / ვენური{% endif %} საბაზისო ანალიზები</h2>
+                    <div class="d-flex flex-wrap gap-1">
+                        {% if ev.egfr is not None %}
+                        <span class="po-badge {% if ev.egfr < 60 %}st-alert{% else %}st-in_progress{% endif %}">eGFR: {{ ev.egfr }} მლ/წთ</span>
+                        {% endif %}
+                        {% if ev.crcl is not None %}
+                        <span class="po-badge {% if ev.crcl < 50 %}st-alert{% else %}st-in_progress{% endif %}">CrCl (CG): {{ ev.crcl }} მლ/წთ</span>
+                        {% endif %}
+                        {% if ev.max_contrast_ml is not None %}
+                        <span class="po-badge {% if ev.co2_angio_advised %}st-alert{% else %}st-ready{% endif %}" title="მაქსიმალური დასაშვები იოდის კონტრასტი კონტრასტ-ინდუცირებული ნეფროპათიის პრევენციისთვის">
+                            მაქს. კონტრასტი: &le; {{ ev.max_contrast_ml }} მლ{% if ev.co2_angio_advised %} · CO₂/IVUS!{% endif %}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <p class="small text-muted m-0">
+                    {% if ev.is_pta %}ანგიოპლასტიკა/სტენტირებაზე სავალდებულოა ჰემოგრამა, INR, კრეატინინი/eGFR (კონტრასტისთვის) და გლუკოზა.{% else %}EVLA-სა და ფლებექტომიაზე ივსება მხოლოდ მსუბუქი საბაზისო პაკეტი (NICE NG45 — ჯანმრთელ EVLA-ზე INR/გლუკოზა მხოლოდ ჩვენებით).{% endif %}
+                </p>
+
+                <div class="grid-4">
+                    <label class="fld">ჰემოგლობინი — Hb (გ/ლ ან გ/დლ)
+                        <input type="number" step="any" name="hb" value="{{ s.hb|default_if_none:'' }}" placeholder="მაგ. 132" class="form-control">
+                    </label>
+                    <label class="fld">ლეიკოციტები — WBC (×10⁹/L)
+                        <input type="number" step="any" name="wbc" value="{{ s.wbc|default_if_none:'' }}" placeholder="მაგ. 6.8" class="form-control">
+                    </label>
+                    <label class="fld">თრომბოციტები — PLT (×10⁹/L)
+                        <input type="number" step="any" name="plt" value="{{ s.plt|default_if_none:'' }}" placeholder="მაგ. 240" class="form-control">
+                    </label>
+                    <label class="fld">INR{% if p.op_subtype == 'evla' %} (ანტიკოაგულანტზე / ჩვენებით){% else %} (კოაგულოგრამა){% endif %}
+                        <input type="number" step="any" name="inr" value="{{ s.inr|default_if_none:'' }}" placeholder="მაგ. 1.02" class="form-control">
+                    </label>
+
+                    <label class="fld">გლუკოზა უზმოდ{% if p.op_subtype == 'evla' %} (ჩვენებით){% else %} (მმოლ/ლ){% endif %}
+                        <input type="number" step="any" name="glucose" value="{{ s.glucose|default_if_none:'' }}" placeholder="მაგ. 5.1" class="form-control">
+                    </label>
+                    <label class="fld">კრეატინინი{% if ev.is_phleb or ev.is_pta %} (სავალდებულო){% else %} (ჩვენებით){% endif %}
+                        <div class="d-flex gap-1">
+                            <input type="number" step="any" name="creat" value="{{ s.creat|default_if_none:'' }}" placeholder="მაგ. 78" class="form-control">
+                            <select name="creat_unit" class="form-select" style="width:105px" title="კრეატინინის ერთეული">
+                                <option value="" {% if not s.creat_unit %}selected{% endif %}>ავტო</option>
+                                <option value="umol" {% if s.creat_unit == 'umol' %}selected{% endif %}>მკმოლ/ლ</option>
+                                <option value="mgdl" {% if s.creat_unit == 'mgdl' %}selected{% endif %}>მგ/დლ</option>
+                            </select>
+                        </div>
+                    </label>
+                    {% if ev.is_pta %}
+                    <label class="fld">კალიუმი — K⁺ (მმოლ/ლ)
+                        <input type="number" step="any" name="k" value="{{ s.k|default_if_none:'' }}" placeholder="მაგ. 4.3" class="form-control">
+                    </label>
+                    {% endif %}
+                    <label class="fld">სისხლის ჯგუფი და რეზუსი
+                        <select name="blood_group" class="form-select">
+                            <option value="">—</option>
+                            {% for bg in blood_groups %}
+                            <option value="{{ bg }}" {% if s.blood_group == bg %}selected{% endif %}>{{ bg }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="fld">ანალიზების თარიღი (&le;14 დღე)
+                        <input type="date" name="labs_date" value="{{ s.labs_date }}" class="form-control">
+                    </label>
+                    <div class="d-flex flex-wrap align-items-end gap-2">
+                        <label class="chip-check"><input type="checkbox" name="aptt_prolonged" value="1" {% if s.aptt_prolonged %}checked{% endif %}>APTT გახანგრძლივებული</label>
+                        <label class="chip-check"><input type="checkbox" name="viral_positive" value="1" {% if s.viral_positive %}checked{% endif %}>ვირუსული მარკერი (+)</label>
+                    </div>
+                </div>
+            </section>
+            {% else %}
+            <!-- MAJOR ARTERIAL LAB PANEL (AAA / CEA / ABF / PAD_BYPASS) -->
+            <section class="x-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">საფეხური 1: თავდაპირველი ლაბორატორიული ანალიზები და ბიომარკერები</h2>
+                    <div class="d-flex flex-wrap gap-1">
+                        <span class="po-badge {% if ev.egfr is not None and ev.egfr < 45 %}st-alert{% else %}st-in_progress{% endif %}">
+                            ავტომატური eGFR (CKD-EPI): {% if ev.egfr is not None %}{{ ev.egfr }} მლ/წთ{% else %}—{% endif %}
+                        </span>
+                        {% if ev.crcl is not None %}
+                        <span class="po-badge {% if ev.crcl < 50 %}st-alert{% else %}st-in_progress{% endif %}">
+                            CrCl (CG): {{ ev.crcl }} მლ/წთ
+                        </span>
+                        {% endif %}
+                        {% if ev.max_contrast_ml is not None %}
+                        <span class="po-badge {% if ev.co2_angio_advised %}st-alert{% else %}st-ready{% endif %}" title="მაქსიმალური დასაშვები იოდის კონტრასტი (EVAR / ანგიოგრაფია)">
+                            მაქს. კონტრასტი: &le; {{ ev.max_contrast_ml }} მლ{% if ev.co2_angio_advised %} · CO₂/IVUS!{% endif %}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <p class="small text-muted m-0">ექთანი წერს მხოლოდ რიცხვებს — NT-proBNP &lt; 125 pg/mL (მანკის გარეშე) ავტომატურად აკმაყოფილებს ESC 2022 კარდიოსკრინინგს ექოს რიგის გარეშე.</p>
+
+                <div class="grid-4">
+                    <label class="fld">ჰემოგლობინი — Hb (გ/ლ ან გ/დლ)
+                        <input type="number" step="any" name="hb" value="{{ s.hb|default_if_none:'' }}" placeholder="მაგ. 135" class="form-control">
+                    </label>
+                    <label class="fld">ლეიკოციტები — WBC (×10⁹/L)
+                        <input type="number" step="any" name="wbc" value="{{ s.wbc|default_if_none:'' }}" placeholder="მაგ. 7.2" class="form-control">
+                    </label>
+                    <label class="fld">თრომბოციტები — PLT (×10⁹/L)
+                        <input type="number" step="any" name="plt" value="{{ s.plt|default_if_none:'' }}" placeholder="მაგ. 220" class="form-control">
+                    </label>
+                    <label class="fld">სისხლის ჯგუფი და რეზუსი
+                        <select name="blood_group" class="form-select">
+                            <option value="">—</option>
+                            {% for bg in blood_groups %}
+                            <option value="{{ bg }}" {% if s.blood_group == bg %}selected{% endif %}>{{ bg }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+
+                    <label class="fld">INR (კოაგულოგრამა)
+                        <input type="number" step="any" name="inr" value="{{ s.inr|default_if_none:'' }}" placeholder="მაგ. 1.05" class="form-control">
+                    </label>
+                    <label class="fld">ფიბრინოგენი (გ/ლ)
+                        <input type="number" step="any" name="fibrinogen" value="{{ s.fibrinogen|default_if_none:'' }}" placeholder="მაგ. 3.1" class="form-control">
+                    </label>
+                    <label class="fld">კრეატინინი (მკმოლ/ლ ან მგ/დლ)
+                        <div class="d-flex gap-1">
+                            <input type="number" step="any" name="creat" value="{{ s.creat|default_if_none:'' }}" placeholder="მაგ. 92" class="form-control">
+                            <select name="creat_unit" class="form-select" style="width:105px" title="კრეატინინის ერთეული">
+                                <option value="" {% if not s.creat_unit %}selected{% endif %}>ავტო</option>
+                                <option value="umol" {% if s.creat_unit == 'umol' %}selected{% endif %}>მკმოლ/ლ</option>
+                                <option value="mgdl" {% if s.creat_unit == 'mgdl' %}selected{% endif %}>მგ/დლ</option>
+                            </select>
+                        </div>
+                    </label>
+                    <label class="fld">კალიუმი — K⁺ (მმოლ/ლ)
+                        <input type="number" step="any" name="k" value="{{ s.k|default_if_none:'' }}" placeholder="მაგ. 4.3" class="form-control">
+                    </label>
+
+                    <label class="fld">ნატრიუმი — Na⁺ (მმოლ/ლ)
+                        <input type="number" step="any" name="na" value="{{ s.na|default_if_none:'' }}" placeholder="მაგ. 140" class="form-control">
+                    </label>
+                    <label class="fld">გლუკოზა უზმოდ (მმოლ/ლ)
+                        <input type="number" step="any" name="glucose" value="{{ s.glucose|default_if_none:'' }}" placeholder="მაგ. 5.5" class="form-control">
+                    </label>
+                    <label class="fld">HbA1c (%, დიაბეტის / გლუკოზა &ge;7-ისას)
+                        <input type="number" step="any" name="hba1c" value="{{ s.hba1c|default_if_none:'' }}" placeholder="მაგ. 6.8" class="form-control">
+                    </label>
+                    <label class="fld">ალბუმინი (გ/ლ)
+                        <input type="number" step="any" name="albumin" value="{{ s.albumin|default_if_none:'' }}" placeholder="მაგ. 38" class="form-control">
+                    </label>
+                </div>
+
+                <div class="grid-4 pt-2 border-top" style="border-color:var(--line-soft)!important">
+                    <label class="fld" title="ESC 2022 Class I: NT-proBNP < 125 pg/mL გამორიცხავს სუბკლინიკურ გულის უკმარისობას">NT-proBNP (pg/mL, ESC 2022)
+                        <input type="number" step="any" name="nt_probnp" value="{{ s.nt_probnp|default_if_none:'' }}" placeholder="მაგ. 85 (&lt;125)" class="form-control">
+                    </label>
+                    <label class="fld" title="ESC 2022 Class I: საბაზისო მაღალმგრძნობიარე ტროპონინი MINS-ის მონიტორინგისთვის">hs-cTn ტროპონინი (ng/L, საბაზისო)
+                        <input type="number" step="any" name="hs_ctn" value="{{ s.hs_ctn|default_if_none:'' }}" placeholder="მაგ. 9" class="form-control">
+                    </label>
+                    <label class="fld">შარდში ლეიკოციტები{% if not ev.has_synthetic_implant %} (ჩვენებით){% else %} (მხ/არ){% endif %}
+                        <input type="number" step="any" name="urine_wbc" value="{{ s.urine_wbc|default_if_none:'' }}" placeholder="მაგ. 2" class="form-control">
+                    </label>
+                    <label class="fld">ღვიძლის ფუნქციები (ALT / AST / ბილირუბინი)
+                        <select name="liver_status" class="form-select">
+                            <option value="normal" {% if s.liver_status == 'normal' %}selected{% endif %}>ნორმაში (&lt;2× ULN)</option>
+                            <option value="2x" {% if s.liver_status == '2x' %}selected{% endif %}>ზომიერი მატება (2–3× ULN)</option>
+                            <option value="3x" {% if s.liver_status == '3x' %}selected{% endif %}>მნიშვნელოვანი მატება (&ge;3× ULN)</option>
+                        </select>
+                    </label>
+                    <label class="fld">LDL-ქოლესტერინი (მმოლ/ლ)
+                        <input type="number" step="any" name="ldl" value="{{ s.ldl|default_if_none:'' }}" placeholder="მაგ. 2.1" class="form-control">
+                    </label>
+                    <label class="fld">ფერიტინი (ნგ/მლ, Hb &lt;115-ისას)
+                        <input type="number" step="any" name="ferritin" value="{{ s.ferritin|default_if_none:'' }}" placeholder="მაგ. 45" class="form-control">
+                    </label>
+                    <label class="fld">TSAT (%, რკინის სატურაცია — ჩვენებით)
+                        <input type="number" step="any" name="tsat" value="{{ s.tsat|default_if_none:'' }}" placeholder="მაგ. 24" class="form-control">
+                    </label>
+                    <label class="fld">ანალიზების თარიღი (&le;14 დღე)
+                        <input type="date" name="labs_date" value="{{ s.labs_date }}" class="form-control">
+                    </label>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <label class="chip-check"><input type="checkbox" name="urine_nitrite" value="1" {% if s.urine_nitrite %}checked{% endif %}>შარდში ნიტრიტები (+) / ბაქტერიები</label>
+                    <label class="chip-check"><input type="checkbox" name="aptt_prolonged" value="1" {% if s.aptt_prolonged %}checked{% endif %}>APTT გახანგრძლივებული</label>
+                    <label class="chip-check"><input type="checkbox" name="viral_positive" value="1" {% if s.viral_positive %}checked{% endif %}>ვირუსული მარკერი (+)</label>
+                </div>
+            </section>
+            {% endif %}
+
+            <section class="x-card">
+                <h2>საფეხური 1: ინსტრუმენტული კვლევები და ანატომია ({{ ev.pathway_short }})</h2>
+
+                {% if ev.pathway == 'venous' %}
+                <!-- VENOUS Stage 1: Standing Venous Duplex + Technical Anatomy Chips + Conditional ECG -->
+                <div class="grid-4">
+                    <label class="fld" style="grid-column:span 2">ქვემო კიდურების ვენების დუპლექს-სკანირება (ფეხზე დგომით)
+                        <select name="ven_duplex_status" class="form-select">
+                            <option value="pending" {% if s.ven_duplex_status == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა / შესატანია</option>
+                            <option value="deep_patent_reflux" {% if s.ven_duplex_status == 'deep_patent_reflux' %}selected{% endif %}>✓ ღრმა ვენები გამავალია, დადასტურებულია ზედაპირული რეფლუქსი</option>
+                            <option value="acute_dvt" {% if s.ven_duplex_status == 'acute_dvt' %}selected{% endif %}>მწვავე ღრმა ვენების თრომბოზი — DVT (უკუჩვენება!)</option>
+                            <option value="deep_obstruction" {% if s.ven_duplex_status == 'deep_obstruction' %}selected{% endif %}>ღრმა ვენების ოკლუზია — კოლატერალური ვენა (უკუჩვენება!)</option>
+                            <option value="superficial_thrombus" {% if s.ven_duplex_status == 'superficial_thrombus' %}selected{% endif %}>მწვავე აღმავალი თრომბოფლებიტი (SFJ/SPJ-სთან ახლოს!)</option>
+                        </select>
+                    </label>
+                    <label class="fld">სამიზნე ვენური აუზი
+                        <select name="ven_target_vein" class="form-select">
+                            <option value="gsv" {% if s.ven_target_vein == 'gsv' %}selected{% endif %}>დიდი საჩინო ვენა (GSV)</option>
+                            <option value="ssv" {% if s.ven_target_vein == 'ssv' %}selected{% endif %}>მცირე საჩინო ვენა (SSV)</option>
+                            <option value="gsv_ssv" {% if s.ven_target_vein == 'gsv_ssv' %}selected{% endif %}>GSV + SSV ერთდროულად</option>
+                            <option value="aagsv_trib" {% if s.ven_target_vein == 'aagsv_trib' %}selected{% endif %}>დამატებითი საჩინო / შენაკადები / პერფორანტები</option>
+                        </select>
+                    </label>
+                    <label class="fld">საჩინო ვენის დიამეტრი (მმ)
+                        <input type="number" step="0.1" name="ven_gsv_mm" value="{{ s.ven_gsv_mm|default_if_none:'' }}" placeholder="მაგ. 8.5" min="1" max="50" class="form-control">
+                    </label>
+                </div>
+                <div class="po-chip-row">
+                    <label class="chip-check"><input type="checkbox" name="ven_epifascial" value="1" {% if s.ven_epifascial %}checked{% endif %}>ეპიფასციური / კანთან ახლო ღერო (&lt;5 მმ)</label>
+                    <label class="chip-check"><input type="checkbox" name="ven_tortuous" value="1" {% if s.ven_tortuous %}checked{% endif %}>ძლიერ დაკლაკნილი ღერო / სინექიები</label>
+                    <label class="chip-check"><input type="checkbox" name="ven_perforator" value="1" {% if s.ven_perforator %}checked{% endif %}>ინკომპეტენტური პერფორანტული ვენა (&ge;3.5 მმ)</label>
+                </div>
+                <div class="grid-3">
+                    <label class="fld">ელექტროკარდიოგრამა — ეკგ ({% if ev.needs_ecg_venous %}სავალდებულოა{% else %}არასავალდებულო ჯანმრთელ &lt;50 წ. EVLA-ზე{% endif %})
+                        <select name="ecg" class="form-select">
+                            <option value="pending" {% if s.ecg == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.ecg == 'normal' %}selected{% endif %}>სინუსური / მწვავე იშემიის გარეშე</option>
+                            <option value="afib_controlled" {% if s.ecg == 'afib_controlled' %}selected{% endif %}>ნორმოსისტოლური მოციმციმე არითმია (კონტროლირებული)</option>
+                            <option value="ischemia_arrhythmia" {% if s.ecg == 'ischemia_arrhythmia' %}selected{% endif %}>ახალი იშემია / არითმია / AV-ბლოკადა</option>
+                        </select>
+                    </label>
+                    <div class="d-flex align-items-end text-muted small" style="grid-column:span 2;padding-bottom:6px">
+                        ESVS 2022 / ESC 2022: რენტგენი, ექოკარდიოგრაფია, საძილეების დუპლექსი და სპირომეტრია ვენურ ჩარევებზე რუტინულად არ ინიშნება.
+                    </div>
+                </div>
+
+                {% elif ev.pathway == 'cea' %}
+                <!-- CEA Stage 1 Imaging -->
+                <div class="grid-4">
+                    <label class="fld">მარჯვენა საძილე — ICA სტენოზი — NASCET (%){% if p.side == 'R' %} · საოპერაციო{% endif %}
+                        <input type="number" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 80" min="0" max="100" class="form-control">
+                    </label>
+                    <label class="fld">მარცხენა საძილე — ICA სტენოზი — NASCET (%){% if p.side == 'L' %} · საოპერაციო{% endif %}
+                        <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 35" min="0" max="100" class="form-control">
+                    </label>
+                    <label class="fld">კისრისა და რკალის CTA / MRA
+                        <select name="cea_cta_status" class="form-select">
+                            <option value="pending" {% if s.cea_cta_status == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="concordant" {% if s.cea_cta_status == 'concordant' %}selected{% endif %}>შეესაბამება დუპლექსს (ტიპური ბიფურკაცია)</option>
+                            <option value="high_calcified" {% if s.cea_cta_status == 'high_calcified' %}selected{% endif %}>მაღალი ბიფურკაცია (C2) / მძიმე კალციფიკაცია / კინკინგი</option>
+                        </select>
+                    </label>
+                    <label class="fld">თავის ტვინის კტ / მრტ{% if ev.needs_brain_ct %} (სავალდებულო!){% endif %}
+                        <select name="brain_imaging" class="form-select">
+                            <option value="pending" {% if s.brain_imaging == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal_small" {% if s.brain_imaging == 'normal_small' %}selected{% endif %}>სისხლჩაქცევის გარეშე / მცირე კერა</option>
+                            <option value="large_or_hemorrhage" {% if s.brain_imaging == 'large_or_hemorrhage' %}selected{% endif %}>ფართო მწვავე ინფარქტი (&gt;1/3 MCA) / სისხლჩაქცევა</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="grid-4">
+                    <label class="fld">ექო — LVEF % ({% if ev.needs_echo_or_bnp %}ან NT-proBNP &lt;125{% else %}ჩვენებით{% endif %})
+                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 58" min="5" max="90" class="form-control">
+                    </label>
+                    <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
+                        <select name="cxr" class="form-select">
+                            <option value="pending" {% if s.cxr == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.cxr == 'normal' %}selected{% endif %}>ნორმა / მწვავე კერის გარეშე</option>
+                            <option value="emphysema" {% if s.cxr == 'emphysema' %}selected{% endif %}>ემფიზემა / ქრ. ბრონქიტი (ჩართავს სპირომეტრიას)</option>
+                            <option value="infiltrate" {% if s.cxr == 'infiltrate' %}selected{% endif %}>ინფილტრაცია / გამონაჟონი / წარმონაქმნი</option>
+                        </select>
+                    </label>
+                    <label class="fld">ელექტროკარდიოგრამა (ეკგ — სავალდებულოა)
+                        <select name="ecg" class="form-select">
+                            <option value="pending" {% if s.ecg == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.ecg == 'normal' %}selected{% endif %}>სინუსური / მწვავე იშემიის გარეშე</option>
+                            <option value="afib_controlled" {% if s.ecg == 'afib_controlled' %}selected{% endif %}>ნორმოსისტოლური მოციმციმე არითმია (კონტროლირებული)</option>
+                            <option value="ischemia_arrhythmia" {% if s.ecg == 'ischemia_arrhythmia' %}selected{% endif %}>ახალი იშემია / მოციმციმე არითმია / ბლოკადა</option>
+                        </select>
+                    </label>
+                    <div class="d-flex flex-wrap align-items-end gap-2">
+                        <label class="chip-check"><input type="checkbox" name="echo_valve_issue" value="1" {% if s.echo_valve_issue %}checked{% endif %}>მძიმე სარქვლოვანი მანკი</label>
+                        <label class="chip-check"><input type="checkbox" name="cta_disc" value="1" {% if s.cta_disc %}checked{% endif %}>CTA დისკი ადგილზეა</label>
+                    </div>
+                </div>
+
+                {% elif ev.pathway == 'abf' %}
+                <!-- ABF Stage 1 Imaging + Mesenteric / Renal CTA Checklist -->
+                <div class="grid-4">
+                    <label class="fld">მარჯვენა ABI (გოჯ-მხრის ინდექსი)
+                        <input type="number" step="0.01" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="მაგ. 0.42" min="0" max="3.0" class="form-control">
+                    </label>
+                    <label class="fld">მარცხენა ABI (გოჯ-მხრის ინდექსი)
+                        <input type="number" step="0.01" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="მაგ. 0.38" min="0" max="3.0" class="form-control">
+                    </label>
+                    <label class="fld">აორტის საკლამპე ზონა CTA-ზე
+                        <select name="abf_clamp_zone" class="form-select">
+                            <option value="pending" {% if s.abf_clamp_zone == 'pending' %}selected{% endif %}>ჯერ არ შეფასებულა</option>
+                            <option value="infrarenal" {% if s.abf_clamp_zone == 'infrarenal' %}selected{% endif %}>სუფთა ინფრარენალური საკლამპე ზონა</option>
+                            <option value="juxtarenal_calcified" {% if s.abf_clamp_zone == 'juxtarenal_calcified' %}selected{% endif %}>იუქსტარენალური ოკლუზია / მძიმე კალციფიკაცია</option>
+                        </select>
+                    </label>
+                    <label class="fld">ბარძაყის Outflow (CFA / Profunda)
+                        <select name="abf_outflow" class="form-select">
+                            <option value="pending" {% if s.abf_outflow == 'pending' %}selected{% endif %}>ჯერ არ შეფასებულა</option>
+                            <option value="patent" {% if s.abf_outflow == 'patent' %}selected{% endif %}>ორმხრივ გამავალი CFA და Profunda</option>
+                            <option value="profunda_stenosis" {% if s.abf_outflow == 'profunda_stenosis' %}selected{% endif %}>CFA / Profunda სტენოზი (პროფუნდოპლასტიკა)</option>
+                            <option value="poor_outflow" {% if s.abf_outflow == 'poor_outflow' %}selected{% endif %}>მძიმე დისტალური დაზიანება (ჩართავს GSV კარტირებას!)</option>
+                        </select>
+                    </label>
+                </div>
+                <details class="pt-1" {% if ev.abi_non_compressible or q.dm or q.on_dialysis or s.tp_r is not None or s.tp_l is not None or s.tbi_r is not None or s.tbi_l is not None %}open{% endif %}>
+                    <summary class="small text-muted fw-semibold" style="cursor:pointer">+ თითის წნევა / TBI (Toe Pressure — დიაბეტის, დიალიზის ან ABI &gt;1.40-ის დროს)</summary>
+                    <div class="grid-4 pt-2">
+                        <label class="fld">მარჯვენა Toe Pressure (mmHg)
+                            <input type="number" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="მაგ. 45" min="0" max="400" class="form-control">
+                        </label>
+                        <label class="fld">მარცხენა Toe Pressure (mmHg)
+                            <input type="number" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 40" min="0" max="400" class="form-control">
+                        </label>
+                        <label class="fld">მარჯვენა TBI (თით-მხრის ინდექსი)
+                            <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.42" min="0" max="3.0" class="form-control">
+                        </label>
+                        <label class="fld">მარცხენა TBI (თით-მხრის ინდექსი)
+                            <input type="number" step="0.01" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="მაგ. 0.38" min="0" max="3.0" class="form-control">
+                        </label>
+                    </div>
+                </details>
+                <div class="grid-4">
+                    <label class="fld">მარჯვენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
+                        <input type="number" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 25" min="0" max="100" class="form-control">
+                    </label>
+                    <label class="fld">მარცხენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
+                        <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
+                    </label>
+                    <label class="fld">ექო — LVEF % (ან NT-proBNP &lt;125)
+                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="90" class="form-control">
+                    </label>
+                    <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
+                        <select name="cxr" class="form-select">
+                            <option value="pending" {% if s.cxr == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.cxr == 'normal' %}selected{% endif %}>ნორმა / მწვავე კერის გარეშე</option>
+                            <option value="emphysema" {% if s.cxr == 'emphysema' %}selected{% endif %}>ემფიზემა / ქრ. ბრონქიტი</option>
+                            <option value="infiltrate" {% if s.cxr == 'infiltrate' %}selected{% endif %}>ინფილტრაცია / გამონაჟონი / წარმონაქმნი</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="grid-3">
+                    <label class="fld">ელექტროკარდიოგრამა (ეკგ)
+                        <select name="ecg" class="form-select">
+                            <option value="pending" {% if s.ecg == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.ecg == 'normal' %}selected{% endif %}>სინუსური / მწვავე იშემიის გარეშე</option>
+                            <option value="afib_controlled" {% if s.ecg == 'afib_controlled' %}selected{% endif %}>ნორმოსისტოლური მოციმციმე არითმია (კონტროლირებული)</option>
+                            <option value="ischemia_arrhythmia" {% if s.ecg == 'ischemia_arrhythmia' %}selected{% endif %}>ახალი იშემია / არითმია / AV-ბლოკადა</option>
+                        </select>
+                    </label>
+                    <label class="fld" style="grid-column:span 2">ჯორჯლის / მენჯის კოლატერალები CTA-ზე (SMA / IMA / IIA)
+                        <select name="abf_mesenteric" class="form-select">
+                            <option value="normal" {% if s.abf_mesenteric == 'normal' %}selected{% endif %}>SMA გამავალია, კრიტიკული კოლატერალური დეფიციტის გარეშე</option>
+                            <option value="ima_dominant_iia_occ" {% if s.abf_mesenteric == 'ima_dominant_iia_occ' %}selected{% endif %}>დომინანტური IMA კოლატერალი / ორმხრივი IIA ოკლუზია (IMA რეიმპლანტაცია)</option>
+                            <option value="sma_stenosis" {% if s.abf_mesenteric == 'sma_stenosis' %}selected{% endif %}>SMA სტენოზი/ოკლუზია (ნაწლავის იშემიის მაღალი რისკი!)</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <label class="chip-check"><input type="checkbox" name="abf_renal_stenosis" value="1" {% if s.abf_renal_stenosis %}checked{% endif %}>თირკმლის არტერიის სტენოზი (&ge;60%)</label>
+                    <label class="chip-check"><input type="checkbox" name="carotid_symp" value="1" {% if s.carotid_symp %}checked{% endif %}>სიმპტომური საძილე (TIA &le;6 თვ)</label>
+                    <label class="chip-check"><input type="checkbox" name="echo_valve_issue" value="1" {% if s.echo_valve_issue %}checked{% endif %}>მძიმე სარქვლოვანი მანკი / PH</label>
+                    <label class="chip-check"><input type="checkbox" name="cta_disc" value="1" {% if s.cta_disc %}checked{% endif %}>CTA დისკი ადგილზეა</label>
+                </div>
+
+                {% elif ev.is_pad_bypass %}
+                <!-- PERIPHERAL ARTERIAL BYPASS Stage 1: Runoff CTA + Ipsilateral GSV Vein Mapping -->
+                <div class="grid-4">
+                    <label class="fld">მარჯვენა ABI{% if p.side == 'R' %} · საოპერაციო{% endif %}
+                        <input type="number" step="0.01" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="მაგ. 0.35" min="0" max="3.0" class="form-control">
+                    </label>
+                    <label class="fld">მარცხენა ABI{% if p.side == 'L' %} · საოპერაციო{% endif %}
+                        <input type="number" step="0.01" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="მაგ. 0.85" min="0" max="3.0" class="form-control">
+                    </label>
+                    <label class="fld" style="grid-column:span 2">დისტალური მიმღები კალაპოტი (Runoff CTA / ანგიოგრაფია)
+                        <select name="pad_runoff_status" class="form-select">
+                            <option value="pending" {% if s.pad_runoff_status == 'pending' %}selected{% endif %}>ჯერ არ შეფასებულა</option>
+                            <option value="popliteal_patent" {% if s.pad_runoff_status == 'popliteal_patent' %}selected{% endif %}>✓ მუხლქვეშა არტერია და &ge;2 წვივის არტერია გამავალია</option>
+                            <option value="tibial_single" {% if s.pad_runoff_status == 'tibial_single' %}selected{% endif %}>ერთადერთი გამავალი წვივის/ტერფის არტერია (საჭიროა GSV &ge;3 მმ)</option>
+                            <option value="desert_foot" {% if s.pad_runoff_status == 'desert_foot' %}selected{% endif %}>მძიმე დისტალური ოკლუზია — Desert Foot (Red Flag!)</option>
+                        </select>
+                    </label>
+                </div>
+                <details class="pt-1" {% if ev.abi_non_compressible or q.dm or q.on_dialysis or s.tp_r is not None or s.tp_l is not None or s.tbi_r is not None or s.tbi_l is not None %}open{% endif %}>
+                    <summary class="small text-muted fw-semibold" style="cursor:pointer">+ თითის წნევა / TBI (Toe Pressure — დიაბეტის, დიალიზის ან ABI &gt;1.40-ის დროს)</summary>
+                    <div class="grid-4 pt-2">
+                        <label class="fld">მარჯვენა Toe Pressure (mmHg)
+                            <input type="number" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="მაგ. 35" min="0" max="400" class="form-control">
+                        </label>
+                        <label class="fld">მარცხენა Toe Pressure (mmHg)
+                            <input type="number" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 75" min="0" max="400" class="form-control">
+                        </label>
+                        <label class="fld">მარჯვენა TBI
+                            <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.30" min="0" max="3.0" class="form-control">
+                        </label>
+                        <label class="fld">მარცხენა TBI
+                            <input type="number" step="0.01" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="მაგ. 0.72" min="0" max="3.0" class="form-control">
+                        </label>
+                    </div>
+                </details>
+                <div class="grid-4">
+                    <label class="fld" style="grid-column:span 2">იფსილატერალური დიდი საჩინო ვენის (GSV) დუპლექს-კარტირება
+                        <select name="pad_gsv_status" class="form-select">
+                            <option value="pending" {% if s.pad_gsv_status == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="adequate" {% if s.pad_gsv_status == 'adequate' %}selected{% endif %}>✓ ვარგისი აუტოვენა (&ge;3.0 მმ, სკლეროზისა და ვარიკოზის გარეშე)</option>
+                            <option value="inadequate" {% if s.pad_gsv_status == 'inadequate' %}selected{% endif %}>უვარგისია (&lt;3.0 მმ / სკლეროზული / ამოღებულია — ჩართავს ალტ. კარტირებას!)</option>
+                        </select>
+                    </label>
+                    <label class="fld">GSV მინიმალური დიამეტრი (მმ)
+                        <input type="number" step="0.1" name="pad_gsv_mm" value="{{ s.pad_gsv_mm|default_if_none:'' }}" placeholder="მაგ. 3.4" min="0.5" max="30" class="form-control">
+                    </label>
+                    <label class="fld">ექო — LVEF % ({% if ev.needs_echo_or_bnp %}ან NT-proBNP &lt;125{% else %}ჩვენებით{% endif %})
+                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="90" class="form-control">
+                    </label>
+                </div>
+                <div class="grid-4">
+                    <label class="fld">მარჯვენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
+                        <input type="number" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 25" min="0" max="100" class="form-control">
+                    </label>
+                    <label class="fld">მარცხენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
+                        <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
+                    </label>
+                    <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
+                        <select name="cxr" class="form-select">
+                            <option value="pending" {% if s.cxr == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.cxr == 'normal' %}selected{% endif %}>ნორმა / მწვავე კერის გარეშე</option>
+                            <option value="emphysema" {% if s.cxr == 'emphysema' %}selected{% endif %}>ემფიზემა / ქრ. ბრონქიტი</option>
+                            <option value="infiltrate" {% if s.cxr == 'infiltrate' %}selected{% endif %}>ინფილტრაცია / გამონაჟონი / წარმონაქმნი</option>
+                        </select>
+                    </label>
+                    <label class="fld">ელექტროკარდიოგრამა (ეკგ)
+                        <select name="ecg" class="form-select">
+                            <option value="pending" {% if s.ecg == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.ecg == 'normal' %}selected{% endif %}>სინუსური / მწვავე იშემიის გარეშე</option>
+                            <option value="afib_controlled" {% if s.ecg == 'afib_controlled' %}selected{% endif %}>ნორმოსისტოლური მოციმციმე არითმია (კონტროლირებული)</option>
+                            <option value="ischemia_arrhythmia" {% if s.ecg == 'ischemia_arrhythmia' %}selected{% endif %}>ახალი იშემია / არითმია / AV-ბლოკადა</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <label class="chip-check"><input type="checkbox" name="carotid_symp" value="1" {% if s.carotid_symp %}checked{% endif %}>სიმპტომური საძილე (TIA &le;6 თვ)</label>
+                    <label class="chip-check"><input type="checkbox" name="echo_valve_issue" value="1" {% if s.echo_valve_issue %}checked{% endif %}>მძიმე სარქვლოვანი მანკი / PH</label>
+                    <label class="chip-check"><input type="checkbox" name="cta_disc" value="1" {% if s.cta_disc %}checked{% endif %}>CTA / ანგიოგრაფიის დისკი ადგილზეა</label>
+                </div>
+
+                {% elif ev.is_pta %}
+                <!-- PERIPHERAL PTA / STENTING Stage 1: ABI + Lesion Level + Puncture Access + ECG -->
+                <div class="grid-4">
+                    <label class="fld">მარჯვენა ABI{% if p.side == 'R' %} · საოპერაციო{% endif %}
+                        <input type="number" step="0.01" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="მაგ. 0.48" min="0" max="3.0" class="form-control">
+                    </label>
+                    <label class="fld">მარცხენა ABI{% if p.side == 'L' %} · საოპერაციო{% endif %}
+                        <input type="number" step="0.01" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="მაგ. 0.92" min="0" max="3.0" class="form-control">
+                    </label>
+                    <label class="fld">დაზიანების ანატომიური სეგმენტი
+                        <select name="pta_lesion_site" class="form-select">
+                            <option value="iliac" {% if s.pta_lesion_site == 'iliac' %}selected{% endif %}>თეძოს არტერიები (Iliac)</option>
+                            <option value="femoropopliteal" {% if s.pta_lesion_site == 'femoropopliteal' %}selected{% endif %}>ბარძაყ-მუხლქვეშა (SFA / Popliteal)</option>
+                            <option value="infrapopliteal" {% if s.pta_lesion_site == 'infrapopliteal' %}selected{% endif %}>წვივის / ტერფის არტერიები (BTK)</option>
+                            <option value="multilevel" {% if s.pta_lesion_site == 'multilevel' %}selected{% endif %}>მრავალდონიანი დაზიანება</option>
+                        </select>
+                    </label>
+                    <label class="fld">პუნქციის არტერიული მიდგომა (დუპლექსი/CTA)
+                        <select name="pta_access_site" class="form-select">
+                            <option value="pending" {% if s.pta_access_site == 'pending' %}selected{% endif %}>ჯერ არ შემოწმებულა</option>
+                            <option value="cfa_clean" {% if s.pta_access_site == 'cfa_clean' %}selected{% endif %}>✓ საერთო ბარძაყის არტერია (CFA) თავისუფალია</option>
+                            <option value="cfa_calcified_scar" {% if s.cfa_calcified_scar or s.pta_access_site == 'cfa_calcified_scar' %}selected{% endif %}>CFA-ს მძიმე კალციფიკაცია / ნაწიბური (Radial/Brachial/კონტრალატ.)</option>
+                        </select>
+                    </label>
+                </div>
+                <details class="pt-1" {% if ev.abi_non_compressible or q.dm or q.on_dialysis or s.tp_r is not None or s.tp_l is not None or s.tbi_r is not None or s.tbi_l is not None %}open{% endif %}>
+                    <summary class="small text-muted fw-semibold" style="cursor:pointer">+ თითის წნევა / TBI (Toe Pressure — დიაბეტის, დიალიზის ან ABI &gt;1.40-ის დროს)</summary>
+                    <div class="grid-4 pt-2">
+                        <label class="fld">მარჯვენა Toe Pressure (mmHg)
+                            <input type="number" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="მაგ. 45" min="0" max="400" class="form-control">
+                        </label>
+                        <label class="fld">მარცხენა Toe Pressure (mmHg)
+                            <input type="number" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 80" min="0" max="400" class="form-control">
+                        </label>
+                        <label class="fld">მარჯვენა TBI
+                            <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.40" min="0" max="3.0" class="form-control">
+                        </label>
+                        <label class="fld">მარცხენა TBI
+                            <input type="number" step="0.01" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="მაგ. 0.74" min="0" max="3.0" class="form-control">
+                        </label>
+                    </div>
+                </details>
+                <div class="grid-3">
+                    <label class="fld">ელექტროკარდიოგრამა (ეკგ — სავალდებულოა)
+                        <select name="ecg" class="form-select">
+                            <option value="pending" {% if s.ecg == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.ecg == 'normal' %}selected{% endif %}>სინუსური / მწვავე იშემიის გარეშე</option>
+                            <option value="afib_controlled" {% if s.ecg == 'afib_controlled' %}selected{% endif %}>ნორმოსისტოლური მოციმციმე არითმია (კონტროლირებული)</option>
+                            <option value="ischemia_arrhythmia" {% if s.ecg == 'ischemia_arrhythmia' %}selected{% endif %}>ახალი იშემია / არითმია / AV-ბლოკადა</option>
+                        </select>
+                    </label>
+                    <div class="d-flex align-items-end text-muted small" style="grid-column:span 2;padding-bottom:6px">
+                        ESVS 2024 / ESC 2022: ადგილობრივი ანესთეზიით გეგმურ PTA-ზე რუტინული რენტგენი, სპირომეტრია და კარდიოლოგი სტაბილურ პაციენტთან არ ინიშნება.
+                    </div>
+                </div>
+
+                {% else %}
+                <!-- AAA Stage 1 Imaging + ESVS 2024 Morphology / Neck IFU / Popliteal Screening -->
+                <div class="grid-4">
+                    <label class="fld">ანევრიზმის დიამეტრი CTA-ზე (მმ)
+                        <input type="number" step="any" name="aaa_mm" value="{{ s.aaa_mm|default_if_none:'' }}" placeholder="მაგ. 60" class="form-control">
+                    </label>
+                    <label class="fld">მორფოლოგია / დინამიკა (ESVS 2024)
+                        <select name="aaa_morphology" class="form-select">
+                            {% for mk, ml in aaa_morphology_choices %}
+                            <option value="{{ mk }}" {% if s.aaa_morphology == mk %}selected{% endif %}>{{ ml }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {% if p.op_subtype == 'evar' or p.op_subtype == 'tbd' %}
+                    <label class="fld">პროქსიმალური ყელის ანატომია (EVAR IFU)
+                        <select name="aaa_neck_status" class="form-select">
+                            {% for nk, nl in aaa_neck_choices %}
+                            <option value="{{ nk }}" {% if s.aaa_neck_status == nk %}selected{% endif %}>{{ nl }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    {% endif %}
+                    <label class="fld">მუხლქვეშა/ბარძაყის ანევრიზმის სკრინინგი
+                        <select name="popliteal_screen_status" class="form-select">
+                            {% for pk_val, pl_val in popliteal_screen_choices %}
+                            <option value="{{ pk_val }}" {% if s.popliteal_screen_status == pk_val %}selected{% endif %}>{{ pl_val }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <div class="grid-4">
+                    <label class="fld">მარჯვენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
+                        <input type="number" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 25" min="0" max="100" class="form-control">
+                    </label>
+                    <label class="fld">მარცხენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
+                        <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
+                    </label>
+                    <label class="fld">ექო — LVEF % ({% if ev.needs_echo_or_bnp %}ან NT-proBNP &lt;125{% else %}ჩვენებით{% endif %})
+                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="90" class="form-control">
+                    </label>
+                    <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
+                        <select name="cxr" class="form-select">
+                            <option value="pending" {% if s.cxr == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.cxr == 'normal' %}selected{% endif %}>ნორმა / მწვავე კეროვანი ცვლილების გარეშე</option>
+                            <option value="emphysema" {% if s.cxr == 'emphysema' %}selected{% endif %}>ემფიზემა / ქრ. ბრონქიტი (ჩართავს სპირომეტრიას)</option>
+                            <option value="infiltrate" {% if s.cxr == 'infiltrate' %}selected{% endif %}>ინფილტრაცია / გამონაჟონი / წარმონაქმნი</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="grid-3">
+                    <label class="fld">ელექტროკარდიოგრამა (ეკგ)
+                        <select name="ecg" class="form-select">
+                            <option value="pending" {% if s.ecg == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
+                            <option value="normal" {% if s.ecg == 'normal' %}selected{% endif %}>სინუსური / მწვავე იშემიის გარეშე</option>
+                            <option value="afib_controlled" {% if s.ecg == 'afib_controlled' %}selected{% endif %}>ნორმოსისტოლური მოციმციმე არითმია (კონტროლირებული)</option>
+                            <option value="ischemia_arrhythmia" {% if s.ecg == 'ischemia_arrhythmia' %}selected{% endif %}>ახალი იშემია / არითმია / AV-ბლოკადა</option>
+                        </select>
+                    </label>
+                    <label class="fld" style="grid-column:span 2">თეძო-ბარძაყის მიდგომა CTA-ზე (EVAR / Open)
+                        <select name="aaa_iliac_access" class="form-select">
+                            <option value="pending" {% if s.aaa_iliac_access == 'pending' %}selected{% endif %}>ჯერ არ შეფასებულა</option>
+                            <option value="ok_7mm" {% if s.aaa_iliac_access == 'ok_7mm' %}selected{% endif %}>✓ თავისუფალი მიდგომა (&ge;7 მმ, ანევრიზმის გარეშე)</option>
+                            <option value="narrow_calcified" {% if s.aaa_iliac_access == 'narrow_calcified' %}selected{% endif %}>ვიწრო (&lt;7 მმ) / მძიმედ კალციფიცირებული / დაკლაკნილი</option>
+                            <option value="iliac_aneurysm" {% if s.aaa_iliac_access == 'iliac_aneurysm' %}selected{% endif %}>თანმხლები თეძოს ანევრიზმა (IIA შენარჩუნების დაგეგმვა)</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <label class="chip-check"><input type="checkbox" name="aaa_renal_vein_anom" value="1" {% if s.aaa_renal_vein_anom %}checked{% endif %}>რეტროაორტული თირკმლის ვენა / ცხენისებრი თირკმელი</label>
+                    <label class="chip-check"><input type="checkbox" name="carotid_symp" value="1" {% if s.carotid_symp %}checked{% endif %}>სიმპტომური საძილე (TIA &le;6 თვ)</label>
+                    <label class="chip-check"><input type="checkbox" name="echo_valve_issue" value="1" {% if s.echo_valve_issue %}checked{% endif %}>მძიმე სარქვლოვანი მანკი / PH</label>
+                    <label class="chip-check"><input type="checkbox" name="cta_disc" value="1" {% if s.cta_disc %}checked{% endif %}>CTA დისკი ადგილზეა</label>
+                </div>
+                <input type="hidden" name="cta_months" value="{{ s.cta_months|default_if_none:'' }}">
+                {% endif %}
+
+                <div class="d-flex justify-content-end pt-1">
+                    <button type="submit" class="x-btn primary">შენახვა და გადამოწმება → საფეხური 2</button>
+                </div>
+            </section>
+        </form>
+
+        <!-- File / Photo Uploads (stored privately in PRIVATE_MEDIA_ROOT) -->
+        <section class="x-card mt-3" id="files">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <h2 class="m-0">ატვირთული ანალიზები და კვლევები ({{ total_files }})</h2>
+                <form method="post" action="{% url 'preop-files' p.pk %}" enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="tab" value="s1">
+                    <select name="category" class="form-select form-select-sm" style="width:auto">
+                        {% for ckey, clbl in file_categories %}<option value="{{ ckey }}">{{ clbl }}</option>{% endfor %}
+                    </select>
+                    <input type="text" name="caption" placeholder="წარწერა (არასავალდებულო)" class="form-control form-control-sm" style="width:185px">
+                    <label class="x-btn sm primary mb-0">
+                        გადაღება
+                        <input type="file" name="file" accept="image/*" capture="environment" hidden class="js-auto-upload">
+                    </label>
+                    <label class="x-btn sm mb-0">
+                        ფოტო / PDF
+                        <input type="file" name="file" accept="image/*,application/pdf,.pdf" multiple hidden class="js-auto-upload">
+                    </label>
+                </form>
+            </div>
+
+            {% for grp in files_by_cat %}
+            <div class="d-flex flex-column gap-2 pt-2">
+                <div class="small fw-bold text-muted">{{ grp.label }} ({{ grp.files|length }})</div>
+                <div class="po-files-grid">
+                    {% for f in grp.files %}
+                    <div class="po-file-card">
+                        {% if f.is_pdf %}
+                        <a href="{% url 'preop-file' f.pk %}" target="_blank" rel="noopener" class="po-pdf-box">PDF გახსნა</a>
+                        {% else %}
+                        <a href="{% url 'preop-file' f.pk %}" target="_blank" rel="noopener">
+                            <img src="{% url 'preop-file-thumb' f.pk %}" alt="" loading="lazy">
+                        </a>
+                        {% endif %}
+                        <div class="text-truncate" title="{{ f.caption|default:f.original_name }}">
+                            {{ f.caption|default:f.original_name|default:"ფაილი" }}
+                        </div>
+                        <div class="d-flex align-items-center justify-content-between text-muted">
+                            <span>{{ f.uploaded_on|date:"d.m.Y" }}</span>
+                            <form method="post" action="{% url 'preop-file-delete' f.pk %}" class="m-0" onsubmit="return confirm('წავშალოთ ეს ფაილი?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-link btn-sm p-0 text-danger text-decoration-none">✕</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% empty %}
+            <p class="text-muted m-0 small">ატვირთეთ ვენების დუპლექსის, ანალიზების, ეკგ-ს ან კონსულტაციების ფოტო / PDF — შეინახება დაცულ საქაღალდეში.</p>
+            {% endfor %}
+        </section>
+    </div>

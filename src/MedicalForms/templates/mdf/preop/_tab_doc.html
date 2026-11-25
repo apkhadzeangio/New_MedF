@@ -1,0 +1,123 @@
+    <div class="po-pane" data-pane="doc" {% if tab != 'doc' %}hidden{% endif %}>
+        <form method="post" class="d-flex flex-column gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="signoff">
+
+            <!-- Academic Joint Surgical & Anesthetic Clearance Dossier -->
+            <section class="x-card">
+                <div class="po-seal-banner seal-{{ ev.clearance_seal.code }}">
+                    <div>
+                        <div class="fw-bold" style="font-size:15px">{{ ev.clearance_seal.badge }} · {{ p.planned_operation_label }} ({{ ev.side_badge }})</div>
+                        <div class="small">{{ ev.clearance_seal.detail }}</div>
+                    </div>
+                    <a class="x-btn sm primary" href="{% url 'preop-passport' p.pk %}" target="_blank" rel="noopener">
+                        2-გვერდიანი A4 დოსიეს გახსნა / ბეჭდვა ↗
+                    </a>
+                </div>
+
+                <div class="po-risk-strip">
+                    <div class="po-risk-tile {% if ev.asa_roman == 'IV' %}tier-high{% elif ev.asa_roman == 'III' %}tier-intermediate{% endif %}">
+                        <small>ASA სტატუსი</small>
+                        <b>{{ ev.effective_asa }}</b>
+                        <span>ავტო: ASA {{ ev.auto_asa }}</span>
+                    </div>
+                    <div class="po-risk-tile {% if ev.rcri.tier == 'high' %}tier-high{% elif ev.rcri.tier == 'intermediate' %}tier-intermediate{% endif %}">
+                        <small>RCRI (Lee / ESC)</small>
+                        <b>{{ ev.rcri.score }} / 6 ქ.</b>
+                        <span>{{ ev.rcri.tier_label }}</span>
+                    </div>
+                    <div class="po-risk-tile {% if ev.vsg_cri and ev.vsg_cri.tier == 'high' %}tier-high{% elif ev.vsg_cri and ev.vsg_cri.tier == 'intermediate' %}tier-intermediate{% endif %}">
+                        <small>VSG-CRI (SVS VQI)</small>
+                        {% if ev.vsg_cri %}
+                        <b>{{ ev.vsg_cri.score }} ქ.</b>
+                        <span>{{ ev.vsg_cri.tier_label }}</span>
+                        {% else %}
+                        <b>ვენური</b>
+                        <span>&lt;1% MACE</span>
+                        {% endif %}
+                    </div>
+                    <div class="po-risk-tile {% if ev.ariscat.tier == 'high' %}tier-high{% elif ev.ariscat.tier == 'intermediate' %}tier-intermediate{% endif %}">
+                        <small>ARISCAT (ფილტვი)</small>
+                        <b>{{ ev.ariscat.score }} ქ.</b>
+                        <span>{{ ev.ariscat.tier_label }}</span>
+                    </div>
+                    <div class="po-risk-tile {% if ev.caprini_score >= 5 or ev.effective_stop_bang == 'high' %}tier-intermediate{% endif %}">
+                        <small>Caprini / OSA</small>
+                        <b>VTE {{ ev.caprini_score }} ქ.</b>
+                        <span>{{ ev.caprini_tier }} · {{ ev.stop_bang_label }}</span>
+                    </div>
+                    <div class="po-risk-tile {% if q.on_dialysis or ev.egfr is not None and ev.egfr < 30 %}tier-high{% elif ev.egfr is not None and ev.egfr < 60 or ev.frailty_notes %}tier-intermediate{% endif %}">
+                        <small>თირკმელი &amp; Frailty</small>
+                        <b>{% if q.on_dialysis %}დიალიზი{% else %}eGFR {{ ev.egfr|default_if_none:"—" }}{% endif %}</b>
+                        <span>{% if ev.crcl is not None %}CrCl {{ ev.crcl }} მლ/წთ{% elif ev.frailty_notes %}{{ ev.frailty_notes.0 }}{% else %}კვებითი ფონი სტაბ.{% endif %}</span>
+                    </div>
+                </div>
+
+                <div class="po-dossier-grid">
+                    <div class="po-brief-col">
+                        <h3>ქირურგის ანატომიური და ტაქტიკური ბრიფინგი</h3>
+                        <div class="po-brief-row"><b>ანატომია და ვიზუალიზაცია</b><span>{{ ev.surgical_brief.anatomy_summary }}</span></div>
+                        <div class="po-brief-row"><b>კონდუიტი / კოლატერალები / შუნტი</b><span>{{ ev.surgical_brief.tactical_note }}</span></div>
+                        <div class="po-brief-row"><b>ანტიბიოტიკოპროფილაქტიკა</b><span>{{ ev.surgical_brief.abx_regimen }}</span></div>
+                        <div class="po-brief-row"><b>ინტრაოპერაციული ანტიკოაგულაცია</b><span>{{ ev.surgical_brief.heparin_plan }}</span></div>
+                        {% if ev.surgical_brief.contrast_plan %}
+                        <div class="po-brief-row"><b>კონტრასტის ლიმიტი</b><span>{{ ev.surgical_brief.contrast_plan }}</span></div>
+                        {% endif %}
+                        <div class="po-brief-row"><b>პოსტოპ. ანტითრომბოზული &amp; VQI</b><span>{{ ev.surgical_brief.postop_antithrombotic }} · {{ ev.surgical_brief.surveillance_plan }}</span></div>
+                    </div>
+
+                    <div class="po-brief-col">
+                        <h3>ანესთეზიოლოგის და ჰემოდინამიკის გეგმა</h3>
+                        <div class="po-brief-row"><b>გაუტკივარება &amp; ASRA 5th Ed კარიბჭე</b><span><strong>{{ ev.anesthetic_brief.modality }}</strong> · {{ ev.anesthetic_brief.neuraxial_gate }}</span></div>
+                        <div class="po-brief-row"><b>სასუნთქი გზები</b><span>{{ ev.anesthetic_brief.airway_summary }}</span></div>
+                        <div class="po-brief-row"><b>ინტრაოპერაციული წნევის კორიდორი (SBP/MAP)</b><span>{{ ev.anesthetic_brief.bp_corridor }}</span></div>
+                        <div class="po-brief-row"><b>მონიტორინგი, ხაზები &amp; CIED</b><span>{{ ev.anesthetic_brief.lines_and_cied }}</span></div>
+                        <div class="po-brief-row"><b>PBM &amp; ტრანსფუზიული ტრიგერი</b><span>{{ ev.anesthetic_brief.transfusion_pbm }}</span></div>
+                        <div class="po-brief-row"><b>გლიკემია &amp; განთავსება</b><span>{{ ev.anesthetic_brief.glycemic_target }} · <strong>{{ ev.anesthetic_brief.disposition }}</strong></span></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="x-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">ავტომატურად ფორმირებული მოწესრიგებული ანამნეზი</h2>
+                    <button type="submit" name="action" value="regenerate" class="x-btn sm">თავიდან აწყობა კითხვარიდან</button>
+                </div>
+                <p class="small text-muted m-0">ექიმს შეუძლია გადაამოწმოს, ჩაასწოროს ტექსტი და დაადასტუროს პაციენტის მზაობა ოპერაციისთვის.</p>
+                <textarea name="anamnesis" rows="8" class="form-control" style="height:auto;padding:12px;line-height:1.6">{{ shown_anamnesis }}</textarea>
+                <div class="d-flex justify-content-end">
+                    <button type="submit" name="action" value="save_anamnesis" class="x-btn sm">ანამნეზის ტექსტის შენახვა</button>
+                </div>
+            </section>
+
+            <section class="x-card">
+                <h2>ქირურგის შეფასება და დადასტურება</h2>
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <label class="chip-check">
+                        <input type="checkbox" name="move_ready" value="1" {% if not p.approved_at %}checked{% endif %}>
+                        დადასტურებისას გადავიდეს „მზადაა — ელოდება ოპერაციის თარიღს“ სიაში
+                    </label>
+
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        {% if ev.has_hard_contraindication %}
+                        <span class="po-badge st-alert">აბსოლუტური უკუჩვენება — ოპერაციაზე დადასტურება დაბლოკილია!</span>
+                        {% endif %}
+                        {% if ev.has_unacked_red and not ev.has_hard_contraindication %}
+                        <button type="submit" name="action" value="ack_alerts" class="x-btn">
+                            ✓ გაფრთხილებებს გავეცანი (ქირურგი)
+                        </button>
+                        {% endif %}
+                        {% if p.approved_at %}
+                        <button type="submit" name="action" value="unapprove" class="x-btn">
+                            დადასტურების მოხსნა
+                        </button>
+                        {% else %}
+                        <button type="submit" name="action" value="approve" id="btn-surgeon-approve" class="x-btn primary" {% if ev.has_hard_contraindication %}disabled title="აბსოლუტური კლინიკური უკუჩვენების გამო ოპერაციაზე დადასტურება დაბლოკილია!"{% endif %}>
+                            ✓ ვადასტურებ — მზადაა ოპერაციისთვის
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </section>
+        </form>
+    </div>
