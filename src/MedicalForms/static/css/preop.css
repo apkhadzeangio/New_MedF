@@ -146,6 +146,33 @@
 }
 .po-alert.red { background: #FEF3F2; border: 1px solid #FECDCA; color: #912018; font-weight: 500; }
 .po-alert.amber { background: #FFFAEB; border: 1px solid #FEDF89; color: #93370D; }
+.po-alert.reflex { background: #EFF8FF; border: 1px solid #B2DDFF; color: #175CD3; }
+
+.po-reflex-box {
+    background: #F5FAFF; border: 1px solid #B2DDFF; border-radius: 12px; padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 6px;
+}
+.po-reflex-head { font-size: 13.5px; font-weight: 700; color: #175CD3; display: flex; align-items: center; gap: 8px; }
+.po-reflex-item {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px;
+    font-size: 13.5px; color: var(--ink); padding: 4px 0; border-top: 1px dashed #D1E9FF;
+}
+.po-reflex-item:first-of-type { border-top: 0; }
+.po-reflex-item.done { color: var(--ok); text-decoration: line-through; opacity: .82; }
+
+/* Zero-Free-Text Chip Groups & Optional Fallback Note */
+.po-chip-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }
+.po-other-note { font-size: 12.5px; color: var(--muted); }
+.po-other-note summary { cursor: pointer; user-select: none; font-weight: 600; color: var(--muted); }
+.po-other-note[open] summary { margin-bottom: 6px; }
+
+/* Automated Medication Hold Schedule Table */
+.po-med-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.po-med-table th, .po-med-table td { padding: 7px 10px; border-bottom: 1px solid var(--line-soft); text-align: left; }
+.po-med-table th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.po-med-tone-ok { color: var(--ok); font-weight: 600; }
+.po-med-tone-amber { color: #B54708; font-weight: 600; }
+.po-med-tone-red { color: #B42318; font-weight: 700; }
 
 /* Step Tabs */
 .po-tabs {
@@ -172,7 +199,7 @@
 .po-q-text { font-size: 14.5px; font-weight: 500; color: var(--ink); flex: 1 1 280px; }
 .po-q-sub {
     padding: 8px 12px; background: var(--page); border-radius: 10px;
-    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
 }
 .po-q-sub[hidden] { display: none !important; }
 
@@ -195,6 +222,8 @@
     padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line-soft); background: #FAFBFD;
 }
 .po-task-row.done { background: #F6FEF9; border-color: #A9D8C1; }
+.po-task-row.reflex-row { border-left: 4px solid #2E90FA; background: #F8FBFF; }
+.po-task-row.reflex-row.done { border-left-color: var(--ok); background: #F6FEF9; }
 
 /* Uploaded Files Grid */
 .po-files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }

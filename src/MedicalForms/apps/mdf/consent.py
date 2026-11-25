@@ -182,6 +182,8 @@ class ConsentListView(LoginRequiredMixin, generic.ListView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx['q'] = self.request.GET.get('q', '').strip()
+        raw_preop = self.request.GET.get('preop', '').strip()
+        ctx['preop_id'] = raw_preop if raw_preop.isdigit() else ''
         for form in ctx['forms']:
             form.subtitle = form.blocks[0]['title'] if form.blocks else ''
         return ctx
@@ -204,10 +206,23 @@ class ConsentSheetView(LoginRequiredMixin, generic.TemplateView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         form = get_object_or_404(ConsentForm, pk=kwargs['pk'])
+        doctor = _doctor_name(self.request.user)
+        patient_name = ''
+        preop_obj = None
+        raw_preop = self.request.GET.get('preop', '').strip()
+        if raw_preop.isdigit():
+            from .models import PreopPatient
+            preop_obj = PreopPatient.objects.select_related('surgeon').filter(pk=int(raw_preop)).first()
+            if preop_obj:
+                patient_name = preop_obj.patient_name or ''
+                if preop_obj.surgeon:
+                    doctor = _doctor_name(preop_obj.surgeon)
         ctx.update({
             'form': form,
             'today': timezone.localtime().strftime('%d.%m.%Y'),
-            'doctor': _doctor_name(self.request.user),
+            'doctor': doctor,
+            'patient_name': patient_name,
+            'preop': preop_obj,
         })
         return ctx
 

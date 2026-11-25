@@ -7,7 +7,7 @@
 {% block content %}
 <div class="app-main">
     <div class="page-head">
-        <h1>წინასაოპერაციო <span class="count">AAA · CEA · ABF · EVLA / ფლებექტომია</span></h1>
+        <h1>წინასაოპერაციო <span class="count">AAA · CEA · ABF · შუნტირება · PTA · ვენური</span></h1>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <div class="tw-pills">
                 {% for pkey, plbl, pcnt in pathway_pills %}
@@ -128,7 +128,10 @@
         if (sub && side) {
             var sync = function () {
                 var v = sub.value;
-                side.hidden = !(v.indexOf('cea_') === 0 || v === 'evla' || v === 'phlebectomy');
+                side.hidden = !(
+                    v.indexOf('cea_') === 0 || v.indexOf('bypass_') === 0
+                    || v.indexOf('pta_') === 0 || v === 'evla' || v === 'phlebectomy'
+                );
             };
             sub.addEventListener('change', sync);
             sync();

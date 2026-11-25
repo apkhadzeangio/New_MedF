@@ -153,13 +153,18 @@ def board_prefill(request):
         p = PreopPatient.objects.filter(pk=int(request.GET['preop'])).first()
         if p:
             q = p.questionnaire or {}
-            has_allergy = bool(q.get('allergy_iodine') or q.get('allergy_other') or q.get('ven_lidocaine_allergy'))
+            s = p.studies or {}
+            has_allergy = bool(
+                q.get('allergy_iodine') or q.get('allergy_other')
+                or q.get('ven_lidocaine_allergy') or q.get('allergy_chips')
+            )
             has_neuro = bool(q.get('neuro') or q.get('cea_symp_event') or p.op_subtype == 'cea_symp')
+            has_dm = bool(q.get('dm') or (s.get('hba1c') is not None and float(s.get('hba1c')) >= 6.5))
             return NivForm(
                 title=p.patient_name,
                 patient_name=p.patient_name,
                 diagnosis=p.diagnosis_text,
-                diabetes=bool(q.get('dm')),
+                diabetes=has_dm,
                 allergy=has_allergy,
                 neuro=has_neuro,
             )

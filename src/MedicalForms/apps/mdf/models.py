@@ -769,12 +769,14 @@ def _delete_private_files(sender, instance, **kwargs):
 # --------------------------------------------------------------------------
 
 class PreopPatient(models.Model):
-    """A patient scheduled for preoperative workup (AAA, CEA, ABF, EVLA / Phlebectomy)."""
+    """A patient scheduled for preoperative workup (AAA, CEA, ABF, PAD Bypass, PTA, Venous)."""
 
     class Pathway(models.TextChoices):
         AAA_INFRA = 'aaa_infra', 'ინფრარენალური მუცლის აორტის ანევრიზმა'
         CEA = 'cea', 'კაროტიდული ენდარტერექტომია'
         ABF = 'abf', 'აორტო-ბიფემორალური შუნტირება'
+        PAD_BYPASS = 'pad_bypass', 'პერიფერიული არტერიული შუნტირება'
+        PAD_PTA = 'pad_pta', 'პერიფერიული ანგიოპლასტიკა და სტენტირება (PTA)'
         VENOUS = 'venous', 'ქრონიკული ვენური უკმარისობა (EVLA / ფლებექტომია)'
 
     class OpSubtype(models.TextChoices):
@@ -785,6 +787,10 @@ class PreopPatient(models.Model):
         CEA_ASYMP = 'cea_asymp', 'ასიმპტომური'
         ABF_CLTI = 'abf_clti', 'კრიტიკული იშემია (CLTI)'
         ABF_CLAUD = 'abf_claud', 'მძიმე კოჭლობა (ლერიში)'
+        BYPASS_CLTI = 'bypass_clti', 'შუნტირება — კრიტიკული იშემია (CLTI)'
+        BYPASS_CLAUD = 'bypass_claud', 'შუნტირება — მძიმე კოჭლობა'
+        PTA_CLTI = 'pta_clti', 'PTA / სტენტირება — კრიტიკული იშემია (CLTI)'
+        PTA_CLAUD = 'pta_claud', 'PTA / სტენტირება — ხანგამოშვებითი კოჭლობა'
         EVLA = 'evla', 'ენდოვენური ლაზერული აბლაცია (EVLA)'
         PHLEB = 'phlebectomy', 'ფლებექტომია (კომბინირებული / კროსექტომია)'
 
@@ -796,6 +802,10 @@ class PreopPatient(models.Model):
         'cea_asymp': 'cea',
         'abf_clti': 'abf',
         'abf_claud': 'abf',
+        'bypass_clti': 'pad_bypass',
+        'bypass_claud': 'pad_bypass',
+        'pta_clti': 'pad_pta',
+        'pta_claud': 'pad_pta',
         'evla': 'venous',
         'phlebectomy': 'venous',
     }
@@ -906,6 +916,10 @@ class PreopPatient(models.Model):
             'cea_asymp': f'CEA{side_lbl} — ასიმპტომური',
             'abf_clti': 'ABF — კრიტიკული იშემია',
             'abf_claud': 'ABF — ლერიშის სინდრომი',
+            'bypass_clti': f'პერიფ. შუნტირება{side_lbl} — CLTI',
+            'bypass_claud': f'პერიფ. შუნტირება{side_lbl} — კოჭლობა',
+            'pta_clti': f'PTA / სტენტირება{side_lbl} — CLTI',
+            'pta_claud': f'PTA / სტენტირება{side_lbl} — კოჭლობა',
             'evla': f'EVLA{side_lbl} — ლაზერული აბლაცია',
             'phlebectomy': f'ფლებექტომია{side_lbl}',
         }
@@ -925,6 +939,11 @@ class PreopPatient(models.Model):
         if self.pathway == self.Pathway.ABF:
             stage = 'კრიტიკული იშემია (CLTI)' if self.op_subtype == self.OpSubtype.ABF_CLTI else 'ხანგამოშვებითი კოჭლობა'
             return f'აორტო-ილიაკური ოკლუზიური დაავადება (ლერიშის სინდრომი), {stage}'
+        if self.pathway in (self.Pathway.PAD_BYPASS, self.Pathway.PAD_PTA):
+            side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა ', 'B': 'ორმხრივი '}.get(self.side, '')
+            is_clti = self.op_subtype in (self.OpSubtype.BYPASS_CLTI, self.OpSubtype.PTA_CLTI)
+            stage = 'კრიტიკული იშემია (CLTI)' if is_clti else 'ხანგამოშვებითი კოჭლობა'
+            return f'{side_word}ქვემო კიდურის არტერიების მაობლიტერირებელი ათეროსკლეროზი, {stage}'
         if self.pathway == self.Pathway.VENOUS:
             side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა ', 'B': 'ორმხრივი '}.get(self.side, '')
             ceap = (self.questionnaire or {}).get('ven_ceap') or ''

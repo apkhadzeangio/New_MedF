@@ -9,7 +9,7 @@
     <a href="{% url 'preop' %}{% if pathway_filter != 'all' %}?pathway={{ pathway_filter }}{% endif %}" class="small">← წინასაოპერაციო კალენდარი</a>
 
     <div class="page-head">
-        <h1>კარდიოლოგიური კონსულტაციებისა და ვადების აუდიტი <span class="count">AAA · CEA · ABF · ვენური</span></h1>
+        <h1>კარდიოლოგიური კონსულტაციებისა და ვადების აუდიტი <span class="count">AAA · CEA · ABF · შუნტირება · PTA · ვენური</span></h1>
         <div class="tw-pills">
             {% for pkey, plbl in pathway_pills %}
             <a href="?pathway={{ pkey }}" class="tw-pill {% if pathway_filter == pkey %}on{% endif %}">{{ plbl }}</a>

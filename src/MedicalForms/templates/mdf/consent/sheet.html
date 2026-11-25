@@ -9,7 +9,12 @@
 {% block content %}
 <div class="app-main cs-tools-wrap d-print-none">
     <div class="toolbar cs-tools">
+        {% if preop %}
+        <a class="x-btn" href="{% url 'preop-patient' preop.pk %}">← {{ preop.patient_name }}</a>
+        <a class="x-btn" href="{% url 'consent-list' %}?preop={{ preop.pk }}">სხვა ფურცლები</a>
+        {% else %}
         <a class="x-btn" href="{% url 'consent-list' %}">← ფურცლები</a>
+        {% endif %}
         <label class="cs-name">
             <span>სახელი სიაში</span>
             <input type="text" id="cs-name" class="x-input" maxlength="200" value="{{ form.name }}" autocomplete="off">
@@ -37,7 +42,7 @@
         <p class="cs-empty"></p><p class="cs-empty"></p>
         <h1 class="cs-title">პაციენტის წერილობითი ინფორმირებული თანხმობა სამედიცინო<br>მომსახურების გაწევაზე</h1>
         <p class="cs-empty"></p>
-        <p class="cs-sig">მე <span class="cs-fill" style="width:100mm"><input type="text" class="cs-input" id="cs-patient" maxlength="120" autocomplete="off" aria-label="პაციენტის სახელი, გვარი"><small><b>(სახელი, გვარი)</b></small></span> მივიღე ინფორმაცია</p>
+        <p class="cs-sig">მე <span class="cs-fill" style="width:100mm"><input type="text" class="cs-input" id="cs-patient" maxlength="120" value="{{ patient_name|default:'' }}" autocomplete="off" aria-label="პაციენტის სახელი, გვარი"><small><b>(სახელი, გვარი)</b></small></span> მივიღე ინფორმაცია</p>
         <p class="cs-empty"></p>
         <p>სამედიცინო მომსახურების გაწევის შესახებ.</p>
         <p class="cs-empty"></p>

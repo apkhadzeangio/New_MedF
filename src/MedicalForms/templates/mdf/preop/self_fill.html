@@ -59,7 +59,11 @@
                         </div>
                     </div>
                     <div class="po-q-sub" id="sf-dvt" {% if not q.ven_dvt_history %}hidden{% endif %}>
-                        <input type="text" name="ven_dvt_text" value="{{ q.ven_dvt_text }}" placeholder="როდის და რომელ ფეხზე..." class="form-control form-control-sm">
+                        <div class="po-chip-row">
+                            {% for ck, cl in chips.ven_dvt_chips %}
+                            <label class="chip-check"><input type="checkbox" name="ven_dvt_chips" value="{{ ck }}" {% if ck in q.ven_dvt_chips %}checked{% endif %}>{{ cl }}</label>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
 
@@ -102,7 +106,11 @@
                         </div>
                     </div>
                     <div class="po-q-sub" id="sf-rec" {% if not q.ven_recurrent %}hidden{% endif %}>
-                        <input type="text" name="ven_recurrent_text" value="{{ q.ven_recurrent_text }}" placeholder="რა ჩარევა და როდის..." class="form-control form-control-sm">
+                        <div class="po-chip-row">
+                            {% for ck, cl in chips.ven_rec_chips %}
+                            <label class="chip-check"><input type="checkbox" name="ven_rec_chips" value="{{ ck }}" {% if ck in q.ven_rec_chips %}checked{% endif %}>{{ cl }}</label>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
 
@@ -122,7 +130,7 @@
         {% endif %}
 
         <section class="x-card">
-            <h2><span class="num">2</span> ზოგადი ჯანმრთელობა და მედიკამენტები</h2>
+            <h2><span class="num">2</span> ზოგადი ჯანმრთელობა და მედიკამენტები (მონიშნეთ ღილაკებით)</h2>
             <div class="po-q-list">
                 <div class="po-q-item">
                     <div class="po-q-main">
@@ -143,18 +151,23 @@
                         </div>
                     </div>
                     <div class="po-q-sub" id="sf-cad" {% if not q.cad %}hidden{% endif %}>
-                        <input type="text" name="cad_detail" value="{{ q.cad_detail }}" placeholder="დააზუსტეთ..." class="form-control form-control-sm">
-                        <label class="chip-check"><input type="checkbox" name="recent_stent" value="1" {% if q.recent_stent %}checked{% endif %}>სტენტი ბოლო 6 თვეში</label>
+                        <div class="po-chip-row">
+                            {% for ck, cl in chips.cad_chips %}
+                            <label class="chip-check"><input type="checkbox" name="cad_chips" value="{{ ck }}" {% if ck in q.cad_chips %}checked{% endif %}>{{ cl }}</label>
+                            {% endfor %}
+                            <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="recent_stent" value="1" {% if q.recent_stent %}checked{% endif %}>სტენტი ბოლო 6 თვეში!</label>
+                        </div>
                     </div>
                 </div>
 
                 <div class="po-q-item">
                     <div class="po-q-main">
-                        <span class="po-q-text">გაქვთ თუ არა მაღალი წნევა, შაქრიანი დიაბეტი, ასთმა/COPD ან კუჭის წყლული?</span>
+                        <span class="po-q-text">თანმხლები დაავადებები (მონიშნეთ რაც გაქვთ):</span>
                         <div class="d-flex flex-wrap gap-2">
                             <label class="chip-check"><input type="checkbox" name="htn" value="1" {% if q.htn %}checked{% endif %}>მაღალი წნევა</label>
                             <label class="chip-check"><input type="checkbox" name="dm" value="1" {% if q.dm %}checked{% endif %}>შაქრიანი დიაბეტი</label>
                             <label class="chip-check"><input type="checkbox" name="pulm" value="1" {% if q.pulm %}checked{% endif %}>ასთმა / ფილტვების დაავადება</label>
+                            <label class="chip-check"><input type="checkbox" name="thyroid_disease" value="1" {% if q.thyroid_disease %}checked{% endif %}>ფარისებრი ჯირკვალი / ჩიყვი</label>
                             <label class="chip-check"><input type="checkbox" name="ulcer" value="1" {% if q.ulcer %}checked{% endif %}>კუჭის წყლული</label>
                             <label class="chip-check"><input type="checkbox" name="neuro" value="1" {% if q.neuro %}checked{% endif %}>გადატანილი ინსულტი</label>
                         </div>
@@ -163,22 +176,30 @@
 
                 <div class="po-q-item">
                     <div class="po-q-text">რომელ სისხლის გამათხელებლებსა და მუდმივ წამლებს იღებთ?</div>
-                    <div class="d-flex flex-wrap gap-2">
+                    <div class="po-chip-row">
                         <label class="chip-check"><input type="checkbox" name="med_aspirin" value="1" {% if q.med_aspirin %}checked{% endif %}>ასპირინი / კარდიომაგნილი</label>
                         <label class="chip-check"><input type="checkbox" name="med_clopidogrel" value="1" {% if q.med_clopidogrel %}checked{% endif %}>კლოპიდოგრელი</label>
                         <label class="chip-check"><input type="checkbox" name="med_doac" value="1" {% if q.med_doac %}checked{% endif %}>ქსარელტო / ელიქვისი</label>
                         <label class="chip-check"><input type="checkbox" name="med_warfarin" value="1" {% if q.med_warfarin %}checked{% endif %}>ვარფარინი</label>
+                        <label class="chip-check"><input type="checkbox" name="metformin" value="1" {% if q.metformin %}checked{% endif %}>მეტფორმინი</label>
+                        <label class="chip-check"><input type="checkbox" name="sglt2" value="1" {% if q.sglt2 %}checked{% endif %}>ჯარდიანსი / ფორსიგა</label>
+                        {% for ck, cl in chips.med_chips %}
+                        <label class="chip-check"><input type="checkbox" name="med_chips" value="{{ ck }}" {% if ck in q.med_chips %}checked{% endif %}>{{ cl }}</label>
+                        {% endfor %}
                     </div>
-                    <input type="text" name="other_meds" value="{{ q.other_meds }}" placeholder="ჩამოწერეთ სხვა მუდმივი მედიკამენტები..." class="form-control form-control-sm">
                 </div>
 
                 <div class="po-q-item">
                     <div class="po-q-main">
-                        <span class="po-q-text">გაქვთ თუ არა სხვა წამლისმიერი ალერგია?</span>
-                        <label class="chip-check"><input type="checkbox" name="allergy_other" value="1" id="sf-chk-alg" {% if q.allergy_other %}checked{% endif %}>დიახ, მაქვს წამლის ალერგია</label>
+                        <span class="po-q-text">გაქვთ თუ არა წამლისმიერი ალერგია?</span>
+                        <label class="chip-check"><input type="checkbox" name="allergy_other" value="1" id="sf-chk-alg" {% if q.allergy_other %}checked{% endif %}>დიახ, მაქვს ალერგია</label>
                     </div>
                     <div class="po-q-sub" id="sf-sub-alg" {% if not q.allergy_other %}hidden{% endif %}>
-                        <input type="text" name="allergy_text" value="{{ q.allergy_text }}" placeholder="რომელ წამალზე და რა რეაქცია..." class="form-control form-control-sm">
+                        <div class="po-chip-row">
+                            {% for ck, cl in chips.allergy_chips %}
+                            <label class="chip-check"><input type="checkbox" name="allergy_chips" value="{{ ck }}" {% if ck in q.allergy_chips %}checked{% endif %}>{{ cl }}</label>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
 
@@ -187,6 +208,7 @@
                         <span class="po-q-text">დამატებითი მონაცემები:</span>
                         <div class="d-flex flex-wrap gap-2">
                             <label class="chip-check"><input type="checkbox" name="smoker" value="1" {% if q.smoker %}checked{% endif %}>მწეველი</label>
+                            <label class="chip-check"><input type="checkbox" name="dental_infection" value="1" {% if q.dental_infection %}checked{% endif %}>კარიესული / მტკივნეული კბილი</label>
                             <label class="chip-check"><input type="checkbox" name="anesth_issue" value="1" {% if q.anesth_issue %}checked{% endif %}>გართულება წარსულ ნარკოზზე</label>
                             <label class="chip-check"><input type="checkbox" name="active_infection" value="1" {% if q.active_infection %}checked{% endif %}>ამჟამად მაქვს სიცხე / მწვავე ინფექცია</label>
                         </div>

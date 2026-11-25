@@ -22,12 +22,13 @@
 
     <form class="search-box" method="get" role="search">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        {% if preop_id %}<input type="hidden" name="preop" value="{{ preop_id }}">{% endif %}
         <input type="search" name="q" value="{{ q }}" placeholder="რომელი ოპერაცია? მაგ. აორტა, კაროტიდი, ბარძაყ…" aria-label="ძებნა" autofocus id="cs-q">
     </form>
 
     <div class="cs-grid" id="cs-grid">
         {% for f in forms %}
-        <a class="cs-card" href="{% url 'consent-sheet' f.pk %}" data-text="{{ f.name|lower }} {{ f.subtitle|lower }}">
+        <a class="cs-card" href="{% url 'consent-sheet' f.pk %}{% if preop_id %}?preop={{ preop_id }}{% endif %}" data-text="{{ f.name|lower }} {{ f.subtitle|lower }}">
             <span class="cs-card-name">{{ f.name }}</span>
             {% if f.subtitle %}<span class="cs-card-sub">{{ f.subtitle }}</span>{% endif %}
             <span class="cs-card-meta">{% if forloop.first and f.use_count and not q %}ყველაზე ხშირი · {% endif %}გამოყენებულია {{ f.use_count }}-ჯერ</span>
