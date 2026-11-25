@@ -6343,4 +6343,102 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         p_sf.refresh_from_db()
         self.assertEqual(evaluate(p_sf, today=today)['clearance_seal']['code'], 'go')
 
+    def test_sprint5_http_lifecycle_invalidation_hold_clock_stage2_preserve_and_owasp(self):
+        import datetime
+        from django.contrib.auth import get_user_model
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import Client
+        from django.utils import timezone
+        from .models import PreopFile, PreopPatient
+        from .preop import evaluate, make_self_fill_token, merged_studies
+
+        today = timezone.localdate()
+        User = get_user_model()
+        clerk = User.objects.create_user('clerk_s5', password='pw', is_staff=False)
+        clerk_client = Client()
+        clerk_client.force_login(clerk)
+        anon = Client()
+
+        # 1. L2-F1 + L2-F2: Changing op_subtype or side invalidates stale approved_at & frozen anamnesis
+        p_op = PreopPatient.objects.create(
+            patient_name='ლაიფსაიქლ ტესტაძე', age=66, sex='M', side='R',
+            pathway='cea', op_subtype='cea_asymp', surgeon=self.user,
+            visit_date=today, started_on=today,
+            questionnaire={'filled': True, 'mets_ok': True, 'med_aspirin': True, 'med_chips': ['statin']},
+            studies={'hb': 138, 'inr': 1.0, 'creat': 84, 'ecg': 'normal', 'carotid_r': 82, 'carotid_l': 25, 'cea_cta_status': 'concordant', 'anesth_done': True, 'dos_site_marked': True},
+        )
+        self.client.post(reverse('preop-patient', args=[p_op.pk]), {'section': 'signoff', 'action': 'approve', 'anamnesis': 'მარჯვენა CEA ანამნეზი'})
+        p_op.refresh_from_db()
+        self.assertIsNotNone(p_op.approved_at)
+
+        self.client.post(reverse('preop-patient', args=[p_op.pk]), {
+            'section': 'header', 'patient_name': p_op.patient_name, 'age': '66', 'sex': 'M',
+            'op_subtype': 'cea_asymp', 'side': 'L', 'surgeon': str(self.user.pk), 'visit_date': today.isoformat(),
+        })
+        p_op.refresh_from_db()
+        self.assertIsNone(p_op.approved_at)
+        self.assertEqual(p_op.anamnesis, '')
+        self.assertFalse(merged_studies(p_op)['dos_site_marked'])
+
+        # 2. L2-F4: Pre-workup HOLD before started_on does not poison 7-day preparation clock
+        p_hold = PreopPatient.objects.create(
+            patient_name='ჰოლდ საათაძე', age=70, sex='M', pathway='aaa_infra', op_subtype='open',
+            someday_list='hold', started_on=None,
+            studies={'hold_since': (today - datetime.timedelta(days=20)).isoformat()},
+        )
+        start_d = today - datetime.timedelta(days=10)
+        self.client.post(reverse('preop-move', args=[p_hold.pk]), {'slot': start_d.isoformat()})
+        p_hold.refresh_from_db()
+        self.assertEqual(merged_studies(p_hold)['hold_paused_days'], 0)
+        self.assertEqual(evaluate(p_hold, today=today)['days_elapsed'], 11)
+
+        # 3. L2-F5: Saving Stage 2 when conditional rows are hidden preserves prior pbm_iv_iron_done & ppi_started
+        p_s2 = PreopPatient.objects.create(
+            patient_name='შენახვა სტეიჯაძე', age=70, sex='M', pathway='aaa_infra', op_subtype='open',
+            visit_date=today, started_on=today,
+            questionnaire={'filled': True, 'ulcer': True, 'mets_ok': True},
+            studies={'hb': 94, 'ferritin': 45, 'inr': 1.0, 'creat': 85, 'ecg': 'normal', 'lvef': 58, 'aaa_mm': 58, 'pbm_iv_iron_done': True, 'ppi_started': True},
+        )
+        self.client.post(reverse('preop-patient', args=[p_s2.pk]), {'section': 'stage2', 'gastro_result': 'remission', 'blood_reserved': '1', 'anesth_done': '1'})
+        p_s2.refresh_from_db()
+        self.assertTrue(merged_studies(p_s2)['pbm_iv_iron_done'])
+        self.assertTrue(merged_studies(p_s2)['ppi_started'])
+
+        # 4. L7-F2 + L7-F3 + L7-F4: Rotated self-fill GET hides prior medical PHI; clerk blocked from forging surgeon approve & deleting operated patient; PDF CSP sandbox
+        p_sec = PreopPatient.objects.create(
+            patient_name='უსაფრთხო აუდიტაძე', age=68, sex='M', pathway='aaa_infra', op_subtype='open',
+            surgeon=self.user, visit_date=today, started_on=today,
+            questionnaire={'filled': True, 'nurse_verified': False, 'other_meds': 'მეტადონი 40მგ', 'allergy_other': True, 'allergy_text': 'პენიცილინი ანაფილაქსია'},
+            studies={'aaa_mm': 60, 'hb': 135, 'inr': 1.0, 'creat': 85, 'ecg': 'normal', 'lvef': 58},
+        )
+        self.client.post(reverse('preop-patient', args=[p_sec.pk]), {'section': 'self_link', 'action': 'rotate'})
+        p_sec.refresh_from_db()
+        rot_html = anon.get(reverse('preop-self-fill', args=[make_self_fill_token(p_sec)])).content.decode('utf-8')
+        self.assertNotIn('მეტადონი 40მგ', rot_html)
+        self.assertNotIn('პენიცილინი ანაფილაქსია', rot_html)
+
+        clerk_client.post(reverse('preop-patient', args=[p_sec.pk]), {'section': 'signoff', 'action': 'approve'})
+        p_sec.refresh_from_db()
+        self.assertIsNone(p_sec.approved_at)
+
+        s_op = merged_studies(p_sec)
+        s_op['case_outcome_status'] = 'operated'
+        p_sec.studies = s_op
+        p_sec.save()
+        clerk_client.post(reverse('preop-move', args=[p_sec.pk]), {'action': 'delete'})
+        p_sec.refresh_from_db()
+        self.assertTrue(p_sec.archived)
+
+        valid_pdf = b'%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n'
+        self.client.post(reverse('preop-files', args=[p_sec.pk]), {
+            'category': 'labs',
+            'file': [SimpleUploadedFile('sec.pdf', valid_pdf, content_type='application/pdf')],
+        })
+        f_rec = PreopFile.objects.filter(patient=p_sec, is_pdf=True).first()
+        r_pdf = self.client.get(reverse('preop-file', args=[f_rec.pk]))
+        self.assertIn('sandbox', r_pdf['Content-Security-Policy'])
+        self.assertIn('inline;', r_pdf['Content-Disposition'])
+        self.assertEqual(r_pdf['X-Frame-Options'], 'SAMEORIGIN')
+
+
 

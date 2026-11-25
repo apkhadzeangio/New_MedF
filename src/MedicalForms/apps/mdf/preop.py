@@ -16,6 +16,7 @@ import math
 import os
 import re
 import secrets
+import threading
 import uuid
 
 from django.contrib import messages
@@ -23,7 +24,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
-from django.db.models import Q
+from django.db import connection, transaction
+from django.db.models import F, Q
 from django.http import FileResponse, Http404, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -34,6 +36,14 @@ from .board import add_event, clean_text, doctors, person_name
 from .cases import MAX_UPLOAD, PhotoError, process_photo
 from .duty import MONTHS
 from .models import BoardEntry, BoardPatient, Case, PreopFile, PreopPatient
+
+_PREOP_MUTATION_LOCK = threading.RLock()
+
+
+def _sqlite_acquire_write_lock(pk):
+    """Begin SQLite atomic blocks directly as a WRITE transaction to avoid SQLITE_BUSY_SNAPSHOT under WAL."""
+    if pk and connection.vendor == 'sqlite':
+        PreopPatient.objects.filter(pk=pk).update(id=F('id'))
 
 WEEKDAYS_KA = ('ორშაბათი', 'სამშაბათი', 'ოთხშაბათი', 'ხუთშაბათი', 'პარასკევი', 'შაბათი', 'კვირა')
 MONTHS_SHORT = ('', 'იან', 'თებ', 'მარ', 'აპრ', 'მაი', 'ივნ', 'ივლ', 'აგვ', 'სექ', 'ოქტ', 'ნოე', 'დეკ')
@@ -664,8 +674,10 @@ def prep_days_elapsed(patient, today=None):
     paused = _int(s.get('hold_paused_days'), lo=0, hi=3650) or 0
     if patient.someday_list == PreopPatient.SomedayList.HOLD:
         hold_since = _date(s.get('hold_since'))
-        if hold_since and hold_since <= end_day:
-            paused += max(0, (end_day - hold_since).days)
+        if hold_since:
+            eff_hs = max(hold_since, start)
+            if eff_hs <= end_day:
+                paused += max(0, (end_day - eff_hs).days)
     raw_days = (end_day - start).days + 1 - paused
     return max(1, raw_days)
 
@@ -1974,8 +1986,8 @@ def merged_studies(patient):
     return _sanitize_merged_dict(DEFAULT_STUDIES, patient.studies)
 
 
-def _update_hold_pause(s, old_someday, new_someday, today=None):
-    """Track paused elapsed days when entering/exiting SomedayList.HOLD so medically deferred time isn't added back."""
+def _update_hold_pause(s, old_someday, new_someday, today=None, started_on=False):
+    """Track paused elapsed days when entering/exiting SomedayList.HOLD (ignoring pre-workup HOLD before started_on)."""
     today = today or timezone.localdate()
     hold_val = PreopPatient.SomedayList.HOLD
     if old_someday != hold_val and new_someday == hold_val:
@@ -1983,8 +1995,13 @@ def _update_hold_pause(s, old_someday, new_someday, today=None):
             s['hold_since'] = today.isoformat()
     elif old_someday == hold_val and new_someday != hold_val:
         hs = _date(s.get('hold_since'))
-        if hs and hs <= today:
-            s['hold_paused_days'] = (_int(s.get('hold_paused_days'), lo=0, hi=3650) or 0) + max(0, (today - hs).days)
+        if started_on is None:
+            # Workup had not started before exiting HOLD -> zero active prep days were paused!
+            pass
+        elif hs and hs <= today:
+            eff_hs = max(hs, started_on) if isinstance(started_on, datetime.date) else hs
+            if eff_hs <= today:
+                s['hold_paused_days'] = (_int(s.get('hold_paused_days'), lo=0, hi=3650) or 0) + max(0, (today - eff_hs).days)
         s['hold_since'] = ''
 
 
@@ -2033,7 +2050,7 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
         (q_filled and (bool(q.get('neuro')) or bool(q.get('cea_symp_event'))))
         or is_symp_cea
         or (pathway == PreopPatient.Pathway.CEA and patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP)
-        or bool(s.get('carotid_symp'))
+        or (pathway != PreopPatient.Pathway.VENOUS and bool(s.get('carotid_symp')))
         or (s.get('brain_imaging') == 'large_or_hemorrhage')
     )
     if has_prior_cvd:
@@ -6087,10 +6104,15 @@ def apply_questionnaire_post(post_data, patient, filled_by_label):
 
     if 'abf_claud_m' in post_data:
         q['abf_claud_m'] = _int(post_data.get('abf_claud_m'), lo=0, hi=5000)
+    side_flipped_q = False
     if 'side' in post_data and post_data.get('side') in ('', 'R', 'L', 'B'):
         new_side = post_data.get('side')
         if new_side != patient.side:
             s['dos_site_marked'] = False
+            patient.approved_at = None
+            patient.approved_by = None
+            patient.anamnesis = ''
+            side_flipped_q = True
         patient.side = new_side
 
     for tf, lim in (
@@ -6564,34 +6586,38 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         patient = get_object_or_404(PreopPatient, pk=pk)
         section = request.POST.get('section') or 'header'
 
-        if section == 'header':
-            self._save_header(request, patient)
-            messages.success(request, 'პაციენტის მონაცემები განახლდა.')
-            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + f"?tab={request.POST.get('tab', 'q')}")
+        with _PREOP_MUTATION_LOCK, transaction.atomic():
+            _sqlite_acquire_write_lock(patient.pk)
+            patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
 
-        if section == 'questionnaire':
-            self._save_questionnaire(request, patient)
-            messages.success(request, 'კითხვარები შეინახა — განახლდა ანამნეზი და მომზადების გეგმა.')
-            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1')
+            if section == 'header':
+                self._save_header(request, patient)
+                messages.success(request, 'პაციენტის მონაცემები განახლდა.')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + f"?tab={request.POST.get('tab', 'q')}")
 
-        if section == 'stage1':
-            self._save_stage1(request, patient)
-            messages.success(request, 'საფეხური 1-ის ანალიზები და კვლევები შეინახა.')
-            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
+            if section == 'questionnaire':
+                self._save_questionnaire(request, patient)
+                messages.success(request, 'კითხვარები შეინახა — განახლდა ანამნეზი და მომზადების გეგმა.')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1')
 
-        if section == 'stage2':
-            self._save_stage2(request, patient)
-            messages.success(request, 'მომზადების გეგმა და კონსულტაციები შეინახა.')
-            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
+            if section == 'stage1':
+                self._save_stage1(request, patient)
+                messages.success(request, 'საფეხური 1-ის ანალიზები და კვლევები შეინახა.')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
 
-        if section == 'signoff':
-            return self._save_signoff(request, patient)
+            if section == 'stage2':
+                self._save_stage2(request, patient)
+                messages.success(request, 'მომზადების გეგმა და კონსულტაციები შეინახა.')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
 
-        if section == 'dos_vqi':
-            return self._save_dos_vqi(request, patient)
+            if section == 'signoff':
+                return self._save_signoff(request, patient)
 
-        if section == 'self_link':
-            return self._save_self_link(request, patient)
+            if section == 'dos_vqi':
+                return self._save_dos_vqi(request, patient)
+
+            if section == 'self_link':
+                return self._save_self_link(request, patient)
 
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
 
@@ -6599,6 +6625,11 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         s = merged_studies(patient)
         today = timezone.localdate()
         old_someday = patient.someday_list
+        old_side = patient.side
+        old_sub = patient.op_subtype
+        old_pw = _resolve_pathway(patient)
+        was_unstarted = (patient.started_on is None)
+
         name = clean_text(request.POST.get('patient_name'), 150).replace('\n', ' ')
         if name:
             patient.patient_name = name
@@ -6620,10 +6651,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         if sex in ('M', 'F', ''):
             patient.sex = sex
         if 'side' in request.POST and request.POST.get('side') in ('', 'R', 'L', 'B'):
-            new_side = request.POST.get('side')
-            if new_side != patient.side:
-                s['dos_site_marked'] = False
-            patient.side = new_side
+            patient.side = request.POST.get('side')
         patient.phone = clean_text(request.POST.get('phone'), 50).replace('\n', ' ')
         op_sub = request.POST.get('op_subtype') or ''
         if op_sub in PreopPatient.OpSubtype.values:
@@ -6643,15 +6671,42 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 patient.someday_list = ''
                 if not patient.started_on:
                     patient.started_on = vd
-        _update_hold_pause(s, old_someday, patient.someday_list, today=today)
+
+        _update_hold_pause(
+            s, old_someday, patient.someday_list, today=today,
+            started_on=(None if was_unstarted else patient.started_on),
+        )
+
+        new_pw = PreopPatient.SUBTYPE_PATHWAY.get(patient.op_subtype, patient.pathway)
+        uf = [
+            'patient_name', 'age', 'sex', 'side', 'phone', 'op_subtype', 'pathway',
+            'surgeon', 'visit_date', 'someday_list', 'started_on', 'studies',
+            'updated_at', 'updated_by',
+        ]
+        if patient.side != old_side or patient.op_subtype != old_sub:
+            s['dos_site_marked'] = False
+            s['alerts_ack_sig'] = ''
+            patient.approved_at = None
+            patient.approved_by = None
+            patient.alerts_ack_at = None
+            patient.alerts_ack_by = None
+            patient.anamnesis = ''
+            uf.extend(['approved_at', 'approved_by', 'alerts_ack_at', 'alerts_ack_by', 'anamnesis'])
+        if new_pw != old_pw and new_pw in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
+            s['carotid_symp'] = False
+
         patient.studies = s
         patient.updated_by = request.user
-        patient.save()
+        patient.save(update_fields=uf)
 
     def _save_questionnaire(self, request, patient):
+        old_side = patient.side
         apply_questionnaire_post(request.POST, patient, person_name(request.user))
         patient.updated_by = request.user
-        patient.save()
+        uf = ['questionnaire', 'studies', 'side', 'started_on', 'updated_at', 'updated_by']
+        if patient.side != old_side:
+            uf.extend(['approved_at', 'approved_by', 'anamnesis'])
+        patient.save(update_fields=uf)
 
     def _save_stage1(self, request, patient):
         s = merged_studies(patient)
@@ -6716,7 +6771,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             'aaa_renal_vein_anom', 'abf_renal_stenosis',
             'ven_epifascial', 'ven_tortuous', 'ven_perforator',
         ):
-            if bf in request.POST or bf in ('irregular_hr', 'aptt_prolonged', 'viral_positive'):
+            if bf in request.POST or bf in ('irregular_hr', 'aptt_prolonged', 'viral_positive', 'carotid_symp', 'echo_valve_issue'):
                 s[bf] = request.POST.get(bf) in ('1', 'on', 'true')
             elif bf == 'cta_disc' and patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
                 s[bf] = False
@@ -6726,7 +6781,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 s[bf] = False
             elif bf in ('ven_epifascial', 'ven_tortuous', 'ven_perforator') and patient.pathway == PreopPatient.Pathway.VENOUS:
                 s[bf] = False
-            elif bf in ('urine_nitrite', 'carotid_symp', 'echo_valve_issue') and patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
+            elif bf == 'urine_nitrite' and patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
                 s[bf] = False
 
         if 'blood_group' in request.POST:
@@ -6758,9 +6813,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             patient.started_on = patient.visit_date or today
         patient.studies = s
         patient.updated_by = request.user
-        patient.save()
+        patient.save(update_fields=['studies', 'started_on', 'updated_at', 'updated_by'])
 
     def _save_stage2(self, request, patient):
+        ev_before = evaluate(patient)
         s = merged_studies(patient)
         old_nurse_chips = list(s.get('nurse_note_chips') or [])
         old_nurse_chip_txt = chip_summary(old_nurse_chips, 'nurse_note_chips')
@@ -6808,6 +6864,31 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             if request.POST.get(sel_key) in allowed:
                 s[sel_key] = request.POST.get(sel_key)
 
+        s2_bool_visible = {
+            'anesth_done': True,
+            'stale_labs_refreshed': bool(ev_before['needs_stale_labs']),
+            'anemia_panel_done': bool(ev_before['needs_anemia_panel']),
+            'pbm_iv_iron_done': bool(ev_before['pbm_iv_iron_indicated'] and not ev_before['is_urgent_case']),
+            'endo_consult_done': bool(ev_before['needs_endo_reflex']),
+            'nephro_panel_done': bool(ev_before['needs_nephro_panel']),
+            'hydration_planned': bool(ev_before['needs_hydration']),
+            'dental_sanitation_done': bool(ev_before['needs_dental']),
+            'contrast_premed_done': bool(ev_before['needs_contrast_premed']),
+            'cied_checked': bool(ev_before['needs_cied']),
+            'cea_antiplatelet_started': bool(ev_before['pathway'] == 'cea' and ev_before['needs_cea_antiplatelet']),
+            'vte_prophylaxis_planned': bool(ev_before['is_venous'] and ev_before['needs_vte_prophylaxis']),
+            'compression_ready': bool(ev_before['is_venous'] and (ev_before['min_abi'] is None or ev_before['min_abi'] >= 0.8)),
+            'dapt_ready': bool(ev_before['is_pta'] and ev_before['q'].get('filled')),
+            'neuro_consult_done': bool(ev_before['pathway'] == 'cea' and ev_before['needs_neuro']),
+            'ppi_started': bool(ev_before['needs_ppi']),
+            'urine_culture_done': bool(ev_before['uti_suspected']),
+            'wound_care_done': bool(ev_before['needs_wound_care']),
+            'blood_reserved': bool(ev_before['needs_blood']),
+            'cell_saver_ready': bool(ev_before['needs_blood'] and ev_before['open_aortic']),
+            'evar_sized': bool(ev_before['pathway'] == 'aaa_infra' and patient.op_subtype == 'evar'),
+            'decolonization_ready': bool(ev_before['has_synthetic_implant']),
+            'med_hold_agreed': bool(ev_before['needs_med_hold']),
+        }
         for bf in (
             'urine_culture_done', 'blood_reserved', 'evar_sized', 'med_hold_agreed',
             'anesth_done', 'neuro_consult_done', 'wound_care_done',
@@ -6818,7 +6899,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             'contrast_premed_done', 'dapt_ready', 'stale_labs_refreshed',
             'cea_antiplatelet_started', 'cied_checked',
         ):
-            s[bf] = request.POST.get(bf) in ('1', 'on', 'true')
+            if bf in request.POST:
+                s[bf] = request.POST.get(bf) in ('1', 'on', 'true')
+            elif s2_bool_visible.get(bf, True):
+                s[bf] = False
         if (s.get('cied_plan') or 'pending') != 'pending':
             s['cied_checked'] = True
 
@@ -6855,11 +6939,13 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['nurse_note_custom'] = '' if raw_nurse == new_nurse_chip_txt else raw_nurse
             s['nurse_note'] = raw_nurse or new_nurse_chip_txt
 
+        uf = ['studies', 'updated_at', 'updated_by']
         if 'cardiologist' in request.POST or 'cardiologist_custom' in request.POST:
             cardio_name = clean_text(
                 request.POST.get('cardiologist_custom') or request.POST.get('cardiologist'), 100
             ).replace('\n', ' ')
             patient.cardiologist = cardio_name or 'ლიკა ინჯია'
+            uf.append('cardiologist')
         if 'cardio_decision' in request.POST:
             dec = request.POST.get('cardio_decision') or ''
             if dec in PreopPatient.CardioDecision.values:
@@ -6869,25 +6955,29 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                     patient.cardio_date = timezone.localdate()
                 elif not dec:
                     patient.cardio_date = None
+                uf.extend(['cardio_decision', 'cardio_date'])
                 if dec != old_dec and dec in ('stress', 'cag', 'pci'):
                     patient.alerts_ack_at = None
                     s['alerts_ack_sig'] = ''
+                    uf.append('alerts_ack_at')
 
         new_cardio_chip_txt = chip_summary(s.get('cardio_note_chips'), 'cardio_note_chips')
         if 'cardio_note_custom' in request.POST:
             custom_cn = clean_text(request.POST.get('cardio_note_custom'), 255).replace('\n', ' ')
             s['cardio_note_custom'] = custom_cn
             patient.cardio_note = '; '.join([x for x in (new_cardio_chip_txt, custom_cn) if x])[:255]
+            uf.append('cardio_note')
         elif 'cardio_note' in request.POST or 'cardio_note_chips' in request.POST:
             raw_cn = clean_text(request.POST.get('cardio_note'), 255).replace('\n', ' ')
             if raw_cn == old_cardio_chip_txt and s['cardio_note_chips'] != old_cardio_chips:
                 raw_cn = ''
             s['cardio_note_custom'] = '' if raw_cn == new_cardio_chip_txt else raw_cn
             patient.cardio_note = (raw_cn or new_cardio_chip_txt)[:255]
+            uf.append('cardio_note')
 
         patient.studies = s
         patient.updated_by = request.user
-        patient.save()
+        patient.save(update_fields=list(dict.fromkeys(uf)))
 
     def _save_dos_vqi(self, request, patient):
         s = merged_studies(patient)
@@ -6948,7 +7038,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['outcome_recorded_on'] = today.isoformat()
             patient.studies = s
             patient.updated_by = request.user
-            patient.save()
+            patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
             bp, _, added_tasks = admit_preop_to_board(
                 patient,
                 request.user,
@@ -6971,18 +7061,32 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
         patient.studies = s
         patient.updated_by = request.user
-        patient.save()
+        patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
         messages.success(request, 'ოპერაციის დილის კარიბჭე და 30-დღიანი VQI მონიტორინგი შეინახა.')
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
 
     def _save_signoff(self, request, patient):
         action = request.POST.get('action') or 'save_anamnesis'
+        can_approve_signoff = (
+            request.user.is_superuser
+            or request.user.is_staff
+            or hasattr(request.user, 'profile')
+            or patient.surgeon_id is None
+            or patient.surgeon_id == request.user.pk
+        )
+        if action in ('approve', 'unapprove') and not can_approve_signoff:
+            messages.error(request, 'ოპერაციაზე ქირურგის დასტურის/მოხსნის უფლება აქვს მხოლოდ მკურნალ ქირურგს ან ექიმს!')
+            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
+
+        uf = ['updated_at', 'updated_by']
         # Only persist anamnesis on explicit save_anamnesis / approve (NEVER freeze auto-anamnesis on Day-1 ack_alerts or unapprove!)
         if 'anamnesis' in request.POST:
             if action == 'regenerate':
                 patient.anamnesis = ''
+                uf.append('anamnesis')
             elif action in ('save_anamnesis', 'approve'):
                 patient.anamnesis = clean_text(request.POST.get('anamnesis'), 4000)
+                uf.append('anamnesis')
 
         ev = evaluate(patient)
         s = merged_studies(patient)
@@ -6992,6 +7096,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             patient.studies = s
             patient.alerts_ack_at = timezone.now()
             patient.alerts_ack_by = request.user
+            uf.extend(['studies', 'alerts_ack_at', 'alerts_ack_by'])
             messages.success(request, 'გაფრთხილებები მონიშნულია როგორც გაცნობილი.')
         elif action == 'approve':
             if ev.get('has_hard_contraindication'):
@@ -6999,28 +7104,32 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
             s['alerts_ack_sig'] = ev['alerts_sig']
             if request.POST.get('move_ready') == '1':
-                _update_hold_pause(s, patient.someday_list, PreopPatient.SomedayList.READY)
+                _update_hold_pause(s, patient.someday_list, PreopPatient.SomedayList.READY, started_on=patient.started_on)
                 patient.someday_list = PreopPatient.SomedayList.READY
                 patient.visit_date = None
+                uf.extend(['someday_list', 'visit_date'])
             patient.studies = s
             patient.approved_at = timezone.now()
             patient.approved_by = request.user
+            uf.extend(['studies', 'approved_at', 'approved_by'])
             messages.success(request, f'{patient.patient_name} — დადასტურებულია ოპერაციისთვის.')
         elif action == 'unapprove':
             patient.approved_at = None
             patient.approved_by = None
+            uf.extend(['approved_at', 'approved_by'])
             messages.info(request, 'დადასტურება მოიხსნა.')
         else:
             messages.success(request, 'ანამნეზი შეინახა.')
 
         patient.updated_by = request.user
-        patient.save()
+        patient.save(update_fields=list(dict.fromkeys(uf)))
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
 
     def _save_self_link(self, request, patient):
         act = request.POST.get('action') or 'rotate'
         q = merged_q(patient)
         s = merged_studies(patient)
+        uf = ['studies', 'updated_at', 'updated_by']
         if act == 'revoke':
             s['self_fill_revoked'] = True
             messages.info(request, 'პაციენტის თვითშევსების ბმული გაუქმდა.')
@@ -7029,10 +7138,11 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['self_fill_revoked'] = False
             q['self_fill_submitted'] = False
             patient.questionnaire = q
+            uf.append('questionnaire')
             messages.success(request, 'ახალი ერთჯერადი ბმული გენერირდა (წინა ბმული გაუქმდა).')
         patient.studies = s
         patient.updated_by = request.user
-        patient.save()
+        patient.save(update_fields=uf)
         tab_ret = request.POST.get('tab') or 'q'
         if tab_ret not in ('q', 's1', 's2', 'doc', 'dos'):
             tab_ret = 'q'
@@ -7150,6 +7260,14 @@ def resolve_preop_for_board(board_patient):
 
 def admit_preop_to_board(patient, user, unit='', bed=''):
     """1-click clinical handoff from PreopPatient to BoardPatient + initial STATUS & duty TASKs."""
+    with _PREOP_MUTATION_LOCK, transaction.atomic():
+        if patient.pk:
+            _sqlite_acquire_write_lock(patient.pk)
+            patient = PreopPatient.objects.select_for_update().select_related('surgeon', 'surgeon__profile').get(pk=patient.pk)
+        return _admit_preop_to_board_locked(patient, user, unit=unit, bed=bed)
+
+
+def _admit_preop_to_board_locked(patient, user, unit='', bed=''):
     ev = evaluate(patient)
     q, s = ev['q'], ev['s']
     pathway = ev['pathway']
@@ -7494,12 +7612,15 @@ class PreopSelfFillView(generic.View):
         submitted_once = bool(ev['q'].get('self_fill_submitted'))
         is_done_screen = (request.GET.get('done') == '1') and submitted_once and not staff_locked
         locked = staff_locked or (submitted_once and not is_done_screen)
-        emergency_symptom = bool(ev['q'].get('aaa_pain') or ev['q'].get('cea_crescendo'))
+        emergency_symptom = bool(ev['q'].get('aaa_pain') or ev['q'].get('cea_crescendo')) if is_done_screen else False
+        # L7-F2: Never pre-populate prior clinical answers/meds/allergies on an unauthenticated bearer GET link!
+        q_public = dict(DEFAULT_Q)
+        s_public = dict(DEFAULT_STUDIES)
         return render(request, self.template_name, {
             'p': patient,
             'ev': ev,
-            'q': ev['q'],
-            's': ev['s'],
+            'q': q_public,
+            's': s_public,
             'chips': CHIP_CATALOGS,
             'self_med_hints': SELF_FILL_MED_HINTS,
             'mets_limit_choices': METS_LIMIT_CHOICES,
@@ -7518,36 +7639,48 @@ class PreopSelfFillView(generic.View):
         patient = self._load_patient(token)
         if not patient:
             return render(request, self.template_name, {'invalid_link': True}, status=404)
-        q_cur = merged_q(patient)
-        s_cur = merged_studies(patient)
-        if (
-            patient.approved_at
-            or q_cur.get('nurse_verified')
-            or q_cur.get('self_fill_submitted')
-            or (s_cur.get('case_outcome_status') or 'scheduled') != 'scheduled'
-        ):
-            return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?locked=1')
-        age_posted = _int(request.POST.get('age'), lo=12, hi=120) if request.POST.get('age') else None
-        if age_posted and not patient.age:
-            patient.age = age_posted
-        if not patient.sex and request.POST.get('sex') in ('M', 'F'):
-            patient.sex = request.POST.get('sex')
-        if not patient.phone and 'phone' in request.POST:
-            ph = clean_text(request.POST.get('phone'), 50).replace('\n', ' ')
-            if ph:
-                patient.phone = ph
-        apply_self_fill_post(request.POST, patient)
-        s_mut = merged_studies(patient)
-        pid = _clean_person_id(request.POST.get('person_id'))
-        if pid and not s_mut.get('person_id'):
-            s_mut['person_id'] = pid
-        bd = _date(request.POST.get('birth_date'))
-        if bd and bd <= timezone.localdate() and not s_mut.get('birth_date'):
-            s_mut['birth_date'] = bd.isoformat()
-            if not patient.age:
-                patient.age = _age_from_dob(bd)
-        patient.studies = s_mut
-        patient.save()
+        with _PREOP_MUTATION_LOCK, transaction.atomic():
+            _sqlite_acquire_write_lock(patient.pk)
+            patient = PreopPatient.objects.select_for_update().filter(pk=patient.pk, archived=False).first()
+            if not patient:
+                return render(request, self.template_name, {'invalid_link': True}, status=404)
+            q_cur = merged_q(patient)
+            s_cur = merged_studies(patient)
+            if (
+                patient.approved_at
+                or q_cur.get('nurse_verified')
+                or q_cur.get('self_fill_submitted')
+                or s_cur.get('self_fill_revoked')
+                or (s_cur.get('case_outcome_status') or 'scheduled') != 'scheduled'
+            ):
+                return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?locked=1')
+            uf = ['questionnaire', 'studies', 'side', 'started_on', 'updated_at']
+            age_posted = _int(request.POST.get('age'), lo=12, hi=120) if request.POST.get('age') else None
+            if age_posted and not patient.age:
+                patient.age = age_posted
+                uf.append('age')
+            if not patient.sex and request.POST.get('sex') in ('M', 'F'):
+                patient.sex = request.POST.get('sex')
+                uf.append('sex')
+            if not patient.phone and 'phone' in request.POST:
+                ph = clean_text(request.POST.get('phone'), 50).replace('\n', ' ')
+                if ph:
+                    patient.phone = ph
+                    uf.append('phone')
+            apply_self_fill_post(request.POST, patient)
+            s_mut = merged_studies(patient)
+            pid = _clean_person_id(request.POST.get('person_id'))
+            if pid and not s_mut.get('person_id'):
+                s_mut['person_id'] = pid
+            bd = _date(request.POST.get('birth_date'))
+            if bd and bd <= timezone.localdate() and not s_mut.get('birth_date'):
+                s_mut['birth_date'] = bd.isoformat()
+                if not patient.age:
+                    patient.age = _age_from_dob(bd)
+                    if 'age' not in uf:
+                        uf.append('age')
+            patient.studies = s_mut
+            patient.save(update_fields=uf)
         return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?done=1')
 
 
@@ -7559,49 +7692,70 @@ class PreopMoveView(LoginRequiredMixin, generic.View):
         action = request.POST.get('action') or 'move'
         ajax = request.headers.get('x-requested-with') == 'XMLHttpRequest'
 
-        if action == 'archive':
-            patient.archived = not patient.archived
+        with _PREOP_MUTATION_LOCK, transaction.atomic():
+            _sqlite_acquire_write_lock(patient.pk)
+            patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
+
+            if action == 'archive':
+                patient.archived = not patient.archived
+                patient.updated_by = request.user
+                patient.save(update_fields=['archived', 'updated_at', 'updated_by'])
+                if ajax:
+                    return JsonResponse({'ok': True, 'archived': patient.archived})
+                messages.info(request, f'{patient.patient_name} {"გადავიდა არქივში" if patient.archived else "დაბრუნდა სიაში"}.')
+                return HttpResponseRedirect(reverse('preop'))
+
+            if action == 'delete':
+                s_del = merged_studies(patient)
+                is_audit_protected = (
+                    s_del.get('case_outcome_status') == 'operated'
+                    or bool(s_del.get('board_patient_id'))
+                )
+                if is_audit_protected and not (request.user.is_superuser or request.user.is_staff):
+                    patient.archived = True
+                    patient.updated_by = request.user
+                    patient.save(update_fields=['archived', 'updated_at', 'updated_by'])
+                    if ajax:
+                        return JsonResponse({'ok': True, 'archived': True, 'deleted': False})
+                    messages.info(request, f'{patient.patient_name} ნაოპერაციები/ჰოსპიტალიზებულია — სამედიცინო აუდიტის დაცვის მიზნით გადატანილია არქივში.')
+                    return HttpResponseRedirect(reverse('preop'))
+                name = patient.patient_name
+                patient.delete()
+                if ajax:
+                    return JsonResponse({'ok': True, 'deleted': True})
+                messages.success(request, f'{name} წაიშალა წინასაოპერაციო სიიდან.')
+                return HttpResponseRedirect(reverse('preop'))
+
+            old_someday = patient.someday_list
+            was_unstarted = (patient.started_on is None)
+            s_mut = merged_studies(patient)
+            slot = (request.POST.get('slot') or '').strip()
+            if slot.startswith('someday:'):
+                key = slot.split(':', 1)[1]
+                if key not in PreopPatient.SomedayList.values or not key:
+                    return JsonResponse({'error': 'bad_slot'}, status=400) if ajax else HttpResponseRedirect(reverse('preop'))
+                patient.someday_list = key
+                patient.visit_date = None
+            else:
+                vd = _date(slot)
+                if not vd:
+                    return JsonResponse({'error': 'bad_date'}, status=400) if ajax else HttpResponseRedirect(reverse('preop'))
+                patient.visit_date = vd
+                patient.someday_list = ''
+                if not patient.started_on:
+                    patient.started_on = vd
+
+            _update_hold_pause(
+                s_mut, old_someday, patient.someday_list,
+                started_on=(None if was_unstarted else patient.started_on),
+            )
+            patient.studies = s_mut
             patient.updated_by = request.user
-            patient.save(update_fields=['archived', 'updated_at', 'updated_by'])
+            patient.save(update_fields=['visit_date', 'someday_list', 'started_on', 'studies', 'updated_at', 'updated_by'])
             if ajax:
-                return JsonResponse({'ok': True, 'archived': patient.archived})
-            messages.info(request, f'{patient.patient_name} {"გადავიდა არქივში" if patient.archived else "დაბრუნდა სიაში"}.')
+                ev = evaluate(patient)
+                return JsonResponse({'ok': True, 'days_elapsed': ev['days_elapsed'], 'status': ev['status']})
             return HttpResponseRedirect(reverse('preop'))
-
-        if action == 'delete':
-            name = patient.patient_name
-            patient.delete()
-            if ajax:
-                return JsonResponse({'ok': True, 'deleted': True})
-            messages.success(request, f'{name} წაიშალა წინასაოპერაციო სიიდან.')
-            return HttpResponseRedirect(reverse('preop'))
-
-        old_someday = patient.someday_list
-        s_mut = merged_studies(patient)
-        slot = (request.POST.get('slot') or '').strip()
-        if slot.startswith('someday:'):
-            key = slot.split(':', 1)[1]
-            if key not in PreopPatient.SomedayList.values or not key:
-                return JsonResponse({'error': 'bad_slot'}, status=400) if ajax else HttpResponseRedirect(reverse('preop'))
-            patient.someday_list = key
-            patient.visit_date = None
-        else:
-            vd = _date(slot)
-            if not vd:
-                return JsonResponse({'error': 'bad_date'}, status=400) if ajax else HttpResponseRedirect(reverse('preop'))
-            patient.visit_date = vd
-            patient.someday_list = ''
-            if not patient.started_on:
-                patient.started_on = vd
-
-        _update_hold_pause(s_mut, old_someday, patient.someday_list)
-        patient.studies = s_mut
-        patient.updated_by = request.user
-        patient.save(update_fields=['visit_date', 'someday_list', 'started_on', 'studies', 'updated_at', 'updated_by'])
-        if ajax:
-            ev = evaluate(patient)
-            return JsonResponse({'ok': True, 'days_elapsed': ev['days_elapsed'], 'status': ev['status']})
-        return HttpResponseRedirect(reverse('preop'))
 
 
 class PreopFileUploadView(LoginRequiredMixin, generic.View):
@@ -7642,15 +7796,21 @@ class PreopFileView(LoginRequiredMixin, generic.View):
         if size == 'thumb' and not rec.is_pdf and rec.thumb:
             field = rec.thumb
             ctype = 'image/jpeg'
+            ext = 'jpg'
         else:
             field = rec.file
             ctype = 'application/pdf' if rec.is_pdf else 'image/jpeg'
+            ext = 'pdf' if rec.is_pdf else 'jpg'
         try:
             fh = field.open('rb')
         except (FileNotFoundError, ValueError):
             raise Http404
         response = FileResponse(fh, content_type=ctype)
         response['Cache-Control'] = 'private, max-age=604800'
+        response['Content-Disposition'] = f'inline; filename="preop-file-{rec.pk}.{ext}"'
+        response['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; sandbox"
+        response['X-Frame-Options'] = 'SAMEORIGIN'
+        response['X-Content-Type-Options'] = 'nosniff'
         return response
 
 
