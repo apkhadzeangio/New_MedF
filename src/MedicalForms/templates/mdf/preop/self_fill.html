@@ -59,9 +59,17 @@
                 <input type="date" name="birth_date" form="self-q-form" value="" class="form-control">
                 {% endif %}
             </label>
-            <label class="fld">ასაკი (წელი)
-                <input type="number" name="age" form="self-q-form" value="{{ p.age|default_if_none:'' }}" min="12" max="120" class="form-control">
-            </label>
+            <div class="d-flex gap-2">
+                <label class="fld" style="flex:1">ასაკი (წელი)
+                    <input type="number" name="age" form="self-q-form" value="{{ p.age|default_if_none:'' }}" min="12" max="120" class="form-control">
+                </label>
+                <label class="fld" style="flex:1">სქესი
+                    <select name="sex" form="self-q-form" class="form-select">
+                        <option value="M" {% if p.sex == 'M' %}selected{% endif %}>კაცი (M)</option>
+                        <option value="F" {% if p.sex == 'F' %}selected{% endif %}>ქალი (F)</option>
+                    </select>
+                </label>
+            </div>
             <label class="fld">წონა (კგ)
                 <input type="number" step="any" name="weight_kg" form="self-q-form" value="{{ s.weight_kg|default_if_none:'' }}" placeholder="მაგ. 72" class="form-control">
             </label>
@@ -420,6 +428,9 @@
                             <label class="chip-check"><input type="checkbox" name="dental_infection" value="1" {% if q.dental_infection %}checked{% endif %}>კარიესული / მტკივნეული კბილი</label>
                             <label class="chip-check"><input type="checkbox" name="anesth_issue" value="1" {% if q.anesth_issue %}checked{% endif %}>გართულება წარსულ ნარკოზზე</label>
                             <label class="chip-check"><input type="checkbox" name="active_infection" value="1" {% if q.active_infection %}checked{% endif %}>ამჟამად მაქვს სიცხე / მწვავე ინფექცია</label>
+                            {% if ev.show_pregnancy_check and not ev.is_venous or q.pregnant_possible %}
+                            <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="pregnant_possible" value="1" {% if q.pregnant_possible %}checked{% endif %}>შესაძლო ორსულობა / ლაქტაცია</label>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

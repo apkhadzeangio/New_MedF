@@ -801,15 +801,40 @@ def check_clinical_invariants(patient, ev, anam, rendered_passport=None):
             violations.append('INV-01_NON_BMP_OUTPUT')
 
     # INV-02: Hard Contraindication Lock
+    vasc_chips_sim = set(_safe_list(q.get('vasc_chips')))
+    is_clti_sim = (
+        patient.op_subtype in (PreopPatient.OpSubtype.ABF_CLTI, PreopPatient.OpSubtype.BYPASS_CLTI, PreopPatient.OpSubtype.PTA_CLTI)
+        or (q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))))
+    )
+    gsv_inadeq_sim = (
+        (s.get('pad_gsv_status') == 'inadequate')
+        or (ev.get('pad_gsv_mm') is not None and ev['pad_gsv_mm'] < 3.0)
+        or ('vein_strip' in vasc_chips_sim)
+    )
+    eff_preg_sim = q_filled and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
     ipsi_100 = (pw == PreopPatient.Pathway.CEA and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)
     brain_bleed = (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
+    bilat_cea = (pw == PreopPatient.Pathway.CEA and patient.side == 'B')
+    claud_btk = (pw == PreopPatient.Pathway.PAD_PTA and not is_clti_sim and s.get('pta_lesion_site') == 'infrapopliteal')
+    claud_byp_contra = (
+        pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti_sim and (
+            s.get('pad_runoff_status') == 'desert_foot'
+            or (gsv_inadeq_sim and s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
+        )
+    )
+    claud_preg_contra = (
+        pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
+        and not is_clti_sim and eff_preg_sim
+    )
     ven_contra = (
         pw == PreopPatient.Pathway.VENOUS and (
             s.get('ven_duplex_status') in ('acute_dvt', 'deep_obstruction')
-            or (q_filled and bool(q.get('ven_pregnant')))
+            or eff_preg_sim
+            or (ev.get('min_abi') is not None and ev['min_abi'] < 0.50)
+            or (ev.get('min_tp') is not None and ev['min_tp'] < 30)
         )
     )
-    if ipsi_100 or brain_bleed or ven_contra:
+    if ipsi_100 or brain_bleed or bilat_cea or claud_btk or claud_byp_contra or claud_preg_contra or ven_contra:
         if not ev['has_hard_contraindication']:
             violations.append('INV-02_HARD_CONTRA_FLAG_MISSED')
         if ev['status'] == STATUS_READY or ev['workup_ready'] or ev['dos_ready']:
@@ -1177,12 +1202,31 @@ def _record_guideline_oracle(oracles, patient, ev):
     inf_chips = set(_safe_list(q.get('inf_chips')))
     med_chips = set(_safe_list(q.get('med_chips')))
 
-    # 1. Hard Surgical Contraindication Oracle (ESVS 2022/2023)
+    # 1. Hard Surgical Contraindication Oracle (ESVS 2022–2024 Class III Harm / Never-Events)
+    vasc_chips = set(_safe_list(q.get('vasc_chips')))
+    is_clti_or = (
+        patient.op_subtype in (PreopPatient.OpSubtype.ABF_CLTI, PreopPatient.OpSubtype.BYPASS_CLTI, PreopPatient.OpSubtype.PTA_CLTI)
+        or bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))
+    )
+    gsv_inadeq_or = (
+        (s.get('pad_gsv_status') == 'inadequate')
+        or (ev.get('pad_gsv_mm') is not None and ev['pad_gsv_mm'] < 3.0)
+        or ('vein_strip' in vasc_chips)
+    )
+    eff_preg_or = bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible'))
     exp_hard_contra = bool(
         (pw == PreopPatient.Pathway.CEA and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)
         or (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
+        or (pw == PreopPatient.Pathway.CEA and patient.side == 'B')
+        or (is_pta and not is_clti_or and s.get('pta_lesion_site') == 'infrapopliteal')
+        or (pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti_or and (
+            s.get('pad_runoff_status') == 'desert_foot'
+            or (gsv_inadeq_or and s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
+        ))
+        or (pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and not is_clti_or and eff_preg_or)
         or (is_venous and s.get('ven_duplex_status') in ('acute_dvt', 'deep_obstruction'))
-        or (is_venous and bool(q.get('ven_pregnant')))
+        or (is_venous and eff_preg_or)
+        or (is_venous and ((ev.get('min_abi') is not None and ev['min_abi'] < 0.50) or (ev.get('min_tp') is not None and ev['min_tp'] < 30)))
     )
     oracles['hard_contraindication'].record(exp_hard_contra, ev['has_hard_contraindication'])
 

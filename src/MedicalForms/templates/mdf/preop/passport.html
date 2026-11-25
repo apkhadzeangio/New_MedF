@@ -220,10 +220,10 @@
     <!-- Two-Column Specialist Briefing: Surgeon vs Anesthesiologist -->
     <div class="pp-two-col">
         <section class="pp-sec">
-            <h2><span>2A. ქირურგიული და ანატომიური გეგმა</span><span>{{ ev.pathway_short }}</span></h2>
+            <h2><span>2A. ქირურგიული და ანატომიური გეგმა</span><span>{% if s.case_summary_badge %}{{ s.case_summary_badge }} · {% endif %}{{ ev.pathway_short }}</span></h2>
             <div class="pp-bitem">
                 <b>ანატომიური და ვიზუალიზაციური სტატუსი</b>
-                <div>{{ ev.surgical_brief.anatomy_summary }}</div>
+                <div>{{ ev.surgical_brief.anatomy_summary }}{% if s.case_summary_badge %} · <strong>სტადირება:</strong> {{ s.case_summary_badge }}{% endif %}</div>
             </div>
             <div class="pp-bitem">
                 <b>ტაქტიკური დეტალები / კონდუიტი / კოლატერალები</b>

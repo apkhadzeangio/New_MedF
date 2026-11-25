@@ -849,7 +849,7 @@
                             <label class="chip-check" style="border-color:#FEDF89"><input type="checkbox" name="med_dabigatran" value="1" {% if q.med_dabigatran %}checked{% endif %}>პრადაქსა / დაბიგატრანი</label>
                             <label class="chip-check"><input type="checkbox" name="med_warfarin" value="1" {% if q.med_warfarin %}checked{% endif %}>ვარფარინი</label>
                             <label class="chip-check"><input type="checkbox" name="sglt2" value="1" {% if q.sglt2 %}checked{% endif %}>ჯარდიანსი / ფორსიგა (SGLT2 — -72 სთ)</label>
-                            <label class="chip-check"><input type="checkbox" name="glp1" value="1" {% if q.glp1 %}checked{% endif %}>ოზემპიკი / მუნჯარო (GLP-1 — -7 დღე)</label>
+                            <label class="chip-check"><input type="checkbox" name="glp1" value="1" {% if q.glp1 %}checked{% endif %}>ოზემპიკი / მუნჯარო (GLP-1 — 24 სთ თხევადი დიეტა)</label>
                             {% for ck, cl in chips.med_chips %}
                             <label class="chip-check"><input type="checkbox" name="med_chips" value="{{ ck }}" {% if ck in q.med_chips %}checked{% endif %}>{{ cl }}</label>
                             {% endfor %}
@@ -888,6 +888,9 @@
                                 <label class="chip-check"><input type="checkbox" name="pacemaker" value="1" {% if q.pacemaker %}checked{% endif %}>კარდიოსტიმულატორი / იმპლანტი</label>
                                 <label class="chip-check"><input type="checkbox" name="loose_teeth" value="1" {% if q.loose_teeth %}checked{% endif %}>პროთეზი / მერყევი კბილები</label>
                                 <label class="chip-check"><input type="checkbox" name="anesth_issue" value="1" {% if q.anesth_issue %}checked{% endif %}>გართულება წარსულ ნარკოზზე</label>
+                                {% if ev.show_pregnancy_check and not ev.is_venous or q.pregnant_possible %}
+                                <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="pregnant_possible" value="1" {% if q.pregnant_possible %}checked{% endif %}>შესაძლო ორსულობა / ლაქტაცია</label>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -1697,8 +1700,9 @@
                         <span><strong>რეფლექს-ანალიზი კონტრასტამდე:</strong> TSH და FT4 <small class="text-muted">(ფარისებრი ჯირკვალი / ამიოდარონი)</small></span>
                         <select name="tsh_status" class="form-select form-select-sm" style="width:auto">
                             <option value="pending" {% if s.tsh_status == 'pending' %}selected{% endif %}>ჩასატარებელია</option>
-                            <option value="euthyroid" {% if s.tsh_status == 'euthyroid' %}selected{% endif %}>✓ ეუთირეოზი / ჰიპოთირეოზი (კონტრასტი უსაფრთხოა)</option>
+                            <option value="euthyroid" {% if s.tsh_status == 'euthyroid' %}selected{% endif %}>✓ ეუთირეოზი / კომპენსირებული ჰიპოთირეოზი (კონტრასტი უსაფრთხოა)</option>
                             <option value="hyperthyroid" {% if s.tsh_status == 'hyperthyroid' %}selected{% endif %}>ჰიპერთირეოზი — დაბალი TSH (Red Flag!)</option>
+                            <option value="hypothyroid_severe" {% if s.tsh_status == 'hypothyroid_severe' %}selected{% endif %}>მძიმე ჰიპოთირეოზი — მაღალი TSH / დაბალი FT4 (Red Flag!)</option>
                         </select>
                     </div>
                     {% endif %}

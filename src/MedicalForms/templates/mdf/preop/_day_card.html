@@ -25,6 +25,11 @@
                     <option value="L">მარცხენა (L)</option>
                     <option value="B">ორმხრივი (B)</option>
                 </select>
+                <select name="sex" aria-label="სქესი">
+                    <option value="">სქესი...</option>
+                    <option value="M">კაცი (M)</option>
+                    <option value="F">ქალი (F)</option>
+                </select>
                 <select name="surgeon" aria-label="ქირურგი">
                     <option value="">ქირურგი...</option>
                     {% for uid, uname in doctors %}<option value="{{ uid }}">{{ uname }}</option>{% endfor %}

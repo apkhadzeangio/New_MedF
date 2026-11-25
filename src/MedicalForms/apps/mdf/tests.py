@@ -6137,3 +6137,116 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         self.assertContains(pp_html, 'BNP 890')
         self.assertContains(pp_html, 'კარდიო-სიფრთხილე (დაშვებულია ✓)')
         self.assertContains(pp_html, 'საბაზისო INR (2.6)')
+
+    def test_sprint3_esvs_never_events_fast_track_pause_and_metabolic(self):
+        import datetime
+        from django.utils import timezone
+        from .models import PreopPatient
+        from .preop import STATUS_READY, cta_live_months_age, evaluate, generate_anamnesis
+
+        today = timezone.localdate()
+
+        # C10.1: Simultaneous bilateral CEA (side='B') -> STOP hard contraindication + blocked dos_site_marked;
+        # unset side preserves contralateral critical stenosis (>=80%); >=80yo ASA IV asymptomatic CEA futility
+        p_cea_b = PreopPatient(
+            patient_name='ორმხრივ კაროტიდაძე', age=82, sex='M', side='B',
+            pathway='cea', op_subtype='cea_asymp',
+            questionnaire={'filled': True, 'mets_ok': True, 'med_aspirin': True, 'med_chips': ['statin']},
+            studies={'carotid_r': 85, 'carotid_l': 82, 'lvef': 32, 'dos_site_marked': True},
+        )
+        ev_cea_b = evaluate(p_cea_b, today=today)
+        self.assertTrue(ev_cea_b['has_hard_contraindication'])
+        self.assertEqual(ev_cea_b['clearance_seal']['code'], 'stop')
+        self.assertFalse(next(c for c in ev_cea_b['dos_checks'] if c['key'] == 'dos_site_marked')['done'])
+        self.assertTrue(any('ასიმპტომური CEA ≥80 წლის ASA IV' in rf for rf in ev_cea_b['red_flags']))
+        self.assertIn('SBP 110–160 mmHg', ev_cea_b['anesthetic_brief']['bp_corridor'])
+        self.assertIn('SBP < 140–150 mmHg', ev_cea_b['anesthetic_brief']['bp_corridor'])
+
+        p_cea_unset = PreopPatient(
+            patient_name='უცნობ მხარაძე', age=68, sex='M', side='',
+            pathway='cea', op_subtype='cea_symp',
+            questionnaire={'filled': True, 'cea_symp_event': True, 'cea_days_since_event': 240, 'med_aspirin': True},
+            studies={'carotid_r': 88, 'carotid_l': 84},
+        )
+        ev_unset = evaluate(p_cea_unset, today=today)
+        self.assertEqual(ev_unset['contra_car'], 84)
+        self.assertEqual(ev_unset['target_days'], 10)  # >180d -> asymptomatic target clock!
+        self.assertEqual(ev_unset['auto_asa'], 'III')
+
+        # C10.2 + C10.3 + L1-F1: Venous compression deadlock resolved on TP 42 (<50 hides comp) and TP 55 (50..59 Class I comp);
+        # EVLA obesity + HFrEF reduces lidocaine ceiling <=300mg + Intralipid LAST note; no false DVT-denial in anamnesis
+        p_ven = PreopPatient(
+            patient_name='მონკებერგ ლიდოკაინაძე', age=72, sex='F', side='R',
+            pathway='venous', op_subtype='evla',
+            questionnaire={'filled': True, 'ven_ceap': 'C4', 'cad': True, 'cad_chips': ['hf'], 'mets_ok': True},
+            studies={
+                'weight_kg': 115, 'height_cm': 160, 'lvef': 34,
+                'hb': 130, 'plt': 220, 'inr': 1.02, 'glucose': 5.5, 'ecg': 'normal',
+                'ven_duplex_status': 'deep_patent_reflux', 'abi_r': 1.55, 'tp_r': 42, 'compression_ready': True,
+            },
+        )
+        ev_tp42 = evaluate(p_ven, today=today)
+        self.assertNotIn('comp', [t['key'] for t in ev_tp42['tasks']])
+        self.assertLessEqual(ev_tp42['lidocaine_max_mg'], 300)
+        self.assertIn('Intralipid', ev_tp42['anesthetic_brief']['bp_corridor'])
+
+        p_ven.studies['tp_r'] = 55
+        ev_tp55 = evaluate(p_ven, today=today)
+        comp_55 = next(t for t in ev_tp55['tasks'] if t['key'] == 'comp')
+        self.assertTrue(comp_55['done'])
+        self.assertIn('I კლასის', comp_55['label'])
+
+        p_ven.studies['ven_duplex_status'] = 'acute_dvt'
+        ev_dvt = evaluate(p_ven, today=today)
+        self.assertNotIn('უარყოფს', generate_anamnesis(p_ven, ev_dvt).split('ვენური და თრომბოემბოლიური')[1].split('\n')[0])
+
+        # C10.4 + L3-F1: Exact calendar CTA age (2026-01-01 -> 2026-07-29 is >6m) & sub-threshold fusiform AAA Red Flag
+        self.assertGreater(cta_live_months_age({'cta_date': '2026-01-01'}, today=datetime.date(2026, 7, 29)), 6)
+        self.assertEqual(cta_live_months_age({'cta_date': '2026-01-01'}, today=datetime.date(2026, 7, 1)), 6)
+
+        # C11.1 + C11.3: Rupture-suspect AAA (aaa_pain) auto ASA-E, bypasses outpatient tasks, warns against Andexanet before UFH,
+        # and undated someday:conf acute patient surfaces in PreopWeekView overdue_patients!
+        p_rup = PreopPatient.objects.create(
+            patient_name='რუპტურა სასწრაფოძე', age=73, sex='M',
+            pathway='aaa_infra', op_subtype='open', someday_list='conf', visit_date=None, surgeon=self.user,
+            questionnaire={
+                'filled': True, 'aaa_pain': True, 'pulm': True, 'med_doac': True,
+                'dental_infection': True, 'mets_ok': False,
+            },
+            studies={
+                'aaa_mm': 68, 'hb': 108, 'creat': 130, 'creat_unit': 'umol', 'glucose': 12.6, 'inr': 1.1,
+                'ecg': 'normal', 'lvef': 50, 'labs_date': (today - datetime.timedelta(days=20)).isoformat(),
+            },
+        )
+        ev_rup = evaluate(p_rup, today=today)
+        self.assertTrue(ev_rup['effective_asa'].endswith('-E'))
+        rup_task_keys = {t['key'] for t in ev_rup['tasks']}
+        for bypassed in ('spiro', 'endo', 'hba1c', 'dental', 'anemia', 'stale_labs', 'cardio'):
+            self.assertNotIn(bypassed, rup_task_keys)
+        self.assertIn('პერმისიული ჰიპოტენზია SBP 70–90', ev_rup['anesthetic_brief']['bp_corridor'])
+        self.assertIn('ანდექსანეტ ალფას', ev_rup['surgical_brief']['tactical_note'])
+        self.assertIn('VRIII', ev_rup['anesthetic_brief']['glycemic_target'])
+        wk_resp = self.client.get(reverse('preop'))
+        self.assertIn(p_rup, wk_resp.context['overdue_patients'])
+
+        # C12.2 + C12.3 + C12.4 + C10.5: SGLT2 dos_ketones_ok gate, undiagnosed DM (HbA1c 6.8%), hypothyroid_severe, GLP-1 POCUS, and reproductive pregnancy radiation guard
+        p_met = PreopPatient.objects.create(
+            patient_name='მეტაბოლ ფარისებრაძე', age=38, sex='F', side='R',
+            pathway='pad_pta', op_subtype='pta_clti', surgeon=self.user,
+            questionnaire={
+                'filled': True, 'abf_rest_pain': True, 'sglt2': True, 'glp1': True,
+                'pregnant_possible': True, 'med_aspirin': True, 'mets_ok': True,
+            },
+            studies={
+                'hb': 128, 'plt': 240, 'inr': 1.0, 'creat': 72, 'glucose': 6.4, 'hba1c': 6.8,
+                'abi_r': 0.36, 'pta_access_site': 'cfa_clean', 'ecg': 'normal', 'tsh_status': 'hypothyroid_severe',
+            },
+        )
+        ev_met = evaluate(p_met, today=today)
+        met_reds = ' | '.join(ev_met['red_flags'])
+        self.assertIn('არადიაგნოსტირებული შაქრიანი დიაბეტი', met_reds)
+        self.assertIn('მიქსედემური კომის', met_reds)
+        self.assertIn('ნაყოფის დასხივებისა', met_reds)
+        self.assertIn('GLP-1 ასპირაციის დაცვა', ev_met['anesthetic_brief']['airway_summary'])
+        self.assertIn('dos_ketones_ok', [c['key'] for c in ev_met['dos_checks']])
+

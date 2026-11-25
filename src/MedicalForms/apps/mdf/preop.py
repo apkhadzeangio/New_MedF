@@ -608,13 +608,19 @@ def make_self_fill_token(patient):
     return TimestampSigner(salt=SELF_FILL_SALT).sign(payload)
 
 
-def target_prep_days(patient):
-    """Pathway-specific preoperative workup target limit (days), honoring questionnaire symptom/CLTI flags."""
+def target_prep_days(patient, today=None):
+    """Pathway-specific preoperative workup target limit (days), honoring 6-month CEA symptom & CLTI flags."""
     pw = _resolve_pathway(patient)
     q = patient.questionnaire if isinstance(patient.questionnaire, dict) else {}
+    s = patient.studies if isinstance(patient.studies, dict) else {}
     q_filled = bool(q.get('filled'))
     if pw == PreopPatient.Pathway.CEA:
-        is_symp = patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP or (q_filled and bool(q.get('cea_symp_event')))
+        days_ev = cea_live_days_since_event(q, today=today, s=s)
+        symp_within_6m = (days_ev is None) or (days_ev <= 180)
+        is_symp = (
+            (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP and symp_within_6m)
+            or (q_filled and bool(q.get('cea_symp_event')) and symp_within_6m)
+        )
         return 5 if is_symp else 10
     has_clti_q = q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')))
     if pw == PreopPatient.Pathway.ABF:
@@ -676,15 +682,20 @@ def cea_live_days_since_event(q, today=None, s=None):
     ev_dt = _date(q.get('cea_event_date'))
     if ev_dt and ev_dt <= ref_day:
         return (ref_day - ev_dt).days
-    return _int(q.get('cea_days_since_event'), lo=0, hi=365)
+    return _int(q.get('cea_days_since_event'), lo=0, hi=3650)
 
 
 def cta_live_months_age(s, today=None):
-    """Compute live CTA age in months from cta_date if present, else static cta_months."""
+    """Compute exact calendar-month CTA age from cta_date if present (rounding up once past exact anniversary), else static cta_months."""
     today = today or timezone.localdate()
     cta_dt = _date(s.get('cta_date'))
     if cta_dt and cta_dt <= today:
-        return max(0, (today - cta_dt).days // 30)
+        months = (today.year - cta_dt.year) * 12 + (today.month - cta_dt.month)
+        if today.day < cta_dt.day:
+            months -= 1
+        elif months >= 1 and today.day > cta_dt.day:
+            months += 1
+        return max(0, months)
     return _int(s.get('cta_months'), lo=0, hi=120)
 
 
@@ -1542,8 +1553,10 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     nt_probnp = _int(s.get('nt_probnp'), lo=1, hi=50000)
     hs_ctn = _num(s.get('hs_ctn'), lo=0.1, hi=50000)
     cea_d = cea_live_days_since_event(q, today=today, s=s)
+    symp_within_6m = (cea_d is None) or (cea_d <= 180)
     is_symp_cea = (pw == PreopPatient.Pathway.CEA) and (
-        patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP or bool(q.get('cea_symp_event'))
+        (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP and symp_within_6m)
+        or (bool(q.get('cea_symp_event')) and symp_within_6m)
     )
 
     if (
@@ -1596,6 +1609,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or bool(q.get('pulm'))
         or bool(q.get('thyroid_disease'))
         or bool(q.get('ven_pregnant'))
+        or bool(q.get('pregnant_possible'))
         or (bmi is not None and bmi >= 30)
     ):
         return 'II'
@@ -1729,6 +1743,7 @@ DEFAULT_Q = {
     'pacemaker': False,
     'loose_teeth': False,
     'smoker': False,
+    'pregnant_possible': False,
 }
 
 DEFAULT_STUDIES = {
@@ -1874,6 +1889,7 @@ DEFAULT_STUDIES = {
     'dos_site_marked': False,
     'dos_fasting_confirmed': False,
     'dos_med_hold_verified': False,
+    'dos_ketones_ok': False,
     'dos_abx_ready': False,
     'dos_blood_implant_ready': False,
     'dos_bp_sys': None,
@@ -2280,7 +2296,7 @@ def evaluate(patient, today=None):
     case_outcome = s.get('case_outcome_status') if s.get('case_outcome_status') in dict(CASE_OUTCOME_CHOICES) else 'scheduled'
     is_active_case = (case_outcome == 'scheduled') and not patient.archived
     days = prep_days_elapsed(patient, today=today)
-    t_days = target_prep_days(patient)
+    t_days = target_prep_days(patient, today=today)
 
     red_flags = []
     amber_flags = []
@@ -2367,6 +2383,7 @@ def evaluate(patient, today=None):
         (min_comp_abi is not None and min_comp_abi < 0.80)
         or (abi_non_compressible and ((min_tp is not None and min_tp < 50) or (min_tbi is not None and min_tbi < 0.50)))
     )
+    tbi_reduced_comp = bool(abi_non_compressible and tbi_measured and not compression_contra and not tbi_comp_safe)
     caprini_score, caprini_tier, caprini_advice = calc_caprini(
         patient, q, bmi, today=today, eff_renal=eff_renal,
         liver_status=s.get('liver_status') or 'normal',
@@ -2476,8 +2493,16 @@ def evaluate(patient, today=None):
                         f'ESVS 2024: {morph_reason} ({aaa_mm} მმ) — '
                         f'ოპერაციული ჩვენება დასაბუთებულია სტანდარტულ დიამეტრამდეც ({min_thresh} მმ).'
                     )
-                elif aaa_morph != 'inflammatory_mycotic':
-                    amber_flags.append(f'ანევრიზმის დიამეტრი ({aaa_mm} მმ) სტანდარტულ ზღვარზე ({min_thresh} მმ) ნაკლებია — გადაამოწმეთ ჩვენება ქირურგთან.')
+                elif aaa_morph != 'inflammatory_mycotic' and not (q_filled and q.get('aaa_pain')):
+                    red_flags.append(
+                        f'ფუზიფორმული ანევრიზმის დიამეტრი ({aaa_mm} მმ) სტანდარტულ ზღვარზე (< {min_thresh} მმ) ნაკლებია '
+                        '(ESVS 2024 Class III) — გეგმური ოპერაციული ჩვენება გადაამოწმეთ ქირურგთან!'
+                    )
+            if patient.age is not None and patient.age < 50:
+                amber_flags.append(
+                    f'ახალგაზრდა ასაკში გამოვლენილი აორტის ანევრიზმა ({patient.age} წ. < 50 წ.) — ESVS 2024: '
+                    'გამოირიცხოს შემაერთებელი ქსოვილის გენეტიკური არტერიოპათია (Marfan / Loeys-Dietz / ვასკულიტი) და მთელი აორტის პათოლოგია.'
+                )
 
         if aaa_neck == 'hostile_neck':
             if patient.op_subtype == 'evar':
@@ -2485,10 +2510,21 @@ def evaluate(patient, today=None):
                     'CTA-ზე Hostile Neck (ყელი <10–15 მმ / კუთხე >60° / თრომბი-კალციფიკაცია — IFU-ს გარეთ)! '
                     'ESVS 2024 Class III: სტანდარტული EVAR არ არის რეკომენდებული — შეათანხმეთ ღია რეზექცია ან FEVAR ქირურგთან!'
                 )
+            elif patient.op_subtype == 'open':
+                amber_flags.append(
+                    'CTA-ზე რთული პროქსიმალური ყელი (Hostile / იუქსტარენალური ყელი) ღია რეზექციაზე — '
+                    'დაიგეგმოს იუქსტა-/სუპრარენალური კლამპირების მზადყოფნა და თირკმლის ცივი პერფუზია / მანიტოლი!'
+                )
             elif patient.op_subtype == 'tbd':
                 amber_flags.append(
                     'CTA-ზე Hostile Neck (IFU-ს გარეთ) — ტაქტიკის შერჩევისას სტანდარტული EVAR არ არის რეკომენდებული; განიხილეთ ღია რეზექცია ან FEVAR.'
                 )
+        elif patient.op_subtype == 'evar' and aaa_mm is not None and (
+            aaa_neck == 'pending' or (s.get('aaa_iliac_access') or 'pending') == 'pending'
+        ):
+            amber_flags.append(
+                'EVAR-ის დაგეგმვისას CTA-ზე შეაფასეთ აორტის პროქსიმალური ყელის (IFU) და თეძო-ბარძაყის მიდგომის (≥7 მმ) სტატუსი.'
+            )
         if pop_scr == 'aneurysm_found':
             red_flags.append(
                 'გამოვლინდა თანმხლები მუხლქვეშა/ბარძაყის ანევრიზმა (ESVS 2024: 10–15% თანაარსებობა AAA-სთან) — '
@@ -2546,9 +2582,15 @@ def evaluate(patient, today=None):
                 'Crescendo TIA / მერყევი ნევროლოგიური დეფიციტი ბოლო 24–48 სთ-ში — სასწრაფოდ აცნობეთ ქირურგსა და ნევროლოგს!'
             )
         if q_filled and q.get('cea_thrombolysis'):
-            red_flags.append(
-                'ინტრავენური თრომბოლიზისი ბოლო 6 დღეში (ESVS 2023) — ნაადრევი ჰეპარინიზაციის/სისხლჩაქცევის რისკი, შეათანხმეთ ოპერაციის თარიღი ქირურგთან!'
-            )
+            if (s.get('brain_imaging') == 'normal_small') and days_since_ev is not None and days_since_ev >= 2:
+                red_flags.append(
+                    'ინტრავენური თრომბოლიზისი ბოლო 6 დღეში (ESVS 2023) — >24 სთ-ის შემდეგ საკონტროლო CT-ით ჰემორაგიის გამორიცხვისას '
+                    'დასაშვებია ასპირინი 75–100 მგ ქირურგ/ნევროლოგთან შეთანხმებით, ხოლო ნაადრევი სისტემური ჰეპარინიზაცია/CEA ≤6 დღეში საშიშია!'
+                )
+            else:
+                red_flags.append(
+                    'ინტრავენური თრომბოლიზისი ბოლო 6 დღეში (ESVS 2023) — ნაადრევი ჰეპარინიზაციის/სისხლჩაქცევის რისკი, შეათანხმეთ ოპერაციის თარიღი ქირურგთან!'
+                )
         if q_filled and q.get('cea_disabling_stroke'):
             red_flags.append(
                 'მძიმე ნარჩენი ნევროლოგიური დეფიციტი (mRS >= 3) — გადაამოწმეთ CEA-ს ჩვენება და ვადები ქირურგთან და ნევროლოგთან!'
@@ -2574,11 +2616,21 @@ def evaluate(patient, today=None):
         elif not patient.approved_at and not is_on_hold and is_active_case and days >= max(4, t_days - 1):
             amber_flags.append(f'მომზადების მე-{days} დღე ({t_days} დღიდან) — დააჩქარეთ დარჩენილი კვლევები.')
 
-        if q_filled and patient.side not in ('R', 'L'):
+        if patient.side == 'B':
+            bilat_cea_msg = (
+                'ერთდროული ორმხრივი კაროტიდული ენდარტერექტომია (CEA, მხარე B) აბსოლუტურად უკუნაჩვენებია — '
+                'ორმხრივი კრანიალური ნერვების დამბლისა და ასფიქსიის ლეტალური რისკი (ESVS 2023)! დაგეგმეთ ეტაპობრივად (R ან L).'
+            )
+            red_flags.append(bilat_cea_msg)
+            hard_contraindications.append(bilat_cea_msg)
+        elif q_filled and patient.side not in ('R', 'L'):
             amber_flags.append('მიუთითეთ დაგეგმილი CEA-ს მხარე (მარჯვენა ან მარცხენა) პაციენტის ბარათში.')
 
         ipsi_car = car_r if patient.side == 'R' else (car_l if patient.side == 'L' else max_car)
-        contra_car = car_l if patient.side == 'R' else (car_r if patient.side == 'L' else None)
+        contra_car = (
+            car_l if patient.side == 'R'
+            else (car_r if patient.side == 'L' else (min(car_r, car_l) if (car_r is not None and car_l is not None) else None))
+        )
 
         if ipsi_car is not None:
             side_prefix = f'{patient.side} ' if patient.side in ('R', 'L') else ''
@@ -2773,7 +2825,11 @@ def evaluate(patient, today=None):
             q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')))
         )
         is_clti_any = is_clti
-        if q_filled and patient.side not in ('R', 'L'):
+        if patient.side == 'B':
+            red_flags.append(
+                'ერთდროული ორმხრივი ინფრაინგვინალური შუნტირება (მხარე B) დაკავშირებულია მაღალ გართულებებთან — დააზუსტეთ ეტაპობრივი მხარე (R ან L) ქირურგთან!'
+            )
+        elif q_filled and patient.side not in ('R', 'L'):
             amber_flags.append('მიუთითეთ საოპერაციო კიდურის მხარე (მარჯვენა ან მარცხენა).')
         if q_filled and q.get('abf_wet_infection'):
             red_flags.append('ტერფის სველი განგრენა / ჩირქოვანი ინფექცია — სასწრაფოდ აცნობეთ ქირურგს დრენირებისა და ანტიბიოტიკოთერაპიისთვის!')
@@ -2786,7 +2842,15 @@ def evaluate(patient, today=None):
 
         runoff = s.get('pad_runoff_status') or 'pending'
         if runoff == 'desert_foot':
-            red_flags.append('CTA/ანგიოგრაფიით კრიტიკულად დაზიანებული დისტალური კალაპოტი (Desert foot) — შუნტის ადრეული თრომბოზის უმაღლესი რისკი! აცნობეთ ქირურგს.')
+            if not is_clti:
+                df_msg = (
+                    'ხანგამოშვებითი კოჭლობის (IC) დროს Desert foot კალაპოტზე ინფრაინგვინალური შუნტირება '
+                    'უკუნაჩვენებია (ESVS 2024 Class III — თრომბოზისა და კიდურის დაკარგვის რისკი)! გადაამოწმეთ ჩვენება ქირურგთან!'
+                )
+                red_flags.append(df_msg)
+                hard_contraindications.append(df_msg)
+            else:
+                red_flags.append('CTA/ანგიოგრაფიით კრიტიკულად დაზიანებული დისტალური კალაპოტი (Desert foot) — შუნტის ადრეული თრომბოზის უმაღლესი რისკი! აცნობეთ ქირურგს.')
         elif runoff == 'tibial_single':
             amber_flags.append('დისტალური მიმღები მხოლოდ წვივის ერთი არტერიაა — აუცილებელია ხარისხიანი აუტოვენა (GSV ≥ 3.0 მმ).')
 
@@ -2804,22 +2868,44 @@ def evaluate(patient, today=None):
                 'action': 'ალტერნატიული აუტოვენის რეფლექს-კარტირება (კონტრალატერალური GSV, SSV და ხელის ვენები — Cephalic/Basilic)',
                 'done': (s.get('alt_vein_mapped') or 'pending') != 'pending',
             })
-            if s.get('alt_vein_mapped') == 'contra_gsv_ok' and (
-                (contra_abi is not None and contra_abi < 0.50) or (contra_tp is not None and contra_tp < 40)
-            ):
-                red_flags.append(
-                    f'კონტრალატერალურ კიდურზე მძიმე არტერიული იშემიაა (ABI {contra_abi if contra_abi is not None else "—"} / '
-                    f'TP {contra_tp if contra_tp is not None else "—"} mmHg) — იშემიური კიდურიდან GSV-ის აღება საშიშია ჭრილობის ნეკროზის გამო! განიხილეთ ხელის ვენა (Arm Vein).'
-                )
+            if s.get('alt_vein_mapped') == 'contra_gsv_ok':
+                if patient.side == 'B':
+                    red_flags.append('ორმხრივი შუნტირებისას (მხარე B) „კონტრალატერალური GSV“ წინააღმდეგობრივია — დააზუსტეთ საოპერაციო მხარე და კონდუიტი!')
+                elif (contra_abi is not None and contra_abi < 0.50) or (contra_tp is not None and contra_tp < 40):
+                    red_flags.append(
+                        f'კონტრალატერალურ კიდურზე მძიმე არტერიული იშემიაა (ABI {contra_abi if contra_abi is not None else "—"} / '
+                        f'TP {contra_tp if contra_tp is not None else "—"} mmHg) — იშემიური კიდურიდან GSV-ის აღება საშიშია ჭრილობის ნეკროზის გამო! განიხილეთ ხელის ვენა (Arm Vein).'
+                    )
+                elif (contra_abi is not None and contra_abi < 0.70) or (contra_tp is not None and contra_tp < 60):
+                    amber_flags.append(
+                        f'დონორ (კონტრალატერალურ) კიდურზე დაქვეითებული პერფუზიაა (ABI {contra_abi if contra_abi is not None else "—"} / '
+                        f'TP {contra_tp if contra_tp is not None else "—"}) — GSV-ის აღებისას საყურადღებოა ჭრილობის შეხორცება!'
+                    )
+                elif contra_abi is not None and contra_abi > 1.40 and not (contra_tp is not None and contra_tp >= 60):
+                    amber_flags.append(
+                        f'დონორ კიდურზე არაკომპრესირებადი ABI ({contra_abi} > 1.40) — კონტრალატერალური GSV-ის აღებამდე გადაამოწმეთ Toe Pressure ≥60 mmHg!'
+                    )
+                elif contra_abi is None and contra_tp is None:
+                    amber_flags.append('კონტრალატერალური GSV-ის აღებამდე გადაამოწმეთ დონორი კიდურის ABI / პულსაცია!')
             if s.get('alt_vein_mapped') == 'no_autovein_prosthetic':
                 if not is_clti:
-                    red_flags.append(
+                    pros_ic_msg = (
                         'ხანგამოშვებითი კოჭლობის (IC) დროს აუტოვენის არარსებობისას სინთეზური ინფრაინგვინალური შუნტირება '
                         'უკუნაჩვენებია (ESVS 2024 / ACC-AHA Class III — Harm)! გადაამოწმეთ ჩვენება ქირურგთან!'
                     )
+                    red_flags.append(pros_ic_msg)
+                    hard_contraindications.append(pros_ic_msg)
                 else:
                     red_flags.append('ვარგისი აუტოვენა ვერცერთ კიდურზე ვერ მოიძებნა — შეათანხმეთ სინთეზური/კომპოზიტური პროთეზის ან ენდოვასკულური ტაქტიკა ქირურგთან!')
 
+        if not is_clti and patient.side in ('R', 'L'):
+            t_abi_byp = abi_r if patient.side == 'R' else abi_l
+            t_tp_byp = tp_r if patient.side == 'R' else tp_l
+            if t_abi_byp is not None and 0.90 <= t_abi_byp <= 1.40 and not (t_tp_byp is not None and t_tp_byp < 60):
+                red_flags.append(
+                    f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_byp} — 0.90–1.40) კოჭლობის ფონზე — '
+                    'გადაამოწმეთ არჩეული მხარე (R/L) ან დატვირთვის შემდგომი პერფუზია ქირურგთან!'
+                )
         if q_filled and not is_clti:
             if not q.get('ic_bmt_3m') or q.get('abf_duration') in ('< 2 კვირა', '1–3 თვე'):
                 amber_flags.append(
@@ -2866,14 +2952,24 @@ def evaluate(patient, today=None):
             priority_flags.append(msg)
 
         if not is_clti and (s.get('pta_lesion_site') == 'infrapopliteal'):
-            red_flags.append(
+            btk_ic_msg = (
                 'ხანგამოშვებითი კოჭლობის (IC) დროს წვივის/ტერფის არტერიებზე (BTK / Infrapopliteal) ენდოვასკულური ჩარევა '
                 'უკუნაჩვენებია (ESVS 2024 / ACC-AHA 2024 Class III — Harm)! გადაამოწმეთ ჩვენება ქირურგთან.'
             )
+            red_flags.append(btk_ic_msg)
+            hard_contraindications.append(btk_ic_msg)
         elif not is_clti and (s.get('pta_lesion_site') == 'multilevel'):
             amber_flags.append(
                 'მრავალდონიანი დაზიანება ხანგამოშვებითი კოჭლობისას — დარწმუნდით, რომ არ იგეგმება იზოლირებული წვივის (BTK) არტერიების ჩარევა (ESVS 2024 Class III).'
             )
+        if not is_clti and patient.side in ('R', 'L'):
+            t_abi_pta = abi_r if patient.side == 'R' else abi_l
+            t_tp_pta = tp_r if patient.side == 'R' else tp_l
+            if t_abi_pta is not None and 0.90 <= t_abi_pta <= 1.40 and not (t_tp_pta is not None and t_tp_pta < 60):
+                red_flags.append(
+                    f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_pta} — 0.90–1.40) კოჭლობის ფონზე — '
+                    'გადაამოწმეთ არჩეული მხარე (R/L) ან ჩვენება ქირურგთან!'
+                )
         if q_filled and not is_clti:
             if not q.get('ic_bmt_3m') or q.get('abf_duration') in ('< 2 კვირა', '1–3 თვე'):
                 amber_flags.append(
@@ -2914,7 +3010,23 @@ def evaluate(patient, today=None):
         ven_dup = s.get('ven_duplex_status') or 'pending'
         gsv_mm = _num(s.get('ven_gsv_mm'), lo=1, hi=50)
         if patient.op_subtype == PreopPatient.OpSubtype.EVLA and weight_num is not None:
-            lidocaine_max_mg = min(500, int(round(weight_num * 7.0)))
+            ht_cm_lido = _num(s.get('height_cm'), lo=100, hi=230)
+            if bmi is not None and bmi >= 30 and ht_cm_lido is not None:
+                ibw_lido = (45.5 if patient.sex == 'F' else 50.0) + 0.91 * max(0.0, ht_cm_lido - 152.4)
+                dosing_wt_lido = min(weight_num, ibw_lido + 0.4 * max(0.0, weight_num - ibw_lido))
+            else:
+                dosing_wt_lido = weight_num
+            _, chf_lido = _ihd_and_chf_flags(q, s)
+            reduced_lido_cl = bool(
+                chf_lido
+                or (s.get('liver_status') in ('2x', '3x'))
+                or ('amiodarone' in med_chips)
+                or ((patient.age or 0) >= 80 and (on_dialysis or (eff_renal is not None and eff_renal < 45)))
+            )
+            if reduced_lido_cl:
+                lidocaine_max_mg = min(300, int(round(dosing_wt_lido * 7.0 * 0.65)))
+            else:
+                lidocaine_max_mg = min(500, int(round(dosing_wt_lido * 7.0)))
 
         if ven_dup == 'acute_dvt':
             dvt_msg = 'ვენების დუპლექსით მწვავე ღრმა ვენების თრომბოზი (DVT) — გეგმური EVLA / ფლებექტომია აბსოლუტურად უკუნაჩვენებია! სასწრაფოდ აცნობეთ ქირურგს.'
@@ -2929,7 +3041,7 @@ def evaluate(patient, today=None):
                 'მწვავე აღმავალი თრომბოფლებიტი (SVT) — გადაამოწმეთ SFJ/SPJ-სთან დისტანცია დუპლექსით და შეათანხმეთ ტაქტიკა ქირურგთან!'
             )
 
-        if q_filled and q.get('ven_pregnant'):
+        if q_filled and (q.get('ven_pregnant') or q.get('pregnant_possible')):
             preg_msg = 'ორსულობა / ლაქტაცია / მშობიარობის შემდგომი პერიოდი (<3 თვ) — გეგმური EVLA / ფლებექტომია უკუნაჩვენებია (ESVS 2022)!'
             red_flags.append(preg_msg)
             hard_contraindications.append(preg_msg)
@@ -2959,17 +3071,37 @@ def evaluate(patient, today=None):
             or (ceap == 'C5' and (bool(q.get('dm')) or (patient.age or 0) >= 65))
         )
         if min_abi is not None:
-            if min_abi < 0.8:
+            if min_abi < 0.50:
+                sev_ven_isch = (
+                    f'ქვემო კიდურის მძიმე არტერიული იშემია (ABI {min_abi} < 0.80 / < 0.50) — '
+                    'ვენური აბლაცია/ფლებექტომია და კომპრესია აბსოლუტურად უკუნაჩვენებია (ESVS 2022)! სასწრაფოდ აცნობეთ ქირურგს.'
+                )
+                red_flags.append(sev_ven_isch)
+                hard_contraindications.append(sev_ven_isch)
+            elif min_abi < 0.8:
                 red_flags.append(
                     f'ქვემო კიდურის არტერიული უკმარისობა (ABI {min_abi} < 0.80) — კომპრესიული ტრიკოტაჟი და ვენური ჩარევა საშიშია! აცნობეთ ქირურგს.'
                 )
             elif min_abi < 0.9:
                 amber_flags.append(f'სასაზღვრო გოჯ-მხრის ინდექსი (ABI {min_abi}) — კომპრესიის ხარისხი შეათანხმეთ ქირურგთან.')
+        if min_tp is not None and min_tp < 30:
+            tp_ven_isch = (
+                f'კრიტიკულად დაბალი თითის წნევა (TP {min_tp} mmHg < 30 mmHg) — მძიმე არტერიული იშემია, '
+                'გეგმური ვენური ჩარევა და კომპრესია უკუნაჩვენებია (ESVS 2022)!'
+            )
+            red_flags.append(tp_ven_isch)
+            hard_contraindications.append(tp_ven_isch)
         if abi_non_compressible:
             if (min_tp is not None and min_tp < 50) or (min_tbi is not None and min_tbi < 0.50):
                 red_flags.append(
                     f'არაკომპრესირებადი ABI ({max_abi}) + დაბალი Toe Pressure/TBI (TP {min_tp if min_tp is not None else "—"} / '
                     f'TBI {min_tbi if min_tbi is not None else "—"}) — არტერიული უკმარისობა, კომპრესიული ტრიკოტაჟი უკუნაჩვენებია!'
+                )
+            elif tbi_reduced_comp:
+                amber_flags.append(
+                    f'არაკომპრესირებადი არტერია (ABI {max_abi} > 1.40) + სასაზღვრო TP/TBI '
+                    f'(TP {min_tp if min_tp is not None else "—"} / TBI {min_tbi if min_tbi is not None else "—"}) — '
+                    '2 კლასის ნაცვლად დასაშვებია მხოლოდ მსუბუქი I კლასის კომპრესია (<20 mmHg) ქირურგთან შეთანხმებით!'
                 )
             elif not tbi_comp_safe:
                 amber_flags.append(
@@ -3026,10 +3158,61 @@ def evaluate(patient, today=None):
         elif gsv_mm:
             key_badge = f'{int(gsv_mm)} მმ'
 
-    # Pre-compute urgency flag early so PBM & GI workups respect urgent vascular windows
+    # C10.3: Diabetic / Dialysis CLTI Toe-Pressure / TBI Reflex (ESVS 2024 / WIfI)
+    if (
+        pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
+        and is_clti_any and q_filled and (bool(q.get('dm')) or on_dialysis)
+        and not abi_non_compressible
+    ):
+        needs_tbi_check = True
+        reflex_orders.append({
+            'key': 'tbi',
+            'trigger': 'შაქრიანი დიაბეტი / დიალიზი + CLTI (მონკებერგის კალციფიკაციისა და ფსევდონორმალური ABI-ის რისკი — ESVS 2024 / WIfI)',
+            'action': 'სამიზნე კიდურზე თითის წნევის (Toe Pressure, mmHg) ან TBI განსაზღვრა WIfI სტადირებისა და პერფუზიის ზუსტი შეფასებისთვის',
+            'done': tbi_measured,
+        })
+
+    # C10.4 & C10.5: Cross-pathway incidental AAA / acute DVT & universal pregnancy radiation/elective barriers
+    if pathway != PreopPatient.Pathway.AAA_INFRA and aaa_mm is not None:
+        min_t_cross = 50 if patient.sex == 'F' else 55
+        if aaa_mm >= min_t_cross:
+            red_flags.append(
+                f'თანმხლები მუცლის აორტის ანევრიზმა ({aaa_mm} მმ >= {min_t_cross} მმ) — შეათანხმეთ პრიორიტეტულობა და ეტაპობრივი ტაქტიკა ქირურგთან!'
+            )
+    if not is_venous and (s.get('ven_duplex_status') == 'acute_dvt'):
+        red_flags.append(
+            'ვენების დუპლექსით გამოვლინდა მწვავე ღრმა ვენების თრომბოზი (DVT) — გეგმურ ჩარევამდე სასწრაფოდ შეათანხმეთ ანტიკოაგულაცია და ტაქტიკა ქირურგთან!'
+        )
+
+    show_pregnancy_check = bool((patient.sex == 'F') and (patient.age is None or 12 <= patient.age <= 55))
+    eff_pregnant = bool(q_filled and (q.get('pregnant_possible') or q.get('ven_pregnant')))
+    if eff_pregnant and not is_venous:
+        is_elective_claud = pathway in (
+            PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA,
+        ) and not is_clti_any
+        if (patient.op_subtype in ('evar', 'tbd')) or is_pta:
+            preg_art_msg = (
+                'ორსულობა / შესაძლო ორსულობა რენტგენო-ფლუოროსკოპიულ ჩარევაზე (EVAR / PTA) — ნაყოფის დასხივებისა და იოდის კონტრასტის რისკი! '
+                'სავალდებულოა β-hCG ტესტი, მეან-გინეკოლოგის ჩართვა და გეგმური ჩარევის გადადება!'
+            )
+        else:
+            preg_art_msg = (
+                'ორსულობა / შესაძლო ორსულობა — სავალდებულოა β-hCG ვერიფიკაცია, მეან-გინეკოლოგის კონსულტაცია და გეგმური ოპერაციის გადადების განხილვა!'
+            )
+        red_flags.append(preg_art_msg)
+        if is_elective_claud:
+            hard_contraindications.append(preg_art_msg)
+
+    # Pre-compute urgency & emergency fast-track flags (UK NVR / CPOC / ESVS)
+    is_rupture_suspect = bool(pathway == PreopPatient.Pathway.AAA_INFRA and q_filled and q.get('aaa_pain'))
+    is_acute_emergency = bool(q_filled and (bool(q.get('aaa_pain')) or bool(q.get('cea_crescendo'))))
+    is_septic_or_mycotic_urgent = bool(
+        (pathway == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic')
+        or (q_filled and bool(q.get('abf_wet_infection')))
+    )
     is_urgent_case = bool(
-        (q_filled and bool(q.get('aaa_pain')))
-        or (pathway == PreopPatient.Pathway.AAA_INFRA and (s.get('aaa_morphology') == 'inflammatory_mycotic'))
+        is_acute_emergency
+        or is_septic_or_mycotic_urgent
         or (aaa_mm is not None and aaa_mm >= 70)
         or is_symp_cea
         or is_clti_any
@@ -3326,7 +3509,7 @@ def evaluate(patient, today=None):
     elif na_val is not None and na_val < 130:
         red_flags.append(f'კრიტიკული ჰიპონატრიემია (Na+ {na_val} მმოლ/ლ < 130) — ნელი კორექცია ΔNa+ ≤ 8 მმოლ/ლ/24 სთ (ოსმოსური დემიელინიზაციის პრევენცია)! აცნობეთ ანესთეზიოლოგს.')
 
-    # 5. Glycemia, HbA1c / Endocrinology Reflex, Thyroid & Nutrition
+    # 5. Glycemia, HbA1c / Endocrinology Reflex, Thyroid & Drug-Interaction Flags
     hba1c = _num(s.get('hba1c'), lo=3.0, hi=25.0)
     needs_hba1c_reflex = (gl_mmol is not None and gl_mmol >= 7.0 and hba1c is None)
     needs_endo_reflex = (hba1c is not None and hba1c >= 8.5) or (gl_mmol is not None and gl_mmol >= 11.1)
@@ -3350,6 +3533,29 @@ def evaluate(patient, today=None):
         )
     elif (q_filled and q.get('dm') and hba1c is None and not is_venous and not needs_hba1c_reflex):
         amber_flags.append('შაქრიანი დიაბეტი — გადაამოწმეთ HbA1c.')
+    if hba1c is not None:
+        if hba1c >= 6.5 and q_filled and not q.get('dm'):
+            red_flags.append(
+                f'HbA1c {hba1c}% (≥ 6.5%) დიაბეტის ანამნეზის გარეშე — გამოვლენილია არადიაგნოსტირებული შაქრიანი დიაბეტი! '
+                'ჩართეთ პერიოპერაციული გლიკემიური მონიტორინგი და ენდოკრინოლოგი.'
+            )
+        if hba1c >= 8.5:
+            amber_flags.append(
+                f'ცუდად კონტროლირებადი გლიკემია (HbA1c {hba1c}% ≥ 8.5% — CPOC / ESC) — '
+                'მომატებულია ჭრილობის/პროთეზის ინფექციის რისკი; საჭიროა პერიოპერაციული ინსულინოთერაპიის ოპტიმიზაცია.'
+            )
+
+    if q_filled and (q.get('med_doac') or q.get('med_dabigatran')):
+        if bmi is not None and bmi > 50:
+            amber_flags.append(
+                f'ექსტრემალური სიმსუქნე (BMI {bmi} > 50 კგ/მ²) DOAC/დაბიგატრანის ფონზე (ISTH 2021) — '
+                'პლაზმური კონცენტრაცია შესაძლოა არაპროგნოზირებადი იყოს; განიხილეთ ანტი-Xa/დონის კონტროლი ან ვარფარინი.'
+            )
+        if 'amiodarone' in med_chips and (on_dialysis or (eff_renal is not None and eff_renal < 60)):
+            amber_flags.append(
+                'ამიოდარონი + DOAC/დაბიგატრანი დაქვეითებული თირკმლის ფუნქციის (CrCl/eGFR < 60) ფონზე — '
+                'P-gp ინჰიბირება ზრდის პრეპარატის აკუმულაციას (EHRA 2021: განიხილეთ +24 სთ-ით ადრე შეჩერება)!'
+            )
 
     needs_tsh = q_filled and (not is_venous) and (bool(q.get('thyroid_disease')) or 'amiodarone' in med_chips)
     tsh_res = s.get('tsh_status') or 'pending'
@@ -3360,8 +3566,13 @@ def evaluate(patient, today=None):
             'action': 'TSH და FT4 კონტროლი იოდ-ინდუცირებული თირეოტოქსიკოზის გამოსარიცხად',
             'done': tsh_res != 'pending',
         })
-        if tsh_res == 'hyperthyroid':
-            red_flags.append('ჰიპერთირეოზი (დაბალი TSH / მაღალი FT4) — იოდის კონტრასტი საშიშია თირეოტოქსიკური კრიზის გამო! აცნობეთ ექიმს.')
+    if tsh_res == 'hyperthyroid':
+        red_flags.append('ჰიპერთირეოზი (დაბალი TSH / მაღალი FT4) — იოდის კონტრასტი საშიშია თირეოტოქსიკური კრიზის გამო! აცნობეთ ექიმს.')
+    elif tsh_res == 'hypothyroid_severe':
+        red_flags.append(
+            'მძიმე დეკომპენსირებული ჰიპოთირეოზი (მაღალი TSH / დაბალი FT4) — ანესთეზიისას მიქსედემური კომის, '
+            'ჰიპოთერმიისა და რეფრაქტერული ჰიპოტენზიის უმაღლესი რისკი! გეგმურ ჩარევამდე აცნობეთ ენდოკრინოლოგსა და ანესთეზიოლოგს!'
+        )
 
     if open_major and alb_gl is not None:
         if alb_gl < 30:
@@ -3987,32 +4198,39 @@ def evaluate(patient, today=None):
             'done': s1_core_done,
         },
     ]
-    if needs_stale_labs:
+    bypass_outpatient_emergency = is_rupture_suspect
+    bypass_outpatient_septic = is_acute_emergency or is_septic_or_mycotic_urgent
+    if needs_stale_labs and not bypass_outpatient_septic:
         tasks.append({'key': 'stale_labs', 'label': 'რეფლექს-განახლება: ხანდაზმული ანალიზების (>14 დღე) გადაბარება', 'done': bool(s.get('stale_labs_refreshed'))})
-    if needs_anemia_panel:
+    if needs_anemia_panel and not bypass_outpatient_emergency:
         tasks.append({'key': 'anemia', 'label': 'რეფლექს-პაკეტი (Hb < 115): ფერიტინი, შრატის რკინა/TSAT, რეტიკულოციტები', 'done': anemia_panel_satisfied})
     if pbm_iv_iron_indicated and not is_urgent_case:
         tasks.append({'key': 'pbm_iron', 'label': 'PBM პროტოკოლი (რკინადეფიციტი): ინტრავენური რკინის ინფუზია / შეთანხმება', 'done': bool(s.get('pbm_iv_iron_done'))})
-    if needs_hba1c_reflex:
+    if needs_hba1c_reflex and not bypass_outpatient_emergency:
         tasks.append({'key': 'hba1c', 'label': 'რეფლექს-ანალიზი (გლუკოზა >= 7.0): HbA1c (%)', 'done': hba1c is not None})
-    if needs_endo_reflex:
+    if needs_endo_reflex and not bypass_outpatient_emergency:
         tasks.append({'key': 'endo', 'label': 'რეფლექს-კონსულტაცია: ენდოკრინოლოგი (გლიკემიის კორექცია)', 'done': bool(s.get('endo_consult_done'))})
-    if needs_nephro_panel:
+    if needs_nephro_panel and (on_dialysis or not bypass_outpatient_emergency):
         n_lbl = 'დიალიზის გრაფიკი (უჰეპარინო სესია) და K+ შეთანხმება ნეფროლოგთან' if on_dialysis else 'რეფლექს-პაკეტი (eGFR < 45): შარდოვანა, Ca/P, თირკმლის ექო და ნეფროლოგი'
         tasks.append({'key': 'nephro', 'label': n_lbl, 'done': bool(s.get('nephro_panel_done'))})
-    if needs_hydration:
+    if needs_hydration and not is_rupture_suspect:
         c_tag = f' (მაქს. კონტრასტი ≤ {max_contrast_ml} მლ)' if max_contrast_ml else ''
         tasks.append({'key': 'hydration', 'label': f'კონტრასტ-ნეფროპროტექცია (eGFR < 60): იზოტონური ჰიდრატაცია{c_tag}', 'done': bool(s.get('hydration_planned'))})
-    if needs_tsh:
+    if needs_tsh and not bypass_outpatient_emergency:
         tasks.append({'key': 'tsh', 'label': 'რეფლექს-ანალიზი იოდის კონტრასტამდე: TSH და FT4', 'done': tsh_res != 'pending'})
-    if needs_dental:
+    if needs_dental and not bypass_outpatient_septic:
         tasks.append({'key': 'dental', 'label': 'სტომატოლოგის სანაცია პროთეზირებამდე (წერილობითი ცნობა)', 'done': bool(s.get('dental_sanitation_done'))})
     if needs_contrast_premed:
         tasks.append({'key': 'premed', 'label': 'იოდზე ალერგიის პრემედიკაციის სქემა (სტეროიდი + ანტიჰისტამინი)', 'done': bool(s.get('contrast_premed_done'))})
     if needs_cied:
         tasks.append({'key': 'cied', 'label': 'კარდიოსტიმულატორის / ICD შემოწმება (მაგნიტის რეჟიმი / ბიპოლარი)', 'done': cied_ok})
     if needs_tbi_check:
-        tasks.append({'key': 'tbi', 'label': 'რეფლექს-დოპლერი (ABI > 1.40): თითის წნევა (Toe Pressure) / TBI', 'done': tbi_measured})
+        tbi_lbl = (
+            'რეფლექს-დოპლერი (ABI > 1.40): თითის წნევა (Toe Pressure) / TBI'
+            if abi_non_compressible
+            else 'რეფლექს-დოპლერი (დიაბეტი / დიალიზი + CLTI): თითის წნევა (Toe Pressure) / TBI'
+        )
+        tasks.append({'key': 'tbi', 'label': tbi_lbl, 'done': tbi_measured})
     if needs_alt_vein:
         tasks.append({'key': 'alt_vein', 'label': 'რეფლექს ექო-კარტირება: კონტრალატერალური GSV / SSV / ხელის ვენები', 'done': (s.get('alt_vein_mapped') or 'pending') != 'pending'})
     if pathway == PreopPatient.Pathway.CEA and needs_cea_antiplatelet:
@@ -4021,7 +4239,7 @@ def evaluate(patient, today=None):
         tasks.append({'key': 'neuro', 'label': 'ნევროლოგის წინასაოპერაციო კონსულტაცია (mRS / სტატუსი)', 'done': bool(s.get('neuro_consult_done'))})
     if pathway == PreopPatient.Pathway.CEA and needs_laryngoscopy:
         tasks.append({'key': 'laryng', 'label': 'ლარინგოსკოპია — სახმო იოგების შემოწმება (ENT)', 'done': (s.get('laryngoscopy_res') or 'pending') != 'pending'})
-    if (is_venous or pathway == PreopPatient.Pathway.AAA_INFRA) and needs_abi_check:
+    if (is_venous or pathway == PreopPatient.Pathway.AAA_INFRA) and needs_abi_check and not is_rupture_suspect:
         tasks.append({'key': 'abi', 'label': 'გოჯ-მხრის ინდექსი (ABI)', 'done': min_abi is not None})
     if is_venous and needs_vte_prophylaxis:
         ven_severe_renal_t = on_dialysis or (eff_renal is not None and eff_renal < 30)
@@ -4034,20 +4252,25 @@ def evaluate(patient, today=None):
         else:
             vte_lbl = 'LMWH / DOAC'
         tasks.append({'key': 'vte', 'label': f'თრომბოპროფილაქტიკის სქემის შეთანხმება (Caprini {caprini_score} — {vte_lbl})', 'done': bool(s.get('vte_prophylaxis_planned'))})
-    if needs_spirometry:
+    if needs_spirometry and not bypass_outpatient_emergency:
         tasks.append({'key': 'spiro', 'label': 'სპირომეტრია (FEV1%)', 'done': spiro_fev1 is not None})
-    if needs_gastro:
+    if needs_gastro and not bypass_outpatient_emergency:
         tasks.append({'key': 'gastro', 'label': 'გასტროსკოპია (ეგდს)', 'done': gastro_res != 'pending'})
     if needs_ppi:
         tasks.append({'key': 'ppi', 'label': 'გასტროპროტექცია (PPI: ომეპრაზოლი / პანტოპრაზოლი 40 მგ — ეგდს-ის გარეშე)', 'done': bool(s.get('ppi_started')) or ('ppi' in med_chips)})
-    if uti_suspected:
+    if uti_suspected and not bypass_outpatient_emergency:
         tasks.append({'key': 'uti', 'label': 'შარდის ბაქტერიოლოგია + ანტიბიოტიკოგრამა / სანაცია', 'done': bool(s.get('urine_culture_done'))})
     if (pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) or is_venous) and needs_wound_care:
         w_lbl = 'ვენური წყლულის / კანის მოვლის შეთანხმება ქირურგთან' if is_venous else 'ტერფის ნაცხი / საზარდულის კანის სანაცია'
         tasks.append({'key': 'wound', 'label': w_lbl, 'done': bool(s.get('wound_care_done'))})
-    if is_venous and (min_abi is None or min_abi >= 0.8):
-        tbi_comp_ok = (not abi_non_compressible) or tbi_comp_safe
-        tasks.append({'key': 'comp', 'label': '2 კლასის კომპრესიული წინდის / გეტრის ზომის შერჩევა', 'done': bool(s.get('compression_ready')) and tbi_comp_ok})
+    if is_venous and not compression_contra:
+        tbi_comp_ok = (not abi_non_compressible) or tbi_comp_safe or tbi_reduced_comp
+        comp_lbl = (
+            'მსუბუქი I კლასის კომპრესიული წინდის (<20 mmHg) შერჩევა (სასაზღვრო TP/TBI)'
+            if tbi_reduced_comp
+            else '2 კლასის კომპრესიული წინდის / გეტრის ზომის შერჩევა'
+        )
+        tasks.append({'key': 'comp', 'label': comp_lbl, 'done': bool(s.get('compression_ready')) and tbi_comp_ok})
     if is_pta and q_filled:
         dapt_lbl = (
             f'ანტითრომბოზული სქემა OAC ფონზე: ანტიკოაგულანტი + {oac_partner_lbl} (სამმაგი თერაპიის გარეშე!)'
@@ -4061,7 +4284,7 @@ def evaluate(patient, today=None):
         tasks.append({'key': 'sizing', 'label': 'EVAR სტენტ-გრაფტის ზომების დათვლა და მზაობა', 'done': bool(s.get('evar_sized'))})
     if needs_med_hold:
         tasks.append({'key': 'med_hold', 'label': 'მედიკამენტების მიღების/შეჩერების სქემის დადასტურება', 'done': bool(s.get('med_hold_agreed'))})
-    if needs_cardio:
+    if needs_cardio and not bypass_outpatient_emergency:
         tasks.append({
             'key': 'cardio',
             'label': f'კარდიოლოგის კონსულტაცია ({patient.cardiologist or "ლიკა ინჯია"})',
@@ -4082,7 +4305,12 @@ def evaluate(patient, today=None):
     auto_asa = calc_auto_asa(patient, q, s, egfr=egfr, bmi=bmi, today=today)
     asa_raw = s.get('asa_class') if s.get('asa_class') in ('auto', 'I', 'II', 'III', 'IV') else 'auto'
     asa_roman = auto_asa if asa_raw == 'auto' else asa_raw
-    effective_asa = f"ASA {asa_roman}{'-E' if s.get('asa_emergency') else ''}"
+    effective_asa = f"ASA {asa_roman}{'-E' if (s.get('asa_emergency') or is_acute_emergency) else ''}"
+    if pathway == PreopPatient.Pathway.CEA and not is_symp_cea and (patient.age or 0) >= 80 and asa_roman == 'IV':
+        red_flags.append(
+            'ასიმპტომური CEA ≥80 წლის ASA IV პაციენტთან — ESVS 2023-ით 5-წლიანი სარგებელი საეჭვოა, '
+            'გადაამოწმეთ კონსერვატიული მედიკამენტური ტაქტიკა (BMT) ქირურგთან!'
+        )
 
     mallampati = s.get('airway_mallampati') if s.get('airway_mallampati') in ('I_II', 'III', 'IV_difficult') else 'I_II'
     mallampati_label = dict(MALLAMPATI_CHOICES).get(mallampati, 'Mallampati I–II')
@@ -4128,6 +4356,8 @@ def evaluate(patient, today=None):
         effective_anesth_label = 'ადგილობრივი ანესთეზია (± სედაცია)'
     elif pathway == PreopPatient.Pathway.CEA:
         effective_anesth_label = 'ზოგადი ენდოტრაქეული ან რეგიონული ბლოკადა (ცერებრული მონიტორინგით)'
+    elif pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype == 'tbd':
+        effective_anesth_label = 'ზუსტდება CTA ტაქტიკით (ღია: ზოგადი ენდოტრაქეული vs EVAR: ზოგადი / ადგილობრივი)'
     elif is_phleb or patient.op_subtype == 'evar' or is_pad_bypass:
         if hard_nx_reasons:
             base_ga_lbl = 'ზოგადი ენდოტრაქეული ანესთეზია' if needs_ett_airway else 'ზოგადი ანესთეზია'
@@ -4242,15 +4472,25 @@ def evaluate(patient, today=None):
         },
     ]
     if pathway not in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF):
-        side_hint = {'R': 'მარჯვენა', 'L': 'მარცხენა', 'B': 'ორმხრივი'}.get(patient.side, 'მხარე მიუთითეთ!')
+        valid_dos_sides = ('R', 'L') if pathway == PreopPatient.Pathway.CEA else ('R', 'L', 'B')
+        side_hint = (
+            'CEA-ზე მხარე B უკუნაჩვენებია — მიუთითეთ R ან L!'
+            if (pathway == PreopPatient.Pathway.CEA and patient.side == 'B')
+            else {'R': 'მარჯვენა', 'L': 'მარცხენა', 'B': 'ორმხრივი'}.get(patient.side, 'მხარე მიუთითეთ!')
+        )
         dos_checks.append({
             'key': 'dos_site_marked',
             'label': f'საოპერაციო მხარის მარკირება კანზე ({side_hint}) — WHO Sign-In',
-            'done': bool(s.get('dos_site_marked')) and (patient.side in ('R', 'L', 'B')),
+            'done': bool(s.get('dos_site_marked')) and (patient.side in valid_dos_sides),
         })
+    dos_fast_lbl = (
+        'უზმოდ ყოფნის რეჟიმი დაცულია: GLP-1 პროტოკოლი (24 სთ სუფთა თხევადი დიეტა / ≥8 სთ მყარი საკვები / 2 სთ წყალი)'
+        if (q_filled and q.get('glp1'))
+        else 'უზმოდ ყოფნის რეჟიმი დაცულია (6 სთ მყარი საკვები / 2 სთ სუფთა წყალი)'
+    )
     dos_checks.append({
         'key': 'dos_fasting_confirmed',
-        'label': 'უზმოდ ყოფნის რეჟიმი დაცულია (6 სთ საკვები / 2 სთ წყალი; GLP-1-ზე 24 სთ თხევადი)',
+        'label': dos_fast_lbl,
         'done': bool(s.get('dos_fasting_confirmed')),
     })
     if needs_med_hold or has_any_antithrombotic:
@@ -4258,6 +4498,12 @@ def evaluate(patient, today=None):
             'key': 'dos_med_hold_verified',
             'label': 'ანტიკოაგულანტის / P2Y12 / SGLT2 / ინსულინის რეჟიმი და დილის დაშვებული წამლების მიღება გადამოწმდა',
             'done': bool(s.get('dos_med_hold_verified')),
+        })
+    if q_filled and q.get('sglt2'):
+        dos_checks.append({
+            'key': 'dos_ketones_ok',
+            'label': 'SGLT2 უსაფრთხოება (ეუგლიკემიური DKA-ს გამორიცხვა): სისხლის/შარდის კეტონები ნორმაშია (β-OHB < 0.6 მმოლ/ლ) და პრეპარატი შეჩერებულია ≥72–96 სთ',
+            'done': bool(s.get('dos_ketones_ok')),
         })
     if not (is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA):
         cefaz_dose = '3 გ (≥120 კგ!)' if (weight_num is not None and weight_num >= 120) else '2 გ'
@@ -4637,10 +4883,12 @@ def evaluate(patient, today=None):
         mes_lbl = {
             'normal': 'SMA გამავალია',
             'ima_dominant_iia_occ': 'დომინანტური IMA / ორმხრივი IIA ოკლუზია — IMA რეიმპლანტაციის საკითხი!',
-            'sma_stenosis': 'SMA სტენოზი/ოკლუზია — მსხვილი ნაწლავის იშემიის მაღალი რისკი!',
+            'sma_stenosis': 'SMA სტენოზი/ოკლუზია — ნაწლავის იშემიის უმაღლესი რისკი! განიხილეთ წინასწარი/თანმხლები SMA სტენტირება ან შუნტირება (ESVS)!',
         }.get(s.get('abf_mesenteric') or 'normal', 'SMA გამავალია')
         anat_summary = f"საკლამპე ზონა: {clamp_lbl} · Outflow: {out_lbl}"
         tactical_note = f"ვისცერული/მენჯის კოლატერალები: {mes_lbl} · ABI R {abi_r if abi_r is not None else '—'} / L {abi_l if abi_l is not None else '—'}"
+        if q_filled and q.get('abf_wet_infection'):
+            tactical_note += ' · სასწრაფო ტერფის დრენირება/სანაცია + ემპირიული ფართო სპექტრის IV ანტიბიოტიკი!'
     elif is_pad_bypass:
         run_lbl = {
             'popliteal_patent': 'მუხლქვეშა არტერია + ≥2 წვივის არტერია გამავალია',
@@ -4648,9 +4896,15 @@ def evaluate(patient, today=None):
             'desert_foot': 'Desert Foot — მძიმე დისტალური ოკლუზია (!)',
             'pending': 'Runoff შესატანია',
         }.get(s.get('pad_runoff_status') or 'pending', 'ზუსტდება')
+        alt_vein_lbl = {
+            'pending': 'შესაფასებელია',
+            'contra_gsv_ok': 'კონტრალატერალური GSV ვარგისია',
+            'arm_ssv_ok': 'ხელის ვენა (Cephalic/Basilic) / SSV ვარგისია',
+            'no_autovein_prosthetic': 'აუტოვენა არ მოიძებნა — სინთეზური/კომპოზიტური პროთეზი',
+        }.get(s.get('alt_vein_mapped') or 'pending', 'შესაფასებელია')
         gsv_lbl = {
             'adequate': f"იფსილატერალური GSV ვარგისია ({pad_gsv_mm if pad_gsv_mm is not None else '≥3.0'} მმ)",
-            'inadequate': f"იფსილატერალური GSV უვარგისია (ალტ. ვენა: {s.get('alt_vein_mapped') or 'შესაფასებელია'})",
+            'inadequate': f"იფსილატერალური GSV უვარგისია (ალტ. ვენა: {alt_vein_lbl})",
             'pending': 'GSV კარტირება შესატანია',
         }.get(s.get('pad_gsv_status') or 'pending', 'ზუსტდება')
         anat_summary = f"Runoff კალაპოტი: {run_lbl}"
@@ -4693,13 +4947,34 @@ def evaluate(patient, today=None):
         morph_map = dict(AAA_MORPHOLOGY_CHOICES)
         neck_map = dict(AAA_NECK_CHOICES)
         pop_map = dict(POPLITEAL_SCREEN_CHOICES)
+        iliac_lbl = {
+            'ok_7mm': 'თეძო-ბარძაყის მიდგომა ≥7 მმ ✓',
+            'narrow_calcified': 'ვიწრო/კალციფ. მიდგომა (<7 მმ — Iliac Conduit!)',
+            'iliac_aneurysm': 'თეძოს ანევრიზმა (IIA შენარჩუნება!)',
+            'pending': 'მიდგომა შესაფასებელია',
+        }.get(s.get('aaa_iliac_access') or 'pending', '—')
+        tbd_sfx = ' · ტაქტიკა: ღია რეზექცია vs EVAR ზუსტდება CTA-ით' if patient.op_subtype == 'tbd' else ''
         anat_summary = (
             f"ინფრარენალური AAA: {aaa_mm if aaa_mm is not None else '—'} მმ · "
-            f"{morph_map.get(s.get('aaa_morphology') or 'fusiform', 'ფუზიფორმული')}"
+            f"{morph_map.get(s.get('aaa_morphology') or 'fusiform', 'ფუზიფორმული')}{tbd_sfx}"
         )
-        neck_part = f"პროქს. ყელი: {neck_map.get(s.get('aaa_neck_status') or 'pending', '—')} · " if patient.op_subtype in ('evar', 'tbd') else ''
+        if patient.op_subtype in ('evar', 'tbd'):
+            neck_part = f"პროქს. ყელი: {neck_map.get(s.get('aaa_neck_status') or 'pending', '—')} · მიდგომა: {iliac_lbl} · "
+        elif (s.get('aaa_neck_status') or 'pending') == 'hostile_neck':
+            neck_part = 'პროქს. ყელი: Hostile / იუქსტარენალური (სუპრარენალური კლამპი + თირკმლის ცივი პერფუზია!) · '
+        else:
+            neck_part = ''
         rv_part = ' · რეტროაორტული/ცირკუმაორტული მარცხენა თირკმლის ვენა (!)' if s.get('aaa_renal_vein_anom') else ''
-        tactical_note = f"{neck_part}მუხლქვეშა სკრინინგი: {pop_map.get(s.get('popliteal_screen_status') or 'pending', '—')}{rv_part}"
+        myc_part = ' · მიკოზური AAA: სისხლის ნათესები ×2 + ემპირიული IV ანტიბიოტიკი!' if s.get('aaa_morphology') == 'inflammatory_mycotic' else ''
+        rup_oac_part = ''
+        if is_rupture_suspect and on_oral_anticoag:
+            if q.get('med_warfarin'):
+                rup_oac_part = ' · სასწრაფო OAC რევერსია: 4F-PCC 25–50 სე/კგ IV + ვიტამინი K 10 მგ IV!'
+            elif q.get('med_dabigatran'):
+                rup_oac_part = ' · სასწრაფო რევერსია: იდარუციზუმაბი (Praxbind) 5 გ IV!'
+            else:
+                rup_oac_part = ' · სასწრაფო Xa-DOAC რევერსია: 4F-PCC 50 სე/კგ IV (მოერიდეთ ანდექსანეტ ალფას კლამპირებამდე — იწვევს UFH რეზისტენტობას — ESVS 2024)!'
+        tactical_note = f"{neck_part}მუხლქვეშა სკრინინგი: {pop_map.get(s.get('popliteal_screen_status') or 'pending', '—')}{rv_part}{myc_part}{rup_oac_part}"
 
     wt_num = _num(s.get('weight_kg'), lo=25, hi=260)
     is_std_evla_abx = is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not (
@@ -4789,6 +5064,7 @@ def evaluate(patient, today=None):
         contrast_plan = 'იოდზე ალერგია — სავალდებულო პრემედიკაცია (სტეროიდი + H1-ბლოკატორი) კონტრასტის გამოყენებისას!'
 
     statin_tail = '' if liver_3x else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ — ESVS Class I)'
+    pause_oac_win = '~24 სთ-ში' if is_pta else '48–72 სთ-ში (D+1 პროფილაქტ. LMWH)'
     if is_venous:
         default_postop_at = caprini_advice
     elif post_antithrombotic_label:
@@ -4796,7 +5072,7 @@ def evaluate(patient, today=None):
     elif has_mech_valve:
         default_postop_at = f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით + ჩვენებისას ასპირინი 75–100 მგ (DOAC აკრძალულია!){statin_tail}'
     elif has_full_oac:
-        default_postop_at = f'მუდმივი ანტიკოაგულანტის (OAC) აღდგენა + ჩვენებისას {oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
+        default_postop_at = f'მუდმივი ანტიკოაგულანტის (OAC) აღდგენა {pause_oac_win} ჰემოსტაზით (PAUSE) + ჩვენებისას {oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
     elif has_active_stent_dapt:
         default_postop_at = f'უწყვეტი DAPT: ასპირინი 100 მგ + {alt_p2y12_lbl} (კორონარული სტენტის დაცვა!){statin_tail}'
     elif 'clopidogrel_intol' in allergy_chips:
@@ -4865,8 +5141,18 @@ def evaluate(patient, today=None):
 
     if pathway == PreopPatient.Pathway.CEA:
         bp_corridor = (
-            'კლამპირებისას: შეინარჩუნეთ საბაზისო SBP (+0..20%, MAP ≥ 85–90 mmHg) კოლატერალური პერფუზიისთვის · '
+            'კლამპირებისას: MAP 85–100 mmHg / SBP 110–160 mmHg (მოერიდეთ <110 და >170 mmHg!) · '
             'რეპერფუზიის შემდეგ: მკაცრად SBP < 140–150 mmHg (ჰიპერპერფუზიის სინდრომისა და ჰემატომის პრევენცია — ESVS 2023)!' + arm_note
+        )
+    elif is_rupture_suspect:
+        bp_corridor = (
+            'პერმისიული ჰიპოტენზია SBP 70–90 mmHg (გონების შენარჩუნებით) პროქსიმალურ კლამპირებამდე / ბალონურ ოკლუზიამდე — '
+            'მოერიდეთ აგრესიულ კრისტალოიდურ ინფუზიას (ESVS 2024)!' + arm_note
+        )
+    elif pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype == 'tbd':
+        bp_corridor = (
+            'MAP ≥ 65–75 mmHg · ღია რეზექციაზე: კლამპირება/დეკლამპირების კონტროლი; '
+            'EVAR-ზე: იმპლანტაციისას SBP 90–110 mmHg.' + arm_note
         )
     elif open_aortic:
         bp_corridor = (
@@ -4878,12 +5164,21 @@ def evaluate(patient, today=None):
     elif is_pad_bypass or is_pta:
         bp_corridor = 'MAP ≥ 70–80 mmHg (ინტრაოპერაციული ჰიპოტენზიისა და რეკონსტრუქციის ადრეული თრომბოზის პრევენცია).' + arm_note
     else:
-        bp_corridor = 'სტაბილური ნორმოტენზია' + (f' · ტუმესცენტური ლიდოკაინი (ადრენალინით) ≤ {lidocaine_max_mg} მგ' if lidocaine_max_mg is not None else '') + arm_note
+        lido_part = (
+            f' · ტუმესცენტური ლიდოკაინი (ადრენალინით) ≤ {lidocaine_max_mg} მგ (LAST ანტიდოტი: 20% Intralipid მზადყოფნაში!)'
+            if lidocaine_max_mg is not None else ''
+        )
+        bp_corridor = 'სტაბილური ნორმოტენზია' + lido_part + arm_note
 
     high_ischemic_rbc = ihd_flag or (pathway == PreopPatient.Pathway.CEA) or is_clti_any
     rbc_thresh = 'Hb ≥ 80–90 გ/ლ (გიდ / ცერებრული / კრიტიკული იშემიის ზღვარი)' if high_ischemic_rbc else 'Hb ≥ 70–80 გ/ლ (რესტრიქციული PBM ზღვარი)'
     bg_lbl = s.get('blood_group') or 'დაუდგენელია'
-    if open_major:
+    if is_rupture_suspect:
+        transfusion_pbm = (
+            f'ჯგუფი: {bg_lbl} · სასწრაფო MTP პროტოკოლი: O Rh(-) / ჯგუფ-სპეციფიკური ერითრომასა + ს.გ.პ. + თრომბოკონცენტრატი '
+            '(1:1:1) + Cell Saver + TXA 1 გ IV!'
+        )
+    elif open_major:
         res_lbl = 'ერითრომასის რეზერვი მზადაა ✓' if s.get('blood_reserved') else 'ერითრომასის რეზერვი მოსამზადებელია!'
         cs_lbl = ' · Cell Saver + TXA მზადაა ✓' if s.get('cell_saver_ready') else (' · განიხილეთ Cell Saver + TXA' if open_aortic else '')
         transfusion_pbm = f'ჯგუფი: {bg_lbl} · სამიზნე ტრიგერი: {rbc_thresh} · {res_lbl}{cs_lbl}'
@@ -4891,6 +5186,10 @@ def evaluate(patient, today=None):
         transfusion_pbm = f'ჯგუფი: {bg_lbl} · ტრანსფუზიული ტრიგერი საჭიროებისას: {rbc_thresh}'
 
     airway_bits = [mallampati_label, f'STOP-Bang: {stop_bang_label}']
+    if is_rupture_suspect:
+        airway_bits.append('RSI ინდუქცია მხოლოდ საოპერაციო ველის დამუშავებისა და ქირურგიული მზადყოფნის შემდეგ!')
+    if q_filled and q.get('glp1'):
+        airway_bits.append('GLP-1 ასპირაციის დაცვა (კუჭის POCUS / RSI)')
     if q_filled and q.get('cea_neck_limited'):
         airway_bits.append('კისრის გაშლა შეზღუდულია!')
     if q_filled and q.get('loose_teeth'):
@@ -4911,6 +5210,18 @@ def evaluate(patient, today=None):
         (' · CIED: რეჟიმი დასაზუსტებელია (!) — გარე პედების მზადყოფნა!' if needs_cied else '')
     )
 
+    needs_glycemic_corridor = bool(
+        (q_filled and (q.get('dm') or q.get('dm_insulin')))
+        or (gl_mmol is not None and gl_mmol >= 7.0)
+        or (hba1c is not None and hba1c >= 6.5)
+    )
+    needs_vriii = bool(
+        (q_filled and q.get('dm_insulin') and open_aortic)
+        or (gl_mmol is not None and gl_mmol >= 12.0)
+        or (dos_gl is not None and dos_gl >= 12.0)
+    )
+    vriii_sfx = ' · ინტრაოპ./ICU: IV ინსულინის ინფუზია (VRIII) საათობრივი გლუკოზისა და K+ კონტროლით!' if needs_vriii else ''
+
     anesthetic_brief = {
         'modality': f'{effective_asa} · {effective_anesth_label}',
         'neuraxial_gate': neuraxial_gate,
@@ -4919,8 +5230,8 @@ def evaluate(patient, today=None):
         'lines_and_cied': (anesth_lines_txt or default_lines_lbl) + cied_brief_sfx,
         'transfusion_pbm': transfusion_pbm,
         'glycemic_target': (
-            'პერიოპერაციული გლიკემიური კორიდორი 5.5–10.0 მმოლ/ლ (ჰიპოგლიკემიის <3.9 და >10.0 თავიდან აცილება — ESC/ESAIC)'
-            if (q_filled and (q.get('dm') or q.get('dm_insulin') or (gl_mmol is not None and gl_mmol >= 7.0)))
+            f'პერიოპერაციული გლიკემიური კორიდორი 5.5–10.0 მმოლ/ლ (ჰიპოგლიკემიის <3.9 და >10.0 თავიდან აცილება — ESC/ESAIC){vriii_sfx}'
+            if needs_glycemic_corridor
             else 'სტანდარტული ნორმოგლიკემია (<10.0 მმოლ/ლ)'
         ),
         'disposition': (
@@ -4954,6 +5265,7 @@ def evaluate(patient, today=None):
         'passport_cautions': passport_cautions,
         'neuraxial_hard_blocked': neuraxial_hard_blocked,
         'eff_allergy_latex': ('latex_chlorhex' in allergy_chips),
+        'show_pregnancy_check': show_pregnancy_check,
         'shock_index': shock_index,
         'fib_gl': fib,
         'is_venous': is_venous,
@@ -5267,12 +5579,19 @@ def generate_anamnesis(patient, ev=None):
         )
 
         ven_notes = []
+        v_dup = s.get('ven_duplex_status') or 'pending'
+        if v_dup == 'acute_dvt':
+            ven_notes.append('დუპლექსით დადასტურებული მწვავე DVT (!)')
+        elif v_dup == 'deep_obstruction':
+            ven_notes.append('დუპლექსით ღრმა ვენების პოსტთრომბოზული ოკლუზია (!)')
+        elif v_dup == 'superficial_thrombus':
+            ven_notes.append('დუპლექსით მწვავე აღმავალი თრომბოფლებიტი (!)')
         if q.get('ven_dvt_history'):
             dvt_txt = chip_summary(q.get('ven_dvt_chips'), 'ven_dvt_chips', q.get('ven_dvt_text')) or 'აღნიშნავს'
             ven_notes.append(f'ანამნეზში DVT/PE ({dvt_txt})')
         if q.get('ven_thrombophilia'):
             ven_notes.append('თრომბოფილია / ოჯახური VTE')
-        if q.get('ven_acute_svt'):
+        if q.get('ven_acute_svt') and v_dup != 'superficial_thrombus':
             ven_notes.append('მწვავე თრომბოფლებიტი (!)')
         if q.get('ven_bleeding'):
             ven_notes.append('სისხლდენა კვანძიდან ანამნეზში')
@@ -5281,7 +5600,7 @@ def generate_anamnesis(patient, ev=None):
             ven_notes.append(f'რეციდივული ვარიკოზი ({rec_txt})')
         if q.get('ven_hormones'):
             ven_notes.append('ჰორმონული პრეპარატები/კონტრაცეპტივი')
-        if q.get('ven_pregnant'):
+        if q.get('ven_pregnant') or q.get('pregnant_possible'):
             ven_notes.append('ორსულობა / ლაქტაცია (!)')
         if ven_notes:
             lines.append('ვენური და თრომბოემბოლიური ფაქტორები: ' + '; '.join(ven_notes) + '.')
@@ -5547,7 +5866,7 @@ def apply_questionnaire_post(post_data, patient, filled_by_label):
         'neuro', 'carotid_bruit_symp', 'ulcer', 'ulcer_active_symp',
         'med_aspirin', 'med_clopidogrel', 'med_ticagrelor', 'med_prasugrel',
         'med_doac', 'med_dabigatran', 'med_warfarin',
-        'allergy_iodine', 'allergy_other', 'anesth_issue', 'pacemaker', 'loose_teeth', 'smoker',
+        'allergy_iodine', 'allergy_other', 'anesth_issue', 'pacemaker', 'loose_teeth', 'smoker', 'pregnant_possible',
     )
     for f in bool_fields:
         q[f] = post_data.get(f) in ('1', 'on', 'true')
@@ -5596,7 +5915,7 @@ def apply_questionnaire_post(post_data, patient, filled_by_label):
             q['cea_event_date'] = ev_dt.isoformat()
             q['cea_days_since_event'] = (today - ev_dt).days
         elif 'cea_days_since_event' in post_data:
-            d_ev = _int(post_data.get('cea_days_since_event'), lo=0, hi=365)
+            d_ev = _int(post_data.get('cea_days_since_event'), lo=0, hi=3650)
             q['cea_days_since_event'] = d_ev
             q['cea_event_date'] = (today - datetime.timedelta(days=d_ev)).isoformat() if d_ev is not None else ''
     else:
@@ -5645,7 +5964,7 @@ def apply_questionnaire_post(post_data, patient, filled_by_label):
         cta_dt = _date(post_data.get('cta_date'))
         if cta_dt and cta_dt <= today:
             s['cta_date'] = cta_dt.isoformat()
-            s['cta_months'] = max(0, (today - cta_dt).days // 30)
+            s['cta_months'] = cta_live_months_age({'cta_date': s['cta_date']}, today=today)
         else:
             s['cta_date'] = ''
             if 'cta_months' in post_data:
@@ -5672,7 +5991,7 @@ def apply_self_fill_post(post_data, patient):
     common_bools = (
         'htn', 'cad', 'recent_stent', 'dm', 'metformin', 'sglt2', 'glp1', 'on_dialysis',
         'pulm', 'thyroid_disease', 'neuro', 'ulcer', 'ulcer_active_symp', 'dental_infection',
-        'active_infection',
+        'active_infection', 'pregnant_possible',
         'med_aspirin', 'med_clopidogrel', 'med_ticagrelor', 'med_prasugrel',
         'med_doac', 'med_dabigatran', 'med_warfarin',
         'allergy_iodine', 'allergy_other', 'anesth_issue', 'smoker',
@@ -5706,7 +6025,7 @@ def apply_self_fill_post(post_data, patient):
                 q['cea_event_date'] = ev_dt.isoformat()
                 q['cea_days_since_event'] = (today - ev_dt).days
             elif 'cea_days_since_event' in post_data and post_data.get('cea_days_since_event'):
-                d_ev = _int(post_data.get('cea_days_since_event'), lo=0, hi=365)
+                d_ev = _int(post_data.get('cea_days_since_event'), lo=0, hi=3650)
                 if d_ev is not None:
                     q['cea_days_since_event'] = d_ev
                     q['cea_event_date'] = (today - datetime.timedelta(days=d_ev)).isoformat()
@@ -5929,9 +6248,13 @@ class PreopWeekView(LoginRequiredMixin, generic.TemplateView):
                 continue
             if pathway_filter != 'all' and ev['pathway'] != pathway_filter:
                 continue
+            has_acute_red = bool(
+                ev['q'].get('aaa_pain') or ev['q'].get('cea_crescendo') or ev['q'].get('abf_wet_infection')
+            )
             off_week_acute = (
-                bool(ev['q'].get('aaa_pain') or ev['q'].get('cea_crescendo'))
-                and bool(p.visit_date and not (monday <= p.visit_date <= sunday))
+                has_acute_red
+                and p.someday_list != PreopPatient.SomedayList.HOLD
+                and (not p.visit_date or not (monday <= p.visit_date <= sunday))
             )
             if ev['over_target_days'] or off_week_acute:
                 p.ev = ev
@@ -6216,7 +6539,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             cd = _date(request.POST.get('cta_date'))
             s['cta_date'] = cd.isoformat() if (cd and cd <= today) else ''
             if cd and cd <= today:
-                s['cta_months'] = max(0, (today - cd).days // 30)
+                s['cta_months'] = cta_live_months_age({'cta_date': s['cta_date']}, today=today)
 
         if 'labs_date' in request.POST:
             ld = _date(request.POST.get('labs_date'))
@@ -6318,7 +6641,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             ('cied_plan', ('pending', 'bipolar_only', 'magnet_async', 'ep_reprogram')),
             ('gastro_result', ('pending', 'remission', 'acute_ulcer')),
             ('laryngoscopy_res', ('pending', 'normal', 'palsy')),
-            ('tsh_status', ('pending', 'euthyroid', 'hyperthyroid')),
+            ('tsh_status', ('pending', 'euthyroid', 'hyperthyroid', 'hypothyroid_severe')),
             ('alt_vein_mapped', ('pending', 'contra_gsv_ok', 'arm_ssv_ok', 'no_autovein_prosthetic')),
             ('post_antithrombotic_plan', ('auto', 'voyager', 'dapt', 'sapt', 'oac_sapt')),
         ):
@@ -6430,7 +6753,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
         for bf in (
             'dos_identity_consent', 'dos_site_marked', 'dos_fasting_confirmed',
-            'dos_med_hold_verified', 'dos_abx_ready', 'dos_blood_implant_ready',
+            'dos_med_hold_verified', 'dos_ketones_ok', 'dos_abx_ready', 'dos_blood_implant_ready',
             'icu_bed_booked',
             'vqi_discharge_antiplatelet', 'vqi_discharge_statin',
             'vqi_smoking_cessation', 'vqi_surveillance_scheduled',
