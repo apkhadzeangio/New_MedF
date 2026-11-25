@@ -3,7 +3,8 @@
 Re-exports every public and internal symbol previously defined in `apps/mdf/preop.py`
 for 100% backward compatibility with views, board/blood/prescription bridges, and tests.
 """
-from ._legacy import (
+from ._legacy import evaluate
+from .views import (
     PreopAuditView,
     PreopBoardHandoffView,
     PreopCreateView,
@@ -17,7 +18,6 @@ from ._legacy import (
     PreopWeekView,
     _admit_preop_to_board_locked,
     admit_preop_to_board,
-    evaluate,
     resolve_board_patient,
     resolve_preop_for_board,
 )
