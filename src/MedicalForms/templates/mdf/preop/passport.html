@@ -91,14 +91,94 @@
         .bad { color: #B42318; font-weight: 700; }
         .warn-txt { color: #93370D; font-weight: 700; }
         .ok { color: #067647; font-weight: 700; }
+        .pp-flag-list { display: flex; flex-direction: column; gap: 1px; }
         @media print {
-            body { background: #fff; }
-            .pp-sheet { margin: 0; padding: 0; box-shadow: none; border-radius: 0; max-width: none; }
-            .pp-page-2 { page-break-before: always; break-before: page; padding-top: 1mm; }
+            body { background: #fff; font-size: 9.2px; line-height: 1.22; }
+            .pp-sheet { margin: 0; padding: 0; box-shadow: none; border-radius: 0; max-width: none; gap: 4.5px; }
+            .pp-page-2 { page-break-before: always; break-before: page; padding-top: 0; }
+            .pp-top { padding-bottom: 4px; gap: 8px; }
+            .pp-mini-top { padding-bottom: 3px; font-size: 9.0px; }
+            .pp-kicker { font-size: 8.6px; }
+            .pp-title { font-size: 13.2px; margin: 0 0 2px; }
+            .pp-sub { font-size: 8.8px; }
+            .pp-side-tag { padding: 1px 6px; font-size: 9.0px; }
+            .pp-seal { margin-top: 2px; padding: 2px 7px; font-size: 9.2px; }
+            .pp-draft-banner { padding: 3px 7px !important; font-size: 8.8px !important; }
+            .pp-sec { padding: 4.5px 7px; border-radius: 5px; break-inside: auto; page-break-inside: auto; }
+            .pp-sec h2 { font-size: 9.2px; margin: 0 0 3px; padding-bottom: 2px; }
+            .pp-risk-bar { gap: 3.5px; }
+            .pp-rcard { padding: 3px 5px; border-radius: 4px; break-inside: avoid; page-break-inside: avoid; }
+            .pp-rcard b { font-size: 7.8px; }
+            .pp-rcard strong { font-size: 9.8px; }
+            .pp-rcard span { font-size: 8.0px; line-height: 1.14; }
+            .pp-two-col { gap: 5px; }
+            .pp-bitem { margin-bottom: 2.5px; }
+            .pp-bitem b { font-size: 8.0px; }
+            .pp-bitem div { font-size: 8.9px; line-height: 1.20; }
+            .pp-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 3px 6px; }
+            .pp-kv b { font-size: 7.8px; }
+            .pp-kv span { font-size: 8.8px; line-height: 1.15; }
+            .pp-anam { font-size: 8.8px; line-height: 1.22; }
+            .pp-med-gate, .pp-fast-box { margin-bottom: 3px !important; padding: 2.5px 6px !important; font-size: 8.6px !important; }
+            .pp-tbl { font-size: 8.5px; }
+            .pp-tbl th, .pp-tbl td { padding: 2px 4px; line-height: 1.16; }
+            .pp-tbl th { font-size: 7.8px; }
+            .pp-chk-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5px 8px; font-size: 8.5px; line-height: 1.16; }
+            .pp-flag-list.is-multi { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px 8px; }
+            .pp-sig-row { gap: 10px; padding-top: 5px; font-size: 8.8px; break-inside: avoid; page-break-inside: avoid; }
+            .pp-sig-line-wrap { margin-top: 4px !important; }
+            .pp-line { min-width: 78px; height: 9px; }
+
+            body.pp-dense { font-size: 8.2px; line-height: 1.16; }
+            body.pp-dense .pp-sheet { gap: 3.5px; }
+            body.pp-dense .pp-title { font-size: 12.0px; }
+            body.pp-dense .pp-sub, body.pp-dense .pp-mini-top { font-size: 8.0px; }
+            body.pp-dense .pp-sec { padding: 3.5px 6px; }
+            body.pp-dense .pp-sec h2 { font-size: 8.3px; margin: 0 0 2px; padding-bottom: 1.5px; }
+            body.pp-dense .pp-bitem { margin-bottom: 2px; }
+            body.pp-dense .pp-bitem b { font-size: 7.4px; }
+            body.pp-dense .pp-bitem div, body.pp-dense .pp-anam { font-size: 8.0px; line-height: 1.15; }
+            body.pp-dense .pp-tbl, body.pp-dense .pp-chk-grid { font-size: 7.8px; line-height: 1.13; }
+            body.pp-dense .pp-tbl th, body.pp-dense .pp-tbl td { padding: 1.5px 3.5px; }
+
+            body.pp-ultra { font-size: 6.5px; line-height: 1.07; }
+            body.pp-ultra .pp-sheet { gap: 2px; }
+            body.pp-ultra .pp-top { padding-bottom: 2px; gap: 6px; }
+            body.pp-ultra .pp-kicker { font-size: 6.5px; }
+            body.pp-ultra .pp-title { font-size: 9.8px; margin: 0; }
+            body.pp-ultra .pp-sub, body.pp-ultra .pp-mini-top { font-size: 6.5px; padding-bottom: 2px; }
+            body.pp-ultra .pp-side-tag, body.pp-ultra .pp-seal { padding: 1px 5px; font-size: 7.0px; margin-top: 1px; }
+            body.pp-ultra .pp-draft-banner, body.pp-ultra .pp-med-gate, body.pp-ultra .pp-fast-box { padding: 1.5px 4px !important; font-size: 6.5px !important; margin-bottom: 1.5px !important; line-height: 1.06 !important; }
+            body.pp-ultra .pp-sec { padding: 2px 4.5px; border-radius: 4px; }
+            body.pp-ultra .pp-sec h2 { font-size: 6.8px; margin: 0 0 1px; padding-bottom: 1px; }
+            body.pp-ultra .pp-flag-list { font-size: 6.3px; line-height: 1.05; gap: 0.5px 6px; margin-top: 1.5px !important; padding-top: 1.5px !important; }
+            body.pp-ultra .pp-risk-bar { gap: 2.5px; }
+            body.pp-ultra .pp-rcard { padding: 1.5px 3.5px; }
+            body.pp-ultra .pp-rcard b { font-size: 6.1px; }
+            body.pp-ultra .pp-rcard strong { font-size: 7.6px; }
+            body.pp-ultra .pp-rcard span { font-size: 6.1px; line-height: 1.04; }
+            body.pp-ultra .pp-two-col { gap: 4px; }
+            body.pp-ultra .pp-bitem { margin-bottom: 1px; line-height: 1.06; }
+            body.pp-ultra .pp-bitem b { display: inline; font-size: 6.3px; margin-right: 3px; }
+            body.pp-ultra .pp-bitem b::after { content: ":"; }
+            body.pp-ultra .pp-bitem div { display: inline; font-size: 6.4px; line-height: 1.06; }
+            body.pp-ultra .pp-anam { font-size: 6.3px; line-height: 1.06; }
+            body.pp-ultra .pp-grid { gap: 1.5px 5px; }
+            body.pp-ultra .pp-kv { line-height: 1.05; }
+            body.pp-ultra .pp-kv b { display: inline; font-size: 6.1px; margin-right: 2px; }
+            body.pp-ultra .pp-kv b::after { content: ":"; }
+            body.pp-ultra .pp-kv span { display: inline; font-size: 6.4px; line-height: 1.05; }
+            body.pp-ultra .pp-tbl { font-size: 6.2px; }
+            body.pp-ultra .pp-tbl th { font-size: 6.0px; }
+            body.pp-ultra .pp-tbl th, body.pp-ultra .pp-tbl td { padding: 0.7px 2.5px; line-height: 1.04; }
+            body.pp-ultra .pp-chk-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); font-size: 6.1px; line-height: 1.04; gap: 0.8px 5px; }
+            body.pp-ultra .pp-sig-row { padding-top: 2px; font-size: 6.6px; gap: 8px; }
+            body.pp-ultra .pp-sig-line-wrap { margin-top: 1.5px !important; }
+            body.pp-ultra .pp-line { min-width: 64px; height: 7px; }
         }
     </style>
 </head>
-<body>
+<body class="{% if ev.red_flags|length >= 6 or ev.med_schedule|length >= 9 or ev.tasks|length >= 14 or shown_anamnesis|length > 900 %}pp-ultra{% elif ev.red_flags|length >= 3 or ev.med_schedule|length >= 6 or ev.tasks|length >= 10 or shown_anamnesis|length > 550 %}pp-dense{% endif %}">
 <div class="pp-toolbar d-print-none">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
         <a class="x-btn sm" href="{% url 'preop-patient' p.pk %}">← პაციენტის ბარათზე დაბრუნება</a>
@@ -140,7 +220,7 @@
         </div>
     </header>
     {% if not p.approved_at %}
-    <div style="padding:5px 10px;border-radius:6px;background:#FFFAEB;border:1.5px solid #F79009;color:#93370D;font-size:11.3px;font-weight:700">
+    <div class="pp-draft-banner" style="padding:5px 10px;border-radius:6px;background:#FFFAEB;border:1.5px solid #F79009;color:#93370D;font-size:11.3px;font-weight:700">
         სამუშაო (დაუდასტურებელი) ასლი — პაციენტზე გაცემამდე და მედიკამენტების სქემის ამოქმედებამდე სავალდებულოა მკურნალი ექიმის / ქირურგის დადასტურება!
     </div>
     {% endif %}
@@ -155,12 +235,12 @@
             {% if ev.abx_prophylaxis_note %} · <span class="bad">{{ ev.abx_prophylaxis_note }}</span>{% endif %}
         </div>
         {% if ev.red_flags %}
-        <div style="margin-top:4px;padding-top:4px;border-top:1px dashed #FECDCA">
+        <div class="pp-flag-list {% if ev.red_flags|length >= 2 %}is-multi{% endif %}" style="margin-top:3px;padding-top:3px;border-top:1px dashed #FECDCA">
             {% for rf in ev.red_flags %}<div class="bad">• {{ rf }}</div>{% endfor %}
         </div>
         {% endif %}
         {% if ev.passport_cautions %}
-        <div style="margin-top:4px;padding-top:4px;border-top:1px dashed #FEDF89">
+        <div class="pp-flag-list {% if ev.passport_cautions|length >= 2 %}is-multi{% endif %}" style="margin-top:3px;padding-top:3px;border-top:1px dashed #FEDF89">
             {% for pc in ev.passport_cautions %}<div class="warn-txt">• {{ pc }}</div>{% endfor %}
         </div>
         {% endif %}
@@ -327,16 +407,16 @@
             <span>{% if ev.planned_surgery_ka %}ოპერაცია: {{ ev.planned_surgery_ka }}{% endif %}</span>
         </h2>
         {% if ev.clearance_seal.code == 'stop' %}
-        <div style="margin-bottom:5px;padding:5px 8px;border-radius:6px;background:#FEF3F2;border:1.5px solid #D92D20;color:#912018;font-size:11.2px">
+        <div class="pp-med-gate" style="margin-bottom:5px;padding:5px 8px;border-radius:6px;background:#FEF3F2;border:1.5px solid #D92D20;color:#912018;font-size:11.2px">
             <strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით! არცერთი სასიცოცხლო მედიკამენტი (განსაკუთრებით ანტიკოაგულანტი/ანტიაგრეგანტი) არ შეწყვიტოთ!</strong>
         </div>
         {% else %}
-        <div style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if p.approved_at or s.med_hold_agreed %}#EAF7F0;border:1px solid #A9D8C1;color:#065F46{% else %}#FEF3F2;border:1px solid #FECDCA;color:#B42318{% endif %};font-size:11.2px">
+        <div class="pp-med-gate" style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if p.approved_at or s.med_hold_agreed %}#EAF7F0;border:1px solid #A9D8C1;color:#065F46{% else %}#FEF3F2;border:1px solid #FECDCA;color:#B42318{% endif %};font-size:11.2px">
             <strong>მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!</strong> თვითნებურად არცერთი მედიკამენტი არ შეწყვიტოთ და არ შეცვალოთ.
             {% if p.approved_at or s.med_hold_agreed %}· <strong>[დადასტურებულია ექიმთან ✓]</strong>{% else %}· <strong>[სტატუსი: ექიმთან ჯერ არ არის დადასტურებული!]</strong>{% endif %}
         </div>
         {% endif %}
-        <div style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if q.glp1 %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
+        <div class="pp-fast-box" style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if q.glp1 %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
             <strong>{{ ev.fasting_instruction }}</strong>
         </div>
         {% if ev.med_schedule %}
@@ -373,8 +453,8 @@
             {% endfor %}
         </div>
 
-        <div style="margin-top:6px;padding-top:5px;border-top:1px dashed #D0D5DD">
-            <div style="margin-bottom:3px">
+        <div style="margin-top:4px;padding-top:4px;border-top:1px dashed #D0D5DD">
+            <div style="margin-bottom:2px">
                 <strong>ოპერაციის დილის საკონტროლო მაჩვენებლები და WHO Sign-In:</strong>
                 დილის წნევა: <strong>{{ s.dos_bp_sys|default_if_none:"—" }}/{{ s.dos_bp_dia|default_if_none:"—" }}</strong> mmHg
                 · გლუკოზა: <strong>{{ ev.dos_gl_mmol|default_if_none:"—" }}</strong> მმოლ/ლ
@@ -382,7 +462,7 @@
                 {% if ev.dos_ready %}· <span class="ok">საოპერაციოში შეყვანა დაშვებულია ✓</span>{% elif ev.dos_hold_danger %}· <span class="bad">STOP-სიგნალი!</span>{% endif %}
             </div>
             {% if ev.dos_warnings %}
-            <div style="margin:3px 0 4px;padding:3px 7px;border-radius:5px;background:#FEF3F2;border:1px solid #FECDCA">
+            <div class="pp-flag-list {% if ev.dos_warnings|length >= 2 %}is-multi{% endif %}" style="margin:2px 0 3px;padding:2px 6px;border-radius:5px;background:#FEF3F2;border:1px solid #FECDCA">
                 {% for dw in ev.dos_warnings %}<div class="bad">• {{ dw }}</div>{% endfor %}
             </div>
             {% endif %}
@@ -392,7 +472,7 @@
                 {% endfor %}
             </div>
             {% if s.nurse_note %}
-            <div style="margin-top:4px" class="pp-sub"><strong>ექთნის შენიშვნა:</strong> {{ s.nurse_note }}</div>
+            <div style="margin-top:3px" class="pp-sub"><strong>ექთნის შენიშვნა:</strong> {{ s.nurse_note }}</div>
             {% endif %}
         </div>
     </section>
@@ -405,7 +485,7 @@
             {% else %}
             <div class="pp-sub">მომზადების ჩეკლისტი გადამოწმებულია</div>
             {% endif %}
-            <div style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
+            <div class="pp-sig-line-wrap" style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
         </div>
         <div>
             <div><strong>2. ანესთეზიოლოგი ({{ ev.effective_asa }}):</strong> {% if ev.neuraxial_hard_blocked %}<span class="bad">გადასახედია!</span>{% elif s.anesth_done %}კონსულტირებულია ✓{% else %}—{% endif %}</div>
@@ -414,12 +494,12 @@
             {% else %}
             <div class="pp-sub">გაუტკივარება: {{ ev.effective_anesth_label }}</div>
             {% endif %}
-            <div style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
+            <div class="pp-sig-line-wrap" style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
         </div>
         <div>
             <div><strong>3. მკურნალი ქირურგი:</strong> {{ approved_by_name|default:surgeon_name|default:"—" }}</div>
             {% if p.approved_at %}<div class="pp-sub ok">ელ. დასტური: {{ p.approved_at|date:"d.m.Y H:i" }}</div>{% else %}<div class="pp-sub">ოპერაციაზე დაშვების დასტური</div>{% endif %}
-            <div style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
+            <div class="pp-sig-line-wrap" style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
         </div>
     </footer>
 </article>
