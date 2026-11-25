@@ -136,8 +136,15 @@
 }
 .po-badge.st-no_questionnaire { background: #F2F4F7; color: #344054; }
 .po-badge.st-in_progress { background: var(--ward-soft); color: var(--ward); }
-.po-badge.st-needs_doctor { background: #FEE4E2; color: #B42318; }
+.po-badge.st-needs_doctor,
+.po-badge.st-alert { background: #FEE4E2; color: #B42318; }
 .po-badge.st-ready { background: #EAF7F0; color: var(--ok); }
+.po-badge.prio-urgent { background: #D92D20; color: #fff; font-weight: 700; }
+.po-badge.prio-high { background: #FEF0C7; color: #B54708; font-weight: 700; }
+.tw-prio-tag {
+    font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+    background: #D92D20; color: #fff; letter-spacing: .01em;
+}
 
 .po-alerts { display: flex; flex-direction: column; gap: 8px; }
 .po-alert {

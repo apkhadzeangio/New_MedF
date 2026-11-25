@@ -15,6 +15,11 @@
         <h1 style="font-size:22px">ბმული ვადაგასულია ან არასწორია</h1>
         <p class="text-muted m-0">გთხოვთ მიმართოთ კლინიკის ექთანს ახალი ბმულის მისაღებად.</p>
     </section>
+    {% elif locked %}
+    <section class="x-card text-center py-5">
+        <h1 style="font-size:22px;color:var(--ok)">✓ კითხვარი უკვე დადასტურებულია სამედიცინო გუნდის მიერ</h1>
+        <p class="text-muted m-0">თქვენი სამედიცინო ანკეტა უკვე გადამოწმებულია ექთნის / ქირურგის მიერ. დამატებითი ცვლილებისთვის მიმართეთ კლინიკის პერსონალს.</p>
+    </section>
     {% elif submitted %}
     <section class="x-card text-center py-5">
         <h1 style="font-size:24px;color:var(--ok)">✓ მადლობა! კითხვარი შენახულია</h1>
@@ -28,7 +33,7 @@
             <h1 style="font-size:22px;margin:4px 0">{{ p.patient_name }}</h1>
             <div class="small text-muted">დაგეგმილი ჩარევა: <strong>{{ p.planned_operation_label }}</strong></div>
         </div>
-        <div class="grid-3 pt-2 border-top" style="border-color:var(--line-soft)!important">
+        <div class="grid-4 pt-2 border-top" style="border-color:var(--line-soft)!important">
             <label class="fld">ასაკი (წელი)
                 <input type="number" name="age" form="self-q-form" value="{{ p.age|default_if_none:'' }}" min="12" max="115" class="form-control">
             </label>
@@ -38,6 +43,9 @@
             <label class="fld">სიმაღლე (სმ)
                 <input type="number" name="height_cm" form="self-q-form" value="{{ s.height_cm|default_if_none:'' }}" placeholder="მაგ. 168" class="form-control">
             </label>
+            <label class="fld">ტელეფონი
+                <input type="text" name="phone" form="self-q-form" value="{{ p.phone }}" placeholder="5XX XX XX XX" class="form-control">
+            </label>
         </div>
     </section>
 
@@ -46,7 +54,145 @@
         <input type="hidden" name="side" value="{{ p.side }}">
         <input type="hidden" name="ven_ceap" value="{{ q.ven_ceap|default:'C2' }}">
 
-        {% if ev.is_venous %}
+        {% if ev.pathway == 'aaa_infra' %}
+        <section class="x-card">
+            <h2><span class="num">1</span> კითხვები აორტის ანევრიზმის შესახებ</h2>
+            <div class="po-q-list">
+                <div class="po-q-item">
+                    <div class="po-q-main">
+                        <span class="po-q-text">გაწუხებთ თუ არა ახალი ან გაძლიერებული ტკივილი მუცლის, წელის ან გვერდის არეში?</span>
+                        <div class="yn-switch">
+                            <label><input type="radio" name="aaa_pain" value="0" {% if not q.aaa_pain %}checked{% endif %}>არა</label>
+                            <label><input type="radio" name="aaa_pain" value="1" {% if q.aaa_pain %}checked{% endif %}>კი</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="po-q-item">
+                    <div class="po-q-main">
+                        <span class="po-q-text">გაკეთებული გაქვთ თუ არა წარსულში მუცლის ღრუს ან თიაქრის ოპერაცია?</span>
+                        <div class="yn-switch" data-toggle-sub="sf-abdo">
+                            <label><input type="radio" name="prev_abdo_surg" value="0" {% if not q.prev_abdo_surg %}checked{% endif %}>არა</label>
+                            <label><input type="radio" name="prev_abdo_surg" value="1" {% if q.prev_abdo_surg %}checked{% endif %}>კი</label>
+                        </div>
+                    </div>
+                    <div class="po-q-sub" id="sf-abdo" {% if not q.prev_abdo_surg %}hidden{% endif %}>
+                        <div class="po-chip-row">
+                            {% for ck, cl in chips.abdo_chips %}
+                            <label class="chip-check"><input type="checkbox" name="abdo_chips" value="{{ ck }}" {% if ck in q.abdo_chips %}checked{% endif %}>{{ cl }}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div class="po-q-item">
+                    <div class="po-q-main">
+                        <span class="po-q-text">გეწყებათ თუ არა სიარულისას ფეხის/წვივის კუნთების ტკივილი, რის გამოც ჩერდებით?</span>
+                        <div class="yn-switch">
+                            <label><input type="radio" name="claudication" value="0" {% if not q.claudication %}checked{% endif %}>არა</label>
+                            <label><input type="radio" name="claudication" value="1" {% if q.claudication %}checked{% endif %}>კი</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {% elif ev.pathway == 'cea' %}
+        <section class="x-card">
+            <h2><span class="num">1</span> კითხვები საძილე არტერიის შესახებ</h2>
+            <div class="po-q-list">
+                <div class="po-q-item">
+                    <div class="po-q-main">
+                        <span class="po-q-text">ბოლო 6 თვეში გქონიათ თუ არა ცალ თვალში მხედველობის დაბინდვა, მეტყველების გაძნელება ან ხელ-ფეხის დაბუჟება/სისუსტე?</span>
+                        <div class="yn-switch" data-toggle-sub="sf-cea-symp">
+                            <label><input type="radio" name="cea_symp_event" value="0" {% if not q.cea_symp_event %}checked{% endif %}>არა</label>
+                            <label><input type="radio" name="cea_symp_event" value="1" {% if q.cea_symp_event %}checked{% endif %}>კი</label>
+                        </div>
+                    </div>
+                    <div class="po-q-sub" id="sf-cea-symp" {% if not q.cea_symp_event %}hidden{% endif %}>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span class="small fw-semibold">ბოლო ეპიზოდის თარიღი:</span>
+                            <input type="date" name="cea_event_date" value="{{ q.cea_event_date }}" class="form-control form-control-sm" style="width:160px">
+                        </div>
+                        <div class="po-chip-row">
+                            {% for ck, cl in chips.cea_event_chips %}
+                            <label class="chip-check"><input type="checkbox" name="cea_event_chips" value="{{ ck }}" {% if ck in q.cea_event_chips %}checked{% endif %}>{{ cl }}</label>
+                            {% endfor %}
+                            <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="cea_crescendo" value="1" {% if q.cea_crescendo %}checked{% endif %}>გამეორდა ბოლო 2 დღეში!</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="po-q-item">
+                    <div class="po-q-main">
+                        <span class="po-q-text">გაქვთ თუ არა კისერზე ნაოპერაციები (ჩიყვი, საძილე არტერია), დასხივება ან ხმის ჩახლეჩა?</span>
+                        <div class="d-flex flex-wrap gap-2">
+                            <label class="chip-check"><input type="checkbox" name="cea_prior_neck" value="1" id="sf-chk-neck" {% if q.cea_prior_neck %}checked{% endif %}>კისრის წინა ოპერაცია / დასხივება</label>
+                            <label class="chip-check"><input type="checkbox" name="cea_hoarseness" value="1" {% if q.cea_hoarseness %}checked{% endif %}>ხმის ჩახლეჩა / ყლაპვის გაძნელება</label>
+                        </div>
+                    </div>
+                    <div class="po-q-sub" id="sf-sub-neck" {% if not q.cea_prior_neck %}hidden{% endif %}>
+                        <div class="po-chip-row">
+                            {% for ck, cl in chips.cea_neck_chips %}
+                            <label class="chip-check"><input type="checkbox" name="cea_neck_chips" value="{{ ck }}" {% if ck in q.cea_neck_chips %}checked{% endif %}>{{ cl }}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {% elif ev.pathway == 'abf' or ev.is_pad_bypass or ev.is_pta %}
+        <section class="x-card">
+            <h2><span class="num">1</span> კითხვები ქვემო კიდურების სისხლის მიმოქცევაზე</h2>
+            <div class="po-q-list">
+                <div class="po-q-item">
+                    <div class="po-q-main">
+                        <span class="po-q-text">რამდენ მეტრს გადიხართ გაუჩერებლად, სანამ ფეხის/წვივის ტკივილი გაგაჩერებთ?</span>
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <input type="number" name="abf_claud_m" value="{{ q.abf_claud_m|default_if_none:'' }}" min="0" max="5000" placeholder="მაგ. 50 მ" class="form-control form-control-sm" style="width:120px">
+                            <label class="chip-check"><input type="checkbox" name="abf_buttock_pain" value="1" {% if q.abf_buttock_pain %}checked{% endif %}>ტკივილი დუნდულოს / ბარძაყის არეში</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="po-q-item">
+                    <div class="po-q-main">
+                        <span class="po-q-text">გაწუხებთ თუ არა ტერფის/თითების ტკივილი მოსვენებულ მდგომარეობაში ან ღამით?</span>
+                        <div class="yn-switch">
+                            <label><input type="radio" name="abf_rest_pain" value="0" {% if not q.abf_rest_pain %}checked{% endif %}>არა</label>
+                            <label><input type="radio" name="abf_rest_pain" value="1" {% if q.abf_rest_pain %}checked{% endif %}>კი</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="po-q-item">
+                    <div class="po-q-main">
+                        <span class="po-q-text">გაქვთ თუ არა ტერფზე ან თითებზე ჭრილობა / წყლული / გაშავებული უბანი?</span>
+                        <div class="yn-switch" data-toggle-sub="sf-ulcer">
+                            <label><input type="radio" name="abf_ulcer" value="0" {% if not q.abf_ulcer %}checked{% endif %}>არა</label>
+                            <label><input type="radio" name="abf_ulcer" value="1" {% if q.abf_ulcer %}checked{% endif %}>კი</label>
+                        </div>
+                    </div>
+                    <div class="po-q-sub" id="sf-ulcer" {% if not q.abf_ulcer %}hidden{% endif %}>
+                        <div class="po-chip-row">
+                            {% for ck, cl in chips.ulcer_chips %}
+                            <label class="chip-check"><input type="checkbox" name="ulcer_chips" value="{{ ck }}" {% if ck in q.ulcer_chips %}checked{% endif %}>{{ cl }}</label>
+                            {% endfor %}
+                            <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="abf_wet_infection" value="1" {% if q.abf_wet_infection %}checked{% endif %}>სველი გამონადენი / სიწითლე</label>
+                        </div>
+                    </div>
+                </div>
+                {% if ev.is_pta %}
+                <div class="po-q-item">
+                    <div class="po-q-main">
+                        <span class="po-q-text">გიჭირთ თუ არა ზურგზე გაუნძრევლად წოლა 1 საათის განმავლობაში (წელის ტკივილის ან ქოშინის გამო)?</span>
+                        <div class="yn-switch">
+                            <label><input type="radio" name="pta_cant_lie_flat" value="0" {% if not q.pta_cant_lie_flat %}checked{% endif %}>არა, შემიძლია</label>
+                            <label><input type="radio" name="pta_cant_lie_flat" value="1" {% if q.pta_cant_lie_flat %}checked{% endif %}>კი, მიჭირს</label>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        {% elif ev.is_venous %}
         <section class="x-card">
             <h2><span class="num">1</span> კითხვები ვენების შესახებ</h2>
             <div class="po-q-list">
@@ -166,10 +312,12 @@
                         <div class="d-flex flex-wrap gap-2">
                             <label class="chip-check"><input type="checkbox" name="htn" value="1" {% if q.htn %}checked{% endif %}>მაღალი წნევა</label>
                             <label class="chip-check"><input type="checkbox" name="dm" value="1" {% if q.dm %}checked{% endif %}>შაქრიანი დიაბეტი</label>
+                            <label class="chip-check"><input type="checkbox" name="on_dialysis" value="1" {% if q.on_dialysis %}checked{% endif %}>დიალიზზე ვარ</label>
                             <label class="chip-check"><input type="checkbox" name="pulm" value="1" {% if q.pulm %}checked{% endif %}>ასთმა / ფილტვების დაავადება</label>
                             <label class="chip-check"><input type="checkbox" name="thyroid_disease" value="1" {% if q.thyroid_disease %}checked{% endif %}>ფარისებრი ჯირკვალი / ჩიყვი</label>
                             <label class="chip-check"><input type="checkbox" name="ulcer" value="1" {% if q.ulcer %}checked{% endif %}>კუჭის წყლული</label>
                             <label class="chip-check"><input type="checkbox" name="neuro" value="1" {% if q.neuro %}checked{% endif %}>გადატანილი ინსულტი</label>
+                            <label class="chip-check"><input type="checkbox" name="pacemaker" value="1" {% if q.pacemaker %}checked{% endif %}>კარდიოსტიმულატორი (აპარატი გულზე)</label>
                         </div>
                     </div>
                 </div>
@@ -177,17 +325,34 @@
                 <div class="po-q-item">
                     <div class="po-q-text">რომელ სისხლის გამათხელებლებსა და მუდმივ წამლებს იღებთ?</div>
                     <div class="po-chip-row">
-                        <label class="chip-check"><input type="checkbox" name="med_aspirin" value="1" {% if q.med_aspirin %}checked{% endif %}>ასპირინი / კარდიომაგნილი</label>
-                        <label class="chip-check"><input type="checkbox" name="med_clopidogrel" value="1" {% if q.med_clopidogrel %}checked{% endif %}>კლოპიდოგრელი</label>
-                        <label class="chip-check"><input type="checkbox" name="med_doac" value="1" {% if q.med_doac %}checked{% endif %}>ქსარელტო / ელიქვისი</label>
+                        <label class="chip-check"><input type="checkbox" name="med_aspirin" value="1" {% if q.med_aspirin %}checked{% endif %}>ასპირინი / კარდიომაგნილი / თრომბო-ასსი</label>
+                        <label class="chip-check"><input type="checkbox" name="med_clopidogrel" value="1" {% if q.med_clopidogrel %}checked{% endif %}>კლოპიდოგრელი (პლავიქსი / ზილტი / ტრომბექსი)</label>
+                        <label class="chip-check"><input type="checkbox" name="med_ticagrelor" value="1" {% if q.med_ticagrelor %}checked{% endif %}>ტიკაგრელორი (ბრილინტა)</label>
+                        <label class="chip-check"><input type="checkbox" name="med_prasugrel" value="1" {% if q.med_prasugrel %}checked{% endif %}>პრასუგრელი (ეფიენტი)</label>
+                        <label class="chip-check"><input type="checkbox" name="med_doac" value="1" {% if q.med_doac %}checked{% endif %}>ქსარელტო / ელიქვისი (10–20 მგ / 5 მგ)</label>
+                        <label class="chip-check"><input type="checkbox" name="med_dabigatran" value="1" {% if q.med_dabigatran %}checked{% endif %}>პრადაქსა (დაბიგატრანი)</label>
                         <label class="chip-check"><input type="checkbox" name="med_warfarin" value="1" {% if q.med_warfarin %}checked{% endif %}>ვარფარინი</label>
-                        <label class="chip-check"><input type="checkbox" name="metformin" value="1" {% if q.metformin %}checked{% endif %}>მეტფორმინი</label>
+                        <label class="chip-check"><input type="checkbox" name="metformin" value="1" {% if q.metformin %}checked{% endif %}>მეტფორმინი (სიოფორი / გლუკოფაჟი)</label>
                         <label class="chip-check"><input type="checkbox" name="sglt2" value="1" {% if q.sglt2 %}checked{% endif %}>ჯარდიანსი / ფორსიგა</label>
-                        {% for ck, cl in chips.med_chips %}
+                        <label class="chip-check"><input type="checkbox" name="glp1" value="1" {% if q.glp1 %}checked{% endif %}>ოზემპიკი / მუნჯარო / საქსენდა (ნემსი)</label>
+                        {% for ck, cl in self_med_hints %}
                         <label class="chip-check"><input type="checkbox" name="med_chips" value="{{ ck }}" {% if ck in q.med_chips %}checked{% endif %}>{{ cl }}</label>
                         {% endfor %}
                     </div>
+                    <input type="text" name="other_meds" value="{{ q.other_meds }}" placeholder="სხვა მუდმივი წამალი (თუ ზემოთ არ წერია)..." class="form-control form-control-sm mt-1">
                 </div>
+
+                {% if not ev.is_venous %}
+                <div class="po-q-item">
+                    <div class="po-q-main">
+                        <span class="po-q-text">გაქვთ თუ არა ალერგია იოდზე ან კომპიუტერული ტომოგრაფიის კონტრასტზე?</span>
+                        <div class="yn-switch">
+                            <label><input type="radio" name="allergy_iodine" value="0" {% if not q.allergy_iodine %}checked{% endif %}>არა</label>
+                            <label><input type="radio" name="allergy_iodine" value="1" {% if q.allergy_iodine %}checked{% endif %}>კი</label>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
 
                 <div class="po-q-item">
                     <div class="po-q-main">
@@ -200,6 +365,7 @@
                             <label class="chip-check"><input type="checkbox" name="allergy_chips" value="{{ ck }}" {% if ck in q.allergy_chips %}checked{% endif %}>{{ cl }}</label>
                             {% endfor %}
                         </div>
+                        <input type="text" name="allergy_text" value="{{ q.allergy_text }}" placeholder="დააზუსტეთ სხვა ალერგია (თუ გაქვთ)..." class="form-control form-control-sm w-100 mt-1">
                     </div>
                 </div>
 
@@ -234,11 +400,13 @@
             });
         });
     });
-    var alg = document.getElementById('sf-chk-alg');
-    var subAlg = document.getElementById('sf-sub-alg');
-    if (alg && subAlg) {
-        alg.addEventListener('change', function () { subAlg.hidden = !alg.checked; });
-    }
+    [['sf-chk-alg', 'sf-sub-alg'], ['sf-chk-neck', 'sf-sub-neck']].forEach(function (pair) {
+        var chk = document.getElementById(pair[0]);
+        var sub = document.getElementById(pair[1]);
+        if (chk && sub) {
+            chk.addEventListener('change', function () { sub.hidden = !chk.checked; });
+        }
+    });
 })();
 </script>
 </body>

@@ -1,6 +1,6 @@
 <a href="{% url 'preop-patient' p.pk %}" class="tw-row st-{{ p.ev.status }}"
    draggable="true" data-move-url="{% url 'preop-move' p.pk %}"
-   title="{{ p.patient_name }} — {{ p.planned_operation_label }} — {{ p.ev.status_label }}">
+   title="{{ p.patient_name }} — {{ p.planned_operation_label }} — {{ p.ev.status_label }} ({{ p.ev.priority_label }})">
     <div class="tw-row-main">
         <div class="tw-row-top">
             <span class="dot dot-{{ p.ev.status }}" style="width:7px;height:7px;border-radius:50%;flex:none"></span>
@@ -8,13 +8,18 @@
             {% if p.ev.key_badge %}
             <span class="tw-mm {% if p.ev.key_badge_urgent %}giant{% endif %}">{{ p.ev.key_badge }}</span>
             {% endif %}
+            {% if p.ev.priority_tier == 'urgent' and not p.approved_at %}
+            <span class="tw-prio-tag">სასწრაფო</span>
+            {% endif %}
         </div>
         <div class="tw-row-sub">
             {{ p.planned_operation_label }}{% if p.surgeon_name %} · ექ. {{ p.surgeon_name }}{% endif %}
         </div>
     </div>
     <div class="tw-row-meta">
-        {% if p.ev.days_elapsed > 0 %}
+        {% if p.ev.is_on_hold %}
+        <span class="tw-clock">პაუზა</span>
+        {% elif p.ev.days_elapsed > 0 %}
         <span class="tw-clock {% if p.ev.over_target_days %}late{% endif %}">დღე {{ p.ev.days_elapsed }}/{{ p.ev.target_days }}</span>
         {% endif %}
         <span class="tw-prog">{{ p.ev.done_count }}/{{ p.ev.total_count }}</span>
