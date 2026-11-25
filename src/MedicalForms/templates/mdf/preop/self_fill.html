@@ -281,9 +281,17 @@
                 <div class="po-q-item">
                     <div class="po-q-main">
                         <span class="po-q-text">ახერხებთ თუ არა 2 სართულზე ასვლას გაუჩერებლად, ქოშინისა და გულის ტკივილის გარეშე?</span>
-                        <div class="yn-switch mets">
+                        <div class="yn-switch mets" id="sf-sw-mets">
                             <label><input type="radio" name="mets_ok" value="1" {% if q.mets_ok %}checked{% endif %}>კი</label>
                             <label><input type="radio" name="mets_ok" value="0" {% if not q.mets_ok %}checked{% endif %}>მიჭირს</label>
+                        </div>
+                    </div>
+                    <div class="po-q-sub" id="sf-sub-mets" {% if q.mets_ok %}hidden{% endif %}>
+                        <span class="small fw-semibold">რის გამო გიჭირთ კიბეზე ასვლა?</span>
+                        <div class="po-chip-row mt-1">
+                            {% for mk, ml in mets_limit_choices %}
+                            <label class="chip-check"><input type="radio" name="mets_limitation" value="{{ mk }}" {% if q.mets_limitation == mk or not q.mets_limitation and mk == 'cardiac' %}checked{% endif %}>{{ ml }}</label>
+                            {% endfor %}
                         </div>
                     </div>
                 </div>
@@ -315,10 +323,15 @@
                             <label class="chip-check"><input type="checkbox" name="on_dialysis" value="1" {% if q.on_dialysis %}checked{% endif %}>დიალიზზე ვარ</label>
                             <label class="chip-check"><input type="checkbox" name="pulm" value="1" {% if q.pulm %}checked{% endif %}>ასთმა / ფილტვების დაავადება</label>
                             <label class="chip-check"><input type="checkbox" name="thyroid_disease" value="1" {% if q.thyroid_disease %}checked{% endif %}>ფარისებრი ჯირკვალი / ჩიყვი</label>
-                            <label class="chip-check"><input type="checkbox" name="ulcer" value="1" {% if q.ulcer %}checked{% endif %}>კუჭის წყლული</label>
+                            <label class="chip-check"><input type="checkbox" name="ulcer" value="1" id="sf-chk-ulcer" {% if q.ulcer %}checked{% endif %}>კუჭის წყლული</label>
                             <label class="chip-check"><input type="checkbox" name="neuro" value="1" {% if q.neuro %}checked{% endif %}>გადატანილი ინსულტი</label>
                             <label class="chip-check"><input type="checkbox" name="pacemaker" value="1" {% if q.pacemaker %}checked{% endif %}>კარდიოსტიმულატორი (აპარატი გულზე)</label>
                         </div>
+                    </div>
+                    <div class="po-q-sub" id="sf-sub-ulcer" {% if not q.ulcer %}hidden{% endif %}>
+                        <label class="chip-check" style="border-color:#FECDCA">
+                            <input type="checkbox" name="ulcer_active_symp" value="1" {% if q.ulcer_active_symp %}checked{% endif %}>ამჟამად მაწუხებს კუჭის ტკივილი / გულძმარვა / შავი განავალი
+                        </label>
                     </div>
                 </div>
 
@@ -400,7 +413,16 @@
             });
         });
     });
-    [['sf-chk-alg', 'sf-sub-alg'], ['sf-chk-neck', 'sf-sub-neck']].forEach(function (pair) {
+    var swMets = document.getElementById('sf-sw-mets');
+    var subMets = document.getElementById('sf-sub-mets');
+    if (swMets && subMets) {
+        swMets.querySelectorAll('input[type="radio"]').forEach(function (r) {
+            r.addEventListener('change', function () {
+                subMets.hidden = (r.value !== '0' || !r.checked);
+            });
+        });
+    }
+    [['sf-chk-alg', 'sf-sub-alg'], ['sf-chk-neck', 'sf-sub-neck'], ['sf-chk-ulcer', 'sf-sub-ulcer']].forEach(function (pair) {
         var chk = document.getElementById(pair[0]);
         var sub = document.getElementById(pair[1]);
         if (chk && sub) {

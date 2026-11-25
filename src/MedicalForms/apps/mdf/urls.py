@@ -97,6 +97,7 @@ urlpatterns = [
     path('preop/new/', preop.PreopCreateView.as_view(), name='preop-new'),
     path('preop/<int:pk>/', preop.PreopPatientView.as_view(), name='preop-patient'),
     path('preop/<int:pk>/passport/', preop.PreopPassportView.as_view(), name='preop-passport'),
+    path('preop/<int:pk>/admit-board/', preop.PreopBoardHandoffView.as_view(), name='preop-admit-board'),
     path('preop/fill/<str:token>/', preop.PreopSelfFillView.as_view(), name='preop-self-fill'),
     path('preop/<int:pk>/move/', preop.PreopMoveView.as_view(), name='preop-move'),
     path('preop/<int:pk>/files/', preop.PreopFileUploadView.as_view(), name='preop-files'),

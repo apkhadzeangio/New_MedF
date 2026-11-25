@@ -84,13 +84,13 @@
             <div class="pp-kv"><b>სისხლის ჯგუფი</b><span>{{ s.blood_group|default:"—" }}</span></div>
             <div class="pp-kv"><b>Hb / WBC / PLT</b><span {% if ev.hb_gl and ev.hb_gl < 115 %}class="bad"{% endif %}>{{ ev.hb_gl|default:"—" }} გ/ლ · {{ s.wbc|default:"—" }} · {{ s.plt|default:"—" }}</span></div>
             <div class="pp-kv"><b>INR / ფიბრინოგენი</b><span {% if s.inr and s.inr > 1.35 %}class="bad"{% endif %}>{{ s.inr|default:"—" }}{% if s.aptt_prolonged %} (APTT↑){% endif %} · {{ s.fibrinogen|default:"—" }}</span></div>
-            <div class="pp-kv"><b>კრეატინინი / eGFR / CrCl</b><span {% if ev.egfr and ev.egfr < 60 or q.on_dialysis %}class="bad"{% endif %}>{% if q.on_dialysis %}დიალიზი{% else %}{{ s.creat|default:"—" }} · eGFR {{ ev.egfr|default:"—" }}{% if ev.crcl %} · CrCl {{ ev.crcl }}{% endif %}{% endif %}</span></div>
+            <div class="pp-kv"><b>კრეატინინი / eGFR / CrCl</b><span {% if ev.egfr and ev.egfr < 60 or q.on_dialysis %}class="bad"{% endif %}>{% if q.on_dialysis %}დიალიზი{% else %}{{ s.creat|default:"—" }} · eGFR {{ ev.egfr|default:"—" }}{% if ev.crcl %} · CrCl {{ ev.crcl }}{% endif %}{% if ev.max_contrast_ml is not None %} · კონტრ. &le;{{ ev.max_contrast_ml }} მლ{% endif %}{% endif %}</span></div>
             <div class="pp-kv"><b>K⁺ / Na⁺ / ალბუმინი</b><span>{{ s.k|default:"—" }} / {{ s.na|default:"—" }} · ალბ. {{ ev.alb_gl|default:"—" }}</span></div>
             <div class="pp-kv"><b>გლუკოზა / HbA1c</b><span {% if ev.gl_mmol and ev.gl_mmol >= 7.0 %}class="bad"{% endif %}>{{ ev.gl_mmol|default:"—" }} მმოლ/ლ{% if s.hba1c %} · {{ s.hba1c }}%{% endif %}</span></div>
             <div class="pp-kv"><b>შარდის ლეიკოციტები</b><span {% if ev.uti_suspected %}class="bad"{% endif %}>{{ s.urine_wbc|default:"—" }} მხ/არ{% if s.urine_nitrite %} (ნიტრ.+){% endif %}</span></div>
-            <div class="pp-kv"><b>ექო (LVEF) / ეკგ</b><span>{% if s.lvef %}{{ s.lvef }}%{% else %}—{% endif %} · {{ ev.ecg_label }}</span></div>
+            <div class="pp-kv"><b>ექო / NT-proBNP / ეკგ</b><span>{% if s.lvef %}LVEF {{ s.lvef }}%{% elif ev.nt_probnp is not None %}BNP {{ ev.nt_probnp }}{% else %}—{% endif %}{% if ev.hs_ctn is not None %} · hs-cTn {{ ev.hs_ctn }}{% endif %} · {{ ev.ecg_label }}</span></div>
             <div class="pp-kv"><b>საძილეები / ABI / TP</b><span>ICA {{ s.carotid_r|default:"—" }}%/{{ s.carotid_l|default:"—" }}% · ABI {{ s.abi_r|default:"—" }}/{{ s.abi_l|default:"—" }}{% if ev.min_tp %} · TP {{ s.tp_r|default:"—" }}/{{ s.tp_l|default:"—" }}{% elif ev.min_tbi %} · TBI {{ s.tbi_r|default:"—" }}/{{ s.tbi_l|default:"—" }}{% endif %}</span></div>
-            <div class="pp-kv"><b>რენტგენი / FEV1</b><span>{{ ev.cxr_label }}{% if s.spiro_fev1 %} · FEV1 {{ s.spiro_fev1 }}%{% endif %}</span></div>
+            <div class="pp-kv"><b>რენტგენი / FEV1 / რკინა</b><span>{{ ev.cxr_label }}{% if s.spiro_fev1 %} · FEV1 {{ s.spiro_fev1 }}%{% endif %}{% if s.ferritin %} · Fer {{ s.ferritin }}{% endif %}{% if ev.tsat is not None %} · TSAT {{ ev.tsat }}%{% endif %}</span></div>
         </div>
     </section>
 
@@ -118,6 +118,12 @@
             <div>{% if t.done %}<span class="ok">[✓]</span>{% else %}<span class="bad">[ ]</span>{% endif %} {{ t.label }}</div>
             {% endfor %}
         </div>
+        {% if ev.post_antithrombotic_label or s.cell_saver_ready %}
+        <div style="margin-top:6px;padding-top:5px;border-top:1px dashed #EAECF0">
+            {% if ev.post_antithrombotic_label %}<div><strong>პოსტოპერაციული ანტითრომბოზული გეგმა:</strong> {{ ev.post_antithrombotic_label }}</div>{% endif %}
+            {% if s.cell_saver_ready %}<div><strong>ინტრაოპერაციული PBM:</strong> Cell Saver + ტრანექსამის მჟავა (TXA) მზადყოფნა ✓</div>{% endif %}
+        </div>
+        {% endif %}
         {% if ev.needs_cardio or p.cardio_decision %}
         <div style="margin-top:6px;padding-top:5px;border-top:1px dashed #EAECF0">
             <strong>კარდიოლოგი ({{ p.cardiologist|default:"ლიკა ინჯია" }}):</strong>
