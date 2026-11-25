@@ -22,6 +22,14 @@
                     <span class="dot dot-{{ ev.status }}" style="width:8px;height:8px;border-radius:50%"></span>
                     {{ ev.status_label }}
                 </span>
+                <span class="po-badge st-in_progress" title="ანესთეზიოლოგიური ფიზიკური სტატუსი">{{ ev.effective_asa }}</span>
+                {% if ev.case_outcome == 'operated' %}
+                <span class="po-badge st-ready">✓ ნაოპერაციები{% if ev.operated_date_ka %} ({{ ev.operated_date_ka }}){% endif %}</span>
+                {% elif ev.case_outcome != 'scheduled' %}
+                <span class="po-badge st-needs_doctor">{{ ev.case_outcome_label }}</span>
+                {% elif ev.planned_surgery_ka %}
+                <span class="tw-clock" style="font-size:13px;padding:4px 10px">ოპერაცია: {{ ev.planned_surgery_ka }}</span>
+                {% endif %}
                 {% if ev.priority_tier == 'urgent' or ev.priority_tier == 'high' %}
                 <span class="po-badge prio-{{ ev.priority_tier }}">{{ ev.priority_label }}</span>
                 {% endif %}
@@ -137,7 +145,13 @@
                 </div>
             </div>
             <div class="d-flex flex-wrap align-items-end gap-2 pt-1">
-                <label class="fld" style="width:190px">განთავსება კალენდარში
+                <label class="fld" style="width:146px">პირადი N (11 ციფრი)
+                    <input type="text" name="person_id" value="{{ ev.person_id }}" maxlength="11" inputmode="numeric" placeholder="010XXXXXXXX" class="form-control">
+                </label>
+                <label class="fld" style="width:152px">დაბ. თარიღი
+                    <input type="date" name="birth_date" value="{{ s.birth_date }}" class="form-control">
+                </label>
+                <label class="fld" style="width:176px">განთავსება კალენდარში
                     <select name="slot_kind" id="slot-kind-sel" class="form-select">
                         <option value="dated" {% if not p.someday_list %}selected{% endif %}>კონკრეტულ დღეზე</option>
                         {% for skey, slbl in someday_choices %}
@@ -145,10 +159,13 @@
                         {% endfor %}
                     </select>
                 </label>
-                <label class="fld" id="visit-date-wrap" style="width:170px" {% if p.someday_list %}hidden{% endif %}>მოსვლის თარიღი
+                <label class="fld" id="visit-date-wrap" style="width:152px" {% if p.someday_list %}hidden{% endif %}>მოსვლის თარიღი
                     <input type="date" name="visit_date" value="{{ p.visit_date|date:'Y-m-d'|default:today|date:'Y-m-d' }}" class="form-control">
                 </label>
-                <label class="fld" style="width:180px">ტელეფონი
+                <label class="fld" style="width:158px" title="ავტომატურად ითვლის წამლების შეჩერების კალენდარულ თარიღებს">ოპერაციის თარიღი
+                    <input type="date" name="planned_surgery_date" value="{{ s.planned_surgery_date }}" class="form-control">
+                </label>
+                <label class="fld" style="width:150px">ტელეფონი
                     <input type="text" name="phone" value="{{ p.phone }}" placeholder="5XX XX XX XX" class="form-control">
                 </label>
                 <button type="submit" class="x-btn sm">განახლება</button>
@@ -196,7 +213,7 @@
     </div>
     {% endif %}
 
-    <!-- 4 Step Workspace Tabs -->
+    <!-- 5 Step Workspace Tabs -->
     <nav class="po-tabs" aria-label="მომზადების ეტაპები">
         <button type="button" class="po-tab {% if tab == 'q' %}on{% endif %}" data-tab="q">
             1. კითხვარები {% if q.filled %}✓{% endif %}
@@ -208,7 +225,10 @@
             3. საფეხური 2 — გეგმა ({{ ev.done_count }}/{{ ev.total_count }})
         </button>
         <button type="button" class="po-tab {% if tab == 'doc' %}on{% endif %}" data-tab="doc">
-            4. ანამნეზი და ექიმის დასტური {% if p.approved_at %}✓{% endif %}
+            4. ანამნეზი და დასტური {% if p.approved_at %}✓{% endif %}
+        </button>
+        <button type="button" class="po-tab {% if tab == 'dos' %}on{% endif %}" data-tab="dos">
+            5. ოპერაციის დილა &amp; VQI ({{ ev.dos_done_count }}/{{ ev.dos_total_count }}){% if ev.case_outcome == 'operated' %} ✓{% endif %}
         </button>
     </nav>
 
@@ -1771,9 +1791,11 @@
                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-1">
                         <div class="small fw-bold">გაუტკივარების რეჟიმი და მედიკამენტების სქემა (ESC 2022 / ESVS / ASRA 5th Ed):</div>
                         <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span class="small text-muted">დაგეგმილი ოპერაციის თარიღი:</span>
+                            <input type="date" name="planned_surgery_date" value="{{ s.planned_surgery_date }}" class="form-control form-control-sm" style="width:152px" title="ავტომატურად ითვლის წამლების შეჩერების ზუსტ კალენდარულ თარიღებს">
                             {% if ev.pathway == 'abf' or ev.is_pad_bypass or ev.is_pta %}
-                            <span class="small text-muted">პოსტოპ. ანტითრომბოზული (VOYAGER PAD):</span>
-                            <select name="post_antithrombotic_plan" class="form-select form-select-sm" style="width:auto;max-width:340px">
+                            <span class="small text-muted">პოსტოპ. ანტითრომბოზული:</span>
+                            <select name="post_antithrombotic_plan" class="form-select form-select-sm" style="width:auto;max-width:300px">
                                 {% for pk_ant, pl_ant in post_antithrombotic_choices %}
                                 <option value="{{ pk_ant }}" {% if s.post_antithrombotic_plan == pk_ant %}selected{% endif %}>{{ pl_ant }}</option>
                                 {% endfor %}
@@ -1787,6 +1809,9 @@
                             </select>
                         </div>
                     </div>
+                    <div class="po-alert {% if q.glp1 %}amber{% else %}reflex{% endif %}" style="padding:8px 12px;font-size:13px">
+                        <span><strong>{{ ev.fasting_instruction }}</strong></span>
+                    </div>
                     {% endif %}
 
                     {% if ev.med_schedule %}
@@ -1795,6 +1820,7 @@
                             <thead>
                                 <tr>
                                     <th>მედიკამენტი</th>
+                                    {% if ev.planned_surgery_ka %}<th>კალენდარული გეგმა (ოპ: {{ ev.planned_surgery_ka }})</th>{% endif %}
                                     <th>პროტოკოლური რეჟიმი</th>
                                 </tr>
                             </thead>
@@ -1802,6 +1828,7 @@
                                 {% for m in ev.med_schedule %}
                                 <tr>
                                     <td><strong>{{ m.drug }}</strong></td>
+                                    {% if ev.planned_surgery_ka %}<td class="po-med-tone-{{ m.tone }}"><strong>{{ m.date_plan }}</strong></td>{% endif %}
                                     <td class="po-med-tone-{{ m.tone }}">{{ m.rule }}</td>
                                 </tr>
                                 {% endfor %}
@@ -1833,6 +1860,71 @@
                         <label class="chip-check" style="height:32px"><input type="checkbox" name="anesth_done" value="1" {% if s.anesth_done %}checked{% endif %}>სედაცია / ანესთეზიოლოგი ჩაერთო</label>
                     </div>
                     {% endif %}
+                </div>
+
+                <!-- Structured Anesthesiology Cabinet (ESAIC 2024 / RCoA / ASRA) -->
+                <div class="pt-2 mt-1 border-top" style="border-color:var(--line-soft)!important">
+                    <input type="hidden" name="anesth_cabinet_present" value="1">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                        <div class="small fw-bold">სტრუქტურირებული ანესთეზიოლოგიური კაბინეტი (ESAIC 2024 / RCoA):</div>
+                        <div class="d-flex flex-wrap gap-1">
+                            <span class="po-badge st-in_progress">{{ ev.effective_asa }} (ავტო: ASA {{ ev.auto_asa }})</span>
+                            <span class="po-badge {% if ev.effective_stop_bang == 'high' %}st-alert{% else %}st-ready{% endif %}">STOP-Bang: {{ ev.stop_bang_label }}</span>
+                            {% if ev.needs_icu_bed %}
+                            <span class="po-badge {% if s.icu_bed_booked %}st-ready{% else %}st-alert{% endif %}">
+                                ICU საწოლი: {% if s.icu_bed_booked %}დაჯავშნილია ✓{% else %}საჭიროა ჯავშანი!{% endif %}
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="grid-4">
+                        <label class="fld">ASA ფიზიკური სტატუსი
+                            <select name="asa_class" class="form-select form-select-sm">
+                                {% for ak, al in asa_choices %}
+                                <option value="{{ ak }}" {% if s.asa_class == ak %}selected{% endif %}>{{ al }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="fld">სასუნთქი გზები (Mallampati)
+                            <select name="airway_mallampati" class="form-select form-select-sm">
+                                {% for mk, ml in mallampati_choices %}
+                                <option value="{{ mk }}" {% if s.airway_mallampati == mk %}selected{% endif %}>{{ ml }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="fld">ძილის აპნოეს რისკი (STOP-Bang)
+                            <select name="stop_bang_risk" class="form-select form-select-sm">
+                                {% for sk, sl in stop_bang_choices %}
+                                <option value="{{ sk }}" {% if s.stop_bang_risk == sk %}selected{% endif %}>{{ sl }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        {% if ev.needs_cied %}
+                        <label class="fld">კარდიოსტიმულატორის / ICD რეჟიმი
+                            <select name="cied_plan" class="form-select form-select-sm">
+                                {% for ck_p, cl_p in cied_plan_choices %}
+                                <option value="{{ ck_p }}" {% if s.cied_plan == ck_p %}selected{% endif %}>{{ cl_p }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        {% else %}
+                        <div class="d-flex align-items-end">
+                            <label class="chip-check"><input type="checkbox" name="asa_emergency" value="1" {% if s.asa_emergency %}checked{% endif %}>ASA-E (გადაუდებელი / სასწრაფო)</label>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="po-chip-row mt-2">
+                        <span class="small text-muted fw-semibold">ინვაზიური ხაზები და მონიტორინგი:</span>
+                        {% for lk, ll in chips.anesth_lines_chips %}
+                        <label class="chip-check"><input type="checkbox" name="anesth_lines_chips" value="{{ lk }}" {% if lk in s.anesth_lines_chips %}checked{% endif %}>{{ ll }}</label>
+                        {% endfor %}
+                        {% if ev.needs_cied %}
+                        <label class="chip-check"><input type="checkbox" name="asa_emergency" value="1" {% if s.asa_emergency %}checked{% endif %}>ASA-E (გადაუდებელი)</label>
+                        {% endif %}
+                        {% if ev.needs_icu_bed %}
+                        <label class="chip-check" style="border-color:#A9D8C1"><input type="checkbox" name="icu_bed_booked" value="1" {% if s.icu_bed_booked %}checked{% endif %}>ICU / HDU საწოლი დაჯავშნილია ✓</label>
+                        {% endif %}
+                    </div>
                 </div>
 
                 {% if not ev.needs_cardio %}
@@ -2013,6 +2105,161 @@
             </section>
         </form>
     </div>
+
+    <!-- ==================================================================
+         TAB 5: DAY-OF-SURGERY (WHO SIGN-IN), CANCELLATION AUDIT & 30-DAY VQI
+         ================================================================== -->
+    <div class="po-pane" data-pane="dos" {% if tab != 'dos' %}hidden{% endif %}>
+        <form method="post" class="d-flex flex-column gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="dos_vqi">
+            <input type="hidden" name="dos_form_present" value="1">
+
+            <!-- 1. Day-of-Surgery WHO Sign-In Gate & Morning POC Vitals -->
+            <section class="x-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">ოპერაციის დილის კარიბჭე — WHO Sign-In ({{ ev.dos_done_count }}/{{ ev.dos_total_count }})</h2>
+                    {% if ev.dos_hold_danger %}
+                    <span class="po-badge st-alert">საოპერაციო შეჩერება — საშიში დილის მაჩვენებელი!</span>
+                    {% elif ev.dos_ready %}
+                    <span class="po-badge st-ready">✓ მზადაა საოპერაციოში შესაყვანად</span>
+                    {% else %}
+                    <span class="po-badge st-in_progress">დილის გადამოწმება მიმდინარეობს</span>
+                    {% endif %}
+                </div>
+
+                {% for dw in ev.dos_warnings %}
+                <div class="po-alert red">
+                    <span><strong>ოპერაციის დილის STOP-სიგნალი:</strong> {{ dw }}</span>
+                </div>
+                {% endfor %}
+
+                <div class="grid-4">
+                    <label class="fld">დაგეგმილი ოპერაციის თარიღი
+                        <input type="date" name="planned_surgery_date" value="{{ s.planned_surgery_date }}" class="form-control">
+                    </label>
+                    <div class="d-flex gap-2">
+                        <label class="fld" style="flex:1">დილის SBP
+                            <input type="number" name="dos_bp_sys" value="{{ s.dos_bp_sys|default_if_none:'' }}" placeholder="130" class="form-control">
+                        </label>
+                        <label class="fld" style="flex:1">დილის DBP
+                            <input type="number" name="dos_bp_dia" value="{{ s.dos_bp_dia|default_if_none:'' }}" placeholder="80" class="form-control">
+                        </label>
+                    </div>
+                    <label class="fld">დილის გლუკოზა (მმოლ/ლ)
+                        <input type="number" step="any" name="dos_glucose" value="{{ s.dos_glucose|default_if_none:'' }}" placeholder="მაგ. 5.8" class="form-control">
+                    </label>
+                    <label class="fld">დილის საკონტროლო INR (ჩვენებით)
+                        <input type="number" step="any" name="dos_inr" value="{{ s.dos_inr|default_if_none:'' }}" placeholder="მაგ. 1.08" class="form-control">
+                    </label>
+                </div>
+
+                <div class="d-flex flex-column gap-2 pt-1">
+                    {% for dc in ev.dos_checks %}
+                    <div class="po-task-row {% if dc.done %}done{% endif %}">
+                        <span><strong>{{ forloop.counter }}.</strong> {{ dc.label }}</span>
+                        <label class="chip-check" style="height:34px">
+                            <input type="checkbox" name="{{ dc.key }}" value="1" {% if dc.done %}checked{% endif %}>დადასტურებულია ✓
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-2 border-top" style="border-color:var(--line-soft)!important">
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <span class="small text-muted fw-semibold">პოსტოპერაციული განყოფილება:</span>
+                        <select name="unit" class="form-select form-select-sm" style="width:128px">
+                            <option value="icu" {% if default_board_unit == 'icu' %}selected{% endif %}>რეანიმაცია (ICU)</option>
+                            <option value="ward" {% if default_board_unit == 'ward' %}selected{% endif %}>პალატა (სტაც.)</option>
+                        </select>
+                        <input type="text" name="bed" value="{{ board_patient.bed|default:'' }}" placeholder="საწოლი" maxlength="20" class="form-control form-control-sm" style="width:86px">
+                        <button type="submit" name="action" value="complete_and_board" class="x-btn ok">
+                            ✓ ოპერაცია შესრულდა → გადაყვანა დაფაზე
+                        </button>
+                    </div>
+                    <button type="submit" name="action" value="save_dos" class="x-btn primary">დილის ჩეკლისტის შენახვა</button>
+                </div>
+            </section>
+
+            <!-- 2. Case Outcome & Day-of-Surgery Cancellation Audit -->
+            <section class="x-card">
+                <h2>ოპერაციის სტატუსი და გაუქმების / გადადების აუდიტი</h2>
+                <div class="grid-3">
+                    <label class="fld" style="grid-column:span 2">შემთხვევის სტატუსი
+                        <select name="case_outcome_status" class="form-select" id="sel-case-outcome">
+                            {% for ok, ol in case_outcome_choices %}
+                            <option value="{{ ok }}" {% if ev.case_outcome == ok %}selected{% endif %}>{{ ol }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="fld">ჩატარების / გადაწყვეტილების თარიღი
+                        <input type="date" name="operated_date" value="{{ s.operated_date }}" class="form-control">
+                    </label>
+                </div>
+
+                <div id="wrap-cancel-reasons" {% if ev.case_outcome == 'scheduled' or ev.case_outcome == 'operated' %}{% if not s.cancel_reason_chips %}hidden{% endif %}{% endif %}>
+                    <span class="small fw-semibold text-muted">გაუქმების / გადადების მიზეზი (1-წკაპით აუდიტისთვის):</span>
+                    <div class="po-chip-row mt-1">
+                        {% for ck, cl in chips.cancel_reason_chips %}
+                        <label class="chip-check"><input type="checkbox" name="cancel_reason_chips" value="{{ ck }}" {% if ck in s.cancel_reason_chips %}checked{% endif %}>{{ cl }}</label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. 30-Day SVS VQI / UK NVR Registry & ESVS Surveillance Schedule -->
+            <section class="x-card">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="m-0">30-დღიანი SVS VQI / NVR ხარისხის რეესტრი და მეთვალყურეობა</h2>
+                    {% if ev.vqi_bundle_done %}
+                    <span class="po-badge st-ready">✓ VQI გაწერის ბანდლი შესრულებულია</span>
+                    {% else %}
+                    <span class="po-badge st-in_progress">SVS VQI სტანდარტი</span>
+                    {% endif %}
+                </div>
+
+                <div class="po-alert reflex" style="padding:10px 14px;font-size:13.5px">
+                    <div>
+                        <strong>პროტოკოლური პოსტოპერაციული მეთვალყურეობა:</strong> {{ ev.surveillance_plan }}
+                        {% if ev.post_antithrombotic_label %}<div class="mt-1"><strong>პოსტოპ. ანტითრომბოზული რეჟიმი:</strong> {{ ev.post_antithrombotic_label }}</div>{% endif %}
+                    </div>
+                </div>
+
+                <div>
+                    <span class="small fw-semibold text-muted">გაწერის ხარისხის ბანდლი (SVS VQI / ESVS Class I):</span>
+                    <div class="po-chip-row mt-1">
+                        <label class="chip-check"><input type="checkbox" name="vqi_discharge_antiplatelet" value="1" {% if s.vqi_discharge_antiplatelet %}checked{% endif %}>გაწერა ანტიაგრეგანტით / OAC-ით ✓</label>
+                        <label class="chip-check"><input type="checkbox" name="vqi_discharge_statin" value="1" {% if s.vqi_discharge_statin %}checked{% endif %}>გაწერა მაღალი ინტენსივობის სტატინით ✓</label>
+                        <label class="chip-check"><input type="checkbox" name="vqi_smoking_cessation" value="1" {% if s.vqi_smoking_cessation %}checked{% endif %}>თამბაქოს შეწყვეტის რეკომენდაცია ✓</label>
+                        <label class="chip-check"><input type="checkbox" name="vqi_surveillance_scheduled" value="1" {% if s.vqi_surveillance_scheduled %}checked{% endif %}>საკონტროლო დუპლექსი / CTA დანიშნულია ✓</label>
+                    </div>
+                </div>
+
+                <div class="grid-2 pt-1">
+                    <label class="fld">30-დღიანი კლინიკური გამოსავალი
+                        <select name="vqi_30d_status" class="form-select">
+                            {% for vk, vl in vqi_30d_choices %}
+                            <option value="{{ vk }}" {% if ev.vqi_30d_status == vk %}selected{% endif %}>{{ vl }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <div>
+                    <span class="small fw-semibold text-muted">30-დღიანი გართულებები (მონიშნეთ მხოლოდ გამოვლენის შემთხვევაში):</span>
+                    <div class="po-chip-row mt-1">
+                        {% for vck, vcl in chips.vqi_complication_chips %}
+                        <label class="chip-check"><input type="checkbox" name="vqi_complication_chips" value="{{ vck }}" {% if vck in s.vqi_complication_chips %}checked{% endif %}>{{ vcl }}</label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end">
+                    <button type="submit" name="action" value="save_dos" class="x-btn primary">სტატუსისა და VQI რეესტრის შენახვა</button>
+                </div>
+            </section>
+        </form>
+    </div>
 </div>
 {% endblock %}
 
@@ -2101,6 +2348,14 @@
             });
         }
     });
+
+    var outSel = document.getElementById('sel-case-outcome');
+    var cancelWrap = document.getElementById('wrap-cancel-reasons');
+    if (outSel && cancelWrap) {
+        outSel.addEventListener('change', function () {
+            cancelWrap.hidden = (outSel.value.indexOf('cancelled_') !== 0);
+        });
+    }
 })();
 </script>
 {% endblock %}

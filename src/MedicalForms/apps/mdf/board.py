@@ -311,10 +311,12 @@ class PatientView(LoginRequiredMixin, generic.TemplateView):
         if kind not in (BoardEntry.STATUS, BoardEntry.TASK, BoardEntry.COMMENT):
             # the attending doctor usually gives tasks, everybody else writes the state
             kind = BoardEntry.TASK if patient.doctor_id == self.request.user.pk else BoardEntry.STATUS
+        from .preop import resolve_preop_for_board
         ctx.update({
             'patient': patient, 'groups': groups, 'open_tasks': open_tasks, 'done_tasks': done_tasks,
             'kind': kind, 'day': day_label(duty_date_for()),
             'is_attending': patient.doctor_id == self.request.user.pk,
+            'preop_patient': resolve_preop_for_board(patient),
         })
         return ctx
 

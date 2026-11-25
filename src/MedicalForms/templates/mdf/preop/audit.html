@@ -75,7 +75,82 @@
     </section>
 
     <section class="x-card">
-        <h2>პაციენტების დეტალური ჟურნალი</h2>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <h2 class="m-0">საოპერაციო გაუქმებებისა და 30-დღიანი SVS VQI / NVR ხარისხის რეესტრი</h2>
+            <span class="small text-muted">სამიზნე: გაუქმება &lt;5% · გაწერის სტატინი+ანტიაგრეგანტი &ge;90% · სიმპტომური CEA &le;14 დღეში</span>
+        </div>
+
+        <div class="au-kpis">
+            <div class="au-kpi">
+                <small>ჩატარებული ოპერაცია</small>
+                <b style="color:var(--ok)">{{ operated_total }}</b>
+            </div>
+            <div class="au-kpi {% if cancelled_total %}bad{% endif %}">
+                <small>გაუქმებული / გადადებული</small>
+                <b>{{ cancelled_total }}{% if operated_total or cancelled_total %} <span class="small fw-normal">({{ cancel_rate_pct }}%)</span>{% endif %}</b>
+            </div>
+            <div class="au-kpi {% if vqi_statin_ap_pct is not None and vqi_statin_ap_pct < 90 %}bad{% endif %}">
+                <small>VQI გაწერა: სტატინი + ანტიაგრეგანტი</small>
+                <b>{% if vqi_statin_ap_pct is not None %}{{ vqi_statin_ap_pct }}% <span class="small fw-normal">({{ vqi_statin_ap_count }}/{{ arterial_operated_total }})</span>{% else %}—{% endif %}</b>
+            </div>
+            <div class="au-kpi {% if vqi_complication_total %}bad{% endif %}">
+                <small>30 დღე გართულების გარეშე{% if cea_symp_within_14d_pct is not None %} · CEA &le;14დღ{% endif %}</small>
+                <b>{% if vqi_uneventful_30d_pct is not None %}{{ vqi_uneventful_30d_pct }}%{% else %}—{% endif %}{% if cea_symp_within_14d_pct is not None %} <span class="small fw-normal">· {{ cea_symp_within_14d_pct }}%</span>{% endif %}</b>
+            </div>
+        </div>
+
+        {% if cancel_reason_rows %}
+        <div class="pt-2">
+            <span class="small fw-semibold text-muted">ოპერაციის გაუქმების / გადადების მიზეზები:</span>
+            <div class="po-chip-row mt-1">
+                {% for r in cancel_reason_rows %}
+                <span class="po-badge st-needs_doctor" style="font-size:12.5px">{{ r.label }}: {{ r.count }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if vqi_rows %}
+        <div class="d-flex flex-column gap-2 pt-2">
+            {% for p in vqi_rows %}
+            <a href="{% url 'preop-patient' p.pk %}?tab=dos" class="tw-row {% if p.ev.case_outcome == 'operated' %}st-ready{% else %}st-needs_doctor{% endif %}" style="border:1px solid var(--line-soft);border-left-width:4px;border-radius:10px">
+                <div class="tw-row-main">
+                    <div class="tw-row-top">
+                        <span class="tw-pname">{{ p.patient_name }}</span>
+                        <span class="tw-mm">{{ p.planned_operation_label }}</span>
+                        <span class="tw-mm">{{ p.ev.effective_asa }}</span>
+                        {% if p.ev.operated_date_ka %}<span class="small text-muted">· ოპ: {{ p.ev.operated_date_ka }}</span>{% endif %}
+                    </div>
+                    <div class="tw-row-sub">
+                        {% if p.ev.case_outcome == 'operated' %}
+                            30-დღიანი VQI: <strong>{{ p.ev.vqi_30d_label }}</strong>{% if p.vqi_complications_str %} ({{ p.vqi_complications_str }}){% endif %}
+                            {% if p.ev.vqi_bundle_applicable %} · გაწერის ბანდლი: {% if p.ev.vqi_bundle_done %}სტატინი+ანტიაგრეგანტი ✓{% else %}შესავსებია{% endif %}{% endif %}
+                        {% else %}
+                            <strong>{{ p.ev.case_outcome_label }}</strong>{% if p.cancel_reasons_str %} — {{ p.cancel_reasons_str }}{% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="tw-row-meta">
+                    {% if p.ev.case_outcome == 'operated' %}
+                        {% if p.ev.vqi_30d_status == 'uneventful' %}
+                        <span class="po-badge st-ready" style="font-size:12px;padding:2px 8px">30 დღე ✓</span>
+                        {% elif p.ev.vqi_30d_status == 'pending' %}
+                        <span class="po-badge st-in_progress" style="font-size:12px;padding:2px 8px">30-დღიანი მონიტორინგი</span>
+                        {% else %}
+                        <span class="po-badge st-needs_doctor" style="font-size:12px;padding:2px 8px">{{ p.ev.vqi_30d_label }}</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="po-badge st-needs_doctor" style="font-size:12px;padding:2px 8px">გაუქმდა / გადაიდო</span>
+                    {% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="x-card">
+        <h2>კარდიოლოგიური კონსულტაციების დეტალური ჟურნალი</h2>
         {% if patient_rows %}
         <div class="d-flex flex-column gap-2">
             {% for p in patient_rows %}

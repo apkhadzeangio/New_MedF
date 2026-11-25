@@ -54,9 +54,13 @@
             <div class="pp-sub">ნ. ბოხუას სახელობის კარდიოვასკულური ცენტრი · სისხლძარღვთა ქირურგია</div>
             <h1 class="pp-title">წინასაოპერაციო სამედიცინო პასპორტი</h1>
             <div><strong>პაციენტი:</strong> {{ p.patient_name }}{% if p.age %}, {{ p.age }} წ.{% endif %} ({% if p.sex == 'F' %}ქალი{% else %}მამაკაცი{% endif %}){% if p.phone %} · ტელ: {{ p.phone }}{% endif %}</div>
+            {% if ev.person_id or ev.birth_date_ka %}
+            <div class="pp-sub">{% if ev.person_id %}<strong>პირადი N:</strong> {{ ev.person_id }}{% endif %}{% if ev.person_id and ev.birth_date_ka %} · {% endif %}{% if ev.birth_date_ka %}<strong>დაბ. თარიღი:</strong> {{ ev.birth_date_ka }}{% endif %}</div>
+            {% endif %}
         </div>
         <div style="text-align:right">
-            <div><strong>{{ p.planned_operation_label }}</strong></div>
+            <div><strong>{{ p.planned_operation_label }}</strong> · <span class="ok">{{ ev.effective_asa }}</span></div>
+            {% if ev.planned_surgery_ka %}<div class="pp-sub"><strong>დაგეგმილი ოპერაცია: {{ ev.planned_surgery_ka }}</strong></div>{% endif %}
             <div class="pp-sub">ქირურგი: {{ surgeon_name|default:"—" }}</div>
             <div class="pp-sub">სტატუსი: <strong>{{ ev.status_label }}</strong> · {{ ev.priority_label }} · დღე {{ ev.days_elapsed }}/{{ ev.target_days }}</div>
             <div class="pp-sub">ამობეჭდილია: {{ printed_on }}</div>
@@ -94,36 +98,51 @@
         </div>
     </section>
 
-    {% if ev.med_schedule %}
     <section class="pp-sec">
-        <h2>3. მედიკამენტების პერიოპერაციული მართვის ავტომატური ცხრილი</h2>
+        <h2>3. უზმოდ ყოფნა და მედიკამენტების პერიოპერაციული მართვა{% if ev.planned_surgery_ka %} (ოპერაცია: {{ ev.planned_surgery_ka }}){% endif %}</h2>
+        <div style="margin-bottom:6px;padding:5px 8px;border-radius:6px;background:{% if q.glp1 %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
+            <strong>{{ ev.fasting_instruction }}</strong>
+        </div>
+        {% if ev.med_schedule %}
         <table class="pp-tbl">
-            <thead><tr><th>პრეპარატი</th><th>პროტოკოლური რეჟიმი ოპერაციის წინ</th></tr></thead>
+            <thead>
+                <tr>
+                    <th>პრეპარატი</th>
+                    {% if ev.planned_surgery_ka %}<th>კალენდარული გეგმა</th>{% endif %}
+                    <th>პროტოკოლური რეჟიმი ოპერაციის წინ</th>
+                </tr>
+            </thead>
             <tbody>
                 {% for row in ev.med_schedule %}
                 <tr>
                     <td><strong>{{ row.drug }}</strong></td>
+                    {% if ev.planned_surgery_ka %}<td class="{% if row.tone == 'red' %}bad{% elif row.tone == 'ok' %}ok{% endif %}"><strong>{{ row.date_plan }}</strong></td>{% endif %}
                     <td class="{% if row.tone == 'red' %}bad{% elif row.tone == 'ok' %}ok{% endif %}">{{ row.rule }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+        {% endif %}
     </section>
-    {% endif %}
 
     <section class="pp-sec">
-        <h2>4. წინასაოპერაციო ჩეკლისტი ({{ ev.done_count }}/{{ ev.total_count }}) და კონსულტაციები</h2>
+        <h2>4. წინასაოპერაციო ჩეკლისტი ({{ ev.done_count }}/{{ ev.total_count }}), ანესთეზია და მეთვალყურეობა</h2>
         <div class="pp-chk-grid">
             {% for t in ev.tasks %}
             <div>{% if t.done %}<span class="ok">[✓]</span>{% else %}<span class="bad">[ ]</span>{% endif %} {{ t.label }}</div>
             {% endfor %}
         </div>
-        {% if ev.post_antithrombotic_label or s.cell_saver_ready %}
         <div style="margin-top:6px;padding-top:5px;border-top:1px dashed #EAECF0">
+            <div>
+                <strong>ანესთეზიოლოგიური გეგმა:</strong> {{ ev.effective_asa }} · {{ ev.effective_anesth_label }}
+                · STOP-Bang: {{ ev.stop_bang_label }}
+                {% if ev.anesth_lines_txt %} · ხაზები: {{ ev.anesth_lines_txt }}{% endif %}
+                {% if ev.needs_icu_bed %} · ICU საწოლი: {% if s.icu_bed_booked %}<span class="ok">დაჯავშნილია ✓</span>{% else %}<span class="bad">დასაჯავშნია!</span>{% endif %}{% endif %}
+            </div>
             {% if ev.post_antithrombotic_label %}<div><strong>პოსტოპერაციული ანტითრომბოზული გეგმა:</strong> {{ ev.post_antithrombotic_label }}</div>{% endif %}
             {% if s.cell_saver_ready %}<div><strong>ინტრაოპერაციული PBM:</strong> Cell Saver + ტრანექსამის მჟავა (TXA) მზადყოფნა ✓</div>{% endif %}
+            <div><strong>პოსტოპერაციული მეთვალყურეობა:</strong> {{ ev.surveillance_plan }}</div>
         </div>
-        {% endif %}
         {% if ev.needs_cardio or p.cardio_decision %}
         <div style="margin-top:6px;padding-top:5px;border-top:1px dashed #EAECF0">
             <strong>კარდიოლოგი ({{ p.cardiologist|default:"ლიკა ინჯია" }}):</strong>
@@ -144,7 +163,7 @@
             <div style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
         </div>
         <div>
-            <div><strong>ანესთეზიოლოგი:</strong> {% if s.anesth_done %}კონსულტირებულია ✓{% else %}—{% endif %}</div>
+            <div><strong>ანესთეზიოლოგი ({{ ev.effective_asa }}):</strong> {% if s.anesth_done %}კონსულტირებულია ✓{% else %}—{% endif %}</div>
             <div style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
         </div>
         <div>

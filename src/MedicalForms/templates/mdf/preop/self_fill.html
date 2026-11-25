@@ -33,7 +33,13 @@
             <h1 style="font-size:22px;margin:4px 0">{{ p.patient_name }}</h1>
             <div class="small text-muted">დაგეგმილი ჩარევა: <strong>{{ p.planned_operation_label }}</strong></div>
         </div>
-        <div class="grid-4 pt-2 border-top" style="border-color:var(--line-soft)!important">
+        <div class="grid-3 pt-2 border-top" style="border-color:var(--line-soft)!important">
+            <label class="fld">პირადი ნომერი (11 ციფრი)
+                <input type="text" name="person_id" form="self-q-form" value="{{ ev.person_id }}" maxlength="11" inputmode="numeric" placeholder="010XXXXXXXX" class="form-control">
+            </label>
+            <label class="fld">დაბადების თარიღი
+                <input type="date" name="birth_date" form="self-q-form" value="{{ s.birth_date }}" class="form-control">
+            </label>
             <label class="fld">ასაკი (წელი)
                 <input type="number" name="age" form="self-q-form" value="{{ p.age|default_if_none:'' }}" min="12" max="115" class="form-control">
             </label>

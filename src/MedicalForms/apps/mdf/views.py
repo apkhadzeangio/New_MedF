@@ -149,6 +149,7 @@ def templates_for_page():
 def board_prefill(request):
     """A new, unsaved prescription with the patient's data from the board (?board=<id>) or preop (?preop=<id>)."""
     from .models import BoardPatient, PreopPatient
+    from .preop import _clean_person_id, _fmt_ka_date, calc_bmi
     if request.GET.get('preop', '').isdigit():
         p = PreopPatient.objects.filter(pk=int(request.GET['preop'])).first()
         if p:
@@ -160,9 +161,13 @@ def board_prefill(request):
             )
             has_neuro = bool(q.get('neuro') or q.get('cea_symp_event') or p.op_subtype == 'cea_symp')
             has_dm = bool(q.get('dm') or (s.get('hba1c') is not None and float(s.get('hba1c')) >= 6.5))
+            bmi_val = calc_bmi(s.get('weight_kg'), s.get('height_cm'))
             return NivForm(
                 title=p.patient_name,
                 patient_name=p.patient_name,
+                person_id=_clean_person_id(s.get('person_id')),
+                dob=_fmt_ka_date(s.get('birth_date')),
+                bmi_score=str(bmi_val) if bmi_val is not None else '',
                 diagnosis=p.diagnosis_text,
                 diabetes=has_dm,
                 allergy=has_allergy,

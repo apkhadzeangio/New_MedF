@@ -91,13 +91,16 @@ class BloodOrderView(LoginRequiredMixin, GetObjectMixin, generic.FormView):
         values = initial_values(self.request, self.get_object())
         if not self.get_object() and self.request.GET.get('preop', '').isdigit():
             from .models import PreopPatient
+            from .preop import _clean_person_id, _fmt_ka_date
             pre = PreopPatient.objects.filter(pk=int(self.request.GET['preop'])).first()
             if pre:
-                bg = (pre.studies or {}).get('blood_group') or ''
+                s = pre.studies or {}
                 values.update(
                     patient_name=pre.patient_name,
+                    person_id=_clean_person_id(s.get('person_id')),
+                    dob=_fmt_ka_date(s.get('birth_date')),
                     diagnosis=pre.diagnosis_text,
-                    blood_group=bg,
+                    blood_group=s.get('blood_group') or '',
                     phone=pre.phone or '',
                 )
                 return values
