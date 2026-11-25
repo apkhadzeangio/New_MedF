@@ -5906,6 +5906,130 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         self.assertContains(pp_ok, 'მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!')
         self.assertContains(pp_ok, '[დადასტურებულია ექიმთან ✓]')
 
+    def test_sprint1_antithrombotic_stop_lock_mech_valve_freetext_and_renal_hepatic_pharmacology(self):
+        from django.utils import timezone
+        from .duty import strip_astral
+        from .models import BoardEntry, BoardPatient, PreopPatient
+        from .preop import admit_preop_to_board, evaluate
 
+        today = timezone.localdate()
 
+        # L7-F1: strip_astral removes ASCII C0 controls & Unicode BiDi overrides while keeping Georgian + \n + \t
+        self.assertEqual(strip_astral('ვარფარინი\u202e\x00\x07\n5მგ\tდღეში'), 'ვარფარინი\n5მგ\tდღეში')
 
+        # C1: STOP-seal locks antithrombotic discontinuation dates & displays STOP banner on Passport
+        p_stop = PreopPatient.objects.create(
+            patient_name='სტოპ კალენდარაძე', age=72, sex='M', side='R',
+            pathway='cea', op_subtype='cea_symp', surgeon=self.user,
+            questionnaire={
+                'filled': True, 'med_warfarin': True, 'med_clopidogrel': True,
+                'sglt2': True, 'mets_ok': True,
+            },
+            studies={
+                'carotid_r': 100, 'carotid_l': 30,  # 100% ICA occlusion -> hard contraindication -> STOP!
+                'planned_surgery_date': '2026-12-20',
+            },
+        )
+        ev_stop = evaluate(p_stop, today=today)
+        self.assertEqual(ev_stop['clearance_seal']['code'], 'stop')
+        sched_stop = {m['drug']: m for m in ev_stop['med_schedule']}
+        self.assertIn('STOP — თვითნებურად არ შეწყვიტოთ!', sched_stop['ვარფარინი']['date_plan'])
+        self.assertNotIn('ბოლო მიღება', sched_stop['ვარფარინი']['date_plan'])
+        pp_stop = self.client.get(reverse('preop-passport', args=[p_stop.pk]))
+        self.assertContains(pp_stop, 'ოპერაციაზე დაშვება დაბლოკილია (STOP)')
+
+        # C2 + C3.1 + C3.2: Mechanical valve forbids DOAC & VOYAGER, bridges with IV bivalirudin on HIT or IV UFH on CrCl < 30
+        p_mv = PreopPatient(
+            patient_name='სარქველ ხიდაძე', age=68, sex='M', side='R',
+            pathway='pad_bypass', op_subtype='bypass_clti',
+            questionnaire={
+                'filled': True, 'cad': True, 'cad_chips': ['mech_valve', 'afib'],
+                'med_warfarin': True, 'med_dabigatran': True, 'med_ticagrelor': True,
+                'allergy_other': True, 'allergy_chips': ['hit_heparin', 'clopidogrel_intol'],
+            },
+            studies={'weight_kg': 75, 'height_cm': 175, 'creat': 90, 'inr': 1.6, 'post_antithrombotic_plan': 'voyager'},
+        )
+        ev_mv = evaluate(p_mv, today=today)
+        mv_reds = ' | '.join(ev_mv['red_flags'])
+        self.assertIn('მექანიკურ სარქველზე DOAC', mv_reds)
+        self.assertIn('სუბთერაპიულია', mv_reds)
+        self.assertIn('მექანიკური სარქველი + HIT', mv_reds)
+        self.assertIn('2 ან მეტი პერორალური ანტიკოაგულანტი', mv_reds)
+        self.assertIn('OAC) ტიკაგრელორთან', mv_reds)
+        self.assertIn('უვადო ვარფარინი (VKA)', mv_reds)
+        mv_sched = {m['drug']: m for m in ev_mv['med_schedule']}
+        self.assertIn('დაბიგატრანი (პრადაქსა)', mv_sched)
+        self.assertIn('ბივალირუდინი ან არგატრობანი', mv_sched['ვარფარინი']['rule'])
+
+        # C3.4 + C3.5 + C3.6 + L1-F5: Cilostazol Black-Box on HFrEF, active stent without P2Y12, OAC + clopidogrel_intol uses aspirin
+        p_c3 = PreopPatient(
+            patient_name='ცილოსტაზოლ სტენტაძე', age=67, sex='M', side='L',
+            pathway='pad_pta', op_subtype='pta_clti',
+            questionnaire={
+                'filled': True, 'cad': True, 'cad_chips': ['hf', 'afib'],
+                'recent_stent': True, 'med_doac': True, 'med_chips': ['cilostazol'],
+                'allergy_other': True, 'allergy_chips': ['clopidogrel_intol'],
+            },
+            studies={'lvef': 32, 'weight_kg': 78, 'height_cm': 174, 'creat': 88},
+        )
+        ev_c3 = evaluate(p_c3, today=today)
+        c3_reds = ' | '.join(ev_c3['red_flags'])
+        self.assertIn('ცილოსტაზოლი უკუნაჩვენებია', c3_reds)
+        self.assertIn('აქტიური P2Y12 ანტიაგრეგანტის გარეშე', c3_reds)
+        self.assertIn('ასპირინი 75–100 მგ', ev_c3['post_antithrombotic_label'])
+        self.assertNotIn('OAC + ტიკაგრელორი (სამმაგი', ev_c3['post_antithrombotic_label'])
+
+        # C4.1-C4.4: Free-text allergies & high-risk meds in other_meds / allergy_text + C9.1 BoardEntry re-handoff
+        p_ft = PreopPatient.objects.create(
+            patient_name='ფრიტექსტ ალერგიაძე', age=65, sex='F', side='R',
+            pathway='cea', op_subtype='cea_asymp', surgeon=self.user,
+            questionnaire={
+                'filled': True, 'mets_ok': True,
+                'other_meds': 'სინკუმარი 2მგ, ემპაგლიფლოზინი',
+                'allergy_other': True,
+                'allergy_text': 'ცეფტრიაქსონი ანაფილაქსია, კეტოროლაკი, იოდის კონტრასტი',
+            },
+            studies={'carotid_r': 85, 'carotid_l': 20, 'creat': 75, 'hb': 130, 'plt': 220, 'inr': 1.0, 'ecg': 'normal', 'cea_cta_status': 'concordant'},
+        )
+        ev_ft = evaluate(p_ft, today=today)
+        ft_reds = ' | '.join(ev_ft['red_flags'])
+        self.assertIn('სინკუმარი', ft_reds)
+        self.assertIn('β-ლაქტამური ალერგია', ev_ft['surgical_brief']['abx_regimen'])
+        # C5.1: Neck CEA must NOT receive groin Gentamicin 5 mg/kg!
+        self.assertNotIn('გენტამიცინი 5 მგ/კგ', ev_ft['surgical_brief']['abx_regimen'])
+        self.assertIn('NSAID', ev_ft['allergy_summary'])
+
+        # C9.1: Re-running admit_preop_to_board when task text changes updates undone BoardEntry without AttributeError!
+        bp, _, _ = admit_preop_to_board(p_ft, self.user, unit=BoardPatient.WARD, bed='5')
+        p_ft.studies['carotid_r'] = 92
+        p_ft.questionnaire['allergy_chips'] = ['hit_heparin', 'nsaid']
+        p_ft.save()
+        bp2, was_created2, _ = admit_preop_to_board(p_ft, self.user, unit=BoardPatient.WARD, bed='5')
+        self.assertFalse(was_created2)
+        self.assertEqual(bp.pk, bp2.pk)
+        self.assertTrue(BoardEntry.objects.filter(patient=bp, kind=BoardEntry.TASK, text__icontains='NSAID').exists())
+
+        # C5.2-C5.5: Frail elderly CrCl < 30 with normal eGFR, hypernatremia Na+ 154, liver 3x
+        p_ren = PreopPatient(
+            patient_name='კოკკროფტ ღვიძლაძე', age=86, sex='F', side='R',
+            pathway='pad_pta', op_subtype='pta_clti',
+            questionnaire={
+                'filled': True, 'metformin': True, 'med_doac': True,
+                'allergy_other': True, 'allergy_chips': ['beta_lactam', 'hit_heparin'],
+            },
+            studies={
+                'weight_kg': 42, 'height_cm': 156, 'creat': 115, 'creat_unit': 'umol',
+                'na': 154, 'liver_status': '3x',
+            },
+        )
+        ev_ren = evaluate(p_ren, today=today)
+        self.assertGreaterEqual(ev_ren['egfr'], 35)
+        self.assertLess(ev_ren['crcl'], 30)
+        self.assertTrue(ev_ren['co2_angio_advised'])
+        ren_reds = ' | '.join(ev_ren['red_flags'])
+        self.assertIn('მეტფორმინი უკუნაჩვენებია', ren_reds)
+        self.assertIn('ჰიპერნატრიემია', ren_reds)
+        self.assertIn('ღვიძლის მძიმე დისფუნქცია', ren_reds)
+        self.assertIn('0.9% NaCl-ით დატვირთვა აკრძალულია', ev_ren['surgical_brief']['contrast_plan'])
+        self.assertIn('გენტამიცინს მოერიდეთ', ev_ren['surgical_brief']['abx_regimen'])
+        self.assertNotIn('სტატინის მიღება', ' | '.join(ev_ren['amber_flags']))

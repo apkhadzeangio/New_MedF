@@ -990,14 +990,15 @@ def check_clinical_invariants(patient, ev, anam, rendered_passport=None):
     if (ev['has_unacked_red'] or ev['has_hard_contraindication']) and ev['status'] != STATUS_ALERT:
         violations.append('INV-19_CRITICAL_ALERT_MASKED_BY_STATUS')
 
-    # INV-20: Severe CKD Gentamicin Nephrotoxicity Guard & CEA Hemorrhage/Thrombolysis Heparin Guard
-    if (
-        'beta_lactam' in allergy_chips
-        and ev['egfr'] is not None and ev['egfr'] < 30 and not q.get('on_dialysis')
-        and not (pw == PreopPatient.Pathway.VENOUS and patient.op_subtype == PreopPatient.OpSubtype.EVLA)
-    ):
-        if 'გენტამიცინს მოერიდეთ' not in ev['surgical_brief']['abx_regimen']:
-            violations.append('INV-20_SEVERE_CKD_GENTAMICIN_NOT_GUARDED')
+    # INV-20: Severe CKD / Dialysis / Open-Aortic Gentamicin Nephrotoxicity Guard & CEA Hemorrhage/Thrombolysis Heparin Guard
+    eff_renal_sim = min([v for v in (ev.get('crcl'), ev.get('egfr')) if v is not None], default=None)
+    if 'beta_lactam' in allergy_chips:
+        if pw in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS):
+            if 'გენტამიცინი 5 მგ/კგ' in ev['surgical_brief']['abx_regimen']:
+                violations.append('INV-20_NECK_OR_VENOUS_UNNECESSARY_GENTAMICIN')
+        elif q.get('on_dialysis') or (eff_renal_sim is not None and eff_renal_sim < 45) or ev.get('open_aortic'):
+            if 'გენტამიცინს მოერიდეთ' not in ev['surgical_brief']['abx_regimen']:
+                violations.append('INV-20_SEVERE_CKD_GENTAMICIN_NOT_GUARDED')
     if pw == PreopPatient.Pathway.CEA and 'hit_heparin' not in allergy_chips and (
         s.get('brain_imaging') == 'large_or_hemorrhage' or (q_filled and bool(q.get('cea_thrombolysis')))
     ):

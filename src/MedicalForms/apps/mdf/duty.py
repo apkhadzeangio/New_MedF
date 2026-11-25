@@ -91,11 +91,13 @@ class _Cleaner(HTMLParser):
 
 
 # Emoji and other 4-byte characters: an older MySQL table (utf8mb3) refuses them.
+# Also strip C0 control/null bytes and Unicode Bidi overrides/isolates (OWASP ASVS L2).
 _ASTRAL = re.compile('[\U00010000-\U0010FFFF]')
+_CTRL_AND_BIDI = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u202a-\u202e\u2066-\u2069]')
 
 
 def strip_astral(text):
-    return _ASTRAL.sub('', text or '')
+    return _CTRL_AND_BIDI.sub('', _ASTRAL.sub('', text or ''))
 
 
 def clean_html(html):

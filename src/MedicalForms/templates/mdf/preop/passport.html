@@ -321,10 +321,16 @@
             <span>5. უზმოდ ყოფნა და მედიკამენტების პერიოპერაციული კალენდარი (ESC / EHRA / ASRA)</span>
             <span>{% if ev.planned_surgery_ka %}ოპერაცია: {{ ev.planned_surgery_ka }}{% endif %}</span>
         </h2>
+        {% if ev.clearance_seal.code == 'stop' %}
+        <div style="margin-bottom:5px;padding:5px 8px;border-radius:6px;background:#FEF3F2;border:1.5px solid #D92D20;color:#912018;font-size:11.2px">
+            <strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით! არცერთი სასიცოცხლო მედიკამენტი (განსაკუთრებით ანტიკოაგულანტი/ანტიაგრეგანტი) არ შეწყვიტოთ!</strong>
+        </div>
+        {% else %}
         <div style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if p.approved_at or s.med_hold_agreed %}#EAF7F0;border:1px solid #A9D8C1;color:#065F46{% else %}#FEF3F2;border:1px solid #FECDCA;color:#B42318{% endif %};font-size:11.2px">
             <strong>მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!</strong> თვითნებურად არცერთი მედიკამენტი არ შეწყვიტოთ და არ შეცვალოთ.
             {% if p.approved_at or s.med_hold_agreed %}· <strong>[დადასტურებულია ექიმთან ✓]</strong>{% else %}· <strong>[სტატუსი: ექიმთან ჯერ არ არის დადასტურებული!]</strong>{% endif %}
         </div>
+        {% endif %}
         <div style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if q.glp1 %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
             <strong>{{ ev.fasting_instruction }}</strong>
         </div>
@@ -333,7 +339,7 @@
             <thead>
                 <tr>
                     <th style="width:24%">მედიკამენტი</th>
-                    {% if ev.planned_surgery_ka %}<th style="width:28%">კალენდარული გეგმა</th>{% endif %}
+                    {% if ev.planned_surgery_ka or ev.clearance_seal.code == 'stop' %}<th style="width:28%">კალენდარული გეგმა</th>{% endif %}
                     <th>პროტოკოლური რეჟიმი ოპერაციის წინ</th>
                 </tr>
             </thead>
@@ -341,7 +347,7 @@
                 {% for row in ev.med_schedule %}
                 <tr>
                     <td><strong>{{ row.drug }}</strong></td>
-                    {% if ev.planned_surgery_ka %}<td class="{% if row.tone == 'red' %}bad{% elif row.tone == 'amber' %}warn-txt{% elif row.tone == 'ok' %}ok{% endif %}"><strong>{{ row.date_plan }}</strong></td>{% endif %}
+                    {% if ev.planned_surgery_ka or ev.clearance_seal.code == 'stop' %}<td class="{% if row.tone == 'red' %}bad{% elif row.tone == 'amber' %}warn-txt{% elif row.tone == 'ok' %}ok{% endif %}"><strong>{{ row.date_plan }}</strong></td>{% endif %}
                     <td class="{% if row.tone == 'red' %}bad{% elif row.tone == 'amber' %}warn-txt{% elif row.tone == 'ok' %}ok{% endif %}">{{ row.rule }}</td>
                 </tr>
                 {% endfor %}

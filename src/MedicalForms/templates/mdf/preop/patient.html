@@ -854,7 +854,7 @@
                             <label class="chip-check"><input type="checkbox" name="med_chips" value="{{ ck }}" {% if ck in q.med_chips %}checked{% endif %}>{{ cl }}</label>
                             {% endfor %}
                         </div>
-                        <input type="hidden" name="other_meds" value="{{ q.other_meds }}">
+                        <input type="text" name="other_meds" class="form-control form-control-sm mt-2" maxlength="300" value="{{ q.other_meds }}" placeholder="სხვა მედიკამენტები (მაგ., სინკუმარი, ლიქსიანა, ერტუგლიფლოზინი...)">
                     </div>
 
                     <div class="po-q-item">
@@ -864,10 +864,10 @@
                                 {% if not ev.is_venous %}
                                 <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="allergy_iodine" value="1" {% if q.allergy_iodine %}checked{% endif %}>ალერგია იოდზე / კონტრასტზე</label>
                                 {% endif %}
-                                <label class="chip-check"><input type="checkbox" name="allergy_other" value="1" id="chk-allergy-other" {% if q.allergy_other %}checked{% endif %}>წამლისმიერი ალერგია</label>
+                                <label class="chip-check"><input type="checkbox" name="allergy_other" value="1" id="chk-allergy-other" {% if q.allergy_other or q.allergy_text %}checked{% endif %}>წამლისმიერი ალერგია</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-allergy" {% if not q.allergy_other %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-allergy" {% if not q.allergy_other and not q.allergy_text %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.allergy_chips %}
                                 <label class="chip-check" {% if ck == 'hit_heparin' %}style="border-color:#FECDCA"{% endif %}>
@@ -875,7 +875,7 @@
                                 </label>
                                 {% endfor %}
                             </div>
-                            <input type="hidden" name="allergy_text" value="{{ q.allergy_text }}">
+                            <input type="text" name="allergy_text" class="form-control form-control-sm mt-2" maxlength="250" value="{{ q.allergy_text }}" placeholder="დააზუსტეთ ალერგენი / რეაქცია (მაგ., ცეფტრიაქსონი, ნოვოკაინი, კეტონალი...)">
                         </div>
                     </div>
 
@@ -1911,13 +1911,18 @@
                     </div>
                     {% endif %}
 
+                    {% if ev.clearance_seal.code == 'stop' %}
+                    <div class="po-alert red" style="padding:8px 12px;font-size:13px">
+                        <span><strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — არცერთი სასიცოცხლო მედიკამენტი (განსაკუთრებით ანტიკოაგულანტი/ანტიაგრეგანტი) არ შეწყვიტოთ!</strong></span>
+                    </div>
+                    {% endif %}
                     {% if ev.med_schedule %}
                     <div>
                         <table class="po-med-table">
                             <thead>
                                 <tr>
                                     <th>მედიკამენტი</th>
-                                    {% if ev.planned_surgery_ka %}<th>კალენდარული გეგმა (ოპ: {{ ev.planned_surgery_ka }})</th>{% endif %}
+                                    {% if ev.planned_surgery_ka or ev.clearance_seal.code == 'stop' %}<th>კალენდარული გეგმა{% if ev.planned_surgery_ka %} (ოპ: {{ ev.planned_surgery_ka }}){% endif %}</th>{% endif %}
                                     <th>პროტოკოლური რეჟიმი</th>
                                 </tr>
                             </thead>
@@ -1925,7 +1930,7 @@
                                 {% for m in ev.med_schedule %}
                                 <tr>
                                     <td><strong>{{ m.drug }}</strong></td>
-                                    {% if ev.planned_surgery_ka %}<td class="po-med-tone-{{ m.tone }}"><strong>{{ m.date_plan }}</strong></td>{% endif %}
+                                    {% if ev.planned_surgery_ka or ev.clearance_seal.code == 'stop' %}<td class="po-med-tone-{{ m.tone }}"><strong>{{ m.date_plan }}</strong></td>{% endif %}
                                     <td class="po-med-tone-{{ m.tone }}">{{ m.rule }}</td>
                                 </tr>
                                 {% endfor %}
