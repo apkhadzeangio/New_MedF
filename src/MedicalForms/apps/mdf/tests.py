@@ -4840,7 +4840,7 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
             'patient_name': 'პასპორტ კალენდარაძე',
             'sex': 'M',
             'op_subtype': 'evar',
-            'person_id': '010-24-055-891-99',
+            'person_id': '010-00-000-001-99',
             'birth_date': '1958-04-15',
             'age': '',
             'slot_kind': 'dated',
@@ -4850,7 +4850,7 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
         })
         p.refresh_from_db()
         s = merged_studies(p)
-        self.assertEqual(s['person_id'], '01024055891')
+        self.assertEqual(s['person_id'], '01000000001')
         self.assertEqual(s['birth_date'], '1958-04-15')
         self.assertIsNotNone(p.age)
         self.assertGreaterEqual(p.age, 68)
@@ -4898,20 +4898,20 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
         niv_resp = self.client.get(reverse('niv-cover') + f'?preop={p.pk}')
         self.assertEqual(niv_resp.status_code, 200)
         niv_obj = niv_resp.context['niv']
-        self.assertEqual(niv_obj.person_id, '01024055891')
+        self.assertEqual(niv_obj.person_id, '01000000001')
         self.assertEqual(niv_obj.dob, '15.04.1958')
         self.assertEqual(niv_obj.bmi_score, '27.4')
 
         blood_resp = self.client.get(reverse('blood-order') + f'?preop={p.pk}')
         self.assertEqual(blood_resp.status_code, 200)
-        self.assertEqual(blood_resp.context['form'].initial['person_id'], '01024055891')
+        self.assertEqual(blood_resp.context['form'].initial['person_id'], '01000000001')
         self.assertEqual(blood_resp.context['form'].initial['dob'], '15.04.1958')
         self.assertEqual(blood_resp.context['form'].initial['blood_group'], 'A (II) Rh (+)')
 
         # Printable A4 Passport renders person_id, DOB, planned surgery date, GLP-1 fasting, calendar dates & EVAR surveillance
         pp_resp = self.client.get(reverse('preop-passport', args=[p.pk]))
         self.assertEqual(pp_resp.status_code, 200)
-        self.assertContains(pp_resp, '01024055891')
+        self.assertContains(pp_resp, '01000000001')
         self.assertContains(pp_resp, '15.04.1958')
         self.assertContains(pp_resp, '10.12.2026')
         self.assertContains(pp_resp, 'GLP-1 პროტოკოლი')
@@ -4925,10 +4925,10 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
         anon = Client()
         tok = make_self_fill_token(sf_p)
         anon.post(reverse('preop-self-fill', args=[tok]), {
-            'person_id': '60001122334', 'birth_date': '1986-02-10', 'sex': 'F', 'mets_ok': '1',
+            'person_id': '01000000002', 'birth_date': '1986-02-10', 'sex': 'F', 'mets_ok': '1',
         })
         sf_p.refresh_from_db()
-        self.assertEqual(merged_studies(sf_p)['person_id'], '60001122334')
+        self.assertEqual(merged_studies(sf_p)['person_id'], '01000000002')
         self.assertIsNotNone(sf_p.age)
         self.assertIn('6 საათით ადრე', evaluate(sf_p)['fasting_instruction'])
 
@@ -5146,7 +5146,7 @@ class PreopStageP3ReferenceHardeningTests(PrivateMediaTest):
         # Raw Cockcroft-Gault with 130kg would falsely overestimate ~69 mL/min (>50); Devine ABW brings it to 44 (<50 renal threshold)!
         self.assertLess(crcl_abw, 50)
 
-        # 2. Open AAA with 'epidural' chip in anesth_lines_chips (while anesthesia_plan='general') triggers ASRA 72h DOAC hold & DoS INR <= 1.2!
+        # 2. Open AAA with 'epidural' chip in anesth_lines_chips (while anesthesia_plan='general') triggers ASRA 72h DOAC hold & DoS INR <= 1.4!
         p_open = PreopPatient.objects.create(
             patient_name='ეპიდურალ უსაფრთხოძე', age=72, sex='M',
             pathway='aaa_infra', op_subtype='open', surgeon=self.user,
@@ -5161,7 +5161,7 @@ class PreopStageP3ReferenceHardeningTests(PrivateMediaTest):
                 'anesth_lines_chips': ['art_line', 'epidural'],
                 'planned_surgery_date': '2026-12-10',
                 'creat': 85, 'weight_kg': 82, 'height_cm': 174,
-                'dos_inr': 1.35,
+                'dos_inr': 1.46,
             },
         )
         p_open.questionnaire['med_chips'] = ['ccb', 'amiodarone', 'acei_arb']
@@ -5177,7 +5177,7 @@ class PreopStageP3ReferenceHardeningTests(PrivateMediaTest):
         ev_open = evaluate(p_open, today=datetime.date(2026, 12, 1))
         self.assertTrue(ev_open['has_neuraxial_plan'])
         self.assertTrue(ev_open['dos_hold_danger'])
-        self.assertTrue(any('1.2' in w for w in ev_open['dos_warnings']))
+        self.assertTrue(any('1.4' in w for w in ev_open['dos_warnings']))
         sched_open = {m['drug']: m for m in ev_open['med_schedule']}
         self.assertIn('≥96 სთ', sched_open['DOAC (ქსარელტო / ელიქვისი)']['rule'])
         self.assertIn('ინსულინი', sched_open)
@@ -5495,7 +5495,7 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
             'med_doac': '1',
             'glp1': '1',
             'allergy_iodine': '1',
-            'person_id': '01099887766',
+            'person_id': '01000000003',
         })
         p_sf.refresh_from_db()
         ev_sf = evaluate(p_sf, today=today)
@@ -5549,7 +5549,7 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
         self.assertEqual(ev_af['rcri']['score'], 0)
         self.assertEqual(ev_af['vsg_cri']['score'], 3)  # age 70-79 (+3) only, zero CAD/CHF inflation!
 
-        # 2. High-acuity Open AAA (132 kg, prior MI + CABG, insulin, Cr 2.3 mg/dL, SpO2 89%, Hb 96) -> ASA IV, RCRI 4, ARISCAT High, Cefazolin 3g!
+        # 2. High-acuity Open AAA (132 kg, prior MI + CABG, insulin, Cr 2.3 mg/dL, SpO2 89%, Hb 96) -> ASA IV, RCRI 5, ARISCAT High, Cefazolin 3g!
         p_open = PreopPatient.objects.create(
             patient_name='აკადემიურ დოსიეძე', age=76, sex='M',
             pathway='aaa_infra', op_subtype='open', surgeon=self.user,
@@ -5631,7 +5631,7 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
         from django.utils import timezone
         from .models import BoardPatient, Case, PreopPatient
         from .preop import STATUS_READY, evaluate
-        from .preop_sim import run_simulation
+        from .test_preop_sim import run_simulation
 
         # 1. Fast CI Regression Slice of the Synthetic Simulation Engine (1,500 scenarios + 250 metamorphic pairs = 2,000 evaluations)
         sim_report = run_simulation(n=1500, n_mono=250, passport_sample=100, seed=2026)
@@ -5660,7 +5660,7 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
 
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'header', 'patient_name': p.patient_name, 'age': '68', 'sex': 'M',
-            'op_subtype': 'cea_symp', 'side': 'R', 'person_id': '01055667788',
+            'op_subtype': 'cea_symp', 'side': 'R', 'person_id': '01000000004',
             'birth_date': '1958-05-10', 'slot_kind': 'dated', 'visit_date': today.isoformat(),
             'planned_surgery_date': (today + datetime.timedelta(days=2)).isoformat(),
         })
@@ -5716,6 +5716,196 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
         self.assertEqual(audit_resp.context['vqi_statin_ap_pct'], 100)
         self.assertEqual(audit_resp.context['cea_symp_within_14d_pct'], 100)
         self.assertEqual(audit_resp.context['vqi_uneventful_30d_pct'], 100)
+
+
+class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
+    """Regression suite for all 6 peer-review items: Calendar December bug, Self-Fill security, Risk Indices, Med Citations/Passport Gate."""
+
+    def test_review_1_calendar_week_title_all_months_and_december_http_200(self):
+        import datetime
+        from .duty import MONTHS
+        from .preop import _monday_of, _week_title
+
+        # 23-29 Nov 2026 MUST say 'ნოემბერი 2026' (NOT 'დეკემბერი 2026')
+        self.assertTrue(_week_title(datetime.date(2026, 11, 23)).startswith('ნოემბერი 2026'))
+        # 7-13 Dec 2026 MUST say 'დეკემბერი 2026' and NEVER raise IndexError!
+        self.assertTrue(_week_title(datetime.date(2026, 12, 7)).startswith('დეკემბერი 2026'))
+        # Cross-year week 28 Dec 2026 - 3 Jan 2027 includes both years cleanly
+        cross_yr = _week_title(datetime.date(2026, 12, 28))
+        self.assertIn('2026', cross_yr)
+        self.assertIn('2027', cross_yr)
+
+        # HTTP GET PreopWeekView across all 12 months + every December week returns 200 with exact month name
+        for m in range(1, 13):
+            mid_day = datetime.date(2026, m, 10)
+            mon = _monday_of(mid_day)
+            sun = mon + datetime.timedelta(days=6)
+            resp = self.client.get(reverse('preop') + f'?week={mid_day.isoformat()}')
+            self.assertEqual(resp.status_code, 200, msg=f'Month {m} crashed!')
+            if mon.month == sun.month:
+                self.assertContains(resp, f'{MONTHS[mon.month - 1]} 2026')
+
+        for dec_monday in ('2026-12-07', '2026-12-14', '2026-12-21', '2026-12-28'):
+            resp_dec = self.client.get(reverse('preop') + f'?week={dec_monday}')
+            self.assertEqual(resp_dec.status_code, 200)
+
+    def test_review_2_self_fill_pii_masking_one_time_lock_revocable_nonce_and_privacy_headers(self):
+        from django.test import Client
+        from .models import PreopPatient
+        from .preop import make_self_fill_token, merged_q, merged_studies
+
+        p = PreopPatient.objects.create(
+            patient_name='დაცულ ბმულაძე', age=64, sex='M', phone='599000009',
+            pathway='venous', op_subtype='evla', surgeon=self.user,
+            studies={'person_id': '01000000009', 'birth_date': '1962-03-14'},
+        )
+        tok1 = make_self_fill_token(p)
+        url1 = reverse('preop-self-fill', args=[tok1])
+        anon = Client()
+
+        # 1. Public GET masks person_id & phone, hides birth_date, and emits strict noindex / no-referrer headers
+        r_get = anon.get(url1)
+        self.assertEqual(r_get.status_code, 200)
+        self.assertEqual(r_get['Referrer-Policy'], 'no-referrer')
+        self.assertIn('noindex', r_get['X-Robots-Tag'])
+        self.assertIn('no-store', r_get['Cache-Control'])
+        self.assertContains(r_get, 'noindex, nofollow')
+        self.assertContains(r_get, '010•••••009')
+        self.assertNotContains(r_get, '01000000009')
+        self.assertNotContains(r_get, '599000009')
+        self.assertNotContains(r_get, '1962-03-14')
+
+        # 2. First POST succeeds, does NOT overwrite existing clinic PII, and immediately locks the one-time link!
+        r_post1 = anon.post(url1, {
+            'person_id': '01000000999', 'phone': '555000000', 'birth_date': '1999-01-01',
+            'htn': '1', 'mets_ok': '1',
+        }, follow=True)
+        self.assertEqual(r_post1.status_code, 200)
+        self.assertContains(r_post1, 'კითხვარი შენახულია')
+        p.refresh_from_db()
+        self.assertEqual(merged_studies(p)['person_id'], '01000000009')
+        self.assertEqual(p.phone, '599000009')
+        self.assertTrue(merged_q(p)['htn'])
+
+        # Subsequent GET or POST on the used one-time link is locked!
+        r_get_after = anon.get(url1)
+        self.assertContains(r_get_after, 'ერთჯერადი ბმული დახურულია')
+        r_post2 = anon.post(url1, {'htn': '0'})
+        self.assertIn('locked=1', r_post2['Location'])
+        p.refresh_from_db()
+        self.assertTrue(merged_q(p)['htn'])
+
+        # 3. Nurse rotates link -> old forwarded URL returns 404, new URL works once; nurse revoke -> 404!
+        self.client.post(reverse('preop-patient', args=[p.pk]), {'section': 'self_link', 'action': 'rotate'})
+        p.refresh_from_db()
+        self.assertEqual(anon.get(url1).status_code, 404)
+        tok2 = make_self_fill_token(p)
+        url2 = reverse('preop-self-fill', args=[tok2])
+        self.assertEqual(anon.get(url2).status_code, 200)
+
+        self.client.post(reverse('preop-patient', args=[p.pk]), {'section': 'self_link', 'action': 'revoke'})
+        r_revoked = anon.get(url2)
+        self.assertEqual(r_revoked.status_code, 404)
+        self.assertEqual(r_revoked['Referrer-Policy'], 'no-referrer')
+
+    def test_review_3_rcri_lee1999_vsg_cri_bertges2010_and_ariscat_clinician_duration(self):
+        from .models import PreopPatient
+        from .preop import evaluate
+
+        # 1. RCRI (Lee 1999): infrainguinal bypass & symptomatic CEA do NOT get suprainguinal surgery +1 point
+        p_byp = PreopPatient.objects.create(
+            patient_name='ლი ინდექსაძე', age=64, sex='M', side='R',
+            pathway='pad_bypass', op_subtype='bypass_clti', surgeon=self.user,
+            questionnaire={'filled': True, 'abf_rest_pain': True, 'mets_ok': True},
+            studies={'abi_r': 0.38, 'pad_runoff_status': 'popliteal_patent', 'pad_gsv_status': 'adequate'},
+        )
+        ev_byp = evaluate(p_byp)
+        self.assertEqual(ev_byp['rcri']['score'], 0)  # No suprainguinal surgery inflation!
+        self.assertEqual(ev_byp['ariscat']['score'], 19)  # age 51-80 (+3) + auto 2-3h (+16)
+
+        # Clinician sets surg_duration_est='gt_3h' on complex tibial bypass -> ARISCAT duration rises +16 -> +23 (score 26)
+        self.client.post(reverse('preop-patient', args=[p_byp.pk]), {
+            'section': 'stage2', 'surg_duration_est': 'gt_3h',
+        })
+        p_byp.refresh_from_db()
+        ev_byp_long = evaluate(p_byp)
+        self.assertEqual(ev_byp_long['ariscat']['score'], 26)
+        self.assertEqual(ev_byp_long['ariscat']['tier'], 'intermediate')
+
+        p_cea = PreopPatient.objects.create(
+            patient_name='სიმპტომ კაროტიდაძე', age=66, sex='M', side='R',
+            pathway='cea', op_subtype='cea_symp', surgeon=self.user,
+            questionnaire={'filled': True, 'cea_symp_event': True, 'mets_ok': True},
+            studies={'carotid_r': 80, 'carotid_l': 25},
+        )
+        # Symptomatic CEA gets +1 for prior TIA/stroke ONLY (NOT +2 with high-risk surgery!)
+        self.assertEqual(evaluate(p_cea)['rcri']['score'], 1)
+
+        # 2. VSG-CRI (Bertges et al. 2010): exact 6-bucket MACE probabilities (4 pts -> 3.5%, 5 -> 6.0%, 6 -> 6.6%, 7 -> 8.9%, >=8 -> 14.3%)
+        p_vsg = PreopPatient(
+            patient_name='ბერტგეს ცხრილაძე', age=82, sex='M',
+            pathway='aaa_infra', op_subtype='evar',
+            questionnaire={'filled': True, 'mets_ok': True},
+            studies={},
+        )
+        self.assertEqual(evaluate(p_vsg)['vsg_cri']['score'], 4)
+        self.assertEqual(evaluate(p_vsg)['vsg_cri']['risk_pct'], '3.5%')
+        p_vsg.questionnaire['smoker'] = True  # 5 pts
+        self.assertEqual(evaluate(p_vsg)['vsg_cri']['risk_pct'], '6.0%')
+        p_vsg.questionnaire['dm_insulin'] = True  # 6 pts
+        self.assertEqual(evaluate(p_vsg)['vsg_cri']['risk_pct'], '6.6%')
+        p_vsg.questionnaire['med_chips'] = ['beta_blocker']  # 7 pts
+        self.assertEqual(evaluate(p_vsg)['vsg_cri']['risk_pct'], '8.9%')
+        p_vsg.questionnaire['pulm'] = True  # 9 pts (>=8)
+        self.assertEqual(evaluate(p_vsg)['vsg_cri']['risk_pct'], '14.3%')
+
+    def test_review_4_asra_inr_1_4_pharmacology_citations_and_passport_physician_confirmation_gate(self):
+        from .models import PreopPatient
+        from .preop import evaluate
+
+        p = PreopPatient.objects.create(
+            patient_name='ფარმაკო პასპორტაძე', age=70, sex='M', side='R',
+            pathway='venous', op_subtype='phlebectomy', surgeon=self.user,
+            questionnaire={
+                'filled': True, 'med_ticagrelor': True, 'med_doac': True,
+                'med_warfarin': True, 'glp1': True, 'mets_ok': True,
+            },
+            studies={
+                'weight_kg': 62, 'height_cm': 170, 'creat': 135, 'creat_unit': 'umol',
+                'hb': 135, 'plt': 210, 'inr': 1.35, 'dos_inr': 1.35,
+                'anesthesia_plan': 'neuraxial', 'planned_surgery_date': '2026-12-15',
+            },
+        )
+        ev = evaluate(p)
+        # ASRA neuraxial INR <= 1.4: INR 1.35 does NOT trigger neuraxial INR > 1.4 blocker or DoS hold danger!
+        self.assertFalse(ev['dos_hold_danger'])
+        self.assertNotIn('INR 1.35 >', ev['anesthetic_brief']['neuraxial_gate'])
+
+        sched = {m['drug']: m for m in ev['med_schedule']}
+        self.assertIn('5–7 დღით', sched['ტიკაგრელორი (ბრილინტა)']['rule'])
+        self.assertIn('INR ≤ 1.4', sched['ვარფარინი']['rule'])
+        self.assertIn('Multi-Society 2024', sched['GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)']['rule'])
+        self.assertIn('უმეტეს პაციენტთან გრძელდება', sched['GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)']['rule'])
+
+        # Switch to general anesthesia with CrCl 30-49 -> cites EHRA 2021 >=48h vs 72h renal/ASRA buffer
+        p.studies['anesthesia_plan'] = 'general'
+        p.save()
+        sched_gen = {m['drug']: m for m in evaluate(p)['med_schedule']}
+        self.assertIn('EHRA 2021', sched_gen['DOAC (ქსარელტო / ელიქვისი)']['rule'])
+
+        # Unapproved Passport shows prominent draft warning + unconfirmed med-schedule notice
+        pp_draft = self.client.get(reverse('preop-passport', args=[p.pk]))
+        self.assertContains(pp_draft, 'სამუშაო (დაუდასტურებელი) ასლი')
+        self.assertContains(pp_draft, 'მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!')
+        self.assertContains(pp_draft, 'ექიმთან ჯერ არ არის დადასტურებული')
+
+        # Surgeon approval clears draft banner & marks med schedule confirmed while keeping physician-only rule
+        self.client.post(reverse('preop-patient', args=[p.pk]), {'section': 'signoff', 'action': 'approve'})
+        pp_ok = self.client.get(reverse('preop-passport', args=[p.pk]))
+        self.assertNotContains(pp_ok, 'სამუშაო (დაუდასტურებელი) ასლი')
+        self.assertContains(pp_ok, 'მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!')
+        self.assertContains(pp_ok, '[დადასტურებულია ექიმთან ✓]')
+
 
 
 

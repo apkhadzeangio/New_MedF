@@ -139,6 +139,11 @@
             <div class="pp-sub">პრიორიტეტი: {{ ev.priority_label }} · დღე {{ ev.days_elapsed }}/{{ ev.target_days }} · {{ printed_on }}</div>
         </div>
     </header>
+    {% if not p.approved_at %}
+    <div style="padding:5px 10px;border-radius:6px;background:#FFFAEB;border:1.5px solid #F79009;color:#93370D;font-size:11.3px;font-weight:700">
+        სამუშაო (დაუდასტურებელი) ასლი — პაციენტზე გაცემამდე და მედიკამენტების სქემის ამოქმედებამდე სავალდებულოა მკურნალი ექიმის / ქირურგის დადასტურება!
+    </div>
+    {% endif %}
 
     <!-- Critical Safety, Allergies & Red Flags -->
     <section class="pp-sec" style="{% if ev.allergy_summary or ev.red_flags or ev.difficult_airway_alert %}border-color:#FECDCA;background:#FEF3F2{% else %}background:#F9FAFB{% endif %}">
@@ -313,9 +318,13 @@
 
     <section class="pp-sec">
         <h2>
-            <span>5. უზმოდ ყოფნა და მედიკამენტების პერიოპერაციული კალენდარი (ESC / PAUSE / ASRA)</span>
+            <span>5. უზმოდ ყოფნა და მედიკამენტების პერიოპერაციული კალენდარი (ESC / EHRA / ASRA)</span>
             <span>{% if ev.planned_surgery_ka %}ოპერაცია: {{ ev.planned_surgery_ka }}{% endif %}</span>
         </h2>
+        <div style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if p.approved_at or s.med_hold_agreed %}#EAF7F0;border:1px solid #A9D8C1;color:#065F46{% else %}#FEF3F2;border:1px solid #FECDCA;color:#B42318{% endif %};font-size:11.2px">
+            <strong>მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!</strong> თვითნებურად არცერთი მედიკამენტი არ შეწყვიტოთ და არ შეცვალოთ.
+            {% if p.approved_at or s.med_hold_agreed %}· <strong>[დადასტურებულია ექიმთან ✓]</strong>{% else %}· <strong>[სტატუსი: ექიმთან ჯერ არ არის დადასტურებული!]</strong>{% endif %}
+        </div>
         <div style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if q.glp1 %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
             <strong>{{ ev.fasting_instruction }}</strong>
         </div>

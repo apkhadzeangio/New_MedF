@@ -15,6 +15,7 @@ import hashlib
 import math
 import os
 import re
+import secrets
 import uuid
 
 from django.contrib import messages
@@ -121,6 +122,13 @@ STOP_BANG_CHOICES = (
     ('low', 'დაბალი რისკი (0–2 ქ.)'),
     ('intermediate', 'საშუალო რისკი (3–4 ქ.)'),
     ('high', 'მაღალი OSA რისკი (≥5 ქ. — CPAP / მონიტორინგი!)'),
+)
+
+SURG_DURATION_CHOICES = (
+    ('auto', 'ავტომატური (პროცედურის ტიპით)'),
+    ('lt_2h', '< 2 სთ (0 ქ.)'),
+    ('2_3h', '2–3 სთ (+16 ქ.)'),
+    ('gt_3h', '> 3 სთ (+23 ქ.)'),
 )
 
 CIED_PLAN_CHOICES = (
@@ -555,8 +563,31 @@ def _alerts_signature(red_flags):
     return hashlib.sha1(joined).hexdigest()[:16]
 
 
+def mask_person_id(pid):
+    """Mask 11-digit personal number on unauthenticated pages (e.g. '010•••••001')."""
+    pid = str(pid or '').strip()
+    if not pid:
+        return ''
+    if len(pid) >= 7:
+        return f'{pid[:3]}•••••{pid[-3:]}'
+    return '•' * len(pid)
+
+
+def mask_phone(phone):
+    """Mask phone number on unauthenticated pages."""
+    ph = re.sub(r'\s+', '', str(phone or ''))
+    if not ph:
+        return ''
+    if len(ph) >= 6:
+        return f'{ph[:3]}••••{ph[-2:]}'
+    return '•' * len(ph)
+
+
 def make_self_fill_token(patient):
-    return TimestampSigner(salt=SELF_FILL_SALT).sign(str(patient.pk))
+    s = patient.studies if isinstance(patient.studies, dict) else {}
+    nonce = str(s.get('self_fill_nonce') or '').strip()
+    payload = f'{patient.pk}:{nonce}' if nonce else str(patient.pk)
+    return TimestampSigner(salt=SELF_FILL_SALT).sign(payload)
 
 
 def target_prep_days(patient):
@@ -994,10 +1025,10 @@ def build_med_schedule(patient, q, s, egfr, crcl=None):
             add_row('ტიკაგრელორი (ბრილინტა)', 'გრძელდება ან შეთანხმდება ქირურგთან (ენდოვასკულური DAPT)', 'ok', f'მიიღეთ {d_str(0)}-ის ჩათვლით')
         elif is_neuraxial:
             sub_asa = 'ასპირინის ფონზე!' if q.get('med_aspirin') else 'ასპირინი 75–100 მგ-ით ჩანაცვლებით!'
-            add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება სპინალურ/ეპიდურულ ანესთეზიამდე სრული 5 დღით ადრე (ASRA 5th Ed) — {sub_asa}', 'amber', hold_str(5, ' (5 დღე)'))
+            add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება სპინალურ/ეპიდურულ ანესთეზიამდე 5–7 დღით ადრე (ASRA: 5–7 დღე; ESC/FDA: 5 დღე) — {sub_asa}', 'amber', hold_str(5, ' (5–7 დღე)'))
         else:
             sub_asa = 'ასპირინის ფონზე' if q.get('med_aspirin') else 'ასპირინი 75–100 მგ-ით ჩანაცვლებით!'
-            add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება ოპერაციამდე 3–5 დღით ადრე ({sub_asa})', 'amber', hold_str(4))
+            add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება ოპერაციამდე 3–5 დღით ადრე (ESC 2022 / FDA; {sub_asa})', 'amber', hold_str(4))
 
     if q.get('med_prasugrel'):
         stroke_warn = ' [გადატანილ ინსულტ/TIA-ზე პრასუგრელი უკუნაჩვენებია — გადაამოწმეთ!]' if (q.get('neuro') or pw == PreopPatient.Pathway.CEA) else ''
@@ -1026,9 +1057,9 @@ def build_med_schedule(patient, q, s, egfr, crcl=None):
         elif is_neuraxial:
             add_row('DOAC (ქსარელტო / ელიქვისი)', f'სპინალური/ეპიდურული ანესთეზია (ASRA 5th Ed): სავალდებულო შეჩერება მინიმუმ 72 საათით (3 დღით) ადრე! ({cl_label}){frail_no_wt_note}', 'amber', hold_str(3, ' (72 სთ)'))
         elif renal_cl < 50:
-            add_row('DOAC (ქსარელტო / ელიქვისი)', f'{cl_label} (30–49) — შეჩერება ოპერაციამდე 72 საათით (3 დღით) ადრე{frail_no_wt_note}', 'amber', hold_str(3, ' (72 სთ)'))
+            add_row('DOAC (ქსარელტო / ელიქვისი)', f'{cl_label} (30–49) — შეჩერება ოპერაციამდე 72 საათით (3 დღით) ადრე (EHRA 2021 მინ. ≥48 სთ; რენალური/ASRA ბუფერი: 72 სთ){frail_no_wt_note}', 'amber', hold_str(3, ' (72 სთ)'))
         else:
-            add_row('DOAC (ქსარელტო / ელიქვისი)', f'შეჩერება ოპერაციამდე 48 საათით (2 დღით) ადრე ({cl_label}){frail_no_wt_note}', 'amber', hold_str(2, ' (48 სთ)'))
+            add_row('DOAC (ქსარელტო / ელიქვისი)', f'შეჩერება ოპერაციამდე 48 საათით (2 დღით) ადრე (EHRA 2021 / PAUSE; {cl_label}){frail_no_wt_note}', 'amber', hold_str(2, ' (48 სთ)'))
 
     if q.get('med_dabigatran'):
         if is_evla and not is_neuraxial:
@@ -1073,7 +1104,7 @@ def build_med_schedule(patient, q, s, egfr, crcl=None):
         if is_evla and not is_neuraxial:
             add_row('ვარფარინი', 'ESVS 2022: EVLA შესაძლებელია მოუხსნელად, თუ INR ≤ 3.0', 'amber', f'INR ≤3.0 შემოწმება {d_str(-1)}')
         else:
-            inr_target = 'INR ≤ 1.2 (ASRA სპინალურ/ეპიდურული ბლოკადისთვის)' if is_neuraxial else 'INR < 1.5 (ქირურგიული ჰემოსტაზისთვის)'
+            inr_target = 'INR ≤ 1.4 (ASRA ნეირაქსიული ბლოკადისთვის; სასურველია ნორმალიზება)' if is_neuraxial else 'INR < 1.5 (ქირურგიული ჰემოსტაზისთვის)'
             if 'hit_heparin' in allergy_chips:
                 bridge_txt = 'HIT ანამნეზში — LMWH/ჰეპარინის ხიდი კატეგორიულად აკრძალულია!'
             elif 'mech_valve' in cad_chips or (q.get('ven_dvt_history') and q.get('ven_thrombophilia')):
@@ -1101,9 +1132,9 @@ def build_med_schedule(patient, q, s, egfr, crcl=None):
     if q.get('glp1'):
         add_row(
             'GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)',
-            'კვირეული ინექცია ჩერდება 7 დღით ადრე (დღიური — ოპერაციის დღეს) + ოპერაციამდე 24 სთ სუფთა თხევადი დიეტა (ასპირაციის რისკი — ASA)!',
+            'Multi-Society 2024 (ASA/AGA/ESAIC): გულისრევა/ღებინებისა და დოზის მატების ფაზის გარეშე უმეტეს პაციენტთან გრძელდება + სავალდებულოა ოპერაციამდე 24 სთ სუფთა თხევადი დიეტა! შეჩერება (კვირეული 7 დღით / დღიური ოპერაციის დღეს) — მხოლოდ ექიმის/ანესთეზიოლოგის გადაწყვეტილებით მაღალი GI რისკისას.',
             'amber',
-            f'არ გაიკეთოთ {d_str(-7)}-დან · {d_str(-1)} თხევადი დიეტა',
+            f'{d_str(-1)} თხევადი დიეტა (24 სთ) · შეჩერება ({d_str(-7)}-დან) მხოლოდ ექიმით',
         )
 
     if q.get('metformin'):
@@ -1254,6 +1285,7 @@ def build_surveillance_plan(patient):
 DEFAULT_Q = {
     'filled': False,
     'filled_by': '',
+    'self_fill_submitted': False,
     'nurse_verified': False,
     'nurse_verified_by': '',
     'allergy_iodine_asked': False,
@@ -1479,6 +1511,8 @@ DEFAULT_STUDIES = {
     # Stage P2 & P3: Identifiers, Surgical Date, Pause/Outcome Freeze, Anesthesia, DoS Gate & 30-Day VQI
     'person_id': '',
     'birth_date': '',
+    'self_fill_nonce': '',
+    'self_fill_revoked': False,
     'planned_surgery_date': '',
     'operated_date': '',
     'outcome_recorded_on': '',
@@ -1488,6 +1522,7 @@ DEFAULT_STUDIES = {
     'asa_emergency': False,
     'airway_mallampati': 'I_II',    # I_II | III | IV_difficult
     'stop_bang_risk': 'auto',       # auto | low | intermediate | high
+    'surg_duration_est': 'auto',    # auto | lt_2h | 2_3h | gt_3h (Canet 2010 ARISCAT)
     'cied_plan': 'pending',         # pending | bipolar_only | magnet_async | ep_reprogram
     'anesth_lines_chips': [],
     'icu_bed_booked': False,
@@ -1587,21 +1622,21 @@ def _ihd_and_chf_flags(q, s):
 
 
 def calc_rcri(patient, q, s, is_symp_cea=False):
-    """Validated 6-factor Revised Cardiac Risk Index (Lee Index — ESC 2022 / AHA)."""
+    """Validated 6-factor Revised Cardiac Risk Index (Lee et al., Circulation 1999 / ESC 2022)."""
     pathway = _resolve_pathway(patient)
     q_filled = bool(q.get('filled'))
     ihd, chf = _ihd_and_chf_flags(q, s)
     scr_mgdl, _ = _parse_scr_mgdl(s.get('creat'), s.get('creat_unit') or '')
 
     factors = []
-    is_high_risk_vasc_op = (
+    # Original Lee 1999 high-risk surgery factor: strictly intraperitoneal, intrathoracic,
+    # or suprainguinal vascular surgery (open/TBD AAA or ABF — NOT infrainguinal bypass or CEA).
+    is_suprainguinal_vasc_op = (
         pathway == PreopPatient.Pathway.ABF
         or (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
-        or pathway == PreopPatient.Pathway.PAD_BYPASS
-        or is_symp_cea
     )
-    if is_high_risk_vasc_op:
-        factors.append('მაღალი რისკის სისხლძარღვოვანი რეკონსტრუქცია (ESC 2022 >5%)')
+    if is_suprainguinal_vasc_op:
+        factors.append('მაღალი რისკის სუპრაინგვინალური სისხლძარღვოვანი ოპერაცია (Lee 1999)')
     if ihd:
         factors.append('გულის იშემიური დაავადება (IHD)')
     if chf:
@@ -1638,7 +1673,7 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
 
 
 def calc_vsg_cri(patient, q, s):
-    """Vascular Study Group of New England Cardiac Risk Index (Bertges et al., J Vasc Surg — SVS VQI benchmark)."""
+    """Vascular Study Group of New England Cardiac Risk Index (Bertges et al., J Vasc Surg 2010 — exact published MACE table)."""
     pathway = _resolve_pathway(patient)
     if pathway == PreopPatient.Pathway.VENOUS:
         return None
@@ -1694,22 +1729,20 @@ def calc_vsg_cri(patient, q, s):
         pts = max(0, pts - 1)
         factors.append('წარსულში რევასკულარიზაცია CABG/PCI (-1)')
 
-    is_endo = (patient.op_subtype == 'evar') or (pathway == PreopPatient.Pathway.PAD_PTA)
+    # Exact published Bertges et al. 2010 (J Vasc Surg) 6-category MACE probabilities:
+    # 0-3: 2.6%, 4: 3.5%, 5: 6.0%, 6: 6.6%, 7: 8.9%, >=8: 14.3%
     if pts <= 3:
-        tier, est = 'low', ('~1.5%' if is_endo else '~2.6%')
-        lbl = f'დაბალი ({est})'
-    elif pts <= 5:
-        tier, est = 'intermediate', ('~3.5%' if is_endo else '~6.0%')
-        lbl = f'საშუალო ({est})'
+        tier, est, lbl = 'low', '2.6%', 'დაბალი (2.6%)'
+    elif pts == 4:
+        tier, est, lbl = 'low', '3.5%', 'დაბალი/საშუალო (3.5%)'
+    elif pts == 5:
+        tier, est, lbl = 'intermediate', '6.0%', 'საშუალო (6.0%)'
     elif pts == 6:
-        tier, est = 'intermediate', ('~4.5%' if is_endo else '~6.6%')
-        lbl = f'მომატებული ({est})'
-    elif pts <= 8:
-        tier, est = 'high', ('~6.5%' if is_endo else '~8.9–14.3%')
-        lbl = f'მაღალი ({est})'
+        tier, est, lbl = 'intermediate', '6.6%', 'საშუალო (6.6%)'
+    elif pts == 7:
+        tier, est, lbl = 'high', '8.9%', 'მაღალი (8.9%)'
     else:
-        tier, est = 'high', ('~9.5%' if is_endo else '>14.3%')
-        lbl = f'ძალიან მაღალი ({est})'
+        tier, est, lbl = 'high', '14.3%', 'ძალიან მაღალი (14.3%)'
     return {
         'score': pts,
         'tier': tier,
@@ -1720,7 +1753,7 @@ def calc_vsg_cri(patient, q, s):
 
 
 def calc_ariscat_pulm(patient, q, s, hb_gl=None):
-    """Validated ARISCAT postoperative pulmonary complication (PPC) score (Canet et al. / ESAIC 2024)."""
+    """Validated ARISCAT postoperative pulmonary complication (PPC) score (Canet et al. 2010 / ESAIC 2024)."""
     pathway = _resolve_pathway(patient)
     q_filled = bool(q.get('filled'))
     inf_chips = set(_str_list(q.get('inf_chips')))
@@ -1757,11 +1790,29 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
         factors.append('ანემია Hb ≤100 გ/ლ (+11)')
 
     if open_aortic:
-        pts += 15 + 23
-        factors.append('ღია აორტული განაკვეთი და ხანგრძლივობა >3 სთ (+38)')
-    elif pathway in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.PAD_BYPASS):
+        pts += 15
+        factors.append('ზედა აბდომინალური / აორტული განაკვეთი (+15)')
+
+    dur_est = s.get('surg_duration_est') or 'auto'
+    if dur_est not in ('auto', 'lt_2h', '2_3h', 'gt_3h'):
+        dur_est = 'auto'
+    if dur_est == 'auto':
+        if open_aortic:
+            dur_eff, dur_auto = 'gt_3h', True
+        elif pathway in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.PAD_BYPASS):
+            dur_eff, dur_auto = '2_3h', True
+        else:
+            dur_eff, dur_auto = 'lt_2h', True
+    else:
+        dur_eff, dur_auto = dur_est, False
+
+    auto_sfx = ' — ავტო' if dur_auto else ''
+    if dur_eff == 'gt_3h':
+        pts += 23
+        factors.append(f'ოპერაციის ხანგრძლივობა >3 სთ{auto_sfx} (+23)')
+    elif dur_eff == '2_3h':
         pts += 16
-        factors.append('სავარაუდო ხანგრძლივობა 2–3 სთ (+16)')
+        factors.append(f'ოპერაციის ხანგრძლივობა 2–3 სთ{auto_sfx} (+16)')
 
     if s.get('asa_emergency') or (q_filled and (q.get('aaa_pain') or q.get('cea_crescendo'))):
         pts += 8
@@ -3495,8 +3546,9 @@ def evaluate(patient, today=None):
 
     if q_filled and q.get('glp1'):
         fasting_instruction = (
-            'GLP-1 პროტოკოლი (Multi-Society / ESAIC 2024–2025): ოპერაციამდე 24 სთ მხოლოდ სუფთა თხევადი დიეტა, მყარი საკვები შეწყდეს ≥8 სთ-ით ადრე, '
-            'სუფთა წყალი დასაშვებია ოპერაციამდე 2 სთ-ით ადრე (ასპირაციის სიფრთხილე / საეჭვო დაცლისას — კუჭის ექო-სკრინინგი).'
+            'GLP-1 პროტოკოლი (Multi-Society 2024 / ESAIC 2025): გართულების გარეშე უმეტეს პაციენტთან პრეპარატი გრძელდება, '
+            'სავალდებულოა ოპერაციამდე 24 სთ მხოლოდ სუფთა თხევადი დიეტა, მყარი საკვები შეწყდეს ≥8 სთ-ით ადრე, სუფთა წყალი — 2 სთ-ით ადრე '
+            '(GI სიმპტომებისას — შეჩერების განხილვა და კუჭის ექო-სკრინინგი / RSI).'
         )
     else:
         fasting_instruction = (
@@ -3589,7 +3641,7 @@ def evaluate(patient, today=None):
         amber_flags.append(f'ოპერაციის დილის ჰიპერგლიკემია ({dos_gl} მმოლ/ლ > 10.0) — სასურველია ინსულინით კორექცია პერიოპერაციული ინფექციის შესამცირებლად.')
     if dos_inr is not None:
         is_evla_only = is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not has_neuraxial_plan
-        inr_lim = 3.0 if is_evla_only else (1.2 if has_neuraxial_plan else 1.5)
+        inr_lim = 3.0 if is_evla_only else (1.4 if has_neuraxial_plan else 1.5)
         if dos_inr > inr_lim:
             dos_warnings.append(f'ოპერაციის დილის INR ({dos_inr}) აჭარბებს უსაფრთხო ზღვარს (≤ {inr_lim}) — სისხლდენის / სპინალური ჰემატომის რისკი!')
 
@@ -3993,8 +4045,8 @@ def evaluate(patient, today=None):
         elif plt is None:
             neuraxial_blockers.append('PLT უცნობია')
         eff_inr_nx = dos_inr if dos_inr is not None else inr
-        if eff_inr_nx is not None and eff_inr_nx > 1.2:
-            neuraxial_blockers.append(f'INR {eff_inr_nx} > 1.2')
+        if eff_inr_nx is not None and eff_inr_nx > 1.4:
+            neuraxial_blockers.append(f'INR {eff_inr_nx} > 1.4')
         elif eff_inr_nx is None:
             neuraxial_blockers.append('INR უცნობია')
         if s.get('aptt_prolonged'):
@@ -4914,6 +4966,7 @@ def apply_self_fill_post(post_data, patient):
             s['height_cm'] = h
 
     q['filled'] = True
+    q['self_fill_submitted'] = True
     q['filled_at'] = timezone.localtime().strftime('%d.%m.%Y %H:%M')
     q['filled_by'] = 'პაციენტი (ბმულით)'
     q['allergy_iodine_asked'] = True
@@ -4935,7 +4988,12 @@ def _monday_of(day):
 def _week_title(monday):
     sunday = monday + datetime.timedelta(days=6)
     if monday.month == sunday.month:
-        return f'{MONTHS[monday.month]} {monday.year} · {monday.day} – {sunday.day} {MONTHS_SHORT[monday.month]}'
+        return f'{MONTHS[monday.month - 1]} {monday.year} · {monday.day} – {sunday.day} {MONTHS_SHORT[monday.month]}'
+    if monday.year != sunday.year:
+        return (
+            f'{monday.day} {MONTHS_SHORT[monday.month]} {monday.year} – '
+            f'{sunday.day} {MONTHS_SHORT[sunday.month]} {sunday.year}'
+        )
     return (
         f'{monday.day} {MONTHS_SHORT[monday.month]} – '
         f'{sunday.day} {MONTHS_SHORT[sunday.month]} {sunday.year}'
@@ -5236,6 +5294,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         if section == 'dos_vqi':
             return self._save_dos_vqi(request, patient)
 
+        if section == 'self_link':
+            return self._save_self_link(request, patient)
+
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
 
     def _save_header(self, request, patient):
@@ -5436,6 +5497,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             ('asa_class', ('auto', 'I', 'II', 'III', 'IV')),
             ('airway_mallampati', ('I_II', 'III', 'IV_difficult')),
             ('stop_bang_risk', ('auto', 'low', 'intermediate', 'high')),
+            ('surg_duration_est', ('auto', 'lt_2h', '2_3h', 'gt_3h')),
             ('cied_plan', ('pending', 'bipolar_only', 'magnet_async', 'ep_reprogram')),
             ('gastro_result', ('pending', 'remission', 'acute_ulcer')),
             ('laryngoscopy_res', ('pending', 'normal', 'palsy')),
@@ -5654,6 +5716,27 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         patient.save()
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
 
+    def _save_self_link(self, request, patient):
+        act = request.POST.get('action') or 'rotate'
+        q = merged_q(patient)
+        s = merged_studies(patient)
+        if act == 'revoke':
+            s['self_fill_revoked'] = True
+            messages.info(request, 'პაციენტის თვითშევსების ბმული გაუქმდა.')
+        else:
+            s['self_fill_nonce'] = secrets.token_hex(4)
+            s['self_fill_revoked'] = False
+            q['self_fill_submitted'] = False
+            patient.questionnaire = q
+            messages.success(request, 'ახალი ერთჯერადი ბმული გენერირდა (წინა ბმული გაუქმდა).')
+        patient.studies = s
+        patient.updated_by = request.user
+        patient.save()
+        tab_ret = request.POST.get('tab') or 'q'
+        if tab_ret not in ('q', 's1', 's2', 'doc', 'dos'):
+            tab_ret = 'q'
+        return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + f'?tab={tab_ret}')
+
     def _render(self, request, patient):
         ev = evaluate(patient)
         tab = request.GET.get('tab') or ('q' if not ev['q'].get('filled') else 's1')
@@ -5680,6 +5763,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             'auto_anamnesis': auto_anamnesis,
             'shown_anamnesis': patient.anamnesis or auto_anamnesis,
             'self_fill_path': reverse('preop-self-fill', args=[self_token]),
+            'self_fill_revoked': bool(ev['s'].get('self_fill_revoked')),
+            'self_fill_used': bool(ev['q'].get('self_fill_submitted')),
             'consent_url': consent_url_for_preop(patient),
             'board_patient': board_patient,
             'default_board_unit': default_board_unit,
@@ -5689,6 +5774,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             'asa_choices': ASA_CHOICES,
             'mallampati_choices': MALLAMPATI_CHOICES,
             'stop_bang_choices': STOP_BANG_CHOICES,
+            'surg_duration_choices': SURG_DURATION_CHOICES,
             'cied_plan_choices': CIED_PLAN_CHOICES,
             'case_outcome_choices': CASE_OUTCOME_CHOICES,
             'vqi_30d_choices': VQI_30D_CHOICES,
@@ -6043,23 +6129,44 @@ class PreopPassportView(LoginRequiredMixin, generic.TemplateView):
 
 
 class PreopSelfFillView(generic.View):
-    """Signed, no-login Patient Self-Questionnaire link (isolated from nurse fields, locks after verification/surgery)."""
+    """Signed, one-time, revocable Patient Self-Questionnaire link with PII masking & strict privacy headers."""
     template_name = 'mdf/preop/self_fill.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        resp = super().dispatch(request, *args, **kwargs)
+        resp['Referrer-Policy'] = 'no-referrer'
+        resp['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
+        resp['Cache-Control'] = 'no-store, private'
+        return resp
 
     def _load_patient(self, token):
         signer = TimestampSigner(salt=SELF_FILL_SALT)
         try:
-            pk = int(signer.unsign(token, max_age=SELF_FILL_MAX_AGE))
+            raw = signer.unsign(token, max_age=SELF_FILL_MAX_AGE)
+            pk_str, _, tok_nonce = raw.partition(':')
+            pk = int(pk_str)
         except (BadSignature, SignatureExpired, ValueError):
             return None
-        return PreopPatient.objects.filter(pk=pk, archived=False).first()
+        patient = PreopPatient.objects.filter(pk=pk, archived=False).first()
+        if not patient:
+            return None
+        s = merged_studies(patient)
+        if s.get('self_fill_revoked'):
+            return None
+        cur_nonce = str(s.get('self_fill_nonce') or '').strip()
+        if tok_nonce != cur_nonce:
+            return None
+        return patient
 
     def get(self, request, token):
         patient = self._load_patient(token)
         if not patient:
             return render(request, self.template_name, {'invalid_link': True}, status=404)
         ev = evaluate(patient)
-        locked = bool(patient.approved_at or ev['q'].get('nurse_verified') or ev['case_outcome'] != 'scheduled')
+        staff_locked = bool(patient.approved_at or ev['q'].get('nurse_verified') or ev['case_outcome'] != 'scheduled')
+        submitted_once = bool(ev['q'].get('self_fill_submitted'))
+        is_done_screen = (request.GET.get('done') == '1') and submitted_once and not staff_locked
+        locked = staff_locked or (submitted_once and not is_done_screen)
         emergency_symptom = bool(ev['q'].get('aaa_pain') or ev['q'].get('cea_crescendo'))
         return render(request, self.template_name, {
             'p': patient,
@@ -6072,8 +6179,12 @@ class PreopSelfFillView(generic.View):
             'duration_chips': DURATION_CHIPS,
             'ceap_choices': CEAP_CHOICES,
             'locked': locked,
+            'staff_locked': staff_locked,
+            'masked_person_id': mask_person_id(ev['person_id']),
+            'masked_phone': mask_phone(patient.phone),
+            'has_birth_date': bool(ev['s'].get('birth_date')),
             'emergency_symptom': emergency_symptom,
-            'submitted': request.GET.get('done') == '1',
+            'submitted': is_done_screen,
         })
 
     def post(self, request, token):
@@ -6082,26 +6193,31 @@ class PreopSelfFillView(generic.View):
             return render(request, self.template_name, {'invalid_link': True}, status=404)
         q_cur = merged_q(patient)
         s_cur = merged_studies(patient)
-        if patient.approved_at or q_cur.get('nurse_verified') or (s_cur.get('case_outcome_status') or 'scheduled') != 'scheduled':
+        if (
+            patient.approved_at
+            or q_cur.get('nurse_verified')
+            or q_cur.get('self_fill_submitted')
+            or (s_cur.get('case_outcome_status') or 'scheduled') != 'scheduled'
+        ):
             return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?locked=1')
         age_posted = _int(request.POST.get('age'), lo=12, hi=120) if request.POST.get('age') else None
-        if age_posted:
+        if age_posted and not patient.age:
             patient.age = age_posted
-        if request.POST.get('sex') in ('M', 'F'):
+        if not patient.sex and request.POST.get('sex') in ('M', 'F'):
             patient.sex = request.POST.get('sex')
-        if 'phone' in request.POST:
+        if not patient.phone and 'phone' in request.POST:
             ph = clean_text(request.POST.get('phone'), 50).replace('\n', ' ')
             if ph:
                 patient.phone = ph
         apply_self_fill_post(request.POST, patient)
         s_mut = merged_studies(patient)
         pid = _clean_person_id(request.POST.get('person_id'))
-        if pid:
+        if pid and not s_mut.get('person_id'):
             s_mut['person_id'] = pid
         bd = _date(request.POST.get('birth_date'))
-        if bd and bd <= timezone.localdate():
+        if bd and bd <= timezone.localdate() and not s_mut.get('birth_date'):
             s_mut['birth_date'] = bd.isoformat()
-            if not age_posted and not patient.age:
+            if not patient.age:
                 patient.age = _age_from_dob(bd)
         patient.studies = s_mut
         patient.save()

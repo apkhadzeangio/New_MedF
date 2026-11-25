@@ -24,6 +24,7 @@ if not _dj_apps.ready:
 
 from django.template.loader import render_to_string
 
+from .duty import MONTHS
 from .models import PreopPatient
 from .preop import (
     CHIP_CATALOGS,
@@ -31,6 +32,8 @@ from .preop import (
     STATUS_NO_Q,
     STATUS_PROGRESS,
     STATUS_READY,
+    _monday_of,
+    _week_title,
     build_med_schedule,
     calc_ariscat_pulm,
     calc_auto_asa,
@@ -316,6 +319,7 @@ def _random_stratified_patient(rng, idx):
         'anesthesia_plan': rng.choices(['auto', 'general', 'neuraxial', 'local_tumescent'], weights=[72, 12, 12, 4])[0],
         'anesth_lines_chips': ['epidural'] if rng.random() < 0.06 else (['art_line'] if rng.random() < 0.20 else []),
         'airway_mallampati': rng.choices(['I_II', 'III', 'IV_difficult'], weights=[84, 11, 5])[0],
+        'surg_duration_est': rng.choices(['auto', 'lt_2h', '2_3h', 'gt_3h'], weights=[65, 10, 13, 12])[0],
         'planned_surgery_date': (SIM_TODAY + datetime.timedelta(days=rng.choice([3, 7, 16, 62]))).isoformat(),
     }
     if rng.random() < 0.25:
@@ -571,11 +575,11 @@ def _archetype_patient(rng, idx):
             q={'filled': True, 'med_doac': True, 'med_chips': ['statin'], 'mets_ok': True},
             s={'aaa_mm': 58, 'creat': 24, 'creat_unit': '', 'hb': 135, 'plt': 210, 'inr': 1.05, 'ecg': 'normal'},
         )
-    # arch == 19: Neuraxial morning INR 1.28 -> DoS STOP danger!
+    # arch == 19: Neuraxial morning INR 1.46 (> ASRA 1.4 limit) -> DoS STOP danger!
     return _make_unsaved_patient(
         idx, PreopPatient.OpSubtype.BYPASS_CLTI, age=68, sex='F', side='R', approved=True,
         q={'filled': True, 'abf_rest_pain': True, 'med_aspirin': True, 'med_chips': ['statin'], 'mets_ok': True},
-        s={'abi_r': 0.42, 'abi_l': 0.95, 'pad_runoff_status': 'popliteal_patent', 'pad_gsv_status': 'adequate', 'cta_disc': True, 'hb': 126, 'plt': 205, 'creat': 76, 'inr': 1.08, 'ecg': 'normal', 'anesthesia_plan': 'neuraxial', 'dos_identity_consent': True, 'dos_site_marked': True, 'dos_fasting_confirmed': True, 'dos_med_hold_verified': True, 'dos_abx_ready': True, 'dos_blood_implant_ready': True, 'dos_bp_sys': 130, 'dos_bp_dia': 78, 'dos_glucose': 5.8, 'dos_inr': 1.28},
+        s={'abi_r': 0.42, 'abi_l': 0.95, 'pad_runoff_status': 'popliteal_patent', 'pad_gsv_status': 'adequate', 'cta_disc': True, 'hb': 126, 'plt': 205, 'creat': 76, 'inr': 1.08, 'ecg': 'normal', 'anesthesia_plan': 'neuraxial', 'dos_identity_consent': True, 'dos_site_marked': True, 'dos_fasting_confirmed': True, 'dos_med_hold_verified': True, 'dos_abx_ready': True, 'dos_blood_implant_ready': True, 'dos_bp_sys': 130, 'dos_bp_dia': 78, 'dos_glucose': 5.8, 'dos_inr': 1.46},
     )
 
 
@@ -588,7 +592,7 @@ def _boundary_patient(rng, idx):
 
     hb_edges = [9.9, 10.0, 11.4, 11.5, 99, 100, 101, 114, 115, 116, 119, 120, 129, 130, 165, 166, 185, 186]
     plt_edges = [99, 100, 101, 149, 150, 151]
-    inr_edges = [1.19, 1.20, 1.21, 1.35, 1.36, 1.50, 1.51, 3.00, 3.01]
+    inr_edges = [1.35, 1.36, 1.39, 1.40, 1.41, 1.50, 1.51, 3.00, 3.01]
     creat_edges = [(14.9, ''), (15.0, ''), (25.0, ''), (35.0, ''), (35.1, ''), (1.79, 'mgdl'), (1.80, 'mgdl'), (2.00, 'mgdl'), (2.01, 'mgdl')]
     k_edges = [3.29, 3.30, 3.49, 3.50, 5.00, 5.01, 5.39, 5.40]
     gl_edges = [3.8, 3.9, 6.9, 7.0, 10.0, 10.1, 11.0, 11.1, 13.9, 14.0]
@@ -650,7 +654,7 @@ def _boundary_patient(rng, idx):
         'abi_l': abi_edges[(idx + 2) % len(abi_edges)],
         'tp_r': [29, 30, 39, 40, 49, 50, 59, 60][idx % 8],
         'tbi_r': [0.29, 0.30, 0.49, 0.50, 0.69, 0.70][idx % 6],
-        'dos_inr': [1.20, 1.21, 1.50, 1.51, 3.00, 3.01][idx % 6],
+        'dos_inr': [1.39, 1.40, 1.41, 1.50, 1.51, 3.00, 3.01][idx % 7],
     }
     return _make_unsaved_patient(idx, op_subtype, age=[50, 51, 60, 65, 70, 75, 80, 81][idx % 8], sex=sex, side=side, q=q, s=s)
 
@@ -780,10 +784,14 @@ def check_clinical_invariants(patient, ev, anam, rendered_passport=None):
     med_chips = set(_safe_list(q.get('med_chips')))
     cad_chips = set(_safe_list(q.get('cad_chips')))
 
-    # INV-01: Rendered Passport Integrity (checked whenever rendered_passport is supplied)
+    # INV-01: Rendered Passport Integrity & Physician-Confirmation Gate
     if rendered_passport is not None:
         if 'pp-page-1' not in rendered_passport or 'pp-page-2' not in rendered_passport:
             violations.append('INV-01_PASSPORT_2PAGE_MISSING')
+        if 'მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!' not in rendered_passport:
+            violations.append('INV-01_PASSPORT_PHYSICIAN_CONFIRMATION_GATE_MISSING')
+        if not patient.approved_at and 'სამუშაო (დაუდასტურებელი) ასლი' not in rendered_passport:
+            violations.append('INV-01_PASSPORT_UNAPPROVED_BANNER_MISSING')
         for bad_tok in ('>None<', ' None ', 'nan ', '>nan<', 'inf ', '>inf<'):
             if bad_tok in rendered_passport:
                 violations.append(f'INV-01_PASSPORT_LEAK_{bad_tok.strip()}')
@@ -835,7 +843,7 @@ def check_clinical_invariants(patient, ev, anam, rendered_passport=None):
             if ro['key'] == 'dental' and 'ქლორჰექსიდინის დეკოლონიზაცია' in ro['action']:
                 violations.append('INV-05_CHLORHEX_GIVEN_ON_ALLERGY')
 
-    # INV-06: ASRA 5th Ed Neuraxial Anticoagulation & Coagulation Gate
+    # INV-06: ASRA 5th Ed Neuraxial Anticoagulation & Coagulation Gate (INR <= 1.4)
     if ev['has_neuraxial_plan'] and q_filled:
         for row in ev['med_schedule']:
             if 'DOAC' in row['drug'] and '48 საათით' in row['rule']:
@@ -845,8 +853,8 @@ def check_clinical_invariants(patient, ev, anam, rendered_passport=None):
         if ev['s'].get('dos_inr') is not None:
             try:
                 dinr = float(ev['s']['dos_inr'])
-                if 1.2 < dinr <= 15.0 and (not ev['dos_hold_danger'] or ev['dos_ready'] or ev['clearance_seal']['code'] != 'stop'):
-                    violations.append('INV-06_NEURAXIAL_DOS_INR_OVER_1_2_NOT_STOPPED')
+                if 1.4 < dinr <= 15.0 and (not ev['dos_hold_danger'] or ev['dos_ready'] or ev['clearance_seal']['code'] != 'stop'):
+                    violations.append('INV-06_NEURAXIAL_DOS_INR_OVER_1_4_NOT_STOPPED')
             except (TypeError, ValueError):
                 pass
 
@@ -1012,20 +1020,30 @@ def check_clinical_invariants(patient, ev, anam, rendered_passport=None):
         if not any('სპინალური ჰემატომის' in rf for rf in ev['red_flags']):
             violations.append('INV-22_NEURAXIAL_RED_FLAG_MISSED_UNINTERRUPTED_P2Y12')
 
-    # INV-23: ESC 2022 Table 5 RCRI Surgical Factor Non-Inflation on Intermediate-Risk EVAR & Asymptomatic CEA
-    if (
-        (pw == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype == 'evar')
-        or (pw == PreopPatient.Pathway.CEA and not ev['is_symp_cea'])
-        or ev['is_pta']
-        or ev['is_venous']
-    ):
-        if any('მაღალი რისკის სისხლძარღვოვანი რეკონსტრუქცია' in f for f in ev['rcri']['factors']):
-            violations.append('INV-23_RCRI_SURGICAL_INFLATION_ON_NON_HIGH_RISK_OP')
+    # INV-23: Lee 1999 RCRI Surgical Factor Strictly Suprainguinal (NEVER on EVAR, CEA, PAD_BYPASS, PTA, or VENOUS)
+    is_supra = (pw == PreopPatient.Pathway.ABF) or (pw == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
+    if not is_supra:
+        if any('სუპრაინგვინალური' in f for f in ev['rcri']['factors']):
+            violations.append('INV-23_RCRI_SURGICAL_INFLATION_ON_NON_SUPRAINGUINAL_OP')
 
     # INV-24: ASA IV Physiological Calibration on Acute Hypoxemia / Shock / Critical Hyperkalemia
     spo2_v = s.get('spo2')
     if isinstance(spo2_v, (int, float)) and 30 <= spo2_v < 90 and ev['auto_asa'] != 'IV':
         violations.append('INV-24_SEVERE_HYPOXEMIA_NOT_ASA_IV')
+
+    # INV-25: Bertges et al. 2010 (J Vasc Surg) Exact Published VSG-CRI MACE Table
+    if ev['vsg_cri'] is not None:
+        v_pts = ev['vsg_cri']['score']
+        exp_pct = (
+            '2.6%' if v_pts <= 3 else
+            '3.5%' if v_pts == 4 else
+            '6.0%' if v_pts == 5 else
+            '6.6%' if v_pts == 6 else
+            '8.9%' if v_pts == 7 else
+            '14.3%'
+        )
+        if ev['vsg_cri']['risk_pct'] != exp_pct:
+            violations.append('INV-25_VSG_CRI_BERTGES2010_TABLE_MISMATCH')
 
     return violations
 
@@ -1338,6 +1356,20 @@ def run_simulation(n=50000, n_mono=6000, passport_sample=2000, seed=2026):
 
     eval_sec = time.perf_counter() - t_eval_start
     mono_res = run_metamorphic_monotonicity(n_pairs=n_mono, seed=seed)
+
+    # Full-year calendar header sweep across leap year (2024) + standard year (2026) including all December weeks
+    for yr in (2024, 2026):
+        d_cur = datetime.date(yr, 1, 1)
+        while d_cur.year == yr:
+            mon = _monday_of(d_cur)
+            sun = mon + datetime.timedelta(days=6)
+            try:
+                w_txt = _week_title(mon)
+                if mon.month == sun.month and not w_txt.startswith(f'{MONTHS[mon.month - 1]} {mon.year}'):
+                    invariant_counts['INV-26_CALENDAR_WEEK_TITLE_WRONG_MONTH'] += 1
+            except Exception as exc:
+                exceptions.append({'idx': -1, 'tier': 'calendar', 'op_subtype': str(mon), 'error': f'{type(exc).__name__}: {exc}'})
+            d_cur += datetime.timedelta(days=1)
 
     lat_sorted = sorted(latencies_ms)
     n_lat = len(lat_sorted)

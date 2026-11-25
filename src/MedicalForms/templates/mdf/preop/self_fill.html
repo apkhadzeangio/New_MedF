@@ -3,6 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow, noarchive">
+    <meta name="referrer" content="no-referrer">
     <title>წინასაოპერაციო კითხვარი</title>
     <link rel="stylesheet" href="{% static_v 'css/bootstrap.min.css' %}">
     <link rel="stylesheet" href="{% static_v 'css/app.css' %}">
@@ -12,13 +14,18 @@
 <main class="app-main" style="max-width:760px;margin:0 auto;padding:24px 16px 48px">
     {% if invalid_link %}
     <section class="x-card text-center py-5">
-        <h1 style="font-size:22px">ბმული ვადაგასულია ან არასწორია</h1>
-        <p class="text-muted m-0">გთხოვთ მიმართოთ კლინიკის ექთანს ახალი ბმულის მისაღებად.</p>
+        <h1 style="font-size:22px">ბმული ვადაგასულია, გაუქმებულია ან არასწორია</h1>
+        <p class="text-muted m-0">გთხოვთ მიმართოთ კლინიკის ექთანს ახალი ერთჯერადი ბმულის მისაღებად.</p>
     </section>
-    {% elif locked %}
+    {% elif staff_locked %}
     <section class="x-card text-center py-5">
         <h1 style="font-size:22px;color:var(--ok)">✓ კითხვარი უკვე დადასტურებულია სამედიცინო გუნდის მიერ</h1>
         <p class="text-muted m-0">თქვენი სამედიცინო ანკეტა უკვე გადამოწმებულია ექთნის / ქირურგის მიერ. დამატებითი ცვლილებისთვის მიმართეთ კლინიკის პერსონალს.</p>
+    </section>
+    {% elif locked %}
+    <section class="x-card text-center py-5">
+        <h1 style="font-size:22px;color:var(--ok)">✓ კითხვარი უკვე გაგზავნილია (ერთჯერადი ბმული დახურულია)</h1>
+        <p class="text-muted m-0">უსაფრთხოებისა და პერსონალური მონაცემების დაცვის მიზნით ბმული ერთჯერადია. მონაცემების დასაზუსტებლად მიმართეთ კლინიკის ექთანს.</p>
     </section>
     {% elif submitted %}
     <section class="x-card text-center py-5">
@@ -28,22 +35,29 @@
         </div>
         {% endif %}
         <h1 style="font-size:24px;color:var(--ok)">✓ მადლობა! კითხვარი შენახულია</h1>
-        <p class="text-muted mb-3">თქვენი პასუხები გადაეცა სამედიცინო გუნდს. გთხოვთ მიმართოთ ექთანს.</p>
-        <a href="?" class="x-btn sm">პასუხების გადახედვა / ჩასწორება</a>
+        <p class="text-muted mb-0">თქვენი პასუხები გადაეცა სამედიცინო გუნდს და ერთჯერადი ბმული უსაფრთხოდ დაიხურა. დამატებითი ცვლილების საჭიროებისას მიმართეთ ექთანს.</p>
     </section>
     {% else %}
     <section class="x-card">
         <div>
-            <div class="small text-muted fw-semibold">წინასაოპერაციო სამედიცინო კითხვარი</div>
+            <div class="small text-muted fw-semibold">წინასაოპერაციო სამედიცინო კითხვარი (ერთჯერადი დაცული ბმული)</div>
             <h1 style="font-size:22px;margin:4px 0">{{ p.patient_name }}</h1>
             <div class="small text-muted">დაგეგმილი ჩარევა: <strong>{{ p.planned_operation_label }}</strong></div>
         </div>
         <div class="grid-3 pt-2 border-top" style="border-color:var(--line-soft)!important">
             <label class="fld">პირადი ნომერი (11 ციფრი)
-                <input type="text" name="person_id" form="self-q-form" value="{{ ev.person_id }}" maxlength="11" inputmode="numeric" placeholder="010XXXXXXXX" class="form-control">
+                {% if masked_person_id %}
+                <div class="form-control bg-light text-muted d-flex align-items-center" style="font-variant-numeric:tabular-nums">{{ masked_person_id }} ✓</div>
+                {% else %}
+                <input type="text" name="person_id" form="self-q-form" value="" maxlength="11" inputmode="numeric" autocomplete="off" placeholder="010XXXXXXXX" class="form-control">
+                {% endif %}
             </label>
             <label class="fld">დაბადების თარიღი
-                <input type="date" name="birth_date" form="self-q-form" value="{{ s.birth_date }}" class="form-control">
+                {% if has_birth_date %}
+                <div class="form-control bg-light text-muted d-flex align-items-center">დაფიქსირებულია ✓</div>
+                {% else %}
+                <input type="date" name="birth_date" form="self-q-form" value="" class="form-control">
+                {% endif %}
             </label>
             <label class="fld">ასაკი (წელი)
                 <input type="number" name="age" form="self-q-form" value="{{ p.age|default_if_none:'' }}" min="12" max="120" class="form-control">
@@ -55,7 +69,11 @@
                 <input type="number" name="height_cm" form="self-q-form" value="{{ s.height_cm|default_if_none:'' }}" placeholder="მაგ. 168" class="form-control">
             </label>
             <label class="fld">ტელეფონი
-                <input type="text" name="phone" form="self-q-form" value="{{ p.phone }}" placeholder="5XX XX XX XX" class="form-control">
+                {% if masked_phone %}
+                <div class="form-control bg-light text-muted d-flex align-items-center" style="font-variant-numeric:tabular-nums">{{ masked_phone }} ✓</div>
+                {% else %}
+                <input type="text" name="phone" form="self-q-form" value="" autocomplete="off" placeholder="5XX XX XX XX" class="form-control">
+                {% endif %}
             </label>
         </div>
     </section>

@@ -63,10 +63,23 @@
                 <a class="x-btn sm primary" href="{% url 'preop-passport' p.pk %}" target="_blank" rel="noopener" title="2-გვერდიანი აკადემიური დოსიე და წინასაოპერაციო პასპორტი A4 ამოსაბეჭდად">
                     დოსიე / პასპორტი (2 გვ.)
                 </a>
-                <button type="button" class="x-btn sm" id="btn-copy-self" data-self-path="{{ self_fill_path }}" title="დააკოპირეთ კითხვარის ბმული პაციენტისთვის (SMS / WhatsApp / Viber)">
-                    პაციენტის ბმული
+                {% if not self_fill_revoked %}
+                <button type="button" class="x-btn sm" id="btn-copy-self" data-self-path="{{ self_fill_path }}" title="დააკოპირეთ ერთჯერადი კითხვარის ბმული პაციენტისთვის (SMS / WhatsApp / Viber)">
+                    პაციენტის ბმული{% if self_fill_used %} (შევსებულია){% endif %}
                 </button>
                 <a class="x-btn sm" href="{{ self_fill_path }}" target="_blank" rel="noopener" title="პაციენტის კითხვარის გახსნა პლანშეტზე / ცალკე ფანჯარაში">↗</a>
+                {% endif %}
+                <form method="post" class="d-inline-flex align-items-center gap-1 m-0">
+                    {% csrf_token %}
+                    <input type="hidden" name="section" value="self_link">
+                    <input type="hidden" name="tab" value="{{ tab }}">
+                    <button type="submit" name="action" value="rotate" class="x-btn sm" title="ახალი ერთჯერადი ბმულის გენერაცია (ძველი ბმული გაუქმდება)">
+                        {% if self_fill_revoked %}↻ ბმულის აღდგენა{% else %}↻ ახალი ბმული{% endif %}
+                    </button>
+                    {% if not self_fill_revoked %}
+                    <button type="submit" name="action" value="revoke" class="x-btn sm" title="პაციენტის თვითშევსების ბმულის დაუყოვნებელი გაუქმება">✕</button>
+                    {% endif %}
+                </form>
                 {% if board_patient %}
                 <a class="x-btn sm ok" href="{% url 'board-patient' board_patient.pk %}" title="პაციენტი უკვე მიღებულია განყოფილების დაფაზე">
                     ✓ დაფაზეა ({{ board_patient.bed|default:board_patient.get_unit_display }}) →
@@ -1983,6 +1996,13 @@
                                 {% endfor %}
                             </select>
                         </label>
+                        <label class="fld">ოპერაციის ხანგრძლივობა (ARISCAT)
+                            <select name="surg_duration_est" class="form-select form-select-sm">
+                                {% for dk, dl in surg_duration_choices %}
+                                <option value="{{ dk }}" {% if s.surg_duration_est == dk %}selected{% endif %}>{{ dl }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
                         {% if ev.needs_cied %}
                         <label class="fld">კარდიოსტიმულატორის / ICD რეჟიმი
                             <select name="cied_plan" class="form-select form-select-sm">
@@ -1991,10 +2011,6 @@
                                 {% endfor %}
                             </select>
                         </label>
-                        {% else %}
-                        <div class="d-flex align-items-end">
-                            <label class="chip-check"><input type="checkbox" name="asa_emergency" value="1" {% if s.asa_emergency %}checked{% endif %}>ASA-E (გადაუდებელი / სასწრაფო)</label>
-                        </div>
                         {% endif %}
                     </div>
                     <div class="po-chip-row mt-2">
@@ -2002,9 +2018,7 @@
                         {% for lk, ll in chips.anesth_lines_chips %}
                         <label class="chip-check"><input type="checkbox" name="anesth_lines_chips" value="{{ lk }}" {% if lk in s.anesth_lines_chips %}checked{% endif %}>{{ ll }}</label>
                         {% endfor %}
-                        {% if ev.needs_cied %}
-                        <label class="chip-check"><input type="checkbox" name="asa_emergency" value="1" {% if s.asa_emergency %}checked{% endif %}>ASA-E (გადაუდებელი)</label>
-                        {% endif %}
+                        <label class="chip-check"><input type="checkbox" name="asa_emergency" value="1" {% if s.asa_emergency %}checked{% endif %}>ASA-E (გადაუდებელი / სასწრაფო)</label>
                         {% if ev.needs_icu_bed %}
                         <input type="hidden" name="icu_bed_field_present" value="1">
                         <label class="chip-check" style="border-color:#A9D8C1"><input type="checkbox" name="icu_bed_booked" value="1" {% if s.icu_bed_booked %}checked{% endif %}>ICU / HDU საწოლი დაჯავშნილია ✓</label>
@@ -2648,7 +2662,7 @@
     document.querySelectorAll('input[name="inr"], input[name="dos_inr"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
             if (v > 1.5) return { level: 'crit', msg: 'მაღალი INR (>1.5 — სისხლდენის რისკი)!' };
-            if (v > 1.2) return { level: 'warn', msg: 'INR > 1.2 (ნეირაქსიული ბლოკადისთვის საყურადღებოა)' };
+            if (v > 1.4) return { level: 'warn', msg: 'INR > 1.4 (ASRA ნეირაქსიული ბლოკადის ზღვარი ≤ 1.4)' };
             return null;
         });
     });
