@@ -6033,3 +6033,107 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         self.assertIn('0.9% NaCl-ით დატვირთვა აკრძალულია', ev_ren['surgical_brief']['contrast_plan'])
         self.assertIn('გენტამიცინს მოერიდეთ', ev_ren['surgical_brief']['abx_regimen'])
         self.assertNotIn('სტატინის მიღება', ' | '.join(ev_ren['amber_flags']))
+
+    def test_sprint2_asra_neuraxial_cied_vitals_lab_units_and_passport_visibility(self):
+        from django.utils import timezone
+        from .models import PreopPatient
+        from .preop import (
+            evaluate, normalize_fibrinogen_gl, normalize_glucose_mmol, normalize_ldl_mmol,
+        )
+
+        today = timezone.localdate()
+
+        # C8.2: Lab unit normalizers (glucose >=45 mg/dL synced with JS, 38 stays 38.0 HHS; fibrinogen >15 mg/dL; LDL >20 mg/dL)
+        self.assertEqual(normalize_glucose_mmol(38), 38.0)
+        self.assertEqual(normalize_glucose_mmol(90), 5.0)
+        self.assertEqual(normalize_fibrinogen_gl(140), 1.4)
+        self.assertEqual(normalize_ldl_mmol(130), 3.36)
+
+        # C6.1 + C6.3: Auto EVAR never contradicts neuraxial_gate; selecting neuraxial activates ASRA 5th Ed 72h DOAC & IV UFH >=60m rule;
+        # when PLT < 100 in auto mode, auto switches to General Anesthesia ("ნეირაქსიული შეზღუდულია!")!
+        p_evar = PreopPatient(
+            patient_name='ასრა ევარაძე', age=71, sex='M',
+            pathway='aaa_infra', op_subtype='evar',
+            questionnaire={'filled': True, 'med_doac': True, 'mets_ok': True},
+            studies={'weight_kg': 80, 'height_cm': 176, 'creat': 85, 'plt': 210, 'inr': 1.0, 'aaa_mm': 58},
+        )
+        ev_auto = evaluate(p_evar, today=today)
+        self.assertNotIn('არ იგეგმება', ev_auto['anesthetic_brief']['neuraxial_gate'])
+        self.assertIn('ASRA 72 სთ რეჟიმი', ev_auto['effective_anesth_label'])
+
+        p_evar.studies['anesthesia_plan'] = 'neuraxial'
+        ev_ok = evaluate(p_evar, today=today)
+        self.assertTrue(ev_ok['has_neuraxial_plan'])
+        self.assertIn('72 საათით', {m['drug']: m for m in ev_ok['med_schedule']}['DOAC (ქსარელტო / ელიქვისი)']['rule'])
+        self.assertIn('≥60 წთ', ev_ok['anesthetic_brief']['neuraxial_gate'])
+
+        p_evar.studies['anesthesia_plan'] = 'auto'
+        p_evar.studies['plt'] = 78
+        ev_plt = evaluate(p_evar, today=today)
+        self.assertFalse(ev_plt['has_neuraxial_plan'])
+        self.assertIn('ნეირაქსიული შეზღუდულია', ev_plt['effective_anesth_label'])
+        self.assertIn('ავტო-გადართვა ზოგადზე', ev_plt['anesthetic_brief']['neuraxial_gate'])
+
+        # C6.4 + L1-F3 + C6.5: Solo neuraxial on CEA triggers anatomical mismatch STOP & blocks Signature #2; GLP-1 forces endotracheal GA
+        p_cea = PreopPatient.objects.create(
+            patient_name='სოლო სპინალაძე', age=68, sex='M', side='R',
+            pathway='cea', op_subtype='cea_asymp', surgeon=self.user,
+            questionnaire={'filled': True, 'glp1': True, 'pacemaker': True, 'med_aspirin': True, 'mets_ok': True},
+            studies={
+                'anesthesia_plan': 'neuraxial', 'carotid_r': 82, 'carotid_l': 25,
+                'cea_cta_status': 'concordant', 'hb': 136, 'plt': 200, 'inr': 1.0, 'creat': 82, 'ecg': 'normal',
+            },
+        )
+        ev_cea = evaluate(p_cea, today=today)
+        self.assertEqual(ev_cea['clearance_seal']['code'], 'stop')
+        self.assertTrue(ev_cea['neuraxial_hard_blocked'])
+        self.assertIn('CIED: რეჟიმი დასაზუსტებელია (!)', ev_cea['anesthetic_brief']['lines_and_cied'])
+        pp_cea = self.client.get(reverse('preop-passport', args=[p_cea.pk]))
+        self.assertContains(pp_cea, 'შესაცვლელია! (ნეირაქსიული შეზღუდულია — იხ. 2B)')
+
+        p_cea.studies['anesthesia_plan'] = 'general'
+        p_cea.save()
+        ev_cea_ga = evaluate(p_cea, today=today)
+        self.assertEqual(ev_cea_ga['effective_anesth_label'], 'ზოგადი ენდოტრაქეული ანესთეზია')
+        self.assertNotIn('ლარინგეალური', ev_cea_ga['effective_anesth_label'])
+
+        # C8.1: Inverted cuff, Shock Index >= 1.0, tachysystolic AFib (HR > 110)
+        p_vit = PreopPatient(
+            patient_name='შოკ ინდექსაძე', age=70, sex='M',
+            pathway='aaa_infra', op_subtype='open',
+            questionnaire={'filled': True, 'mets_ok': True},
+            studies={'bp_sys': 80, 'bp_dia': 115, 'bp_sys_l': 96, 'bp_dia_l': 80, 'hr': 118, 'ecg': 'afib_controlled', 'fibrinogen': 140},
+        )
+        ev_vit = evaluate(p_vit, today=today)
+        vit_reds = ' | '.join(ev_vit['red_flags'])
+        self.assertIn('SBP ≤ DBP', vit_reds)
+        self.assertNotIn('>= 180/110', vit_reds)
+        self.assertIn('შოკის ინდექსი', vit_reds)
+        self.assertIn('ტაქისისტოლია', ev_vit['ecg_label'])
+        self.assertIn('ჰიპოფიბრინოგენემია', vit_reds)
+        self.assertIn('სასაზღვრო ჰიპოტენზია', ' | '.join(ev_vit['amber_flags']))
+        self.assertIn('ვიწრო პულსური წნევა', ' | '.join(ev_vit['amber_flags']))
+
+        # C9.2 + C9.3 + C9.4 + L1-F4: Passport shows BOTH LVEF & BNP, Page 1 cautions on cardio-cleared AS, and Section 6 dos_warnings!
+        p_pp = PreopPatient.objects.create(
+            patient_name='პასპორტ სიფრთხილაძე', age=74, sex='M',
+            pathway='aaa_infra', op_subtype='open', surgeon=self.user, cardio_decision='cleared',
+            questionnaire={'filled': True, 'med_warfarin': True, 'med_aspirin': True, 'mets_ok': True},
+            studies={
+                'aaa_mm': 74, 'lvef': 36, 'echo_valve_issue': True, 'nt_probnp': 890,
+                'hb': 132, 'plt': 210, 'inr': 2.6, 'creat': 88, 'ecg': 'normal', 'cta_disc': True,
+                'blood_reserved': True, 'med_hold_agreed': True, 'anesth_done': True,
+                'dos_identity_consent': True, 'dos_fasting_confirmed': True,
+                'dos_med_hold_verified': True, 'dos_abx_ready': True,
+                'dos_blood_implant_ready': True, 'icu_bed_booked': True,
+            },
+        )
+        ev_pp = evaluate(p_pp, today=today)
+        # L1-F4: Baseline INR 2.6 with missing morning dos_inr blocks dos_ready!
+        self.assertFalse(ev_pp['dos_ready'])
+        self.assertTrue(ev_pp['dos_hold_danger'])
+        pp_html = self.client.get(reverse('preop-passport', args=[p_pp.pk]))
+        self.assertContains(pp_html, 'LVEF 36%')
+        self.assertContains(pp_html, 'BNP 890')
+        self.assertContains(pp_html, 'კარდიო-სიფრთხილე (დაშვებულია ✓)')
+        self.assertContains(pp_html, 'საბაზისო INR (2.6)')

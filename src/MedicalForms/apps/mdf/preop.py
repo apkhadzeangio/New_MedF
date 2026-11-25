@@ -134,7 +134,7 @@ SURG_DURATION_CHOICES = (
 CIED_PLAN_CHOICES = (
     ('pending', 'დასაზუსტებელია'),
     ('bipolar_only', 'მხოლოდ ბიპოლარული კოაგულაცია (რეპროგრამირების გარეშე)'),
-    ('magnet_async', 'მაგნიტის რეჟიმი საოპერაციოში (ასინქრონული / ICD დეაქტივაცია)'),
+    ('magnet_async', 'მაგნიტის რეჟიმი: პეისმეიკერზე — ასინქრონული; ICD-ზე — მხოლოდ შოკის გამორთვა (პეისინგ-დამოკიდებულ ICD-ზე სავალდებულოა რეპროგრამირება + გარე პედები!)'),
     ('ep_reprogram', 'არითმოლოგის წინასწარი რეპროგრამირება ოპერაციამდე და შემდეგ'),
 )
 
@@ -528,7 +528,7 @@ def normalize_hb_gl(hb):
 
 
 def normalize_glucose_mmol(gl):
-    """Return glucose in mmol/L (converts mg/dL ONLY when >=45.0; severe 38 mmol/L stays 38.0)."""
+    """Return glucose in mmol/L (converts mg/dL ONLY when >=45.0; severe 38 mmol/L stays 38.0; synced 1:1 with JS)."""
     v = _num(gl, lo=0.5, hi=1000)
     if v is None:
         return None
@@ -541,6 +541,22 @@ def normalize_albumin_gl(alb):
     if v is None:
         return None
     return round(v * 10, 1) if 1.0 <= v <= 6.0 else v
+
+
+def normalize_fibrinogen_gl(fib):
+    """Return plasma fibrinogen in g/L (converts mg/dL > 15.0 via /100, e.g. 140 mg/dL -> 1.4 g/L)."""
+    v = _num(fib, lo=0.2, hi=1500)
+    if v is None:
+        return None
+    return round(v / 100.0, 2) if v > 15.0 else v
+
+
+def normalize_ldl_mmol(ldl):
+    """Return LDL cholesterol in mmol/L (converts mg/dL > 20.0 via /38.67, e.g. 130 mg/dL -> 3.36 mmol/L)."""
+    v = _num(ldl, lo=0.2, hi=500)
+    if v is None:
+        return None
+    return round(v / 38.67, 2) if v > 20.0 else v
 
 
 def calc_max_contrast_ml(egfr, on_dialysis=False):
@@ -2358,7 +2374,7 @@ def evaluate(patient, today=None):
     )
 
     pad_gsv_mm = _num(s.get('pad_gsv_mm'), lo=0.5, hi=30)
-    ldl_val = _num(s.get('ldl'), lo=0.2, hi=20)
+    ldl_val = normalize_ldl_mmol(s.get('ldl'))
     weight_num = _num(s.get('weight_kg'), lo=25, hi=260)
 
     ipsi_car = None
@@ -3029,17 +3045,34 @@ def evaluate(patient, today=None):
     cardio_cleared = (cardio_decision == 'cleared')
     anesth_cleared = bool(s.get('anesth_done'))
     anesth_plan_raw = s.get('anesthesia_plan') or 'auto'
-    has_neuraxial_plan = (
-        (anesth_plan_raw == 'neuraxial')
-        or ('epidural' in anesth_lines_set)
-        or (anesth_plan_raw == 'auto' and is_phleb)
-    )
+    explicit_neuraxial = (anesth_plan_raw == 'neuraxial') or ('epidural' in anesth_lines_set)
 
     bp_sys, bp_dia = _int(s.get('bp_sys'), lo=30, hi=320), _int(s.get('bp_dia'), lo=20, hi=220)
     bp_sys_l, bp_dia_l = _int(s.get('bp_sys_l'), lo=30, hi=320), _int(s.get('bp_dia_l'), lo=20, hi=220)
-    eff_sys = max([v for v in (bp_sys, bp_sys_l) if v is not None], default=None)
-    eff_dia = max([v for v in (bp_dia, bp_dia_l) if v is not None], default=None)
-    bp_arm_diff = abs(bp_sys - bp_sys_l) if (bp_sys is not None and bp_sys_l is not None) else None
+    bp_r_inverted = (bp_sys is not None and bp_dia is not None and bp_sys <= bp_dia)
+    bp_l_inverted = (bp_sys_l is not None and bp_dia_l is not None and bp_sys_l <= bp_dia_l)
+    bp_inverted = bp_r_inverted or bp_l_inverted
+    if bp_inverted:
+        inv_s = bp_sys if bp_r_inverted else bp_sys_l
+        inv_d = bp_dia if bp_r_inverted else bp_dia_l
+        red_flags.append(
+            f'არტერიული წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {inv_s}/{inv_d} mmHg) — გადაამოწმეთ სისტოლური და დიასტოლური მაჩვენებლები!'
+        )
+    valid_sys_vals = [
+        v for v, inv in ((bp_sys, bp_r_inverted), (bp_sys_l, bp_l_inverted))
+        if v is not None and not inv
+    ]
+    valid_dia_vals = [
+        v for v, inv in ((bp_dia, bp_r_inverted), (bp_dia_l, bp_l_inverted))
+        if v is not None and not inv
+    ]
+    eff_sys = max(valid_sys_vals, default=None)
+    eff_dia = max(valid_dia_vals, default=None)
+    bp_arm_diff = (
+        abs(bp_sys - bp_sys_l)
+        if (bp_sys is not None and bp_sys_l is not None and not bp_r_inverted and not bp_l_inverted)
+        else None
+    )
 
     if bp_arm_diff is not None and bp_arm_diff >= 20:
         higher_arm = 'მარჯვენა' if bp_sys >= bp_sys_l else 'მარცხენა'
@@ -3049,6 +3082,7 @@ def evaluate(patient, today=None):
         )
 
     hr, spo2 = _int(s.get('hr'), lo=15, hi=260), _int(s.get('spo2'), lo=30, hi=100)
+    shock_index = round(hr / eff_sys, 2) if (hr is not None and eff_sys is not None and eff_sys > 0) else None
     severe_htn = bool((eff_sys and eff_sys >= 180) or (eff_dia and eff_dia >= 110))
     if severe_htn:
         if pathway == PreopPatient.Pathway.CEA:
@@ -3063,8 +3097,21 @@ def evaluate(patient, today=None):
             red_flags.append(f'ჰიპოტენზია ({eff_sys}/{eff_dia or "?"} mmHg) — სასწრაფოდ გამოირიცხოს რუპტურა / შოკი!')
         else:
             red_flags.append(f'ჰიპოტენზია ({eff_sys}/{eff_dia or "?"} mmHg) — სასწრაფოდ შეფასდეს ჰემოდინამიკა!')
+    elif eff_sys and eff_sys < 100:
+        amber_flags.append(
+            f'სასაზღვრო ჰიპოტენზია ({eff_sys}/{eff_dia or "?"} mmHg — SBP 90–99): შეაფასეთ ვოლემია და დილის ანტიჰიპერტენზიული წამლების გამოტოვება.'
+        )
     elif (eff_sys and eff_sys >= 160) or (eff_dia and eff_dia >= 100):
         amber_flags.append(f'მომატებული არტერიული წნევა ({eff_sys or "?"}/{eff_dia or "?"} mmHg) — სასურველია ამბულატორიული კორექცია (ESC 2022: სტადია 2 ჰიპერტენზია <180/110 ოპერაციას არ აყოვნებს).')
+
+    if shock_index is not None and shock_index >= 1.0:
+        red_flags.append(
+            f'შოკის ინდექსი მომატებულია (HR/SBP = {shock_index} >= 1.0) — ფარული ჰიპოვოლემიის / სისხლდენის / სეფსისის რისკი! სასწრაფოდ შეფასდეს ჰემოდინამიკა!'
+        )
+    if eff_sys is not None and eff_dia is not None and 0 < (eff_sys - eff_dia) < 20:
+        amber_flags.append(
+            f'ვიწრო პულსური წნევა ({eff_sys - eff_dia} mmHg < 20 mmHg) — გამოირიცხოს ჰიპოვოლემია, აორტის სტენოზი ან დაბალი განდევნა.'
+        )
 
     if hr and (hr > 110 or hr < 45):
         red_flags.append(f'პულსის კრიტიკული ცვლილება (HR {hr}/წთ) — საჭიროა ეკგ და კარდიოლოგის შეფასება.')
@@ -3073,6 +3120,11 @@ def evaluate(patient, today=None):
             amber_flags.append(f'არარეგულარული რიტმი (HR {hr or "?"}/წთ) — შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
         else:
             red_flags.append(f'პულსის/რიტმის საყურადღებო ცვლილება (HR {hr or "?"}/წთ) — საჭიროა ეკგ და კარდიოლოგის შეფასება.')
+    elif hr and 45 <= hr < 55:
+        if (q_filled and q.get('pacemaker')) or ((s.get('ecg') or 'pending') == 'ischemia_arrhythmia'):
+            red_flags.append(f'ბრადიკარდია (HR {hr}/წთ < 55) კარდიოსტიმულატორის / ეკგ ცვლილების ფონზე — გადაამოწმეთ სტიმულატორი და AV გამტარებლობა!')
+        else:
+            amber_flags.append(f'ზომიერი ბრადიკარდია (HR {hr}/წთ < 55) — დილის ბეტა-ბლოკატორის დოზა შეაფასეთ პულსის მიხედვით.')
 
     if spo2 is not None:
         if spo2 < 90:
@@ -3088,12 +3140,64 @@ def evaluate(patient, today=None):
         else:
             amber_flags.append('დაქვეითებული ფუნქციური ამტანობა (< 4 METs — ქოშინი/დაღლა 2 სართულზე ასვლისას).')
 
-    # 3. Hematology, Coagulation, Anemia Standing Reflex & Patient Blood Management (PBM)
+    # 3. Hematology, Coagulation, Anemia Standing Reflex, PBM & Early ASRA 5th Ed Neuraxial Resolution
     open_aortic = (
         pathway == PreopPatient.Pathway.ABF
         or (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
     )
     open_major = open_aortic or is_pad_bypass
+    plt = _int(s.get('plt'), lo=1, hi=2500)
+    inr = _num(s.get('inr'), lo=0.4, hi=20.0)
+    dos_inr_early = _num(s.get('dos_inr'), lo=0.5, hi=15)
+    eff_inr_nx = dos_inr_early if dos_inr_early is not None else inr
+    fib = normalize_fibrinogen_gl(s.get('fibrinogen'))
+    on_oral_anticoag = q_filled and (q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
+
+    has_acs_stent_early = ('stent_6_12m' in cad_chips) and ('mi' in cad_chips)
+    p2y12_cnt_early = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))]) if q_filled else 0
+    uninterrupted_p2y12_early = q_filled and (
+        (p2y12_cnt_early >= 1)
+        and (bool(q.get('recent_stent')) or has_acs_stent_early or is_pta or (is_symp_cea and not q.get('med_prasugrel')))
+    )
+    hard_nx_reasons = []
+    if plt is not None and plt < 100:
+        hard_nx_reasons.append(f'PLT {plt} < 100')
+    if eff_inr_nx is not None and eff_inr_nx > 1.4:
+        hard_nx_reasons.append(f'INR {eff_inr_nx} > 1.4')
+    if fib is not None and fib < 1.5:
+        hard_nx_reasons.append(f'ფიბრინოგენი {fib} < 1.5 გ/ლ')
+    if s.get('aptt_prolonged'):
+        hard_nx_reasons.append('APTT გახანგრძლივებულია')
+    if uninterrupted_p2y12_early:
+        hard_nx_reasons.append('უწყვეტი P2Y12/DAPT — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
+    if 'hit_heparin' in allergy_chips and not is_venous:
+        hard_nx_reasons.append('HIT არტერიულ ოპერაციაზე (IV DTI) — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
+    if (q_filled and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in med_chips)) and (
+        on_dialysis or (eff_renal is not None and eff_renal < 30)
+    ):
+        hard_nx_reasons.append('CrCl/eGFR < 30 ანტიკოაგულანტზე — ნეირაქსიული ბლოკადა მოერიდეთ!')
+    if bool(s.get('echo_valve_issue')) and not cardio_cleared:
+        hard_nx_reasons.append('მძიმე სარქვლოვანი მანკი / AS — სპინალური ბლოკადა საშიშია!')
+    if (eff_sys is not None and eff_sys < 95) or (shock_index is not None and shock_index >= 1.0):
+        hard_nx_reasons.append('ჰიპოტენზია / შოკი (SBP <95 ან SI ≥1.0) — სიმპათექტომია საშიშია!')
+
+    solo_neuraxial_anatomic_mismatch = (anesth_plan_raw == 'neuraxial') and (
+        pathway == PreopPatient.Pathway.CEA or (open_aortic and 'epidural' not in anesth_lines_set)
+    )
+    if solo_neuraxial_anatomic_mismatch:
+        red_flags.append(
+            'არჩეულია მხოლოდ სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ღია აორტის ოპერაციაზე — ანატომიურად შეუსაბამოა! '
+            'შეარჩიეთ ზოგადი ენდოტრაქეული ანესთეზია (± ეპიდურული ანალგეზია ღია აორტაზე) ან კისრის წნულის ბლოკადა.'
+        )
+
+    auto_spinal_candidate = (anesth_plan_raw == 'auto') and (is_phleb or patient.op_subtype == 'evar' or is_pad_bypass)
+    has_neuraxial_plan = explicit_neuraxial or ((anesth_plan_raw == 'auto') and is_phleb and not hard_nx_reasons)
+    neuraxial_hard_blocked = bool(explicit_neuraxial and (hard_nx_reasons or solo_neuraxial_anatomic_mismatch))
+    if neuraxial_hard_blocked and not solo_neuraxial_anatomic_mismatch and not uninterrupted_p2y12_early:
+        red_flags.append(
+            f"არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია ({', '.join(hard_nx_reasons)}) — შეცვალეთ ანესთეზიის გეგმა (ASRA 5th Ed)!"
+        )
+
     ferritin_val = _num(s.get('ferritin'), lo=1, hi=5000)
     tsat_val = _num(s.get('tsat'), lo=1, hi=100)
     hb_norm = 120 if patient.sex == 'F' else 130
@@ -3132,7 +3236,6 @@ def evaluate(patient, today=None):
     if wbc is not None and (wbc > 12.0 or wbc < 3.5):
         red_flags.append(f'ლეიკოციტების ცვლილება (WBC {wbc} x10^9/L) — გამოირიცხოს მწვავე ინფექცია ჩარევამდე!')
 
-    plt = _int(s.get('plt'), lo=1, hi=2500)
     if plt is not None:
         if plt < 100:
             spinal_note = ' (სპინალური/ეპიდურული ჰემატომისა და სისხლდენის რისკი!)' if has_neuraxial_plan else ''
@@ -3145,10 +3248,9 @@ def evaluate(patient, today=None):
     if open_major and hb_gl is not None and not s.get('blood_group'):
         amber_flags.append('ღია სისხლძარღვოვანი ოპერაციის წინ მიუთითეთ სისხლის ჯგუფი და რეზუსი (Type & Screen).')
 
-    inr = _num(s.get('inr'), lo=0.4, hi=20.0)
-    fib = _num(s.get('fibrinogen'), lo=0.2, hi=15.0)
-    on_oral_anticoag = q_filled and (q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
-    if is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not has_neuraxial_plan and on_oral_anticoag and inr and inr <= 3.0 and not s.get('aptt_prolonged'):
+    if fib is not None and fib < 1.5:
+        red_flags.append(f'მძიმე ჰიპოფიბრინოგენემია (ფიბრინოგენი {fib} გ/ლ < 1.5) — კოაგულოპათიური სისხლდენის მაღალი რისკი (ESAIC 2023)!')
+    if is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not has_neuraxial_plan and on_oral_anticoag and inr and inr <= 3.0 and not s.get('aptt_prolonged') and (fib is None or fib >= 1.8):
         if inr > 1.35:
             amber_flags.append(f'INR {inr} ანტიკოაგულანტის ფონზე — EVLA-ს წინ დააზუსტეთ ქირურგთან (ESVS 2022-ით მოხსნა აუცილებელი არ არის, თუ INR <= 3.0).')
     elif (inr and inr > 1.35) or s.get('aptt_prolonged') or (fib is not None and fib < 1.8):
@@ -3326,6 +3428,14 @@ def evaluate(patient, today=None):
             'action': f'სტომატოლოგის სანაცია (წერილობითი ცნობა) + {antiseptic_lbl}',
             'done': bool(s.get('dental_sanitation_done')),
         })
+    if has_synthetic_implant and not is_urgent_case:
+        shower_antiseptic = 'პოვიდონ-იოდის შხაპი (ქლორჰექსიდინზე ალერგია!)' if 'latex_chlorhex' in allergy_chips else 'ქლორჰექსიდინის ანტისეპტიკური შხაპი'
+        reflex_orders.append({
+            'key': 'decol',
+            'trigger': 'სინთეზური სისხლძარღვოვანი პროთეზის / პატჩის / სტენტ-გრაფტის იმპლანტაცია',
+            'action': f'პროთეზის ინფექციის პრევენცია: წინასაოპერაციო {shower_antiseptic}ს ინსტრუქტაჟი',
+            'done': bool(s.get('decolonization_ready')),
+        })
 
     # Stale Labs Expiry Guard (>14 days)
     labs_dt = _date(s.get('labs_date'))
@@ -3465,7 +3575,9 @@ def evaluate(patient, today=None):
             'done': cied_ok,
         })
 
-    med_schedule = build_med_schedule(patient, q, s, egfr, crcl=crcl) if q_filled else []
+    med_schedule = build_med_schedule(
+        patient, q, s, egfr, crcl=crcl, has_neuraxial_override=has_neuraxial_plan,
+    ) if q_filled else []
     clop_needs_hold = bool(q.get('med_clopidogrel') and not is_pta and not is_symp_cea)
     metf_contra_any = bool(q.get('metformin')) and (on_dialysis or (eff_renal is not None and eff_renal < 30) or liver_3x)
     metf_hold_48h = bool(q.get('metformin')) and (
@@ -3728,7 +3840,9 @@ def evaluate(patient, today=None):
         else:
             red_flags.append('კარდიოლოგიური Red Flag (LVEF < 40% / მძიმე სარქვლოვანი მანკი / მწვავე ეკგ ცვლილება) — აცნობეთ ქირურგსა და კარდიოლოგს!')
     elif ecg == 'afib_controlled':
-        if cardio_cleared:
+        if hr is not None and hr > 110:
+            red_flags.append(f'მოციმციმე არითმია — ტაქისისტოლია (HR {hr}/წთ > 110) — სავალდებულოა რიტმის/სიხშირის კონტროლი კარდიოლოგთან!')
+        elif cardio_cleared:
             amber_flags.append('ნორმოსისტოლური მოციმციმე არითმია — შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
         else:
             amber_flags.append('ეკგ-ზე ნორმოსისტოლური მოციმციმე არითმია — საჭიროა კარდიოლოგის შეფასება.')
@@ -3998,20 +4112,39 @@ def evaluate(patient, today=None):
             'მაღალი ობსტრუქციული ძილის აპნოეს რისკი (STOP-Bang ≥5 / OSA) — ოპიოიდების დაზოგვა, პოსტოპ. პულსოქსიმეტრია და CPAP მზადყოფნა.'
         )
 
-    if anesth_plan_raw != 'auto':
+    needs_ett_airway = (
+        open_aortic
+        or pathway == PreopPatient.Pathway.CEA
+        or (q_filled and (bool(q.get('aaa_pain')) or bool(q.get('glp1'))))
+        or (bmi is not None and bmi >= 40)
+    )
+    if anesth_plan_raw == 'general' and needs_ett_airway:
+        effective_anesth_label = 'ზოგადი ენდოტრაქეული ანესთეზია' + (' + ეპიდურული ანალგეზია' if 'epidural' in anesth_lines_set else '')
+    elif anesth_plan_raw != 'auto':
         effective_anesth_label = dict(ANESTH_PLAN_CHOICES).get(anesth_plan_raw, anesth_plan_raw)
     elif patient.op_subtype == PreopPatient.OpSubtype.EVLA:
         effective_anesth_label = 'ტუმესცენტური ადგილობრივი ანესთეზია'
-    elif is_phleb:
-        effective_anesth_label = 'სპინალური / ზოგადი ანესთეზია'
     elif is_pta:
         effective_anesth_label = 'ადგილობრივი ანესთეზია (± სედაცია)'
     elif pathway == PreopPatient.Pathway.CEA:
-        effective_anesth_label = 'ზოგადი ან რეგიონული ბლოკადა (ცერებრული მონიტორინგით)'
-    elif patient.op_subtype == 'evar' or is_pad_bypass:
-        effective_anesth_label = 'სპინალურ-ეპიდურული ან ზოგადი ანესთეზია'
+        effective_anesth_label = 'ზოგადი ენდოტრაქეული ან რეგიონული ბლოკადა (ცერებრული მონიტორინგით)'
+    elif is_phleb or patient.op_subtype == 'evar' or is_pad_bypass:
+        if hard_nx_reasons:
+            base_ga_lbl = 'ზოგადი ენდოტრაქეული ანესთეზია' if needs_ett_airway else 'ზოგადი ანესთეზია'
+            effective_anesth_label = f'{base_ga_lbl} (ნეირაქსიული შეზღუდულია!)'
+        elif is_phleb:
+            effective_anesth_label = 'სპინალური / ზოგადი ანესთეზია'
+        elif patient.op_subtype == 'evar':
+            effective_anesth_label = 'ზოგადი ან ადგილობრივი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)'
+        else:
+            effective_anesth_label = 'ზოგადი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)'
     else:
-        effective_anesth_label = 'ზოგადი ენდოტრაქეული (± ეპიდურული ანალგეზია)'
+        if 'epidural' in anesth_lines_set:
+            effective_anesth_label = 'ზოგადი ენდოტრაქეული + ეპიდურული ანალგეზია'
+        elif hard_nx_reasons:
+            effective_anesth_label = 'ზოგადი ენდოტრაქეული ანესთეზია (ეპიდურული შეზღუდულია!)'
+        else:
+            effective_anesth_label = 'ზოგადი ენდოტრაქეული ანესთეზია'
 
     anesth_lines_txt = chip_summary(s.get('anesth_lines_chips'), 'anesth_lines_chips')
     cied_plan_raw = s.get('cied_plan') if s.get('cied_plan') in ('pending', 'bipolar_only', 'magnet_async', 'ep_reprogram') else 'pending'
@@ -4137,9 +4270,16 @@ def evaluate(patient, today=None):
             'done': bool(s.get('dos_abx_ready')),
         })
     if open_major or patient.op_subtype == 'evar' or has_synthetic_implant:
+        decol_sfx = ''
+        if has_synthetic_implant:
+            decol_sfx = (
+                ' · ანტისეპტიკა: პოვიდონ-იოდი (ქლორჰექსიდინზე ალერგია!)'
+                if 'latex_chlorhex' in allergy_chips else
+                (' · ქლორჰექსიდინის შხაპი ✓' if s.get('decolonization_ready') else ' · ანტისეპტიკური შხაპი')
+            )
         dos_checks.append({
             'key': 'dos_blood_implant_ready',
-            'label': 'ერითრომასის რეზერვი / სისხლის ჯგუფი და სისხლძარღვოვანი პროთეზი/სტენტ-გრაფტი საოპერაციოშია',
+            'label': f'ერითრომასის რეზერვი / სისხლის ჯგუფი და სისხლძარღვოვანი პროთეზი/სტენტ-გრაფტი საოპერაციოშია{decol_sfx}',
             'done': bool(s.get('dos_blood_implant_ready')),
         })
     if needs_icu_bed:
@@ -4154,7 +4294,12 @@ def evaluate(patient, today=None):
     dos_gl = normalize_glucose_mmol(s.get('dos_glucose'))
     dos_inr = _num(s.get('dos_inr'), lo=0.5, hi=15)
     dos_warnings = list(hard_contraindications)
-    if (dos_sys and dos_sys >= 180) or (dos_dia and dos_dia >= 110):
+    dos_bp_inverted = (dos_sys is not None and dos_dia is not None and dos_sys <= dos_dia)
+    if dos_bp_inverted:
+        dos_warnings.append(
+            f'ოპერაციის დილის წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი და მაჩვენებელი!'
+        )
+    elif (dos_sys and dos_sys >= 180) or (dos_dia and dos_dia >= 110):
         dos_warnings.append(
             f'ოპერაციის დილის კრიტიკული ჰიპერტენზია ({dos_sys or "?"}/{dos_dia or "?"} mmHg >= 180/110) — გეგმური ინდუქცია საშიშია, საჭიროა სტაბილიზაცია!'
         )
@@ -4164,17 +4309,25 @@ def evaluate(patient, today=None):
         dos_warnings.append(f'ოპერაციის დილის კრიტიკული გლიკემია ({dos_gl} მმოლ/ლ) — საჭიროა კორექცია საოპერაციოში შეყვანამდე!')
     elif dos_gl is not None and dos_gl > 10.0:
         amber_flags.append(f'ოპერაციის დილის ჰიპერგლიკემია ({dos_gl} მმოლ/ლ > 10.0) — სასურველია ინსულინით კორექცია პერიოპერაციული ინფექციის შესამცირებლად.')
+
+    is_evla_only = is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not has_neuraxial_plan
+    inr_lim = 3.0 if is_evla_only else (1.4 if has_neuraxial_plan else 1.5)
+    any_dos_ticked = any(c['done'] for c in dos_checks)
     if dos_inr is not None:
-        is_evla_only = is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not has_neuraxial_plan
-        inr_lim = 3.0 if is_evla_only else (1.4 if has_neuraxial_plan else 1.5)
         if dos_inr > inr_lim:
             dos_warnings.append(f'ოპერაციის დილის INR ({dos_inr}) აჭარბებს უსაფრთხო ზღვარს (≤ {inr_lim}) — სისხლდენის / სპინალური ჰემატომის რისკი!')
+    elif any_dos_ticked:
+        if inr is not None and inr > inr_lim:
+            dos_warnings.append(
+                f'საბაზისო INR ({inr}) აჭარბებს ზღვარს (≤ {inr_lim}), ხოლო ოპერაციის დილის საკონტროლო INR შეყვანილი არ არის!'
+            )
+        elif q_filled and q.get('med_warfarin') and not is_evla_only:
+            dos_warnings.append('ვარფარინის ფონზე ოპერაციის დილის საკონტროლო INR სავალდებულოა საოპერაციოში შეყვანამდე!')
 
     has_hard_contraindication = bool(hard_contraindications)
     dos_hold_danger = bool(dos_warnings)
     dos_done_count = sum(1 for c in dos_checks if c['done'])
     dos_total_count = len(dos_checks)
-    dos_ready = (dos_done_count == dos_total_count) and not dos_hold_danger
 
     vqi_bundle_applicable = not is_venous
     vqi_bundle_done = (
@@ -4194,6 +4347,34 @@ def evaluate(patient, today=None):
 
     amber_flags = list(dict.fromkeys(amber_flags))
 
+    # C9.4: Concise Page-1 Passport Cautions so priority urgency & cleared severe cardio/pulm risks never vanish from Passport!
+    passport_cautions = []
+    for af in amber_flags:
+        if af.startswith('[სასწრაფო პრიორიტეტი]'):
+            passport_cautions.append(af)
+    if cardio_cleared and s.get('echo_valve_issue'):
+        passport_cautions.append(
+            'კარდიო-სიფრთხილე (დაშვებულია ✓): მნიშვნელოვანი სარქვლოვანი პათოლოგია / AS — მოერიდეთ სწრაფ ვაზოდილატაციას/ჰიპოტენზიას (A-line, ვაზოპრესორი)!'
+        )
+    elif cardio_cleared and lvef is not None and lvef < 40:
+        passport_cautions.append(
+            f'კარდიო-სიფრთხილე (დაშვებულია ✓): დაქვეითებული განდევნის ფრაქცია (LVEF {lvef}%) — ფრთხილი ინფუზია და ჰემოდინამიკური კონტროლი.'
+        )
+    if anesth_cleared and spiro_fev1 is not None and spiro_fev1 < 50:
+        passport_cautions.append(
+            f'პულმო-სიფრთხილე (დაშვებულია ✓): მძიმე სპირომეტრიული დარღვევა (FEV1 {spiro_fev1}%) — ფილტვ-დამზოგველი ვენტილაცია და პოსტოპ. მონიტორინგი.'
+        )
+    for af in amber_flags:
+        if len(passport_cautions) >= 4:
+            break
+        if af not in passport_cautions and any(
+            kw in af for kw in (
+                'ასიმეტრია', 'სასაზღვრო ჰიპოტენზია', 'ვიწრო პულსური', 'STOP-Bang',
+                '14-დღიან ფანჯარას', 'რუპტურის რისკი', 'კიდურის დაკარგვის', 'NT-proBNP', 'Mallampati IV',
+            )
+        ):
+            passport_cautions.append(af)
+
     if is_urgent_case:
         priority_tier = 'urgent'
     elif (
@@ -4211,6 +4392,13 @@ def evaluate(patient, today=None):
     current_sig = _alerts_signature(red_flags)
     alerts_acked = bool(patient.alerts_ack_at and s.get('alerts_ack_sig') == current_sig)
     has_unacked_red = bool(red_flags) and not alerts_acked
+    dos_ready = bool(
+        q_filled
+        and (dos_done_count == dos_total_count)
+        and not dos_hold_danger
+        and not has_unacked_red
+        and not neuraxial_hard_blocked
+    )
 
     # Safety: NEW unacknowledged red_flags (even pre-questionnaire or post-approval!) or hard contraindications ALWAYS force STATUS_ALERT!
     if has_unacked_red or has_hard_contraindication:
@@ -4380,13 +4568,19 @@ def evaluate(patient, today=None):
         'B': 'ორმხრივი (B)',
     }.get(patient.side or '', 'აორტა / ცენტრალური' if pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF) else 'მხარე დასაზუსტებელია')
 
-    if has_hard_contraindication or dos_hold_danger:
+    if has_hard_contraindication or dos_hold_danger or solo_neuraxial_anatomic_mismatch:
         clearance_seal = {
             'code': 'stop',
             'badge': 'STOP — დაშვება დაბლოკილია',
             'detail': 'ფიქსირდება აბსოლუტური კლინიკური უკუჩვენება ან საოპერაციო დილის საშიში მაჩვენებელი!',
         }
         _apply_stop_lock_to_med_schedule(med_schedule)
+    elif neuraxial_hard_blocked:
+        clearance_seal = {
+            'code': 'pending',
+            'badge': 'მომზადების პროცესში — ანესთეზიის გეგმა შესაცვლელია!',
+            'detail': 'არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია (ASRA 5th Ed) — შეცვალეთ გაუტკივარების მეთოდი.',
+        }
     elif status == STATUS_READY and all_tasks_done:
         clearance_seal = {
             'code': 'go',
@@ -4622,32 +4816,44 @@ def evaluate(patient, today=None):
     }
 
     # Specialist Anesthetic & Hemodynamic Plan
-    neuraxial_blockers = []
+    neuraxial_blockers = list(hard_nx_reasons)
+    if solo_neuraxial_anatomic_mismatch:
+        neuraxial_blockers.insert(0, 'ანატომიურად შეუსაბამო სოლო-ნეირაქსიული გეგმა!')
+    asra_ufh_note = (
+        ' · ASRA 2025 UFH წესი: ნეირაქსიული პუნქციიდან IV ჰეპარინამდე ≥60 წთ (სისხლიანი პუნქციისას — გადადება/კონსილიუმი); '
+        'კათეტერის ამოღება UFH-დან ≥4–6 სთ-ში (ნორმალური aPTT) და P2Y12/DOAC/VOYAGER დაწყებამდე!'
+        if (has_neuraxial_plan and not is_venous) else ''
+    )
+    vka_inr_caution = (
+        f' [ვარფარინის ფონზე ASRA 5th Ed რეკომენდაციით სასურველია INR-ის სრული ნორმალიზება ≤1.2 (მიმდინარე: {eff_inr_nx})!]'
+        if (q_filled and q.get('med_warfarin') and eff_inr_nx is not None and 1.2 < eff_inr_nx <= 1.4)
+        else ''
+    )
     if has_neuraxial_plan:
-        if plt is not None and plt < 100:
-            neuraxial_blockers.append(f'PLT {plt} < 100')
-        elif plt is None:
+        if plt is None:
             neuraxial_blockers.append('PLT უცნობია')
-        eff_inr_nx = dos_inr if dos_inr is not None else inr
-        if eff_inr_nx is not None and eff_inr_nx > 1.4:
-            neuraxial_blockers.append(f'INR {eff_inr_nx} > 1.4')
-        elif eff_inr_nx is None:
+        if eff_inr_nx is None:
             neuraxial_blockers.append('INR უცნობია')
-        if s.get('aptt_prolonged'):
-            neuraxial_blockers.append('APTT გახანგრძლივებულია')
         if ft_meds['unstructured_antithrombotic']:
             neuraxial_blockers.append('other_meds-ში მითითებული ანტიკოაგულანტი/ანტიაგრეგანტი დასაზუსტებელია!')
-        if uninterrupted_p2y12:
-            neuraxial_blockers.append('უწყვეტი P2Y12/DAPT — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
-        elif q_filled and (q.get('med_doac') or q.get('med_dabigatran') or q.get('med_warfarin') or q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel')):
+        if not uninterrupted_p2y12 and q_filled and (
+            q.get('med_doac') or q.get('med_dabigatran') or q.get('med_warfarin')
+            or q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel')
+            or ('rivaroxaban_2_5' in med_chips) or ('cilostazol' in med_chips)
+        ):
             if not (s.get('med_hold_agreed') or s.get('dos_med_hold_verified')):
                 neuraxial_blockers.append('ASRA წამლის შეჩერების ინტერვალი დასადასტურებელია')
-        if (q_filled and (q.get('med_doac') or q.get('med_dabigatran'))) and ((crcl is not None and crcl < 30) or (egfr is not None and egfr < 30) or on_dialysis):
-            neuraxial_blockers.append('CrCl/eGFR < 30 ანტიკოაგულანტზე — ნეირაქსიული ბლოკადა მოერიდეთ!')
         neuraxial_gate = (
-            'საყურადღებო/შეზღუდულია (ASRA 5th Ed): ' + ', '.join(neuraxial_blockers)
+            'საყურადღებო/შეზღუდულია (ASRA 5th Ed): ' + ', '.join(neuraxial_blockers) + vka_inr_caution + asra_ufh_note
             if neuraxial_blockers else
-            f'ASRA 5th Ed კრიტერიუმები დაცულია (INR {eff_inr_nx}, PLT {plt}) ✓'
+            f'ASRA 5th Ed კრიტერიუმები დაცულია (INR {eff_inr_nx}, PLT {plt}) ✓{vka_inr_caution}{asra_ufh_note}'
+        )
+    elif auto_spinal_candidate and hard_nx_reasons:
+        neuraxial_gate = 'ნეირაქსიული შეზღუდულია (ავტო-გადართვა ზოგადზე — ASRA 5th Ed): ' + ', '.join(hard_nx_reasons)
+    elif auto_spinal_candidate:
+        neuraxial_gate = (
+            f'ASRA 5th Ed: ნეირაქსიული დასაშვებია (INR {eff_inr_nx if eff_inr_nx is not None else "—"}, PLT {plt if plt is not None else "—"}) '
+            '— არჩევისას მიუთითეთ „სპინალური / ეპიდურული“ (72 სთ DOAC / ≥60 წთ UFH წესისთვის)'
         )
     else:
         neuraxial_gate = 'ნეირაქსიული ბლოკადა/ეპიდურული კათეტერი არ იგეგმება'
@@ -4692,15 +4898,25 @@ def evaluate(patient, today=None):
     if (s.get('laryngoscopy_res') or 'pending') == 'palsy':
         airway_bits.append('სახმო იოგის პარეზი (!)')
 
+    if open_aortic:
+        default_lines_lbl = 'A-line + CVC + 2 მსხვილი პერიფერიული კათეტერი + ფოლი + აქტიური გათბობა ≥36.0°C'
+    elif pathway == PreopPatient.Pathway.CEA or asa_roman == 'IV':
+        default_lines_lbl = 'A-line (ინვაზიური წნევა) + ECG/SpO2 + აქტიური გათბობა'
+    elif is_venous or is_pta:
+        default_lines_lbl = 'სტანდარტული არაინვაზიური მონიტორინგი (ECG, SpO2, NIBP)'
+    else:
+        default_lines_lbl = 'A-line / ინვაზიური მონიტორინგი ქირურგიული მასშტაბით + აქტიური გათბობა'
+    cied_brief_sfx = (
+        f' · CIED: {cied_plan_label}' if cied_plan_label else
+        (' · CIED: რეჟიმი დასაზუსტებელია (!) — გარე პედების მზადყოფნა!' if needs_cied else '')
+    )
+
     anesthetic_brief = {
         'modality': f'{effective_asa} · {effective_anesth_label}',
         'neuraxial_gate': neuraxial_gate,
         'airway_summary': ' · '.join(airway_bits),
         'bp_corridor': bp_corridor,
-        'lines_and_cied': (
-            (anesth_lines_txt or ('სტანდარტული არაინვაზიური მონიტორინგი (ECG, SpO2, NIBP)' if is_venous or is_pta else 'A-line / ინვაზიური მონიტორინგი ქირურგიული მასშტაბით'))
-            + (f' · CIED: {cied_plan_label}' if cied_plan_label else '')
-        ),
+        'lines_and_cied': (anesth_lines_txt or default_lines_lbl) + cied_brief_sfx,
         'transfusion_pbm': transfusion_pbm,
         'glycemic_target': (
             'პერიოპერაციული გლიკემიური კორიდორი 5.5–10.0 მმოლ/ლ (ჰიპოგლიკემიის <3.9 და >10.0 თავიდან აცილება — ESC/ESAIC)'
@@ -4713,6 +4929,12 @@ def evaluate(patient, today=None):
             ('დღის სტაციონარი / ამბულატორიული გაწერა ადრეული აქტივაციით' if (is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA) else 'სისხლძარღვთა ქირურგიის სტაციონარული პალატა')
         ),
     }
+
+    ecg_display_label = (
+        'მოციმციმე არითმია — ტაქისისტოლია (HR > 110!)'
+        if (ecg == 'afib_controlled' and hr is not None and hr > 110)
+        else ECG_LABELS.get(ecg, ecg)
+    )
 
     return {
         'pathway': pathway,
@@ -4729,6 +4951,11 @@ def evaluate(patient, today=None):
         'clearance_seal': clearance_seal,
         'surgical_brief': surgical_brief,
         'anesthetic_brief': anesthetic_brief,
+        'passport_cautions': passport_cautions,
+        'neuraxial_hard_blocked': neuraxial_hard_blocked,
+        'eff_allergy_latex': ('latex_chlorhex' in allergy_chips),
+        'shock_index': shock_index,
+        'fib_gl': fib,
         'is_venous': is_venous,
         'is_phleb': is_phleb,
         'is_pta': is_pta,
@@ -4787,7 +5014,7 @@ def evaluate(patient, today=None):
         'vqi_30d_label': vqi_30d_label,
         'status': status,
         'status_label': STATUS_LABELS[status],
-        'workup_ready': bool((patient.approved_at or all_tasks_done) and not has_hard_contraindication),
+        'workup_ready': bool((patient.approved_at or all_tasks_done) and not has_hard_contraindication and not solo_neuraxial_anatomic_mismatch),
         'priority_tier': priority_tier,
         'priority_label': PRIORITY_LABELS[priority_tier],
         'days_elapsed': days,
@@ -4867,7 +5094,7 @@ def evaluate(patient, today=None):
         'tasks': tasks,
         'done_count': done_count,
         'total_count': len(tasks),
-        'ecg_label': ECG_LABELS.get(ecg, ecg),
+        'ecg_label': ecg_display_label,
         'cxr_label': CXR_LABELS.get(cxr, cxr),
         'q': q,
         's': s,
@@ -5968,9 +6195,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             ('bp_sys_l', 40, 300), ('bp_dia_l', 20, 200),
             ('hr', 20, 250), ('spo2', 50, 100),
             ('weight_kg', 25, 260), ('height_cm', 100, 230),
-            ('hb', 1, 260), ('inr', 0.5, 15), ('fibrinogen', 0.2, 15),
+            ('hb', 1, 260), ('inr', 0.5, 15),
             ('creat', 0.1, 3000), ('k', 1.5, 10), ('na', 100, 180),
-            ('glucose', 0.5, 1000), ('hba1c', 3, 25), ('ldl', 0.2, 20),
+            ('glucose', 0.5, 1000), ('hba1c', 3, 25),
             ('ferritin', 1, 5000), ('tsat', 1, 100),
             ('nt_probnp', 1, 50000), ('hs_ctn', 0.1, 50000),
             ('albumin', 0.5, 80),
@@ -5980,6 +6207,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         for key, lo, hi in num_fields:
             if key in request.POST:
                 s[key] = _num(request.POST.get(key), lo=lo, hi=hi)
+        if 'fibrinogen' in request.POST:
+            s['fibrinogen'] = normalize_fibrinogen_gl(request.POST.get('fibrinogen'))
+        if 'ldl' in request.POST:
+            s['ldl'] = normalize_ldl_mmol(request.POST.get('ldl'))
 
         if 'cta_date' in request.POST:
             cd = _date(request.POST.get('cta_date'))

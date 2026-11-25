@@ -1879,7 +1879,7 @@
 
                     {% if ev.has_synthetic_implant %}
                     <div class="po-task-row {% if s.decolonization_ready %}done{% endif %}">
-                        <span><strong>პროთეზის ინფექციის პრევენცია:</strong> წინასაოპერაციო ანტისეპტიკური ({% if 'latex_chlorhex' in q.allergy_chips %}პოვიდონ-იოდის — ქლორჰექსიდინზე ალერგიის გამო!{% else %}ქლორჰექსიდინის{% endif %}) შხაპის ინსტრუქტაჟი</span>
+                        <span><strong>პროთეზის ინფექციის პრევენცია:</strong> წინასაოპერაციო ანტისეპტიკური ({% if ev.eff_allergy_latex %}პოვიდონ-იოდის — ქლორჰექსიდინზე ალერგიის გამო!{% else %}ქლორჰექსიდინის{% endif %}) შხაპის ინსტრუქტაჟი</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="decolonization_ready" value="1" {% if s.decolonization_ready %}checked{% endif %}>ინსტრუქცია გაცემულია ✓</label>
                     </div>
                     {% endif %}
@@ -2683,8 +2683,8 @@
         var unitSel = el.closest('form') ? el.closest('form').querySelector('select[name="creat_unit"]') : null;
         attachLiveGuard(el, function (v) {
             var u = unitSel ? unitSel.value : '';
-            if (!u && v >= 15 && v <= 35) return { level: 'crit', msg: 'აირჩიეთ ერთეული (მკმოლ/ლ თუ მგ/დლ)!' };
-            var mgdl = u === 'mgdl' ? v : (u === 'umol' ? v / 88.4 : (v < 15 ? v : v / 88.4));
+            if (!u && v > 15 && v < 35) return { level: 'crit', msg: 'აირჩიეთ ერთეული (მკმოლ/ლ თუ მგ/დლ)!' };
+            var mgdl = u === 'mgdl' ? v : (u === 'umol' ? v / 88.4 : (v <= 15 ? v : v / 88.4));
             if (mgdl > 2.0) return { level: 'crit', msg: 'მაღალი კრეატინინი (RCRI +1 / ნეფროლოგი)!' };
             if (mgdl >= 1.4) return { level: 'warn', msg: 'დაქვეითებული თირკმლის ფუნქცია' };
             return null;
@@ -2693,9 +2693,24 @@
     });
     document.querySelectorAll('input[name="glucose"], input[name="dos_glucose"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
-            var mmol = v > 35 ? Math.round((v / 18.018) * 10) / 10 : v;
+            var mmol = v >= 45 ? Math.round((v / 18.0) * 10) / 10 : v;
             if (mmol >= 14.0 || mmol < 3.9) return { level: 'crit', msg: 'კრიტიკული გლიკემია (' + mmol + ' მმოლ/ლ)!' };
             if (mmol >= 7.0) return { level: 'warn', msg: 'მომატებული გლუკოზა (ჩაირთვება HbA1c)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="fibrinogen"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            var gl = v > 15 ? Math.round((v / 100.0) * 100) / 100 : v;
+            if (gl < 1.5) return { level: 'crit', msg: 'მძიმე ჰიპოფიბრინოგენემია (' + gl + ' გ/ლ < 1.5)!' };
+            if (gl < 1.8) return { level: 'warn', msg: 'დაბალი ფიბრინოგენი (' + gl + ' გ/ლ < 1.8)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="ldl"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            var mmol = v > 20 ? Math.round((v / 38.67) * 100) / 100 : v;
+            if (mmol >= 1.4) return { level: 'warn', msg: 'LDL ' + mmol + ' მმოლ/ლ (სამიზნე <1.4 მმოლ/ლ — ESVS)' };
             return null;
         });
     });

@@ -1191,12 +1191,19 @@ def _record_guideline_oracle(oracles, patient, ev):
     bp_sl = ev['s'].get('bp_sys_l')
     bp_d = ev['s'].get('bp_dia')
     bp_dl = ev['s'].get('bp_dia_l')
-    eff_s = max([int(round(v)) for v in (bp_s, bp_sl) if isinstance(v, (int, float)) and not isinstance(v, bool) and 30 <= v <= 320], default=None)
-    eff_d = max([int(round(v)) for v in (bp_d, bp_dl) if isinstance(v, (int, float)) and not isinstance(v, bool) and 20 <= v <= 220], default=None)
+    s_r = int(round(bp_s)) if isinstance(bp_s, (int, float)) and not isinstance(bp_s, bool) and 30 <= bp_s <= 320 else None
+    d_r = int(round(bp_d)) if isinstance(bp_d, (int, float)) and not isinstance(bp_d, bool) and 20 <= bp_d <= 220 else None
+    s_l = int(round(bp_sl)) if isinstance(bp_sl, (int, float)) and not isinstance(bp_sl, bool) and 30 <= bp_sl <= 320 else None
+    d_l = int(round(bp_dl)) if isinstance(bp_dl, (int, float)) and not isinstance(bp_dl, bool) and 20 <= bp_dl <= 220 else None
+    inv_r = (s_r is not None and d_r is not None and s_r <= d_r)
+    inv_l = (s_l is not None and d_l is not None and s_l <= d_l)
+    eff_s = max([v for v, inv in ((s_r, inv_r), (s_l, inv_l)) if v is not None and not inv], default=None)
+    eff_d = max([v for v, inv in ((d_r, inv_r), (d_l, inv_l)) if v is not None and not inv], default=None)
     k_v = ev['s'].get('k')
     k_num = float(k_v) if isinstance(k_v, (int, float)) and not isinstance(k_v, bool) and 1.0 <= k_v <= 12.0 else None
     exp_vital_lab_crit = bool(
-        (eff_s is not None and (eff_s >= 180 or eff_s < 90))
+        inv_r or inv_l
+        or (eff_s is not None and (eff_s >= 180 or eff_s < 90))
         or (eff_d is not None and eff_d >= 110)
         or (ev['hb_gl'] is not None and ev['hb_gl'] < 100)
         or (k_num is not None and (k_num < 3.3 or k_num >= 5.4))
