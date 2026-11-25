@@ -94,7 +94,7 @@ class BloodOrderView(LoginRequiredMixin, GetObjectMixin, generic.FormView):
             from .preop import _clean_person_id, _fmt_ka_date
             pre = PreopPatient.objects.filter(pk=int(self.request.GET['preop'])).first()
             if pre:
-                s = pre.studies or {}
+                s = pre.studies if isinstance(pre.studies, dict) else {}
                 values.update(
                     patient_name=pre.patient_name,
                     person_id=_clean_person_id(s.get('person_id')),
@@ -106,7 +106,20 @@ class BloodOrderView(LoginRequiredMixin, GetObjectMixin, generic.FormView):
                 return values
         board = board_patient(self.request)
         if board and not self.get_object():
-            values.update(patient_name=board.name, diagnosis=board.diagnosis)
+            from .preop import _clean_person_id, _fmt_ka_date, resolve_preop_for_board
+            pre = resolve_preop_for_board(board)
+            if pre:
+                s = pre.studies if isinstance(pre.studies, dict) else {}
+                values.update(
+                    patient_name=board.name,
+                    person_id=_clean_person_id(s.get('person_id')),
+                    dob=_fmt_ka_date(s.get('birth_date')),
+                    diagnosis=board.diagnosis or pre.diagnosis_text,
+                    blood_group=s.get('blood_group') or '',
+                    phone=pre.phone or '',
+                )
+            else:
+                values.update(patient_name=board.name, diagnosis=board.diagnosis)
         return values
 
     def get_context_data(self, **kwargs):

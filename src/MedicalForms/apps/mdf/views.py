@@ -148,35 +148,67 @@ def templates_for_page():
 
 def board_prefill(request):
     """A new, unsaved prescription with the patient's data from the board (?board=<id>) or preop (?preop=<id>)."""
+    from .enums import RadialPulse
     from .models import BoardPatient, PreopPatient
-    from .preop import _clean_person_id, _fmt_ka_date, calc_bmi
+    from .preop import (
+        _clean_person_id, _fmt_ka_date, _num, calc_bmi,
+        resolve_board_patient, resolve_preop_for_board,
+    )
+
+    def _niv_kwargs_from_preop(pre):
+        q = pre.questionnaire if isinstance(pre.questionnaire, dict) else {}
+        s = pre.studies if isinstance(pre.studies, dict) else {}
+        has_allergy = bool(
+            q.get('allergy_iodine') or q.get('allergy_other')
+            or q.get('ven_lidocaine_allergy') or q.get('allergy_chips')
+        )
+        # On NIV-300-9/a, `neuro` means 'მღვიძარე, ორიენტირებული' (alert & oriented)
+        has_neuro = not bool(q.get('cea_disabling_stroke'))
+        hba1c_v = _num(s.get('hba1c'), lo=3, hi=25)
+        has_dm = bool(q.get('dm') or (hba1c_v is not None and hba1c_v >= 6.5))
+        bmi_val = calc_bmi(s.get('weight_kg'), s.get('height_cm'))
+        if s.get('irregular_hr') or s.get('ecg') == 'afib_controlled':
+            rad_pulse = RadialPulse.NON_REGULAR
+        elif s.get('hr') is not None or s.get('ecg') == 'normal':
+            rad_pulse = RadialPulse.REGULAR
+        else:
+            rad_pulse = ''
+        return {
+            'person_id': _clean_person_id(s.get('person_id')),
+            'dob': _fmt_ka_date(s.get('birth_date')),
+            'bmi_score': str(bmi_val) if bmi_val is not None else '',
+            'diabetes': has_dm,
+            'allergy': has_allergy,
+            'neuro': has_neuro,
+            'radial_pulse': rad_pulse,
+        }
+
     if request.GET.get('preop', '').isdigit():
         p = PreopPatient.objects.filter(pk=int(request.GET['preop'])).first()
         if p:
-            q = p.questionnaire or {}
-            s = p.studies or {}
-            has_allergy = bool(
-                q.get('allergy_iodine') or q.get('allergy_other')
-                or q.get('ven_lidocaine_allergy') or q.get('allergy_chips')
-            )
-            has_neuro = bool(q.get('neuro') or q.get('cea_symp_event') or p.op_subtype == 'cea_symp')
-            has_dm = bool(q.get('dm') or (s.get('hba1c') is not None and float(s.get('hba1c')) >= 6.5))
-            bmi_val = calc_bmi(s.get('weight_kg'), s.get('height_cm'))
+            bp = resolve_board_patient(p)
+            extra = _niv_kwargs_from_preop(p)
             return NivForm(
                 title=p.patient_name,
                 patient_name=p.patient_name,
-                person_id=_clean_person_id(s.get('person_id')),
-                dob=_fmt_ka_date(s.get('birth_date')),
-                bmi_score=str(bmi_val) if bmi_val is not None else '',
+                chamber_number=bp.bed if bp else '',
                 diagnosis=p.diagnosis_text,
-                diabetes=has_dm,
-                allergy=has_allergy,
-                neuro=has_neuro,
+                **extra,
             )
     try:
         p = BoardPatient.objects.get(pk=int(request.GET.get('board', '')))
     except (TypeError, ValueError, BoardPatient.DoesNotExist):
         return None
+    pre = resolve_preop_for_board(p)
+    if pre:
+        extra = _niv_kwargs_from_preop(pre)
+        return NivForm(
+            title=p.name,
+            patient_name=p.name,
+            chamber_number=p.bed,
+            diagnosis=p.diagnosis or pre.diagnosis_text,
+            **extra,
+        )
     return NivForm(title=p.name, patient_name=p.name, chamber_number=p.bed, diagnosis=p.diagnosis)
 
 

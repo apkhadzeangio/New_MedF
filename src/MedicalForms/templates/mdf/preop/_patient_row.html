@@ -19,6 +19,8 @@
     <div class="tw-row-meta">
         {% if p.ev.case_outcome == 'operated' %}
         <span class="tw-mm" style="background:#EAF7F0;color:#067647">✓ ოპერ.</span>
+        {% elif p.ev.case_outcome != 'scheduled' %}
+        <span class="tw-mm" style="background:#FEF3F2;color:#B42318">გაუქმდა</span>
         {% elif p.ev.planned_surgery_short %}
         <span class="tw-mm" title="დაგეგმილი ოპერაციის თარიღი">ოპ: {{ p.ev.planned_surgery_short }}</span>
         {% endif %}

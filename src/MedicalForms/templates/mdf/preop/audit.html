@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static_version %}
 
-{% block title %}კარდიოლოგის აუდიტი — წინასაოპერაციო{% endblock %}
+{% block title %}კარდიო &amp; VQI ხარისხის აუდიტი — წინასაოპერაციო{% endblock %}
 {% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/preop.css' %}">{% endblock %}
 
 {% block content %}
@@ -9,7 +9,7 @@
     <a href="{% url 'preop' %}{% if pathway_filter != 'all' %}?pathway={{ pathway_filter }}{% endif %}" class="small">← წინასაოპერაციო კალენდარი</a>
 
     <div class="page-head">
-        <h1>კარდიოლოგიური კონსულტაციებისა და ვადების აუდიტი <span class="count">AAA · CEA · ABF · შუნტირება · PTA · ვენური</span></h1>
+        <h1>კარდიოლოგიური, საოპერაციო და 30-დღიანი VQI ხარისხის აუდიტი <span class="count">AAA · CEA · ABF · შუნტირება · PTA · ვენური</span></h1>
         <div class="tw-pills">
             {% for pkey, plbl in pathway_pills %}
             <a href="?pathway={{ pkey }}" class="tw-pill {% if pathway_filter == pkey %}on{% endif %}">{{ plbl }}</a>
@@ -95,7 +95,7 @@
             </div>
             <div class="au-kpi {% if vqi_complication_total %}bad{% endif %}">
                 <small>30 დღე გართულების გარეშე{% if cea_symp_within_14d_pct is not None %} · CEA &le;14დღ{% endif %}</small>
-                <b>{% if vqi_uneventful_30d_pct is not None %}{{ vqi_uneventful_30d_pct }}%{% else %}—{% endif %}{% if cea_symp_within_14d_pct is not None %} <span class="small fw-normal">· {{ cea_symp_within_14d_pct }}%</span>{% endif %}</b>
+                <b>{% if vqi_uneventful_30d_pct is not None %}{{ vqi_uneventful_30d_pct }}%{% else %}—{% endif %}{% if cea_symp_within_14d_pct is not None %} <span class="small fw-normal">· {{ cea_symp_within_14d_pct }}% ({{ cea_symp_within_14d_count }}/{{ cea_symp_operated_total }})</span>{% endif %}</b>
             </div>
         </div>
 

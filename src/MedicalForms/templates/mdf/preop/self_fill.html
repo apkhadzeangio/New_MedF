@@ -22,6 +22,11 @@
     </section>
     {% elif submitted %}
     <section class="x-card text-center py-5">
+        {% if emergency_symptom %}
+        <div class="po-alert red text-start mb-4" style="font-size:15px">
+            <span><strong>სასწრაფო სამედიცინო გაფრთხილება!</strong> თქვენს პასუხებში დაფიქსირდა საყურადღებო მწვავე სიმპტომი (მუცლის/წელის ტკივილი ან განმეორებითი ნევროლოგიური ეპიზოდი). თუ კლინიკაში იმყოფებით — <strong>დაუყოვნებლივ აცნობეთ ექთანს ან ექიმს</strong>; თუ სახლში ხართ — <strong>დაუყოვნებლივ დაუკავშირდით ქირურგს ან დარეკეთ 112-ზე!</strong></span>
+        </div>
+        {% endif %}
         <h1 style="font-size:24px;color:var(--ok)">✓ მადლობა! კითხვარი შენახულია</h1>
         <p class="text-muted mb-3">თქვენი პასუხები გადაეცა სამედიცინო გუნდს. გთხოვთ მიმართოთ ექთანს.</p>
         <a href="?" class="x-btn sm">პასუხების გადახედვა / ჩასწორება</a>
@@ -41,7 +46,7 @@
                 <input type="date" name="birth_date" form="self-q-form" value="{{ s.birth_date }}" class="form-control">
             </label>
             <label class="fld">ასაკი (წელი)
-                <input type="number" name="age" form="self-q-form" value="{{ p.age|default_if_none:'' }}" min="12" max="115" class="form-control">
+                <input type="number" name="age" form="self-q-form" value="{{ p.age|default_if_none:'' }}" min="12" max="120" class="form-control">
             </label>
             <label class="fld">წონა (კგ)
                 <input type="number" step="any" name="weight_kg" form="self-q-form" value="{{ s.weight_kg|default_if_none:'' }}" placeholder="მაგ. 72" class="form-control">
@@ -352,6 +357,7 @@
                         <label class="chip-check"><input type="checkbox" name="med_dabigatran" value="1" {% if q.med_dabigatran %}checked{% endif %}>პრადაქსა (დაბიგატრანი)</label>
                         <label class="chip-check"><input type="checkbox" name="med_warfarin" value="1" {% if q.med_warfarin %}checked{% endif %}>ვარფარინი</label>
                         <label class="chip-check"><input type="checkbox" name="metformin" value="1" {% if q.metformin %}checked{% endif %}>მეტფორმინი (სიოფორი / გლუკოფაჟი)</label>
+                        <label class="chip-check"><input type="checkbox" name="dm_insulin" value="1" {% if q.dm_insulin %}checked{% endif %}>ინსულინი (ნემსით)</label>
                         <label class="chip-check"><input type="checkbox" name="sglt2" value="1" {% if q.sglt2 %}checked{% endif %}>ჯარდიანსი / ფორსიგა</label>
                         <label class="chip-check"><input type="checkbox" name="glp1" value="1" {% if q.glp1 %}checked{% endif %}>ოზემპიკი / მუნჯარო / საქსენდა (ნემსი)</label>
                         {% for ck, cl in self_med_hints %}

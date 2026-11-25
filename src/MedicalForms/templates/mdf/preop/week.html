@@ -11,21 +11,27 @@
         <div class="d-flex flex-wrap align-items-center gap-2">
             <div class="tw-pills">
                 {% for pkey, plbl, pcnt in pathway_pills %}
-                <a href="?week={{ monday|date:'Y-m-d' }}&pathway={{ pkey }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}"
+                <a href="?week={{ monday|date:'Y-m-d' }}&pathway={{ pkey }}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if outcome_mode == 'done' %}&outcome=done{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}"
                    class="tw-pill {% if pathway_filter == pkey %}on{% endif %}">
                     <span>{{ plbl }} ({{ pcnt }})</span>
                 </a>
                 {% endfor %}
             </div>
+            <div class="tw-pills">
+                <a href="?week={{ monday|date:'Y-m-d' }}{% if pathway_filter != 'all' %}&pathway={{ pathway_filter }}{% endif %}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}"
+                   class="tw-pill {% if outcome_mode != 'done' %}on{% endif %}">მიმდინარე ({{ active_scheduled_total }})</a>
+                <a href="?week={{ monday|date:'Y-m-d' }}{% if pathway_filter != 'all' %}&pathway={{ pathway_filter }}{% endif %}&outcome=done{% if q %}&q={{ q|urlencode }}{% endif %}"
+                   class="tw-pill {% if outcome_mode == 'done' %}on{% endif %}">ჩატარებული / VQI ({{ completed_or_cancelled_total }})</a>
+            </div>
             <a class="x-btn sm" href="{% url 'preop-audit' %}{% if pathway_filter != 'all' %}?pathway={{ pathway_filter }}{% endif %}">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>კარდიოლოგის აუდიტი
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>კარდიო &amp; VQI აუდიტი
             </a>
         </div>
     </div>
 
     {% if overdue_patients %}
     <div class="tw-overdue-bar" role="alert">
-        <span><strong>ყურადღება — სამიზნე ვადაზე მეტად გახანგრძლივებული მომზადება (რუპტურის / ინსულტის / იშემიის რისკი):</strong></span>
+        <span><strong>ყურადღება — სამიზნე ვადაზე მეტად გახანგრძლივებული მომზადება ან მწვავე სიმპტომი:</strong></span>
         {% for op in overdue_patients %}
         <a href="{% url 'preop-patient' op.pk %}">{{ op.patient_name }} ({{ op.ev.pathway_short }} · დღე {{ op.ev.days_elapsed }}/{{ op.ev.target_days }})</a>
         {% endfor %}
@@ -35,15 +41,15 @@
     <!-- Top Tweek Bar: Week Navigation + Status Filter Pills + Quick Search -->
     <div class="tw-topbar">
         <div class="tw-week-nav">
-            <a class="x-btn sm x-icon" href="?week={{ prev_week }}{% if pathway_filter != 'all' %}&pathway={{ pathway_filter }}{% endif %}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}" title="წინა კვირა">←</a>
+            <a class="x-btn sm x-icon" href="?week={{ prev_week }}{% if pathway_filter != 'all' %}&pathway={{ pathway_filter }}{% endif %}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if outcome_mode == 'done' %}&outcome=done{% endif %}" title="წინა კვირა">←</a>
             <span class="tw-week-title">{{ week_title }}</span>
-            <a class="x-btn sm x-icon" href="?week={{ next_week }}{% if pathway_filter != 'all' %}&pathway={{ pathway_filter }}{% endif %}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}" title="შემდეგი კვირა">→</a>
-            <a class="x-btn sm" href="?week={{ today|date:'Y-m-d' }}{% if pathway_filter != 'all' %}&pathway={{ pathway_filter }}{% endif %}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}">დღეს</a>
+            <a class="x-btn sm x-icon" href="?week={{ next_week }}{% if pathway_filter != 'all' %}&pathway={{ pathway_filter }}{% endif %}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if outcome_mode == 'done' %}&outcome=done{% endif %}" title="შემდეგი კვირა">→</a>
+            <a class="x-btn sm" href="?week={{ today|date:'Y-m-d' }}{% if pathway_filter != 'all' %}&pathway={{ pathway_filter }}{% endif %}{% if status_filter != 'all' %}&status={{ status_filter }}{% endif %}{% if outcome_mode == 'done' %}&outcome=done{% endif %}">დღეს</a>
         </div>
 
         <div class="tw-pills">
             {% for key, label, count in filter_pills %}
-            <a href="?week={{ monday|date:'Y-m-d' }}{% if pathway_filter != 'all' %}&pathway={{ pathway_filter }}{% endif %}&status={{ key }}{% if q %}&q={{ q|urlencode }}{% endif %}"
+            <a href="?week={{ monday|date:'Y-m-d' }}{% if pathway_filter != 'all' %}&pathway={{ pathway_filter }}{% endif %}&status={{ key }}{% if outcome_mode == 'done' %}&outcome=done{% endif %}{% if q %}&q={{ q|urlencode }}{% endif %}"
                class="tw-pill {% if status_filter == key %}on{% endif %}">
                 {% if key != 'all' %}<span class="dot dot-{{ key }}"></span>{% endif %}
                 <span>{{ label }} ({{ count }})</span>
@@ -55,6 +61,7 @@
             <input type="hidden" name="week" value="{{ monday|date:'Y-m-d' }}">
             {% if pathway_filter != 'all' %}<input type="hidden" name="pathway" value="{{ pathway_filter }}">{% endif %}
             {% if status_filter != 'all' %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+            {% if outcome_mode == 'done' %}<input type="hidden" name="outcome" value="done">{% endif %}
             <input type="search" name="q" value="{{ q }}" placeholder="ძებნა გვარით..." class="form-control form-control-sm" style="border-radius:999px;padding:0 14px;height:34px">
         </form>
     </div>
