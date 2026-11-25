@@ -1264,6 +1264,12 @@ def _record_guideline_oracle(oracles, patient, ev):
         lvef_v = s.get('lvef')
         lvef_n = int(round(lvef_v)) if isinstance(lvef_v, (int, float)) and not isinstance(lvef_v, bool) and 5 <= lvef_v <= 95 else None
         true_low_mets = (not q.get('mets_ok', True)) and (q.get('mets_limitation') != 'limb')
+        is_pure_local_pta = (
+            pw == PreopPatient.Pathway.PAD_PTA
+            and not bool(q.get('pta_cant_lie_flat'))
+            and (s.get('anesthesia_plan') in (None, '', 'auto', 'local'))
+        )
+        ckd_cardio_thresh = 45 if is_pure_local_pta else 60
         exp_cardio = bool(
             open_aortic
             or true_low_mets
@@ -1278,7 +1284,7 @@ def _record_guideline_oracle(oracles, patient, ev):
             or (hr_n is not None and (hr_n > 110 or hr_n < 45))
             or ((eff_s is not None and eff_s >= 180) or (eff_d is not None and eff_d >= 110))
             or (pw not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS) and bool(q.get('neuro')))
-            or (not is_venous and (bool(q.get('on_dialysis')) or (ev['egfr'] is not None and ev['egfr'] < 60)))
+            or (not is_venous and (bool(q.get('on_dialysis')) or (ev['egfr'] is not None and ev['egfr'] < ckd_cardio_thresh)))
             or (not is_venous and bool(q.get('dm_insulin')))
         )
         oracles['esc2022_cardiology_gate'].record(exp_cardio, ev['needs_cardio'])
@@ -1323,8 +1329,21 @@ def _record_guideline_oracle(oracles, patient, ev):
     exp_anemia = bool(ev['hb_gl'] is not None and ev['hb_gl'] < 115)
     oracles['esaic_pbm_anemia_gate'].record(exp_anemia, ev['needs_anemia_panel'])
 
-    # 8. Remitted Ulcer PPI Gastroprotection Gate
-    exp_ppi = bool(q.get('ulcer') and not ev['needs_gastro'] and 'ppi' not in med_chips)
+    # 8. ESC 2022 / ACG Gastroprotection (PPI) Gate
+    p2y12_sim_cnt = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
+    has_dapt_sim = (
+        (p2y12_sim_cnt >= 2)
+        or (bool(q.get('med_aspirin')) and p2y12_sim_cnt >= 1 and (((patient.age or 0) >= 65) or ('steroid' in med_chips)))
+    )
+    has_oac_sim = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
+    has_ap_sim = bool(q.get('med_aspirin') or p2y12_sim_cnt >= 1 or 'cilostazol' in med_chips)
+    has_any_at_sim = has_oac_sim or has_ap_sim or ('rivaroxaban_2_5' in med_chips)
+    has_elder_steroid_sim = ((patient.age or 0) >= 65) and ('steroid' in med_chips) and has_any_at_sim
+    exp_ppi = bool(
+        (bool(q.get('ulcer')) or has_dapt_sim or (has_oac_sim and has_ap_sim) or has_elder_steroid_sim)
+        and not ev['needs_gastro']
+        and 'ppi' not in med_chips
+    )
     oracles['esc2022_ppi_gate'].record(exp_ppi, ev['needs_ppi'])
 
 

@@ -684,7 +684,7 @@
 
                     <div class="po-q-item">
                         <div class="po-q-main">
-                            <span class="po-q-text">2. ანევრიზმის დიამეტრი, CTA თარიღი/ხანდაზმულობა და დაუძლურების სკალა (CFS):</span>
+                            <span class="po-q-text">2. ანევრიზმის დიამეტრი და CTA თარიღი/ხანდაზმულობა:</span>
                             <div class="d-flex flex-wrap align-items-center gap-2">
                                 <input type="number" step="any" name="aaa_mm" value="{{ s.aaa_mm|default_if_none:'' }}" placeholder="მმ (მაგ. 58)" class="form-control form-control-sm" style="width:110px">
                                 <input type="date" name="cta_date" value="{{ s.cta_date }}" title="CTA-ს ჩატარების თარიღი" class="form-control form-control-sm" style="width:148px">
@@ -693,11 +693,6 @@
                                 <label class="chip-check" style="height:34px;padding:0 12px">
                                     <input type="checkbox" name="cta_disc" value="1" {% if s.cta_disc %}checked{% endif %}>DICOM დისკი აქვს
                                 </label>
-                                <select name="cfs_level" class="form-select form-select-sm" style="width:auto">
-                                    {% for fv, fl in cfs_choices %}
-                                    <option value="{{ fv }}" {% if q.cfs_level == fv %}selected{% endif %}>{{ fl }}</option>
-                                    {% endfor %}
-                                </select>
                             </div>
                         </div>
                     </div>
@@ -759,10 +754,17 @@
                 <div class="po-q-list">
                     <div class="po-q-item">
                         <div class="po-q-main">
-                            <span class="po-q-text">1. ახერხებს 2 სართულზე ასვლას გაუჩერებლად, ქოშინისა და მკერდში ტკივილის გარეშე (&ge; 4 METs)?</span>
-                            <div class="yn-switch mets" id="sw-mets">
-                                <label><input type="radio" name="mets_ok" value="1" {% if q.mets_ok %}checked{% endif %}>კი (&ge;4 METs)</label>
-                                <label><input type="radio" name="mets_ok" value="0" {% if not q.mets_ok %}checked{% endif %}>ვერ ადის</label>
+                            <span class="po-q-text">1. ფუნქციური ამტანობა (&ge; 4 METs — 2 სართულზე ასვლა) და დაუძლურების სკალა (CFS):</span>
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <div class="yn-switch mets" id="sw-mets">
+                                    <label><input type="radio" name="mets_ok" value="1" {% if q.mets_ok %}checked{% endif %}>კი (&ge;4 METs)</label>
+                                    <label><input type="radio" name="mets_ok" value="0" {% if not q.mets_ok %}checked{% endif %}>ვერ ადის</label>
+                                </div>
+                                <select name="cfs_level" class="form-select form-select-sm" style="width:auto" title="კლინიკური დაუძლურების სკალა (Clinical Frailty Scale)">
+                                    {% for fv, fl in cfs_choices %}
+                                    <option value="{{ fv }}" {% if q.cfs_level == fv %}selected{% endif %}>{{ fl }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
                         </div>
                         <div class="po-q-sub" id="sub-mets-limit" {% if q.mets_ok %}hidden{% endif %}>

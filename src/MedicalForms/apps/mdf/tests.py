@@ -6250,3 +6250,97 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         self.assertIn('GLP-1 ასპირაციის დაცვა', ev_met['anesthetic_brief']['airway_summary'])
         self.assertIn('dos_ketones_ok', [c['key'] for c in ev_met['dos_checks']])
 
+    def test_sprint4_asa_rcri_frailty_coag_pbm_nice_esc_deescalation_and_nurse_seal(self):
+        from django.utils import timezone
+        from .models import PreopPatient
+        from .preop import evaluate, generate_anamnesis
+
+        today = timezone.localdate()
+
+        # 1. C13: ASA IV mandate for needs_anesth, brain_imaging RCRI point, lone AFib non-IHD anamnesis,
+        # BMI < 16 cachexia red flag, CFS >= 5 frailty/delirium, ESAIC 2023 targeted PBM + HIT platelet contraindication,
+        # succinylcholine hyperkalemia guard, and dialysis AV fistula / latex DoS checks
+        p_crit = PreopPatient.objects.create(
+            patient_name='ფრეილ კოაგულაძე', age=79, sex='M', side='R',
+            pathway='pad_pta', op_subtype='pta_clti', surgeon=self.user,
+            questionnaire={
+                'filled': True, 'abf_rest_pain': True, 'cfs_level': '5_plus',
+                'cad': True, 'cad_chips': ['afib'], 'on_dialysis': True,
+                'med_aspirin': True, 'med_clopidogrel': True,
+                'allergy_other': True, 'allergy_chips': ['hit_heparin', 'latex_chlorhex'],
+                'mets_ok': True,
+            },
+            studies={
+                'weight_kg': 43, 'height_cm': 170,  # BMI 14.9 < 16.0 -> severe cachexia + ASA IV!
+                'bp_sys': 148, 'bp_dia': 92, 'hr': 84,  # objective BP >=140/90 -> STOP-Bang P point!
+                'hb': 108, 'plt': 65, 'fibrinogen': 1.4, 'inr': 1.75, 'k': 5.7,
+                'abi_r': 0.35, 'pta_access_site': 'cfa_clean', 'ecg': 'normal',
+                'brain_imaging': 'large_or_hemorrhage',
+            },
+        )
+        ev_crit = evaluate(p_crit, today=today)
+        self.assertEqual(ev_crit['auto_asa'], 'IV')
+        self.assertTrue(ev_crit['needs_anesth'])  # ASA IV forces needs_anesth even on PAD_PTA!
+        self.assertTrue(any('ინსულტი / TIA' in f for f in ev_crit['rcri']['factors']))
+        self.assertGreaterEqual(ev_crit['stop_bang_auto'], 3)
+        self.assertTrue(ev_crit['needs_ppi'])
+        self.assertTrue(any('პანტოპრაზოლი' in m['drug'] for m in ev_crit['med_schedule']))
+        crit_reds = ' | '.join(ev_crit['red_flags'])
+        self.assertIn('მძიმე კახექსია', crit_reds)
+        pbm_txt = ev_crit['anesthetic_brief']['transfusion_pbm']
+        self.assertIn('PLT <100 + HIT: პროფილაქტიკური თრომბოკონცენტრატის გადასხმა უკუნაჩვენებია', pbm_txt)
+        self.assertIn('ფიბრინოგენის კონცენტრატი', pbm_txt)
+        self.assertIn('ვიტამინი K 10 მგ IV', pbm_txt)
+        self.assertIn('სუქცინილქოლინი უკუნაჩვენებია', ev_crit['anesthetic_brief']['airway_summary'])
+        self.assertIn('AV ფისტულის მკლავის დაცვა', ev_crit['anesthetic_brief']['lines_and_cied'])
+        self.assertIn('დელირიუმის პრევენცია', ev_crit['anesthetic_brief']['disposition'])
+        self.assertIn('MINS მონიტორინგი', ev_crit['anesthetic_brief']['disposition'])
+        dos_keys = [c['key'] for c in ev_crit['dos_checks']]
+        self.assertIn('dos_k_verified', dos_keys)
+        self.assertIn('dos_latex_free_or', dos_keys)
+        self.assertNotIn('dos_abx_ready', dos_keys)
+        self.assertIn('ESVS 2024: გართულების გარეშე პერკუტანულ PTA-ზე', ev_crit['surgical_brief']['abx_regimen'])
+        anam_crit = generate_anamnesis(p_crit, ev_crit)
+        self.assertIn('კარდიოლოგიური პათოლოგია', anam_crit)
+        self.assertNotIn('გულის იშემიური დაავადება', anam_crit)
+
+        # 2. C14: Pure local-anesthesia PAD_PTA with isolated CKD 3a (eGFR 52) omits needs_cardio;
+        # Amiodarone on non-contrast CEA omits routine TSH; HF requires structural TTE (lvef) despite BNP < 125
+        p_pta_lean = PreopPatient(
+            patient_name='ლოკალ პტაძე', age=68, sex='M', side='R',
+            pathway='pad_pta', op_subtype='pta_clti',
+            questionnaire={'filled': True, 'abf_rest_pain': True, 'mets_ok': True, 'med_aspirin': True},
+            studies={'creat': 128, 'creat_unit': 'umol', 'hb': 132, 'plt': 220, 'inr': 1.0, 'glucose': 5.4, 'abi_r': 0.42, 'pta_access_site': 'cfa_clean', 'ecg': 'normal'},
+        )
+        ev_pta_lean = evaluate(p_pta_lean, today=today)
+        self.assertGreaterEqual(ev_pta_lean['egfr'], 45)
+        self.assertLess(ev_pta_lean['egfr'], 60)
+        self.assertFalse(ev_pta_lean['needs_cardio'])
+
+        p_cea_amio = PreopPatient(
+            patient_name='ამიო კაროტიდაძე', age=70, sex='M', side='R',
+            pathway='cea', op_subtype='cea_asymp',
+            questionnaire={'filled': True, 'cad': True, 'cad_chips': ['hf'], 'med_chips': ['amiodarone'], 'mets_ok': True},
+            studies={'hb': 110, 'creat': 90, 'inr': 1.0, 'ecg': 'normal', 'nt_probnp': 90, 'carotid_r': 80, 'carotid_l': 25, 'cea_cta_status': 'concordant'},
+        )
+        ev_cea_amio = evaluate(p_cea_amio, today=today)
+        self.assertFalse(ev_cea_amio['needs_tsh'])
+        self.assertFalse(ev_cea_amio['s1_core_done'])  # HF requires structural TTE (lvef), BNP < 125 not enough!
+        anemia_act = [r['action'] for r in ev_cea_amio['reflex_orders'] if r['key'] == 'anemia'][0]
+        self.assertNotIn('განავალი ფარულ სისხლდენაზე', anemia_act)
+
+        # 3. L1-F2: Unverified patient self-fill keeps clearance_seal == 'pending' until nurse verifies
+        p_sf = PreopPatient.objects.create(
+            patient_name='თვითშევსება ექთანაძე', age=36, sex='F', side='R',
+            pathway='venous', op_subtype='evla', surgeon=self.user,
+            questionnaire={'filled': True, 'filled_by': 'პაციენტი (ბმულით)', 'nurse_verified': False, 'mets_ok': True},
+            studies={'hb': 132, 'plt': 240, 'ven_duplex_status': 'deep_patent_reflux', 'compression_ready': True},
+        )
+        ev_sf_unver = evaluate(p_sf, today=today)
+        self.assertEqual(ev_sf_unver['clearance_seal']['code'], 'pending')
+        self.assertIn('ექთნის ვერიფიკაცია', ev_sf_unver['clearance_seal']['badge'])
+        self.client.post(reverse('preop-patient', args=[p_sf.pk]), {'section': 'questionnaire', 'mets_ok': '1'})
+        p_sf.refresh_from_db()
+        self.assertEqual(evaluate(p_sf, today=today)['clearance_seal']['code'], 'go')
+
+
