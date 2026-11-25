@@ -255,3 +255,144 @@
 .au-kpi small { font-size: 12.5px; color: var(--muted); font-weight: 500; }
 .au-kpi b { font-size: 26px; font-weight: 700; color: var(--ink); line-height: 1.1; }
 .au-kpi.bad b { color: #D92D20; }
+
+/* =====================================================================
+   Phase 1 & 2 Pre-Pilot Nurse Ergonomics & Academic Specialist Dossier
+   ===================================================================== */
+.tw-next-hint { font-weight: 600; color: var(--ink-2); }
+.tw-next-hint.ok { color: var(--ok); }
+.tw-next-hint.bad { color: #B42318; }
+
+.po-side-pill {
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px;
+    border-radius: 8px; background: var(--ink); color: #fff;
+    font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
+}
+.po-side-pill.warn { background: #FEF0C7; color: #93370D; border: 1px solid #FEDF89; }
+
+.po-edit-drawer {
+    border-top: 1px solid var(--line-soft); padding-top: 8px;
+}
+.po-edit-drawer > summary {
+    list-style: none; cursor: pointer; user-select: none;
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 600; color: var(--ink-2);
+    padding: 4px 10px; border-radius: 8px; background: var(--page);
+    transition: background .12s, color .12s;
+}
+.po-edit-drawer > summary::-webkit-details-marker { display: none; }
+.po-edit-drawer > summary:hover { background: #E6E9F2; color: var(--ink); }
+.po-edit-drawer[open] > summary { margin-bottom: 10px; background: var(--ink); color: #fff; }
+
+/* Guided Next-Step & Missing-Field Jump Bar */
+.po-next-bar {
+    background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 10px 14px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+    box-shadow: var(--shadow);
+}
+.po-next-bar.is-ready { background: #F6FEF9; border-color: #A9D8C1; }
+.po-next-bar.is-stop { background: #FEF3F2; border-color: #FECDCA; }
+.po-next-prog {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--ink);
+}
+.po-next-meter {
+    width: 72px; height: 7px; border-radius: 999px; background: var(--line-soft); overflow: hidden;
+}
+.po-next-meter > span { display: block; height: 100%; background: var(--ok); border-radius: 999px; transition: width .2s ease; }
+.po-jump-chip {
+    display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px;
+    border-radius: 999px; border: 1px solid #D0D5DD; background: var(--page);
+    color: var(--ink); font-size: 12.5px; font-weight: 600; cursor: pointer;
+    transition: background .12s, border-color .12s, transform .1s;
+}
+.po-jump-chip:hover { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-dark); transform: translateY(-1px); }
+
+@keyframes poFlashRing {
+    0% { box-shadow: 0 0 0 0 rgba(180, 43, 94, .45); }
+    70% { box-shadow: 0 0 0 6px rgba(180, 43, 94, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(180, 43, 94, 0); }
+}
+.po-field-flash { animation: poFlashRing 1.2s ease-out 2; border-radius: 10px; }
+
+/* Patient Self-Fill Reconciliation Card */
+.po-sf-summary {
+    background: #FFFDF5; border: 1px solid #FEDF89; border-radius: 12px;
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.po-sf-tag {
+    display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px;
+    font-size: 12.5px; font-weight: 600;
+}
+.po-sf-tag.urgent { background: #FEE4E2; color: #B42318; font-weight: 700; }
+.po-sf-tag.warn { background: #FEF0C7; color: #93370D; }
+.po-sf-tag.info { background: #EFF8FF; color: #175CD3; }
+
+/* Stage 1 Required vs Optional Hierarchy & Live Physiological Guard */
+.fld.is-req > .fld-req-tag,
+.fld .fld-req-tag {
+    display: inline-block; margin-left: 4px; padding: 1px 6px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 700; background: #FEF0C7; color: #93370D; vertical-align: middle;
+}
+.fld.is-req.is-filled .fld-req-tag { background: #EAF7F0; color: var(--ok); }
+.fld .form-control.lv-warn, .fld .form-select.lv-warn { border-color: #F79009; background: #FFFCF5; }
+.fld .form-control.lv-crit, .fld .form-select.lv-crit { border-color: #D92D20; background: #FFF8F7; }
+.fld-live-hint { font-size: 11.5px; font-weight: 600; margin-top: 2px; line-height: 1.25; }
+.fld-live-hint.warn { color: #B54708; }
+.fld-live-hint.crit { color: #B42318; }
+.fld-live-hint.info { color: #175CD3; }
+
+/* Sticky Floating Save Bar */
+.po-sticky-save {
+    position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%) translateY(120%);
+    z-index: 1040; background: var(--ink); color: #fff; border-radius: 999px;
+    padding: 8px 10px 8px 18px; display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 12px 28px rgba(27, 36, 55, .28); opacity: 0; pointer-events: none;
+    transition: transform .18s ease, opacity .18s ease; font-size: 13.5px; font-weight: 600;
+}
+.po-sticky-save.on { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
+.po-sticky-save .x-btn { border-radius: 999px; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+.po-sticky-save .x-btn:hover { background: var(--accent-dark); }
+
+/* Academic Risk Matrix & Specialist Two-Column Briefing (Tab 4) */
+.po-seal-banner {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line);
+}
+.po-seal-banner.seal-go { background: #F6FEF9; border-color: #A9D8C1; color: #065F46; }
+.po-seal-banner.seal-conditional { background: #FFFAEB; border-color: #FEDF89; color: #93370D; }
+.po-seal-banner.seal-pending { background: #F8F9FC; border-color: #D5D9E3; color: var(--ink); }
+.po-seal-banner.seal-stop { background: #FEF3F2; border-color: #FECDCA; color: #912018; }
+
+.po-risk-strip {
+    display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px;
+}
+@media (max-width: 1100px) { .po-risk-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .po-risk-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.po-risk-tile {
+    background: var(--page); border: 1px solid var(--line-soft); border-radius: 10px;
+    padding: 9px 11px; display: flex; flex-direction: column; gap: 2px;
+}
+.po-risk-tile small { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.po-risk-tile b { font-size: 16px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.po-risk-tile span { font-size: 11.5px; color: var(--ink-2); font-weight: 500; }
+.po-risk-tile.tier-high { background: #FEF3F2; border-color: #FECDCA; }
+.po-risk-tile.tier-high b { color: #B42318; }
+.po-risk-tile.tier-intermediate { background: #FFFAEB; border-color: #FEDF89; }
+.po-risk-tile.tier-intermediate b { color: #B54708; }
+
+.po-dossier-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;
+}
+@media (max-width: 900px) { .po-dossier-grid { grid-template-columns: minmax(0, 1fr); } }
+.po-brief-col {
+    border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: #FAFBFD;
+    display: flex; flex-direction: column; gap: 8px; font-size: 13.5px;
+}
+.po-brief-col h3 {
+    margin: 0; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    color: var(--ink); padding-bottom: 6px; border-bottom: 1px solid var(--line-soft);
+}
+.po-brief-row { display: flex; flex-direction: column; gap: 1px; }
+.po-brief-row b { font-size: 11.5px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+.po-brief-row span { color: var(--ink); line-height: 1.4; }
+

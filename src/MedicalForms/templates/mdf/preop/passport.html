@@ -3,104 +3,308 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ p.patient_name }} — წინასაოპერაციო პასპორტი</title>
+    <title>{{ p.patient_name }} — წინასაოპერაციო სამედიცინო პასპორტი (2 გვ. A4)</title>
     <link rel="stylesheet" href="{% static_v 'css/bootstrap.min.css' %}">
-    <link rel="stylesheet" href="{% static_v 'css/app.css' %}">
+    <link rel="stylesheet" href="{% static_v 'css/theme.css' %}">
     <style>
-        @page { size: A4 portrait; margin: 10mm 12mm; }
-        body { background: #EAECF0; color: #101828; font-size: 12.5px; line-height: 1.4; }
-        .pp-sheet {
-            max-width: 210mm; margin: 16px auto 36px; background: #fff;
-            padding: 12mm 14mm; border-radius: 12px; box-shadow: 0 4px 20px rgba(16,24,40,.08);
+        @page { size: A4 portrait; margin: 9mm 11mm; }
+        body {
+            background: #E4E7EC; color: #101828;
+            font-family: 'Noto Sans Georgian', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 11.8px; line-height: 1.38; margin: 0;
+            -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
-        .pp-top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #101828; padding-bottom: 8px; margin-bottom: 10px; }
-        .pp-title { font-size: 18px; font-weight: 800; margin: 0; }
-        .pp-sub { font-size: 12px; color: #475467; }
-        .pp-sec { margin-top: 10px; border: 1px solid #D0D5DD; border-radius: 8px; padding: 8px 10px; break-inside: avoid; }
-        .pp-sec h2 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin: 0 0 6px; color: #1D2939; border-bottom: 1px solid #EAECF0; padding-bottom: 4px; }
-        .pp-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 10px; }
-        .pp-kv b { display: block; font-size: 11px; color: #667085; font-weight: 600; }
-        .pp-kv span { font-weight: 600; font-size: 12.5px; }
-        .pp-anam { white-space: pre-line; font-size: 12.2px; line-height: 1.45; }
-        .pp-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
-        .pp-tbl th, .pp-tbl td { border-bottom: 1px solid #EAECF0; padding: 4px 6px; text-align: left; }
-        .pp-tbl th { color: #475467; font-size: 11px; }
-        .pp-chk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; font-size: 12px; }
-        .pp-sig-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; padding-top: 8px; border-top: 1px solid #D0D5DD; font-size: 12px; }
-        .pp-line { display: inline-block; border-bottom: 1px solid #101828; min-width: 90px; height: 14px; }
+        .pp-toolbar { max-width: 210mm; margin: 12px auto 0; padding: 0 4px; }
+        .pp-sheet {
+            max-width: 210mm; margin: 14px auto 22px; background: #fff;
+            padding: 10mm 12mm; border-radius: 12px;
+            box-shadow: 0 6px 24px rgba(16, 24, 40, .10);
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .pp-page-2 { margin-bottom: 36px; }
+        .pp-top {
+            display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+            border-bottom: 2px solid #101828; padding-bottom: 7px;
+        }
+        .pp-mini-top {
+            display: flex; justify-content: space-between; align-items: center; gap: 10px;
+            border-bottom: 1.5px solid #101828; padding-bottom: 5px; font-size: 11.5px; color: #344054;
+        }
+        .pp-kicker { font-size: 11px; font-weight: 600; color: #475467; letter-spacing: .02em; }
+        .pp-title { font-size: 17px; font-weight: 700; margin: 1px 0 3px; color: #101828; }
+        .pp-sub { font-size: 11.3px; color: #475467; }
+        .pp-side-tag {
+            display: inline-block; padding: 2px 8px; border-radius: 5px;
+            background: #101828; color: #fff; font-weight: 700; font-size: 11.5px;
+        }
+        .pp-seal {
+            display: inline-block; margin-top: 3px; padding: 3px 9px; border-radius: 6px;
+            font-size: 11.5px; font-weight: 700;
+        }
+        .pp-seal.seal-go { background: #EAF7F0; color: #065F46; border: 1px solid #A9D8C1; }
+        .pp-seal.seal-conditional { background: #FFFAEB; color: #93370D; border: 1px solid #FEDF89; }
+        .pp-seal.seal-pending { background: #F2F4F7; color: #344054; border: 1px solid #D0D5DD; }
+        .pp-seal.seal-stop { background: #FEF3F2; color: #B42318; border: 1px solid #FECDCA; }
+
+        .pp-sec {
+            border: 1px solid #D0D5DD; border-radius: 8px; padding: 7px 10px;
+            break-inside: avoid; page-break-inside: avoid;
+        }
+        .pp-sec h2 {
+            font-size: 11.8px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+            margin: 0 0 5px; color: #1D2939; border-bottom: 1px solid #EAECF0; padding-bottom: 3px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .pp-risk-bar {
+            display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px;
+        }
+        .pp-rcard {
+            border: 1px solid #E4E7EC; border-radius: 6px; padding: 5px 7px; background: #F9FAFB;
+        }
+        .pp-rcard b { display: block; font-size: 10px; text-transform: uppercase; color: #667085; font-weight: 700; }
+        .pp-rcard strong { display: block; font-size: 12.5px; color: #101828; font-variant-numeric: tabular-nums; }
+        .pp-rcard span { display: block; font-size: 10.3px; color: #475467; line-height: 1.2; }
+        .pp-rcard.high { background: #FEF3F2; border-color: #FECDCA; }
+        .pp-rcard.high strong { color: #B42318; }
+        .pp-rcard.inter { background: #FFFAEB; border-color: #FEDF89; }
+        .pp-rcard.inter strong { color: #93370D; }
+
+        .pp-two-col { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+        .pp-bitem { margin-bottom: 4px; }
+        .pp-bitem:last-child { margin-bottom: 0; }
+        .pp-bitem b { font-size: 10.5px; text-transform: uppercase; color: #475467; letter-spacing: .02em; }
+        .pp-bitem div { font-size: 11.5px; color: #101828; line-height: 1.34; }
+
+        .pp-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px 10px; }
+        .pp-kv b { display: block; font-size: 10.4px; color: #667085; font-weight: 600; }
+        .pp-kv span { font-weight: 600; font-size: 11.8px; font-variant-numeric: tabular-nums; }
+        .pp-anam { white-space: pre-line; font-size: 11.5px; line-height: 1.4; }
+        .pp-tbl { width: 100%; border-collapse: collapse; font-size: 11.3px; }
+        .pp-tbl th, .pp-tbl td { border-bottom: 1px solid #EAECF0; padding: 3.5px 6px; text-align: left; vertical-align: top; }
+        .pp-tbl th { color: #475467; font-size: 10.3px; text-transform: uppercase; letter-spacing: .02em; background: #F9FAFB; }
+        .pp-chk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 12px; font-size: 11.3px; }
+        .pp-sig-row {
+            display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;
+            margin-top: auto; padding-top: 8px; border-top: 1.5px solid #101828; font-size: 11.5px;
+        }
+        .pp-line { display: inline-block; border-bottom: 1px solid #101828; min-width: 96px; height: 13px; }
         .bad { color: #B42318; font-weight: 700; }
+        .warn-txt { color: #93370D; font-weight: 700; }
         .ok { color: #067647; font-weight: 700; }
         @media print {
             body { background: #fff; }
             .pp-sheet { margin: 0; padding: 0; box-shadow: none; border-radius: 0; max-width: none; }
+            .pp-page-2 { page-break-before: always; break-before: page; padding-top: 1mm; }
         }
     </style>
 </head>
 <body>
-<div class="app-main d-print-none" style="max-width:210mm;margin:12px auto 0">
+<div class="pp-toolbar d-print-none">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
         <a class="x-btn sm" href="{% url 'preop-patient' p.pk %}">← პაციენტის ბარათზე დაბრუნება</a>
-        <div class="d-flex gap-2">
-            <a class="x-btn sm" href="{{ p.pk|default:'' }}" onclick="window.print();return false;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>A4 ამობეჭდვა
+        <div class="d-flex align-items-center gap-2">
+            <span class="small text-muted fw-semibold">2-გვერდიანი აკადემიური A4 დოსიე (ქირურგი + ანესთეზიოლოგი)</span>
+            <a class="x-btn sm primary" href="#print" onclick="window.print();return false;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>A4 ამობეჭდვა (2 გვ.)
             </a>
         </div>
     </div>
 </div>
 
-<main class="pp-sheet">
+<!-- ======================================================================
+     PAGE 1 / 2: EXECUTIVE CLEARANCE, RISK MATRIX & SPECIALIST BRIEFINGS
+     ====================================================================== -->
+<article class="pp-sheet pp-page-1">
     <header class="pp-top">
         <div>
-            <div class="pp-sub">ნ. ბოხუას სახელობის კარდიოვასკულური ცენტრი · სისხლძარღვთა ქირურგია</div>
-            <h1 class="pp-title">წინასაოპერაციო სამედიცინო პასპორტი</h1>
-            <div><strong>პაციენტი:</strong> {{ p.patient_name }}{% if p.age %}, {{ p.age }} წ.{% endif %}{% if p.sex == 'F' %} (ქალი){% elif p.sex == 'M' %} (მამაკაცი){% endif %}{% if p.phone %} · ტელ: {{ p.phone }}{% endif %}</div>
-            {% if ev.person_id or ev.birth_date_ka %}
-            <div class="pp-sub">{% if ev.person_id %}<strong>პირადი N:</strong> {{ ev.person_id }}{% endif %}{% if ev.person_id and ev.birth_date_ka %} · {% endif %}{% if ev.birth_date_ka %}<strong>დაბ. თარიღი:</strong> {{ ev.birth_date_ka }}{% endif %}</div>
-            {% endif %}
+            <div class="pp-kicker">ნ. ბოხუას სახელობის კარდიოვასკულური ცენტრი · სისხლძარღვთა ქირურგიისა და ანესთეზიოლოგიის სამსახური</div>
+            <h1 class="pp-title">წინასაოპერაციო სამედიცინო პასპორტი და დაშვების დოსიე</h1>
+            <div>
+                <strong>პაციენტი:</strong> {{ p.patient_name }}{% if p.age %}, {{ p.age }} წ.{% endif %}{% if p.sex == 'F' %} (ქალი){% elif p.sex == 'M' %} (მამაკაცი){% endif %}{% if p.phone %} · ტელ: {{ p.phone }}{% endif %}
+            </div>
+            <div class="pp-sub">
+                {% if ev.person_id %}<strong>პირადი N:</strong> {{ ev.person_id }} · {% endif %}
+                {% if ev.birth_date_ka %}<strong>დაბ. თარიღი:</strong> {{ ev.birth_date_ka }} · {% endif %}
+                <strong>ქირურგი:</strong> {{ surgeon_name|default:"—" }} · <strong>გვერდი 1 / 2</strong>
+            </div>
         </div>
         <div style="text-align:right">
-            <div><strong>{{ p.planned_operation_label }}</strong> · <span class="{% if ev.asa_roman == 'IV' %}bad{% else %}ok{% endif %}">{{ ev.effective_asa }}</span></div>
+            <div>
+                <strong>{{ p.planned_operation_label }}</strong>
+                · <span class="pp-side-tag">{{ ev.side_badge }}</span>
+                · <span class="{% if ev.asa_roman == 'IV' %}bad{% else %}ok{% endif %}">{{ ev.effective_asa }}</span>
+            </div>
             {% if ev.planned_surgery_ka %}<div class="pp-sub"><strong>დაგეგმილი ოპერაცია: {{ ev.planned_surgery_ka }}</strong></div>{% endif %}
-            <div class="pp-sub">ქირურგი: {{ surgeon_name|default:"—" }}</div>
-            <div class="pp-sub">სტატუსი: <strong>{{ ev.status_label }}</strong> · {{ ev.priority_label }} · დღე {{ ev.days_elapsed }}/{{ ev.target_days }}</div>
-            <div class="pp-sub">ამობეჭდილია: {{ printed_on }}</div>
+            <div class="pp-seal seal-{{ ev.clearance_seal.code }}">{{ ev.clearance_seal.badge }}</div>
+            <div class="pp-sub">პრიორიტეტი: {{ ev.priority_label }} · დღე {{ ev.days_elapsed }}/{{ ev.target_days }} · {{ printed_on }}</div>
         </div>
     </header>
 
-    <section class="pp-sec" style="{% if ev.allergy_summary %}border-color:#FECDCA;background:#FEF3F2{% else %}background:#F9FAFB{% endif %};padding:6px 10px">
+    <!-- Critical Safety, Allergies & Red Flags -->
+    <section class="pp-sec" style="{% if ev.allergy_summary or ev.red_flags or ev.difficult_airway_alert %}border-color:#FECDCA;background:#FEF3F2{% else %}background:#F9FAFB{% endif %}">
         <div>
-            <strong {% if ev.allergy_summary %}class="bad"{% endif %}>ალერგია და უსაფრთხოება:</strong>
-            {% if ev.allergy_summary %}<span class="bad">{{ ev.allergy_summary }}</span>{% elif q.filled %}მედიკამენტურ და კონტრასტულ ალერგიას უარყოფს{% else %}დასაზუსტებელია{% endif %}
-            {% if ev.difficult_airway_alert %} · <span class="bad">რთული ინტუბაცია ({{ ev.mallampati_label }})!</span>{% endif %}
+            <strong {% if ev.allergy_summary %}class="bad"{% endif %}>ალერგია და კრიტიკული უსაფრთხოება:</strong>
+            {% if ev.allergy_summary %}<span class="bad">{{ ev.allergy_summary }}</span>{% elif q.filled %}მედიკამენტურ და კონტრასტულ ალერგიას უარყოფს{% else %}ალერგიის სტატუსი დასაზუსტებელია{% endif %}
+            {% if ev.difficult_airway_alert %} · <span class="bad">მოსალოდნელი რთული ინტუბაცია ({{ ev.mallampati_label }})!</span>{% endif %}
             {% if ev.cied_plan_label %} · <strong>CIED:</strong> {{ ev.cied_plan_label }}{% endif %}
+            {% if ev.abx_prophylaxis_note %} · <span class="bad">{{ ev.abx_prophylaxis_note }}</span>{% endif %}
         </div>
+        {% if ev.red_flags %}
+        <div style="margin-top:4px;padding-top:4px;border-top:1px dashed #FECDCA">
+            {% for rf in ev.red_flags %}<div class="bad">• {{ rf }}</div>{% endfor %}
+        </div>
+        {% endif %}
     </section>
 
-    {% if ev.red_flags or ev.abx_prophylaxis_note %}
-    <section class="pp-sec" style="border-color:#FECDCA;background:#FEF3F2">
-        <h2 style="color:#B42318;border-color:#FECDCA">საყურადღებო კლინიკური სიგნალები</h2>
-        {% for rf in ev.red_flags %}<div class="bad">• {{ rf }}</div>{% endfor %}
-        {% if ev.abx_prophylaxis_note %}<div class="bad">• {{ ev.abx_prophylaxis_note }}</div>{% endif %}
-    </section>
-    {% endif %}
-
+    <!-- Quantitative Perioperative Risk Stratification Matrix -->
     <section class="pp-sec">
-        <h2>1. სტრუქტურირებული ანამნეზი</h2>
+        <h2>
+            <span>1. რაოდენობრივი პერიოპერაციული რისკ-სტრატიფიკაცია (ESC 2022 / SVS VQI / ESAIC 2024)</span>
+            <span class="pp-sub">ავტომატური კალკულაცია</span>
+        </h2>
+        <div class="pp-risk-bar">
+            <div class="pp-rcard {% if ev.asa_roman == 'IV' %}high{% elif ev.asa_roman == 'III' %}inter{% endif %}">
+                <b>ASA სტატუსი</b>
+                <strong>{{ ev.effective_asa }}</strong>
+                <span>ავტო-შეფასება: ASA {{ ev.auto_asa }}</span>
+            </div>
+            <div class="pp-rcard {% if ev.rcri.tier == 'high' %}high{% elif ev.rcri.tier == 'intermediate' %}inter{% endif %}">
+                <b>RCRI (Lee / ESC)</b>
+                <strong>{{ ev.rcri.score }} / 6 ქ.</strong>
+                <span>{{ ev.rcri.tier_label }}</span>
+            </div>
+            <div class="pp-rcard {% if ev.vsg_cri and ev.vsg_cri.tier == 'high' %}high{% elif ev.vsg_cri and ev.vsg_cri.tier == 'intermediate' %}inter{% endif %}">
+                <b>VSG-CRI (SVS VQI)</b>
+                {% if ev.vsg_cri %}
+                <strong>{{ ev.vsg_cri.score }} ქ.</strong>
+                <span>{{ ev.vsg_cri.tier_label }}</span>
+                {% else %}
+                <strong>ვენური</strong>
+                <span>დაბალი (&lt;1% MACE)</span>
+                {% endif %}
+            </div>
+            <div class="pp-rcard {% if ev.ariscat.tier == 'high' %}high{% elif ev.ariscat.tier == 'intermediate' %}inter{% endif %}">
+                <b>ARISCAT (ფილტვი)</b>
+                <strong>{{ ev.ariscat.score }} ქ.</strong>
+                <span>{{ ev.ariscat.tier_label }}</span>
+            </div>
+            <div class="pp-rcard {% if ev.caprini_score >= 5 or ev.effective_stop_bang == 'high' %}inter{% endif %}">
+                <b>Caprini / OSA</b>
+                <strong>VTE {{ ev.caprini_score }} ქ.</strong>
+                <span>{{ ev.caprini_tier }} · OSA: {{ ev.stop_bang_label }}</span>
+            </div>
+            <div class="pp-rcard {% if q.on_dialysis or ev.egfr is not None and ev.egfr < 30 %}high{% elif ev.egfr is not None and ev.egfr < 60 or ev.frailty_notes %}inter{% endif %}">
+                <b>თირკმელი &amp; Frailty</b>
+                <strong>{% if q.on_dialysis %}დიალიზი{% else %}eGFR {{ ev.egfr|default_if_none:"—" }}{% endif %}</strong>
+                <span>{% if ev.crcl is not None %}CrCl {{ ev.crcl }} მლ/წთ{% elif ev.frailty_notes %}{{ ev.frailty_notes.0 }}{% else %}კვებითი ფონი სტაბ.{% endif %}</span>
+            </div>
+        </div>
+        {% if ev.rcri.factors or ev.frailty_notes %}
+        <div class="pp-sub" style="margin-top:4px">
+            {% if ev.rcri.factors %}<strong>აქტიური რისკ-ფაქტორები:</strong> {{ ev.rcri.factors|join:"; " }}.{% endif %}
+            {% if ev.frailty_notes %} <strong>კვებითი/ფიზიოლოგიური ფონი:</strong> {{ ev.frailty_notes|join:", " }}.{% endif %}
+        </div>
+        {% endif %}
+    </section>
+
+    <!-- Two-Column Specialist Briefing: Surgeon vs Anesthesiologist -->
+    <div class="pp-two-col">
+        <section class="pp-sec">
+            <h2><span>2A. ქირურგიული და ანატომიური გეგმა</span><span>{{ ev.pathway_short }}</span></h2>
+            <div class="pp-bitem">
+                <b>ანატომიური და ვიზუალიზაციური სტატუსი</b>
+                <div>{{ ev.surgical_brief.anatomy_summary }}</div>
+            </div>
+            <div class="pp-bitem">
+                <b>ტაქტიკური დეტალები / კონდუიტი / კოლატერალები</b>
+                <div>{{ ev.surgical_brief.tactical_note }}</div>
+            </div>
+            <div class="pp-bitem">
+                <b>ანტიბიოტიკოპროფილაქტიკა (დოზა და რე-დოზირება)</b>
+                <div {% if 'beta_lactam' in q.allergy_chips %}class="bad"{% endif %}>{{ ev.surgical_brief.abx_regimen }}</div>
+            </div>
+            <div class="pp-bitem">
+                <b>ინტრაოპერაციული ანტიკოაგულაცია / VTE</b>
+                <div {% if 'hit_heparin' in q.allergy_chips %}class="bad"{% endif %}>{{ ev.surgical_brief.heparin_plan }}</div>
+            </div>
+            {% if ev.surgical_brief.contrast_plan %}
+            <div class="pp-bitem">
+                <b>კონტრასტის ლიმიტი და ნეფროპროტექცია</b>
+                <div>{{ ev.surgical_brief.contrast_plan }}</div>
+            </div>
+            {% endif %}
+            <div class="pp-bitem">
+                <b>პოსტოპერაციული ანტითრომბოზული და VQI მეთვალყურეობა</b>
+                <div><strong>{{ ev.surgical_brief.postop_antithrombotic }}</strong> · {{ ev.surgical_brief.surveillance_plan }}</div>
+            </div>
+        </section>
+
+        <section class="pp-sec">
+            <h2><span>2B. ანესთეზიოლოგიური და ჰემოდინამიკური გეგმა</span><span>ESAIC / ASRA</span></h2>
+            <div class="pp-bitem">
+                <b>გაუტკივარების მეთოდი და ნეირაქსიული კარიბჭე (ASRA 5th Ed)</b>
+                <div><strong>{{ ev.anesthetic_brief.modality }}</strong> · {{ ev.anesthetic_brief.neuraxial_gate }}</div>
+            </div>
+            <div class="pp-bitem">
+                <b>სასუნთქი გზები და ინტუბაციის შეფასება</b>
+                <div {% if ev.difficult_airway_alert %}class="bad"{% endif %}>{{ ev.anesthetic_brief.airway_summary }}</div>
+            </div>
+            <div class="pp-bitem">
+                <b>ინტრაოპერაციული არტერიული წნევის კორიდორი (SBP / MAP)</b>
+                <div>{{ ev.anesthetic_brief.bp_corridor }}</div>
+            </div>
+            <div class="pp-bitem">
+                <b>ინვაზიური ხაზები, მონიტორინგი და CIED</b>
+                <div>{{ ev.anesthetic_brief.lines_and_cied }}</div>
+            </div>
+            <div class="pp-bitem">
+                <b>PBM, სისხლის რეზერვი და ტრანსფუზიული ტრიგერი</b>
+                <div>{{ ev.anesthetic_brief.transfusion_pbm }}</div>
+            </div>
+            <div class="pp-bitem">
+                <b>გლიკემიური რეჟიმი და პოსტოპერაციული განთავსება</b>
+                <div>{{ ev.anesthetic_brief.glycemic_target }} · <strong>{{ ev.anesthetic_brief.disposition }}</strong></div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Structured Anamnesis & Cardiology Summary -->
+    <section class="pp-sec">
+        <h2><span>3. სტრუქტურირებული კლინიკური ანამნეზი და კარდიოლოგის დასკვნა</span></h2>
         <div class="pp-anam">{{ shown_anamnesis|default:"კითხვარი ჯერ არ არის შევსებული." }}</div>
+        {% if ev.needs_cardio or p.cardio_decision %}
+        <div style="margin-top:5px;padding-top:4px;border-top:1px dashed #D0D5DD">
+            <strong>კარდიოლოგი ({{ p.cardiologist|default:"ლიკა ინჯია" }}):</strong>
+            {{ p.get_cardio_decision_display|default:"შესაფასებელია" }}{% if p.cardio_note %} — {{ p.cardio_note }}{% endif %}
+        </div>
+        {% endif %}
     </section>
+</article>
+
+<!-- ======================================================================
+     PAGE 2 / 2: LABS, CALENDAR MED-HOLD, PROTOCOL CHECKLIST & SIGNATURES
+     ====================================================================== -->
+<article class="pp-sheet pp-page-2">
+    <div class="pp-mini-top">
+        <div><strong>პაციენტი:</strong> {{ p.patient_name }}{% if p.age %}, {{ p.age }} წ.{% endif %}{% if ev.person_id %} · <strong>პირადი N:</strong> {{ ev.person_id }}{% endif %}{% if ev.birth_date_ka %} · <strong>დაბ.:</strong> {{ ev.birth_date_ka }}{% endif %}</div>
+        <div><strong>{{ p.planned_operation_label }} ({{ ev.side_badge }})</strong> · {{ ev.effective_asa }} · <strong>გვერდი 2 / 2</strong></div>
+    </div>
 
     <section class="pp-sec">
-        <h2>2. ვიტალური, ლაბორატორიული და ინსტრუმენტული მონაცემები{% if ev.labs_date_ka %} ({{ ev.labs_date_ka }}){% endif %}</h2>
+        <h2>
+            <span>4. ვიტალური, ლაბორატორიული და ინსტრუმენტული მონაცემები</span>
+            <span>{% if ev.labs_date_ka %}ანალიზების თარიღი: {{ ev.labs_date_ka }}{% endif %}</span>
+        </h2>
         <div class="pp-grid">
             <div class="pp-kv"><b>წნევა / პულსი / SpO₂</b><span>{{ s.bp_sys|default_if_none:"—" }}/{{ s.bp_dia|default_if_none:"—" }}{% if s.bp_sys_l is not None %} (L {{ s.bp_sys_l }}/{{ s.bp_dia_l|default_if_none:"—" }}){% endif %} · HR {{ s.hr|default_if_none:"—" }} · {{ s.spo2|default_if_none:"—" }}%</span></div>
-            <div class="pp-kv"><b>BMI / Caprini VTE</b><span>{% if ev.bmi is not None %}{{ ev.bmi }} კგ/მ²{% else %}—{% endif %} · Caprini {{ ev.caprini_score }} ({{ ev.caprini_tier }})</span></div>
+            <div class="pp-kv"><b>წონა / BMI / Caprini</b><span>{% if s.weight_kg is not None %}{{ s.weight_kg }} კგ · {% endif %}{% if ev.bmi is not None %}{{ ev.bmi }} კგ/მ²{% else %}—{% endif %} · Caprini {{ ev.caprini_score }} ({{ ev.caprini_tier }})</span></div>
             <div class="pp-kv"><b>სისხლის ჯგუფი</b><span>{{ s.blood_group|default:"—" }}</span></div>
             <div class="pp-kv"><b>Hb / WBC / PLT</b><span {% if ev.hb_gl is not None and ev.hb_gl < 115 %}class="bad"{% endif %}>{{ ev.hb_gl|default_if_none:"—" }} გ/ლ · {{ s.wbc|default_if_none:"—" }} · {{ s.plt|default_if_none:"—" }}</span></div>
             <div class="pp-kv"><b>INR / ფიბრინოგენი</b><span {% if s.inr is not None and s.inr > 1.35 %}class="bad"{% endif %}>{{ s.inr|default_if_none:"—" }}{% if s.aptt_prolonged %} (APTT↑){% endif %} · {{ s.fibrinogen|default_if_none:"—" }}</span></div>
             <div class="pp-kv"><b>კრეატინინი / eGFR / CrCl</b><span {% if ev.egfr is not None and ev.egfr < 60 or q.on_dialysis %}class="bad"{% endif %}>{% if q.on_dialysis %}დიალიზი{% else %}{{ s.creat|default_if_none:"—" }} · eGFR {{ ev.egfr|default_if_none:"—" }}{% if ev.crcl is not None %} · CrCl {{ ev.crcl }}{% endif %}{% if ev.max_contrast_ml is not None %} · კონტრ. &le;{{ ev.max_contrast_ml }} მლ{% endif %}{% endif %}</span></div>
-            <div class="pp-kv"><b>K⁺ / Na⁺ / ალბუმინი</b><span>{{ s.k|default_if_none:"—" }} / {{ s.na|default_if_none:"—" }} · ალბ. {{ ev.alb_gl|default_if_none:"—" }}</span></div>
+            <div class="pp-kv"><b>K⁺ / Na⁺ / ალბუმინი</b><span {% if s.k is not None and s.k >= 5.4 or s.k is not None and s.k < 3.3 %}class="bad"{% endif %}>{{ s.k|default_if_none:"—" }} / {{ s.na|default_if_none:"—" }} · ალბ. {{ ev.alb_gl|default_if_none:"—" }}</span></div>
             <div class="pp-kv"><b>გლუკოზა / HbA1c / LDL</b><span {% if ev.gl_mmol is not None and ev.gl_mmol >= 7.0 %}class="bad"{% endif %}>{{ ev.gl_mmol|default_if_none:"—" }} მმოლ/ლ{% if s.hba1c is not None %} · {{ s.hba1c }}%{% endif %}{% if ev.ldl is not None %} · LDL {{ ev.ldl }}{% endif %}</span></div>
-            <div class="pp-kv"><b>შარდის ლეიკოციტები</b><span {% if ev.uti_suspected %}class="bad"{% endif %}>{{ s.urine_wbc|default_if_none:"—" }} მხ/არ{% if s.urine_nitrite %} (ნიტრ.+){% endif %}</span></div>
+            <div class="pp-kv"><b>შარდი / ღვიძლი / ვირუსები</b><span {% if ev.uti_suspected or s.liver_status == '3x' %}class="bad"{% endif %}>ლეიკ: {{ s.urine_wbc|default_if_none:"—" }}{% if s.urine_nitrite %} (ნიტრ.+){% endif %} · ღვიძლი: {{ s.liver_status|default:"normal" }}{% if s.viral_positive %} · ვირუსი (+){% endif %}</span></div>
             <div class="pp-kv"><b>ექო / NT-proBNP / ეკგ</b><span>{% if s.lvef is not None %}LVEF {{ s.lvef }}%{% elif ev.nt_probnp is not None %}BNP {{ ev.nt_probnp }}{% else %}—{% endif %}{% if ev.hs_ctn is not None %} · hs-cTn {{ ev.hs_ctn }}{% endif %} · {{ ev.ecg_label }}</span></div>
             <div class="pp-kv"><b>საძილეები / ABI / TP</b><span>ICA {{ s.carotid_r|default_if_none:"—" }}%/{{ s.carotid_l|default_if_none:"—" }}% · ABI {{ s.abi_r|default_if_none:"—" }}/{{ s.abi_l|default_if_none:"—" }}{% if ev.min_tp is not None %} · TP {{ s.tp_r|default_if_none:"—" }}/{{ s.tp_l|default_if_none:"—" }}{% elif ev.min_tbi is not None %} · TBI {{ s.tbi_r|default_if_none:"—" }}/{{ s.tbi_l|default_if_none:"—" }}{% endif %}</span></div>
             <div class="pp-kv"><b>რენტგენი / FEV1 / რკინა</b><span>{{ ev.cxr_label }}{% if s.spiro_fev1 is not None %} · FEV1 {{ s.spiro_fev1 }}%{% endif %}{% if s.ferritin is not None %} · Fer {{ s.ferritin }}{% endif %}{% if ev.tsat is not None %} · TSAT {{ ev.tsat }}%{% endif %}</span></div>
@@ -108,16 +312,19 @@
     </section>
 
     <section class="pp-sec">
-        <h2>3. უზმოდ ყოფნა და მედიკამენტების პერიოპერაციული მართვა{% if ev.planned_surgery_ka %} (ოპერაცია: {{ ev.planned_surgery_ka }}){% endif %}</h2>
-        <div style="margin-bottom:6px;padding:5px 8px;border-radius:6px;background:{% if q.glp1 %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
+        <h2>
+            <span>5. უზმოდ ყოფნა და მედიკამენტების პერიოპერაციული კალენდარი (ESC / PAUSE / ASRA)</span>
+            <span>{% if ev.planned_surgery_ka %}ოპერაცია: {{ ev.planned_surgery_ka }}{% endif %}</span>
+        </h2>
+        <div style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if q.glp1 %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
             <strong>{{ ev.fasting_instruction }}</strong>
         </div>
         {% if ev.med_schedule %}
         <table class="pp-tbl">
             <thead>
                 <tr>
-                    <th>პრეპარატი</th>
-                    {% if ev.planned_surgery_ka %}<th>კალენდარული გეგმა</th>{% endif %}
+                    <th style="width:24%">მედიკამენტი</th>
+                    {% if ev.planned_surgery_ka %}<th style="width:28%">კალენდარული გეგმა</th>{% endif %}
                     <th>პროტოკოლური რეჟიმი ოპერაციის წინ</th>
                 </tr>
             </thead>
@@ -125,64 +332,67 @@
                 {% for row in ev.med_schedule %}
                 <tr>
                     <td><strong>{{ row.drug }}</strong></td>
-                    {% if ev.planned_surgery_ka %}<td class="{% if row.tone == 'red' %}bad{% elif row.tone == 'ok' %}ok{% endif %}"><strong>{{ row.date_plan }}</strong></td>{% endif %}
-                    <td class="{% if row.tone == 'red' %}bad{% elif row.tone == 'ok' %}ok{% endif %}">{{ row.rule }}</td>
+                    {% if ev.planned_surgery_ka %}<td class="{% if row.tone == 'red' %}bad{% elif row.tone == 'amber' %}warn-txt{% elif row.tone == 'ok' %}ok{% endif %}"><strong>{{ row.date_plan }}</strong></td>{% endif %}
+                    <td class="{% if row.tone == 'red' %}bad{% elif row.tone == 'amber' %}warn-txt{% elif row.tone == 'ok' %}ok{% endif %}">{{ row.rule }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+        {% else %}
+        <div class="pp-sub">მუდმივი ანტითრომბოზული / შესაჩერებელი მედიკამენტები მითითებული არ არის.</div>
         {% endif %}
     </section>
 
     <section class="pp-sec">
-        <h2>4. წინასაოპერაციო ჩეკლისტი ({{ ev.done_count }}/{{ ev.total_count }}), ანესთეზია და მეთვალყურეობა</h2>
+        <h2>
+            <span>6. წინასაოპერაციო ჩეკლისტი ({{ ev.done_count }}/{{ ev.total_count }}) და ოპერაციის დილის კარიბჭე (WHO Sign-In: {{ ev.dos_done_count }}/{{ ev.dos_total_count }})</span>
+        </h2>
         <div class="pp-chk-grid">
             {% for t in ev.tasks %}
             <div>{% if t.done %}<span class="ok">[✓]</span>{% else %}<span class="bad">[ ]</span>{% endif %} {{ t.label }}</div>
             {% endfor %}
         </div>
-        <div style="margin-top:6px;padding-top:5px;border-top:1px dashed #EAECF0">
-            <div>
-                <strong>ანესთეზიოლოგიური გეგმა:</strong> {{ ev.effective_asa }} · {{ ev.effective_anesth_label }}
-                · {{ ev.mallampati_label }} · STOP-Bang: {{ ev.stop_bang_label }}
-                {% if ev.anesth_lines_txt %} · ხაზები: {{ ev.anesth_lines_txt }}{% endif %}
-                {% if ev.lidocaine_max_mg is not None %} · ტუმესც. ლიდოკაინი &le; {{ ev.lidocaine_max_mg }} მგ{% endif %}
-                {% if ev.needs_icu_bed %} · ICU საწოლი: {% if s.icu_bed_booked %}<span class="ok">დაჯავშნილია ✓</span>{% else %}<span class="bad">დასაჯავშნია!</span>{% endif %}{% endif %}
+
+        <div style="margin-top:6px;padding-top:5px;border-top:1px dashed #D0D5DD">
+            <div style="margin-bottom:3px">
+                <strong>ოპერაციის დილის საკონტროლო მაჩვენებლები და WHO Sign-In:</strong>
+                დილის წნევა: <strong>{{ s.dos_bp_sys|default_if_none:"—" }}/{{ s.dos_bp_dia|default_if_none:"—" }}</strong> mmHg
+                · გლუკოზა: <strong>{{ ev.dos_gl_mmol|default_if_none:"—" }}</strong> მმოლ/ლ
+                · INR: <strong>{{ s.dos_inr|default_if_none:"—" }}</strong>
+                {% if ev.dos_ready %}· <span class="ok">საოპერაციოში შეყვანა დაშვებულია ✓</span>{% elif ev.dos_hold_danger %}· <span class="bad">STOP-სიგნალი!</span>{% endif %}
             </div>
-            <div><strong>WHO Sign-In დილის კარიბჭე:</strong> {{ ev.dos_done_count }}/{{ ev.dos_total_count }}{% if ev.dos_ready %} <span class="ok">(მზადაა ✓)</span>{% elif ev.dos_hold_danger %} <span class="bad">(STOP-სიგნალი!)</span>{% endif %}</div>
-            {% if ev.post_antithrombotic_label %}<div><strong>პოსტოპერაციული ანტითრომბოზული გეგმა:</strong> {{ ev.post_antithrombotic_label }}</div>{% endif %}
-            {% if s.cell_saver_ready %}<div><strong>ინტრაოპერაციული PBM:</strong> Cell Saver + ტრანექსამის მჟავა (TXA) მზადყოფნა ✓</div>{% endif %}
-            <div><strong>პოსტოპერაციული მეთვალყურეობა:</strong> {{ ev.surveillance_plan }}</div>
+            <div class="pp-chk-grid">
+                {% for dc in ev.dos_checks %}
+                <div>{% if dc.done %}<span class="ok">[✓]</span>{% else %}<span class="warn-txt">[ ]</span>{% endif %} {{ dc.label }}</div>
+                {% endfor %}
+            </div>
+            {% if s.nurse_note %}
+            <div style="margin-top:4px" class="pp-sub"><strong>ექთნის შენიშვნა:</strong> {{ s.nurse_note }}</div>
+            {% endif %}
         </div>
-        {% if ev.needs_cardio or p.cardio_decision %}
-        <div style="margin-top:6px;padding-top:5px;border-top:1px dashed #EAECF0">
-            <strong>კარდიოლოგი ({{ p.cardiologist|default:"ლიკა ინჯია" }}):</strong>
-            {{ p.get_cardio_decision_display }}{% if p.cardio_note %} — {{ p.cardio_note }}{% endif %}
-        </div>
-        {% endif %}
-        {% if s.nurse_note %}
-        <div style="margin-top:4px" class="pp-sub"><strong>ექთნის შენიშვნა:</strong> {{ s.nurse_note }}</div>
-        {% endif %}
     </section>
 
     <footer class="pp-sig-row">
         <div>
-            <div><strong>ექთანი:</strong> {{ q.nurse_verified_by|default:"—" }}</div>
+            <div><strong>1. წინასაოპერაციო ექთანი:</strong> {{ q.nurse_verified_by|default:"—" }}</div>
             {% if q.filled_by == 'პაციენტი (ბმულით)' and not q.nurse_verified %}
-            <div class="pp-sub">კითხვარი შეავსო: პაციენტმა (ბმულით)</div>
+            <div class="pp-sub warn-txt">კითხვარი შევსებულია პაციენტის ბმულით (გადასამოწმებელია)</div>
+            {% else %}
+            <div class="pp-sub">მომზადების ჩეკლისტი გადამოწმებულია</div>
             {% endif %}
             <div style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
         </div>
         <div>
-            <div><strong>ანესთეზიოლოგი ({{ ev.effective_asa }}):</strong> {% if s.anesth_done %}კონსულტირებულია ✓{% else %}—{% endif %}</div>
+            <div><strong>2. ანესთეზიოლოგი ({{ ev.effective_asa }}):</strong> {% if s.anesth_done %}კონსულტირებულია ✓{% else %}—{% endif %}</div>
+            <div class="pp-sub">გაუტკივარება: {{ ev.effective_anesth_label }}</div>
             <div style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
         </div>
         <div>
-            <div><strong>მკურნალი ქირურგი:</strong> {{ approved_by_name|default:surgeon_name|default:"—" }}</div>
-            {% if p.approved_at %}<div class="pp-sub ok">ელ. დასტური: {{ p.approved_at|date:"d.m.Y H:i" }}</div>{% endif %}
-            <div style="margin-top:6px">ხელმოწერა: <span class="pp-line"></span></div>
+            <div><strong>3. მკურნალი ქირურგი:</strong> {{ approved_by_name|default:surgeon_name|default:"—" }}</div>
+            {% if p.approved_at %}<div class="pp-sub ok">ელ. დასტური: {{ p.approved_at|date:"d.m.Y H:i" }}</div>{% else %}<div class="pp-sub">ოპერაციაზე დაშვების დასტური</div>{% endif %}
+            <div style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
         </div>
     </footer>
-</main>
+</article>
 </body>
 </html>

@@ -5448,3 +5448,274 @@ class PreopStageP3ReferenceHardeningTests(PrivateMediaTest):
         self.assertFalse(p_ui.studies.get('dos_site_marked'))
 
 
+class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
+    """Pre-Pilot Phase 1-4 tests: Nurse UX, 2-Page Specialist Dossier, Risk Indices & Simulation Objectivity."""
+
+    def test_pre_pilot_1_nurse_ergonomics_jump_chips_self_fill_reconciliation_and_pre_q_alerts(self):
+        from django.test import Client
+        from django.utils import timezone
+        from .models import PreopPatient
+        from .preop import STATUS_ALERT, STATUS_NO_Q, evaluate, make_self_fill_token, merged_q
+
+        today = timezone.localdate()
+
+        # 1. Pre-Questionnaire Critical Alert Visibility: lab/duplex red flag BEFORE questionnaire MUST trigger STATUS_ALERT!
+        p_pre = PreopPatient.objects.create(
+            patient_name='ლაბ ადრეულაძე', age=68, sex='M',
+            pathway='aaa_infra', op_subtype='open', surgeon=self.user,
+            visit_date=today, started_on=today,
+        )
+        self.assertEqual(evaluate(p_pre, today=today)['status'], STATUS_NO_Q)
+        self.assertEqual(evaluate(p_pre, today=today)['next_step_hint'], 'აკლია: კითხვარი')
+
+        # Week calendar renders nurse next_step_hint directly on active patient row
+        week_resp = self.client.get(reverse('preop') + f'?week={today.isoformat()}')
+        self.assertContains(week_resp, 'აკლია: კითხვარი')
+
+        # Entering critical hyperkalemia (K+ 6.1) before Tab 1 immediately promotes status to STATUS_ALERT!
+        self.client.post(reverse('preop-patient', args=[p_pre.pk]), {
+            'section': 'stage1', 'k': '6.1',
+        })
+        p_pre.refresh_from_db()
+        self.assertEqual(evaluate(p_pre, today=today)['status'], STATUS_ALERT)
+
+        # 2. Patient Self-Fill -> Positive-Finding Summary Card + 1-Tap Nurse Verification + Guided Jump Chips
+        p_sf = PreopPatient.objects.create(
+            patient_name='ბმულ გადამოწმებაძე', age=71, sex='M',
+            pathway='aaa_infra', op_subtype='evar', surgeon=self.user,
+            visit_date=today, started_on=today,
+        )
+        tok = make_self_fill_token(p_sf)
+        anon = Client()
+        anon.post(reverse('preop-self-fill', args=[tok]), {
+            'mets_ok': '1',
+            'htn': '1',
+            'dm': '1',
+            'dm_insulin': '1',
+            'med_doac': '1',
+            'glp1': '1',
+            'allergy_iodine': '1',
+            'person_id': '01099887766',
+        })
+        p_sf.refresh_from_db()
+        ev_sf = evaluate(p_sf, today=today)
+        self.assertTrue(len(ev_sf['self_fill_highlights']) >= 4)
+        self.assertTrue(any(m['field'] == 'btn-verify-self' for m in ev_sf['missing_items']))
+
+        card_resp = self.client.get(reverse('preop-patient', args=[p_sf.pk]))
+        self.assertContains(card_resp, 'po-sf-summary')
+        self.assertContains(card_resp, 'btn-verify-self')
+        self.assertContains(card_resp, 'po-jump-chip')
+        self.assertContains(card_resp, 'po-sticky-save')
+        self.assertContains(card_resp, 'po-edit-drawer')
+
+        # Nurse clicks 1-tap verify & confirm on Tab 1
+        self.client.post(reverse('preop-patient', args=[p_sf.pk]), {
+            'section': 'questionnaire',
+            'mets_ok': '1', 'htn': '1', 'dm': '1', 'dm_insulin': '1',
+            'med_doac': '1', 'glp1': '1', 'allergy_iodine': '1',
+        })
+        p_sf.refresh_from_db()
+        self.assertTrue(merged_q(p_sf)['nurse_verified'])
+        ev_after = evaluate(p_sf, today=today)
+        self.assertFalse(any(m['field'] == 'btn-verify-self' for m in ev_after['missing_items']))
+        self.assertIn('hb', ev_after['s1_required_fields'])
+        self.assertIn('aaa_mm', ev_after['s1_required_fields'])
+
+    def test_pre_pilot_2_academic_two_page_dossier_risk_indices_and_specialist_briefings(self):
+        import datetime
+        from django.utils import timezone
+        from .models import PreopPatient
+        from .preop import evaluate
+
+        today = timezone.localdate()
+
+        # 1. Lone Controlled AFib on EVAR -> ESC 2022 Table 5 non-inflation: RCRI = 0/6, VSG-CRI IHD/CHF = 0!
+        p_af = PreopPatient.objects.create(
+            patient_name='რიტმ ობიექტურაძე', age=72, sex='M',
+            pathway='aaa_infra', op_subtype='evar', surgeon=self.user,
+            cardio_decision='cleared', visit_date=today, started_on=today,
+            questionnaire={
+                'filled': True, 'cad': True, 'cad_chips': ['afib'],
+                'med_doac': True, 'med_chips': ['statin'], 'mets_ok': True,
+            },
+            studies={
+                'aaa_mm': 58, 'aaa_neck_status': 'friendly_ifu', 'popliteal_screen_status': 'normal',
+                'cta_disc': True, 'hb': 140, 'plt': 225, 'creat': 88, 'creat_unit': 'umol',
+                'inr': 1.05, 'lvef': 58, 'nt_probnp': 110, 'ecg': 'afib_controlled',
+            },
+        )
+        ev_af = evaluate(p_af, today=today)
+        self.assertEqual(ev_af['rcri']['score'], 0)
+        self.assertEqual(ev_af['vsg_cri']['score'], 3)  # age 70-79 (+3) only, zero CAD/CHF inflation!
+
+        # 2. High-acuity Open AAA (132 kg, prior MI + CABG, insulin, Cr 2.3 mg/dL, SpO2 89%, Hb 96) -> ASA IV, RCRI 4, ARISCAT High, Cefazolin 3g!
+        p_open = PreopPatient.objects.create(
+            patient_name='აკადემიურ დოსიეძე', age=76, sex='M',
+            pathway='aaa_infra', op_subtype='open', surgeon=self.user,
+            visit_date=today, started_on=today,
+            questionnaire={
+                'filled': True, 'cad': True, 'cad_chips': ['mi', 'cabg'],
+                'dm': True, 'dm_insulin': True, 'neuro': True,
+                'med_aspirin': True, 'med_chips': ['statin', 'beta_blocker'], 'mets_ok': True,
+            },
+            studies={
+                'weight_kg': 132, 'height_cm': 174, 'aaa_mm': 64, 'cta_disc': True,
+                'bp_sys': 148, 'bp_dia': 84, 'bp_sys_l': 122, 'bp_dia_l': 76, 'spo2': 89,
+                'hb': 96, 'plt': 185, 'creat': 2.3, 'creat_unit': 'mgdl', 'inr': 1.06,
+                'albumin': 31, 'lvef': 46, 'ecg': 'normal', 'blood_group': 'A (II) Rh (+)',
+            },
+        )
+        ev_op = evaluate(p_open, today=today)
+        self.assertEqual(ev_op['auto_asa'], 'IV')
+        self.assertEqual(ev_op['rcri']['score'], 5)  # Open AAA + IHD + Prior Stroke + Insulin + Cr>2.0
+        self.assertEqual(ev_op['rcri']['tier'], 'high')
+        self.assertEqual(ev_op['ariscat']['tier'], 'high')
+        self.assertIn('ცეფაზოლინი 3 გ IV', ev_op['surgical_brief']['abx_regimen'])
+        self.assertIn('მარჯვენა მკლავზე', ev_op['anesthetic_brief']['bp_corridor'])
+        self.assertIn('Hb ≥ 80–90 გ/ლ', ev_op['anesthetic_brief']['transfusion_pbm'])
+
+        # Render 2-Page A4 Passport and verify Page 1 + Page 2 structure & specialist sections
+        pp = self.client.get(reverse('preop-passport', args=[p_open.pk]))
+        self.assertEqual(pp.status_code, 200)
+        self.assertContains(pp, 'pp-page-1')
+        self.assertContains(pp, 'pp-page-2')
+        self.assertContains(pp, 'გვერდი 1 / 2')
+        self.assertContains(pp, 'გვერდი 2 / 2')
+        self.assertContains(pp, 'RCRI (Lee / ESC)')
+        self.assertContains(pp, 'VSG-CRI (SVS VQI)')
+        self.assertContains(pp, 'ARISCAT (ფილტვი)')
+        self.assertContains(pp, '2A. ქირურგიული და ანატომიური გეგმა')
+        self.assertContains(pp, '2B. ანესთეზიოლოგიური და ჰემოდინამიკური გეგმა')
+        self.assertContains(pp, 'ცეფაზოლინი 3 გ IV')
+
+        # 3. ASRA 5th Ed Uninterrupted-P2Y12 Neuraxial Barrier + Severe CKD Beta-Lactam Gentamicin Guard + CEA Thrombolysis Heparin Guard
+        p_nx = PreopPatient.objects.create(
+            patient_name='სპინალ დაცვაძე', age=67, sex='M', side='R',
+            pathway='pad_bypass', op_subtype='bypass_clti', surgeon=self.user,
+            visit_date=today, started_on=today,
+            questionnaire={
+                'filled': True, 'abf_rest_pain': True, 'recent_stent': True,
+                'med_aspirin': True, 'med_clopidogrel': True,
+                'allergy_other': True, 'allergy_chips': ['beta_lactam'], 'mets_ok': True,
+            },
+            studies={
+                'abi_r': 0.38, 'pad_runoff_status': 'popliteal_patent', 'pad_gsv_status': 'adequate',
+                'hb': 128, 'plt': 215, 'inr': 1.02, 'creat': 260, 'creat_unit': 'umol',
+                'ecg': 'normal', 'anesthesia_plan': 'neuraxial', 'med_hold_agreed': True,
+            },
+        )
+        ev_nx = evaluate(p_nx, today=today)
+        self.assertIn('უკუნაჩვენებია', ev_nx['anesthetic_brief']['neuraxial_gate'])
+        self.assertTrue(any('სპინალური ჰემატომის' in rf for rf in ev_nx['red_flags']))
+        self.assertIn('გენტამიცინს მოერიდეთ', ev_nx['surgical_brief']['abx_regimen'])
+
+        p_cea = PreopPatient.objects.create(
+            patient_name='თრომბოლიზ კაროტიდაძე', age=69, sex='F', side='L',
+            pathway='cea', op_subtype='cea_symp', surgeon=self.user,
+            visit_date=today, started_on=today,
+            questionnaire={
+                'filled': True, 'cea_symp_event': True,
+                'cea_event_date': (today - datetime.timedelta(days=3)).isoformat(),
+                'cea_thrombolysis': True, 'mets_ok': True,
+            },
+            studies={'carotid_r': 35, 'carotid_l': 85, 'cea_cta_status': 'concordant', 'brain_imaging': 'normal_small'},
+        )
+        ev_cea = evaluate(p_cea, today=today)
+        self.assertFalse(ev_cea['needs_cea_antiplatelet'])
+        self.assertIn('ჰემორაგიული ტრანსფორმაციის', ev_cea['surgical_brief']['heparin_plan'])
+        self.assertIn('SBP < 140–150 mmHg', ev_cea['anesthetic_brief']['bp_corridor'])
+
+    def test_pre_pilot_3_simulation_invariants_and_multi_pathway_e2e_lifecycle(self):
+        import datetime
+        from django.utils import timezone
+        from .models import BoardPatient, Case, PreopPatient
+        from .preop import STATUS_READY, evaluate
+        from .preop_sim import run_simulation
+
+        # 1. Fast CI Regression Slice of the Synthetic Simulation Engine (1,500 scenarios + 250 metamorphic pairs = 2,000 evaluations)
+        sim_report = run_simulation(n=1500, n_mono=250, passport_sample=100, seed=2026)
+        self.assertEqual(sim_report['exceptions_count'], 0)
+        self.assertEqual(sim_report['invariant_violations_total'], 0)
+        self.assertEqual(sim_report['metamorphic_violations'], {})
+        for oracle_name, metrics in sim_report['guideline_oracles'].items():
+            self.assertEqual(metrics['fn'], 0, msg=f'Missed positive in {oracle_name}: {metrics}')
+            self.assertEqual(metrics['fp'], 0, msg=f'False positive in {oracle_name}: {metrics}')
+
+        # 2. Full End-to-End HTTP/DB Lifecycle across Conference -> Preop -> Passport -> DoS -> Board -> Discharge -> VQI Audit
+        today = timezone.localdate()
+        case = Case.objects.create(
+            patient_name='სრული ციკლაძე',
+            age=68,
+            sex='M',
+            side='R',
+            diagnosis='მარჯვენა შიგნითა საძილე არტერიის სიმპტომური სტენოზი 85%',
+            proposal='მარჯვენა კაროტიდული ენდარტერექტომია (CEA)',
+            created_by=self.user,
+        )
+        r_create = self.client.get(reverse('preop-new') + f'?case={case.pk}')
+        p = PreopPatient.objects.get(case=case)
+        self.assertEqual(r_create.status_code, 302)
+        self.assertEqual((p.op_subtype, p.side), ('cea_symp', 'R'))
+
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'header', 'patient_name': p.patient_name, 'age': '68', 'sex': 'M',
+            'op_subtype': 'cea_symp', 'side': 'R', 'person_id': '01055667788',
+            'birth_date': '1958-05-10', 'slot_kind': 'dated', 'visit_date': today.isoformat(),
+            'planned_surgery_date': (today + datetime.timedelta(days=2)).isoformat(),
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'questionnaire', 'side': 'R', 'cta_disc': '1',
+            'cea_symp_event': '1', 'cea_event_date': (today - datetime.timedelta(days=4)).isoformat(),
+            'cea_event_chips': ['tia'], 'med_aspirin': '1', 'med_chips': ['statin'], 'mets_ok': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1', 'bp_sys': '136', 'bp_dia': '80', 'hr': '72', 'spo2': '98',
+            'hb': '142', 'plt': '230', 'inr': '1.02', 'creat': '84', 'creat_unit': 'umol',
+            'glucose': '5.4', 'carotid_r': '85', 'carotid_l': '30',
+            'cea_cta_status': 'concordant', 'brain_imaging': 'normal_small',
+            'cta_disc': '1', 'ecg': 'normal', 'blood_group': 'O (I) Rh (+)',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage2', 'neuro_consult_done': '1', 'decolonization_ready': '1', 'anesth_done': '1',
+        })
+        p.refresh_from_db()
+        ev_ready = evaluate(p, today=today)
+        self.assertEqual(ev_ready['status'], STATUS_READY)
+        self.assertEqual(ev_ready['clearance_seal']['code'], 'go')
+
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'signoff', 'action': 'approve',
+        })
+        pp_resp = self.client.get(reverse('preop-passport', args=[p.pk]))
+        self.assertContains(pp_resp, 'GO — უსაფრთხოდ მზადაა ოპერაციისთვის')
+
+        # Morning of surgery WHO Sign-In + Complete & Transfer to ICU Board
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'dos_vqi', 'dos_form_present': '1', 'action': 'complete_and_board',
+            'unit': 'icu', 'bed': '2',
+            'dos_bp_sys': '134', 'dos_bp_dia': '78', 'dos_glucose': '5.6', 'dos_inr': '1.02',
+            'dos_identity_consent': '1', 'dos_site_marked': '1', 'dos_fasting_confirmed': '1',
+            'dos_med_hold_verified': '1', 'dos_abx_ready': '1', 'dos_blood_implant_ready': '1',
+            'icu_bed_booked': '1',
+        })
+        p.refresh_from_db()
+        bp = BoardPatient.objects.get(pk=p.studies['board_patient_id'])
+        bp.discharged_at = timezone.now()
+        bp.save(update_fields=['discharged_at'])
+
+        # Record 30-day VQI discharge bundle & uneventful 30d outcome, then verify Audit KPIs
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'dos_vqi', 'dos_form_present': '1', 'action': 'save_dos',
+            'case_outcome_status': 'operated', 'operated_date': today.isoformat(),
+            'vqi_discharge_antiplatelet': '1', 'vqi_discharge_statin': '1',
+            'vqi_surveillance_scheduled': '1', 'vqi_30d_status': 'uneventful',
+        })
+        audit_resp = self.client.get(reverse('preop-audit'))
+        self.assertEqual(audit_resp.status_code, 200)
+        self.assertEqual(audit_resp.context['vqi_statin_ap_pct'], 100)
+        self.assertEqual(audit_resp.context['cea_symp_within_14d_pct'], 100)
+        self.assertEqual(audit_resp.context['vqi_uneventful_30d_pct'], 100)
+
+
+

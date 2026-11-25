@@ -21,6 +21,9 @@
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
             <div class="po-title-row">
                 <h1>{{ p.patient_name }}</h1>
+                <span class="po-side-pill {% if not p.side and ev.pathway != 'aaa_infra' and ev.pathway != 'abf' %}warn{% endif %}" title="საოპერაციო მხარე / ანატომიური ზონა">
+                    {{ ev.side_badge }}
+                </span>
                 <span class="po-badge st-{{ ev.status }}">
                     <span class="dot dot-{{ ev.status }}" style="width:8px;height:8px;border-radius:50%"></span>
                     {{ ev.status_label }}
@@ -57,8 +60,8 @@
             </div>
 
             <div class="d-flex flex-wrap align-items-center gap-2">
-                <a class="x-btn sm" href="{% url 'preop-passport' p.pk %}" target="_blank" rel="noopener" title="1-გვერდიანი წინასაოპერაციო პასპორტი A4 ამოსაბეჭდად">
-                    პასპორტი (A4)
+                <a class="x-btn sm primary" href="{% url 'preop-passport' p.pk %}" target="_blank" rel="noopener" title="2-გვერდიანი აკადემიური დოსიე და წინასაოპერაციო პასპორტი A4 ამოსაბეჭდად">
+                    დოსიე / პასპორტი (2 გვ.)
                 </a>
                 <button type="button" class="x-btn sm" id="btn-copy-self" data-self-path="{{ self_fill_path }}" title="დააკოპირეთ კითხვარის ბმული პაციენტისთვის (SMS / WhatsApp / Viber)">
                     პაციენტის ბმული
@@ -99,90 +102,98 @@
             </div>
         </div>
 
-        <form method="post" class="d-flex flex-column gap-2 pt-1 border-top" style="border-color:var(--line-soft)!important">
-            {% csrf_token %}
-            <input type="hidden" name="section" value="header">
-            <input type="hidden" name="tab" value="{{ tab }}" id="hdr-tab-inp">
-            <div class="grid-4">
-                <label class="fld">პაციენტი (გვარი, სახელი)
-                    <input type="text" name="patient_name" value="{{ p.patient_name }}" class="form-control" required>
-                </label>
-                <div class="d-flex gap-2">
-                    <label class="fld" style="flex:1">ასაკი
-                        <input type="number" name="age" value="{{ p.age|default_if_none:'' }}" min="1" max="120" class="form-control">
+        <details class="po-edit-drawer" {% if not p.age or not ev.person_id or not p.side and ev.pathway != 'aaa_infra' and ev.pathway != 'abf' %}open{% endif %}>
+            <summary>
+                ✎ პირადი, კალენდარული და საოპერაციო მონაცემები
+                <span class="fw-normal opacity-75">
+                    ({{ p.planned_operation_label }}{% if p.age %} · {{ p.age }} წ.{% endif %}{% if ev.person_id %} · პირადი N: {{ ev.person_id }}{% endif %}{% if p.phone %} · {{ p.phone }}{% endif %})
+                </span>
+            </summary>
+            <form method="post" class="d-flex flex-column gap-2 pt-1">
+                {% csrf_token %}
+                <input type="hidden" name="section" value="header">
+                <input type="hidden" name="tab" value="{{ tab }}" id="hdr-tab-inp">
+                <div class="grid-4">
+                    <label class="fld">პაციენტი (გვარი, სახელი)
+                        <input type="text" name="patient_name" value="{{ p.patient_name }}" class="form-control" required>
                     </label>
-                    <label class="fld" style="flex:1">სქესი
-                        <select name="sex" class="form-select">
-                            <option value="M" {% if p.sex != 'F' %}selected{% endif %}>კაცი</option>
-                            <option value="F" {% if p.sex == 'F' %}selected{% endif %}>ქალი</option>
-                        </select>
-                    </label>
-                </div>
-                <label class="fld">დაგეგმილი ოპერაცია
-                    <select name="op_subtype" class="form-select">
-                        {% for grp_lbl, items in op_subtype_groups %}
-                        <optgroup label="{{ grp_lbl }}">
-                            {% for val, lbl in items %}
-                            <option value="{{ val }}" {% if p.op_subtype == val %}selected{% endif %}>{{ lbl }}</option>
-                            {% endfor %}
-                        </optgroup>
-                        {% endfor %}
-                    </select>
-                </label>
-                <div class="d-flex gap-2">
-                    <label class="fld" style="width:128px">მხარე
-                        <select name="side" class="form-select">
-                            {% for sval, slbl in side_choices %}
-                            <option value="{{ sval }}" {% if p.side == sval %}selected{% endif %}>{{ slbl }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label class="fld" style="flex:1">ქირურგი
-                        <select name="surgeon" class="form-select">
-                            <option value="">—</option>
-                            {% for uid, uname in doctors %}
-                            <option value="{{ uid }}" {% if p.surgeon_id == uid %}selected{% endif %}>{{ uname }}</option>
+                    <div class="d-flex gap-2">
+                        <label class="fld" style="flex:1">ასაკი
+                            <input type="number" name="age" value="{{ p.age|default_if_none:'' }}" min="1" max="120" class="form-control">
+                        </label>
+                        <label class="fld" style="flex:1">სქესი
+                            <select name="sex" class="form-select">
+                                <option value="M" {% if p.sex != 'F' %}selected{% endif %}>კაცი</option>
+                                <option value="F" {% if p.sex == 'F' %}selected{% endif %}>ქალი</option>
+                            </select>
+                        </label>
+                    </div>
+                    <label class="fld">დაგეგმილი ოპერაცია
+                        <select name="op_subtype" class="form-select">
+                            {% for grp_lbl, items in op_subtype_groups %}
+                            <optgroup label="{{ grp_lbl }}">
+                                {% for val, lbl in items %}
+                                <option value="{{ val }}" {% if p.op_subtype == val %}selected{% endif %}>{{ lbl }}</option>
+                                {% endfor %}
+                            </optgroup>
                             {% endfor %}
                         </select>
                     </label>
+                    <div class="d-flex gap-2">
+                        <label class="fld" style="width:128px">მხარე
+                            <select name="side" class="form-select">
+                                {% for sval, slbl in side_choices %}
+                                <option value="{{ sval }}" {% if p.side == sval %}selected{% endif %}>{{ slbl }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label class="fld" style="flex:1">ქირურგი
+                            <select name="surgeon" class="form-select">
+                                <option value="">—</option>
+                                {% for uid, uname in doctors %}
+                                <option value="{{ uid }}" {% if p.surgeon_id == uid %}selected{% endif %}>{{ uname }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    </div>
                 </div>
-            </div>
-            <div class="d-flex flex-wrap align-items-end gap-2 pt-1">
-                <label class="fld" style="width:146px">პირადი N (11 ციფრი)
-                    <input type="text" name="person_id" value="{{ ev.person_id }}" maxlength="11" inputmode="numeric" placeholder="010XXXXXXXX" class="form-control">
-                </label>
-                <label class="fld" style="width:152px">დაბ. თარიღი
-                    <input type="date" name="birth_date" value="{{ s.birth_date }}" class="form-control">
-                </label>
-                <label class="fld" style="width:176px">განთავსება კალენდარში
-                    <select name="slot_kind" id="slot-kind-sel" class="form-select">
-                        <option value="dated" {% if not p.someday_list %}selected{% endif %}>კონკრეტულ დღეზე</option>
-                        {% for skey, slbl in someday_choices %}
-                        <option value="someday:{{ skey }}" {% if p.someday_list == skey %}selected{% endif %}>{{ slbl }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label class="fld" id="visit-date-wrap" style="width:152px" {% if p.someday_list %}hidden{% endif %}>მოსვლის თარიღი
-                    <input type="date" name="visit_date" value="{{ p.visit_date|date:'Y-m-d'|default:today|date:'Y-m-d' }}" class="form-control">
-                </label>
-                <label class="fld" style="width:158px" title="ავტომატურად ითვლის წამლების შეჩერების კალენდარულ თარიღებს">ოპერაციის თარიღი
-                    <input type="date" name="planned_surgery_date" value="{{ s.planned_surgery_date }}" class="form-control">
-                </label>
-                <label class="fld" style="width:150px">ტელეფონი
-                    <input type="text" name="phone" value="{{ p.phone }}" placeholder="5XX XX XX XX" class="form-control">
-                </label>
-                <button type="submit" class="x-btn sm">განახლება</button>
-                <div class="ms-auto d-flex gap-2">
-                    <button type="submit" formaction="{% url 'preop-move' p.pk %}" name="action" value="archive" class="x-btn sm">
-                        {% if p.archived %}არქივიდან დაბრუნება{% else %}არქივში{% endif %}
-                    </button>
-                    <button type="submit" formaction="{% url 'preop-move' p.pk %}" name="action" value="delete" class="x-btn sm danger"
-                            onclick="return confirm('წავშალოთ {{ p.patient_name|escapejs }} წინასაოპერაციო სიიდან?');">
-                        წაშლა
-                    </button>
+                <div class="d-flex flex-wrap align-items-end gap-2 pt-1">
+                    <label class="fld" style="width:146px">პირადი N (11 ციფრი)
+                        <input type="text" name="person_id" value="{{ ev.person_id }}" maxlength="11" inputmode="numeric" placeholder="010XXXXXXXX" class="form-control">
+                    </label>
+                    <label class="fld" style="width:152px">დაბ. თარიღი
+                        <input type="date" name="birth_date" value="{{ s.birth_date }}" class="form-control">
+                    </label>
+                    <label class="fld" style="width:176px">განთავსება კალენდარში
+                        <select name="slot_kind" id="slot-kind-sel" class="form-select">
+                            <option value="dated" {% if not p.someday_list %}selected{% endif %}>კონკრეტულ დღეზე</option>
+                            {% for skey, slbl in someday_choices %}
+                            <option value="someday:{{ skey }}" {% if p.someday_list == skey %}selected{% endif %}>{{ slbl }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="fld" id="visit-date-wrap" style="width:152px" {% if p.someday_list %}hidden{% endif %}>მოსვლის თარიღი
+                        <input type="date" name="visit_date" value="{{ p.visit_date|date:'Y-m-d'|default:today|date:'Y-m-d' }}" class="form-control">
+                    </label>
+                    <label class="fld" style="width:158px" title="ავტომატურად ითვლის წამლების შეჩერების კალენდარულ თარიღებს">ოპერაციის თარიღი
+                        <input type="date" name="planned_surgery_date" value="{{ s.planned_surgery_date }}" class="form-control">
+                    </label>
+                    <label class="fld" style="width:150px">ტელეფონი
+                        <input type="text" name="phone" value="{{ p.phone }}" placeholder="5XX XX XX XX" class="form-control">
+                    </label>
+                    <button type="submit" class="x-btn sm">განახლება</button>
+                    <div class="ms-auto d-flex gap-2">
+                        <button type="submit" formaction="{% url 'preop-move' p.pk %}" name="action" value="archive" class="x-btn sm">
+                            {% if p.archived %}არქივიდან დაბრუნება{% else %}არქივში{% endif %}
+                        </button>
+                        <button type="submit" formaction="{% url 'preop-move' p.pk %}" name="action" value="delete" class="x-btn sm danger"
+                                onclick="return confirm('წავშალოთ {{ p.patient_name|escapejs }} წინასაოპერაციო სიიდან?');">
+                            წაშლა
+                        </button>
+                    </div>
                 </div>
-            </div>
-        </form>
+            </form>
+        </details>
     </section>
 
     <!-- Autonomous Standing Reflex Orders + True Urgent Alerts -->
@@ -243,12 +254,40 @@
             3. საფეხური 2 — გეგმა ({{ ev.done_count }}/{{ ev.total_count }})
         </button>
         <button type="button" class="po-tab {% if tab == 'doc' %}on{% endif %}" data-tab="doc">
-            4. ანამნეზი და დასტური {% if p.approved_at %}✓{% endif %}
+            4. დოსიე &amp; დასტური {% if p.approved_at %}✓{% endif %}
         </button>
         <button type="button" class="po-tab {% if tab == 'dos' %}on{% endif %}" data-tab="dos">
             5. ოპერაციის დილა &amp; VQI ({{ ev.dos_done_count }}/{{ ev.dos_total_count }}){% if ev.case_outcome == 'operated' %} ✓{% endif %}
         </button>
     </nav>
+
+    <!-- Guided Nurse Next-Step & Quick-Jump Bar -->
+    <div class="po-next-bar {% if ev.clearance_seal.code == 'stop' %}is-stop{% elif ev.clearance_seal.code == 'go' %}is-ready{% endif %}" role="status">
+        <div class="po-next-prog">
+            <span>მზაობა: {{ ev.done_count }}/{{ ev.total_count }}</span>
+            <span class="po-next-meter"><span style="width:{% widthratio ev.done_count ev.total_count 100 %}%"></span></span>
+        </div>
+        {% if ev.has_hard_contraindication %}
+        <span class="bad fw-bold">STOP — ფიქსირდება აბსოლუტური კლინიკური უკუჩვენება!</span>
+        {% elif ev.missing_items %}
+        <span class="small text-muted fw-semibold">დააწკაპეთ პირდაპირ შესავსებად:</span>
+        {% for mi in ev.missing_items %}
+        <button type="button" class="po-jump-chip" data-jump-tab="{{ mi.tab }}" data-jump-field="{{ mi.field }}">
+            {{ mi.label }} →
+        </button>
+        {% endfor %}
+        {% elif not p.approved_at %}
+        <span class="small fw-semibold" style="color:var(--ok)">✓ ყველა კვლევა და რეფლექს-ორდერი შესრულებულია —</span>
+        <button type="button" class="po-jump-chip" data-jump-tab="doc" data-jump-field="btn-surgeon-approve">
+            ქირურგის დასტურზე გადასვლა →
+        </button>
+        {% else %}
+        <span class="small fw-semibold" style="color:var(--ok)">✓ პაციენტი დადასტურებულია ოპერაციისთვის —</span>
+        <button type="button" class="po-jump-chip" data-jump-tab="dos" data-jump-field="dos_bp_sys">
+            ოპერაციის დილის WHO Sign-In →
+        </button>
+        {% endif %}
+    </div>
 
     <!-- ==================================================================
          TAB 1: QUESTIONNAIRES (Pathway-specific + 10 General/Anesthesia)
@@ -257,6 +296,27 @@
         <form method="post" class="d-flex flex-column gap-3">
             {% csrf_token %}
             <input type="hidden" name="section" value="questionnaire">
+
+            {% if ev.self_fill_highlights %}
+            <section class="po-sf-summary">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <div>
+                        <strong>პაციენტმა კითხვარი შეავსო ბმულით — დადებითი პასუხების შეჯამება:</strong>
+                        {% if q.nurse_verified %}<span class="po-badge st-ready ms-1">✓ გადამოწმებულია ({{ q.nurse_verified_by }})</span>{% endif %}
+                    </div>
+                    {% if not q.nurse_verified %}
+                    <button type="submit" id="btn-verify-self" class="x-btn sm ok">
+                        ✓ გადავამოწმე პაციენტთან და ვადასტურებ
+                    </button>
+                    {% endif %}
+                </div>
+                <div class="d-flex flex-wrap gap-1">
+                    {% for tone, txt in ev.self_fill_highlights %}
+                    <span class="po-sf-tag {{ tone }}">{{ txt }}</span>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
 
             {% if ev.pathway == 'cea' %}
             <!-- PATHWAY A1: CAROTID ENDARTERECTOMY (CEA — ESVS 2023, Zero-Free-Text) -->
@@ -2083,12 +2143,87 @@
     </div>
 
     <!-- ==================================================================
-         TAB 4: AUTO-GENERATED ANAMNESIS & SURGEON SIGN-OFF
+         TAB 4: JOINT SURGICAL-ANESTHETIC DOSSIER, ANAMNESIS & SIGN-OFF
          ================================================================== -->
     <div class="po-pane" data-pane="doc" {% if tab != 'doc' %}hidden{% endif %}>
         <form method="post" class="d-flex flex-column gap-3">
             {% csrf_token %}
             <input type="hidden" name="section" value="signoff">
+
+            <!-- Academic Joint Surgical & Anesthetic Clearance Dossier -->
+            <section class="x-card">
+                <div class="po-seal-banner seal-{{ ev.clearance_seal.code }}">
+                    <div>
+                        <div class="fw-bold" style="font-size:15px">{{ ev.clearance_seal.badge }} · {{ p.planned_operation_label }} ({{ ev.side_badge }})</div>
+                        <div class="small">{{ ev.clearance_seal.detail }}</div>
+                    </div>
+                    <a class="x-btn sm primary" href="{% url 'preop-passport' p.pk %}" target="_blank" rel="noopener">
+                        2-გვერდიანი A4 დოსიეს გახსნა / ბეჭდვა ↗
+                    </a>
+                </div>
+
+                <div class="po-risk-strip">
+                    <div class="po-risk-tile {% if ev.asa_roman == 'IV' %}tier-high{% elif ev.asa_roman == 'III' %}tier-intermediate{% endif %}">
+                        <small>ASA სტატუსი</small>
+                        <b>{{ ev.effective_asa }}</b>
+                        <span>ავტო: ASA {{ ev.auto_asa }}</span>
+                    </div>
+                    <div class="po-risk-tile {% if ev.rcri.tier == 'high' %}tier-high{% elif ev.rcri.tier == 'intermediate' %}tier-intermediate{% endif %}">
+                        <small>RCRI (Lee / ESC)</small>
+                        <b>{{ ev.rcri.score }} / 6 ქ.</b>
+                        <span>{{ ev.rcri.tier_label }}</span>
+                    </div>
+                    <div class="po-risk-tile {% if ev.vsg_cri and ev.vsg_cri.tier == 'high' %}tier-high{% elif ev.vsg_cri and ev.vsg_cri.tier == 'intermediate' %}tier-intermediate{% endif %}">
+                        <small>VSG-CRI (SVS VQI)</small>
+                        {% if ev.vsg_cri %}
+                        <b>{{ ev.vsg_cri.score }} ქ.</b>
+                        <span>{{ ev.vsg_cri.tier_label }}</span>
+                        {% else %}
+                        <b>ვენური</b>
+                        <span>&lt;1% MACE</span>
+                        {% endif %}
+                    </div>
+                    <div class="po-risk-tile {% if ev.ariscat.tier == 'high' %}tier-high{% elif ev.ariscat.tier == 'intermediate' %}tier-intermediate{% endif %}">
+                        <small>ARISCAT (ფილტვი)</small>
+                        <b>{{ ev.ariscat.score }} ქ.</b>
+                        <span>{{ ev.ariscat.tier_label }}</span>
+                    </div>
+                    <div class="po-risk-tile {% if ev.caprini_score >= 5 or ev.effective_stop_bang == 'high' %}tier-intermediate{% endif %}">
+                        <small>Caprini / OSA</small>
+                        <b>VTE {{ ev.caprini_score }} ქ.</b>
+                        <span>{{ ev.caprini_tier }} · {{ ev.stop_bang_label }}</span>
+                    </div>
+                    <div class="po-risk-tile {% if q.on_dialysis or ev.egfr is not None and ev.egfr < 30 %}tier-high{% elif ev.egfr is not None and ev.egfr < 60 or ev.frailty_notes %}tier-intermediate{% endif %}">
+                        <small>თირკმელი &amp; Frailty</small>
+                        <b>{% if q.on_dialysis %}დიალიზი{% else %}eGFR {{ ev.egfr|default_if_none:"—" }}{% endif %}</b>
+                        <span>{% if ev.crcl is not None %}CrCl {{ ev.crcl }} მლ/წთ{% elif ev.frailty_notes %}{{ ev.frailty_notes.0 }}{% else %}კვებითი ფონი სტაბ.{% endif %}</span>
+                    </div>
+                </div>
+
+                <div class="po-dossier-grid">
+                    <div class="po-brief-col">
+                        <h3>ქირურგის ანატომიური და ტაქტიკური ბრიფინგი</h3>
+                        <div class="po-brief-row"><b>ანატომია და ვიზუალიზაცია</b><span>{{ ev.surgical_brief.anatomy_summary }}</span></div>
+                        <div class="po-brief-row"><b>კონდუიტი / კოლატერალები / შუნტი</b><span>{{ ev.surgical_brief.tactical_note }}</span></div>
+                        <div class="po-brief-row"><b>ანტიბიოტიკოპროფილაქტიკა</b><span>{{ ev.surgical_brief.abx_regimen }}</span></div>
+                        <div class="po-brief-row"><b>ინტრაოპერაციული ანტიკოაგულაცია</b><span>{{ ev.surgical_brief.heparin_plan }}</span></div>
+                        {% if ev.surgical_brief.contrast_plan %}
+                        <div class="po-brief-row"><b>კონტრასტის ლიმიტი</b><span>{{ ev.surgical_brief.contrast_plan }}</span></div>
+                        {% endif %}
+                        <div class="po-brief-row"><b>პოსტოპ. ანტითრომბოზული &amp; VQI</b><span>{{ ev.surgical_brief.postop_antithrombotic }} · {{ ev.surgical_brief.surveillance_plan }}</span></div>
+                    </div>
+
+                    <div class="po-brief-col">
+                        <h3>ანესთეზიოლოგის და ჰემოდინამიკის გეგმა</h3>
+                        <div class="po-brief-row"><b>გაუტკივარება &amp; ASRA 5th Ed კარიბჭე</b><span><strong>{{ ev.anesthetic_brief.modality }}</strong> · {{ ev.anesthetic_brief.neuraxial_gate }}</span></div>
+                        <div class="po-brief-row"><b>სასუნთქი გზები</b><span>{{ ev.anesthetic_brief.airway_summary }}</span></div>
+                        <div class="po-brief-row"><b>ინტრაოპერაციული წნევის კორიდორი (SBP/MAP)</b><span>{{ ev.anesthetic_brief.bp_corridor }}</span></div>
+                        <div class="po-brief-row"><b>მონიტორინგი, ხაზები &amp; CIED</b><span>{{ ev.anesthetic_brief.lines_and_cied }}</span></div>
+                        <div class="po-brief-row"><b>PBM &amp; ტრანსფუზიული ტრიგერი</b><span>{{ ev.anesthetic_brief.transfusion_pbm }}</span></div>
+                        <div class="po-brief-row"><b>გლიკემია &amp; განთავსება</b><span>{{ ev.anesthetic_brief.glycemic_target }} · <strong>{{ ev.anesthetic_brief.disposition }}</strong></span></div>
+                    </div>
+                </div>
+            </section>
 
             <section class="x-card">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -2124,7 +2259,7 @@
                             დადასტურების მოხსნა
                         </button>
                         {% else %}
-                        <button type="submit" name="action" value="approve" class="x-btn primary" {% if ev.has_hard_contraindication %}disabled title="აბსოლუტური კლინიკური უკუჩვენების გამო ოპერაციაზე დადასტურება დაბლოკილია!"{% endif %}>
+                        <button type="submit" name="action" value="approve" id="btn-surgeon-approve" class="x-btn primary" {% if ev.has_hard_contraindication %}disabled title="აბსოლუტური კლინიკური უკუჩვენების გამო ოპერაციაზე დადასტურება დაბლოკილია!"{% endif %}>
                             ✓ ვადასტურებ — მზადაა ოპერაციისთვის
                         </button>
                         {% endif %}
@@ -2288,28 +2423,82 @@
             </section>
         </form>
     </div>
+
+    <!-- Sticky Floating Save Bar for Zero-Scroll Nurse Saving -->
+    <div class="po-sticky-save d-print-none" id="po-sticky-save" aria-live="polite">
+        <span>შეუნახავი ცვლილებები ამ ტაბში</span>
+        <button type="button" class="x-btn sm" id="btn-sticky-save">შენახვა (Ctrl+S)</button>
+    </div>
 </div>
+{{ ev.s1_required_fields|json_script:"po-s1-req-data" }}
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
 (function () {
-    // Track unsaved edits per tab pane so nurses never lose typed lab values when switching tabs or uploading photos
     var dirtyPanes = {};
     var submitting = false;
     var tabs = document.querySelectorAll('.po-tab[data-tab]');
     var panes = document.querySelectorAll('.po-pane[data-pane]');
     var hdrTab = document.getElementById('hdr-tab-inp');
+    var stickyBar = document.getElementById('po-sticky-save');
+    var stickyBtn = document.getElementById('btn-sticky-save');
+
+    function getActiveTabKey() {
+        var curBtn = document.querySelector('.po-tab.on[data-tab]');
+        return curBtn ? curBtn.dataset.tab : '';
+    }
+
+    function syncStickyBar() {
+        if (!stickyBar) return;
+        var cur = getActiveTabKey();
+        stickyBar.classList.toggle('on', Boolean(cur && dirtyPanes[cur]));
+    }
+
+    function submitActivePaneForm() {
+        var cur = getActiveTabKey();
+        if (!cur) return;
+        var pane = document.querySelector('.po-pane[data-pane="' + cur + '"]');
+        if (!pane) return;
+        var forms = pane.querySelectorAll('form');
+        for (var i = 0; i < forms.length; i++) {
+            if (forms[i].getAttribute('enctype') === 'multipart/form-data') continue;
+            submitting = true;
+            dirtyPanes[cur] = false;
+            syncStickyBar();
+            if (forms[i].requestSubmit) {
+                forms[i].requestSubmit();
+            } else {
+                forms[i].submit();
+            }
+            return;
+        }
+    }
+
+    if (stickyBtn) {
+        stickyBtn.addEventListener('click', submitActivePaneForm);
+    }
+
+    document.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+            var cur = getActiveTabKey();
+            if (cur) {
+                e.preventDefault();
+                submitActivePaneForm();
+            }
+        }
+    });
 
     panes.forEach(function (pane) {
         var paneKey = pane.dataset.pane;
         pane.querySelectorAll('form').forEach(function (frm) {
             if (frm.getAttribute('enctype') === 'multipart/form-data') return;
-            frm.addEventListener('input', function () { dirtyPanes[paneKey] = true; });
-            frm.addEventListener('change', function () { dirtyPanes[paneKey] = true; });
+            frm.addEventListener('input', function () { dirtyPanes[paneKey] = true; syncStickyBar(); });
+            frm.addEventListener('change', function () { dirtyPanes[paneKey] = true; syncStickyBar(); });
             frm.addEventListener('submit', function () {
                 submitting = true;
                 dirtyPanes[paneKey] = false;
+                syncStickyBar();
             });
         });
     });
@@ -2325,7 +2514,6 @@
         }
     });
 
-    // Auto-submit file uploads with dirty-form guard on Stage 1
     document.querySelectorAll('.js-auto-upload').forEach(function (inp) {
         inp.addEventListener('change', function () {
             if (!inp.files || !inp.files.length) return;
@@ -2338,26 +2526,173 @@
         });
     });
 
-    // Fast client-side tab switching + URL ?tab= sync
-    tabs.forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var t = btn.dataset.tab;
-            var curBtn = document.querySelector('.po-tab.on[data-tab]');
-            var curTab = curBtn ? curBtn.dataset.tab : '';
-            if (curTab && curTab !== t && dirtyPanes[curTab]) {
-                if (!window.confirm('ამ ტაბში შეცვლილი მონაცემები ჯერ არ არის შენახული. მაინც გადავიდეთ სხვა ტაბზე?')) {
-                    return;
-                }
-                dirtyPanes[curTab] = false;
+    function switchTab(t, skipConfirm) {
+        var curTab = getActiveTabKey();
+        if (!skipConfirm && curTab && curTab !== t && dirtyPanes[curTab]) {
+            if (!window.confirm('ამ ტაბში შეცვლილი მონაცემები ჯერ არ არის შენახული. მაინც გადავიდეთ სხვა ტაბზე?')) {
+                return false;
             }
-            tabs.forEach(function (b) { b.classList.toggle('on', b === btn); });
-            panes.forEach(function (p) { p.hidden = (p.dataset.pane !== t); });
-            if (hdrTab) hdrTab.value = t;
-            try {
-                var u = new URL(window.location.href);
-                u.searchParams.set('tab', t);
-                window.history.replaceState(null, '', u.toString());
-            } catch (e) {}
+            dirtyPanes[curTab] = false;
+        }
+        tabs.forEach(function (b) { b.classList.toggle('on', b.dataset.tab === t); });
+        panes.forEach(function (p) { p.hidden = (p.dataset.pane !== t); });
+        if (hdrTab) hdrTab.value = t;
+        syncStickyBar();
+        try {
+            var u = new URL(window.location.href);
+            u.searchParams.set('tab', t);
+            window.history.replaceState(null, '', u.toString());
+        } catch (e) {}
+        return true;
+    }
+
+    tabs.forEach(function (btn) {
+        btn.addEventListener('click', function () { switchTab(btn.dataset.tab, false); });
+    });
+
+    // Guided Missing-Item Jump Chips
+    document.querySelectorAll('.po-jump-chip[data-jump-tab]').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+            var targetTab = chip.dataset.jumpTab;
+            var targetField = chip.dataset.jumpField;
+            if (!switchTab(targetTab, false)) return;
+            var pane = document.querySelector('.po-pane[data-pane="' + targetTab + '"]');
+            if (!pane || !targetField) return;
+            var el = pane.querySelector('#' + targetField) || pane.querySelector('[name="' + targetField + '"]');
+            if (!el) return;
+            var parentDetails = el.closest('details');
+            if (parentDetails) parentDetails.open = true;
+            var flashBox = el.closest('.fld') || el.closest('.po-task-row') || el.closest('.po-q-item') || el;
+            flashBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            flashBox.classList.remove('po-field-flash');
+            void flashBox.offsetWidth;
+            flashBox.classList.add('po-field-flash');
+            try { el.focus({ preventScroll: true }); } catch (e) {}
+        });
+    });
+
+    // Stage 1 Required vs Optional Visual Hierarchy + Live Physiological Range Guard
+    var reqDataEl = document.getElementById('po-s1-req-data');
+    var s1Pane = document.querySelector('.po-pane[data-pane="s1"]');
+    if (reqDataEl && s1Pane) {
+        try {
+            var reqSet = {};
+            JSON.parse(reqDataEl.textContent || '[]').forEach(function (k) { reqSet[k] = true; });
+            Object.keys(reqSet).forEach(function (fname) {
+                var ctrl = s1Pane.querySelector('[name="' + fname + '"]');
+                if (!ctrl) return;
+                var lbl = ctrl.closest('.fld');
+                if (!lbl || lbl.classList.contains('is-req')) return;
+                lbl.classList.add('is-req');
+                var tag = document.createElement('span');
+                tag.className = 'fld-req-tag';
+                lbl.insertBefore(tag, ctrl.closest('.d-flex') || ctrl);
+                var syncReq = function () {
+                    var v = (ctrl.value || '').trim();
+                    var ok = v !== '' && v !== 'pending';
+                    lbl.classList.toggle('is-filled', ok);
+                    tag.textContent = ok ? '✓' : 'სავალდებულო';
+                };
+                ctrl.addEventListener('input', syncReq);
+                ctrl.addEventListener('change', syncReq);
+                syncReq();
+            });
+        } catch (e) {}
+    }
+
+    function attachLiveGuard(ctrl, evalFn) {
+        if (!ctrl) return;
+        var lbl = ctrl.closest('.fld');
+        if (!lbl) return;
+        var hint = document.createElement('div');
+        hint.className = 'fld-live-hint';
+        hint.hidden = true;
+        lbl.appendChild(hint);
+        var run = function () {
+            ctrl.classList.remove('lv-warn', 'lv-crit');
+            var raw = (ctrl.value || '').trim();
+            if (!raw) { hint.hidden = true; return; }
+            var num = parseFloat(raw);
+            if (!isFinite(num)) { hint.hidden = true; return; }
+            var res = evalFn(num);
+            if (!res) { hint.hidden = true; return; }
+            if (res.level === 'crit') ctrl.classList.add('lv-crit');
+            else if (res.level === 'warn') ctrl.classList.add('lv-warn');
+            hint.className = 'fld-live-hint ' + res.level;
+            hint.textContent = res.msg;
+            hint.hidden = false;
+        };
+        ctrl.addEventListener('input', run);
+        ctrl.addEventListener('change', run);
+        run();
+    }
+
+    document.querySelectorAll('input[name="hb"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v >= 3.5 && v <= 22.0) {
+                var gl = Math.round(v * 100) / 10;
+                return { level: gl < 100 ? 'crit' : (gl < 115 ? 'warn' : 'info'), msg: '≈ ' + gl + ' გ/ლ' + (gl < 100 ? ' (მძიმე ანემია!)' : (gl < 115 ? ' (ანემიის რეფლექსი)' : '')) };
+            }
+            if (v < 100) return { level: 'crit', msg: 'მძიმე ანემია (<100 გ/ლ)!' };
+            if (v < 115) return { level: 'warn', msg: 'ანემია (<115 გ/ლ — ჩაირთვება ფერიტინი/TSAT)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="k"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v < 3.3 || v >= 5.4) return { level: 'crit', msg: 'კრიტიკული K+ (' + v + ' მმოლ/ლ — არითმიის რისკი)!' };
+            if (v < 3.5 || v > 5.0) return { level: 'warn', msg: 'სასაზღვრო K+ (ნორმა 3.5–5.0)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="inr"], input[name="dos_inr"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v > 1.5) return { level: 'crit', msg: 'მაღალი INR (>1.5 — სისხლდენის რისკი)!' };
+            if (v > 1.2) return { level: 'warn', msg: 'INR > 1.2 (ნეირაქსიული ბლოკადისთვის საყურადღებოა)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="plt"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            var n = v >= 10000 ? Math.round(v / 1000) : v;
+            if (n < 100) return { level: 'crit', msg: 'თრომბოციტოპენია (<100 ×10^9/L)!' };
+            if (n < 150) return { level: 'warn', msg: 'ზომიერი კლება (<150 ×10^9/L)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="creat"]').forEach(function (el) {
+        var unitSel = el.closest('form') ? el.closest('form').querySelector('select[name="creat_unit"]') : null;
+        attachLiveGuard(el, function (v) {
+            var u = unitSel ? unitSel.value : '';
+            if (!u && v >= 15 && v <= 35) return { level: 'crit', msg: 'აირჩიეთ ერთეული (მკმოლ/ლ თუ მგ/დლ)!' };
+            var mgdl = u === 'mgdl' ? v : (u === 'umol' ? v / 88.4 : (v < 15 ? v : v / 88.4));
+            if (mgdl > 2.0) return { level: 'crit', msg: 'მაღალი კრეატინინი (RCRI +1 / ნეფროლოგი)!' };
+            if (mgdl >= 1.4) return { level: 'warn', msg: 'დაქვეითებული თირკმლის ფუნქცია' };
+            return null;
+        });
+        if (unitSel) unitSel.addEventListener('change', function () { el.dispatchEvent(new Event('input')); });
+    });
+    document.querySelectorAll('input[name="glucose"], input[name="dos_glucose"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            var mmol = v > 35 ? Math.round((v / 18.018) * 10) / 10 : v;
+            if (mmol >= 14.0 || mmol < 3.9) return { level: 'crit', msg: 'კრიტიკული გლიკემია (' + mmol + ' მმოლ/ლ)!' };
+            if (mmol >= 7.0) return { level: 'warn', msg: 'მომატებული გლუკოზა (ჩაირთვება HbA1c)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="bp_sys"], input[name="dos_bp_sys"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v >= 180 || v < 90) return { level: 'crit', msg: v >= 180 ? 'კრიტიკული ჰიპერტენზია (≥180 mmHg)!' : 'ჰიპოტენზია (<90 mmHg)!' };
+            if (v >= 160) return { level: 'warn', msg: 'მომატებული წნევა (≥160 mmHg)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="abi_r"], input[name="abi_l"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v > 1.40) return { level: 'warn', msg: 'არაკომპრესირებადი (>1.40 — შეიტანეთ Toe Pressure / TBI)' };
+            if (v < 0.40) return { level: 'crit', msg: 'კრიტიკული იშემია (ABI < 0.40)!' };
+            if (v < 0.80) return { level: 'warn', msg: 'დაქვეითებული ABI (< 0.80)' };
+            return null;
         });
     });
 
