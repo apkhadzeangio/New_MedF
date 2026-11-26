@@ -199,6 +199,16 @@ def _valid_bilateral_sbp(s):
     return max(valid, default=None)
 
 
+def _inverted_bp_arms(s):
+    """Return saturated (sys, dia) tuples for entered BP arms where SBP <= DBP."""
+    arms = []
+    for sk, dk in (('bp_sys', 'bp_dia'), ('bp_sys_l', 'bp_dia_l')):
+        sv, dv = _sat_num(_s_raw(s, sk), 30, 320), _sat_num(_s_raw(s, dk), 20, 220)
+        if sv is not None and dv is not None and sv <= dv:
+            arms.append((sv, dv))
+    return arms
+
+
 def _sat_bmi_from(bmi, s):
     v = _sat_num(bmi, 8, 90)
     if v is not None:
@@ -384,6 +394,9 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     hba1c = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     spo2 = _sat_num(_s_raw(s, 'spo2'), 30, 100)
     eff_sbp = _valid_bilateral_sbp(s)
+    inv_bp = _inverted_bp_arms(s) if eff_sbp is None else []
+    inv_max = max((max(a, b) for a, b in inv_bp), default=None)
+    inv_min = min((min(a, b) for a, b in inv_bp), default=None)
     raw_sbp_low = min([v for v in (_sat_num(_s_raw(s, 'bp_sys'), 30, 320), _sat_num(_s_raw(s, 'bp_sys_l'), 30, 320)) if v is not None], default=None)
     hr_val = _sat_num(_s_raw(s, 'hr'), 15, 260)
     k_val = _sat_num(_s_raw(s, 'k'), 1.0, 12.0)
@@ -402,7 +415,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or bool(q.get('cea_crescendo'))
         or (is_symp_cea and (cea_d is None or cea_d <= 90))
         or bool(q.get('recent_stent'))
-        or ('mech_valve' in cad_chips and bool(q.get('filled')) and (not q.get('med_warfarin') or 'hit_heparin' in allergy_chips))
+        or ('mech_valve' in cad_chips and ('hit_heparin' in allergy_chips or bool(q.get('med_doac')) or bool(q.get('med_dabigatran')) or (bool(q.get('filled')) and not q.get('med_warfarin'))))
         or (lvef is not None and lvef < 40)
         or bool(s.get('echo_valve_issue'))
         or (s.get('ecg') == 'ischemia_arrhythmia')
@@ -412,6 +425,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or (eff_sbp is not None and eff_sbp < 90)
         or (eff_sbp is not None and eff_sbp <= 100 and hr_val is not None and hr_val >= eff_sbp)
         or (eff_sbp is None and raw_sbp_low is not None and raw_sbp_low <= 100 and hr_val is not None and hr_val >= 100 and hr_val >= raw_sbp_low)
+        or (inv_max is not None and (inv_max <= 90 or (inv_max < 100 and (inv_max - inv_min) < 15)))
         or (hr_val is not None and (hr_val >= 135 or hr_val < 40))
         or (k_val is not None and (k_val >= 6.0 or k_val < 3.0))
         or (hb_gl is not None and hb_gl < 70)
@@ -436,6 +450,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or bool(q.get('dm_insulin')) or (bmi_v is not None and bmi_v >= 40)
         or bool(q.get('pacemaker')) or ('copd' in _str_list(q.get('pulm_chips')))
         or (spo2 is not None and spo2 < 94) or (eff_sbp is not None and eff_sbp >= 180)
+        or (inv_max is not None and (inv_max >= 180 or inv_min >= 110))
         or (k_val is not None and (k_val >= 5.4 or k_val < 3.3)) or (q.get('cfs_level') == '5_plus')
     ):
         return 'III'

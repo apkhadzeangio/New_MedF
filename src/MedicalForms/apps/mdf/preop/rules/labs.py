@@ -1,6 +1,6 @@
 """Vitals, hematology/ASRA, renal/contrast, glycemia/thyroid, infection, pulmonary & GI/carotid rules."""
 from ...models import PreopPatient
-from ..calculators import _ihd_and_chf_flags, calc_max_contrast_ml, normalize_fibrinogen_gl
+from ..calculators import _ihd_and_chf_flags, _s_raw, _sat_num, calc_max_contrast_ml, normalize_fibrinogen_gl
 from ..constants import PATHWAY_SHORT
 from ..registry import rule_value
 from ..utils import _date, _fmt_ka_date, _int, _num, chip_summary
@@ -142,7 +142,7 @@ def _eval_early_neuraxial_gate(ctx):
     has_acs_stent_early = ('stent_6_12m' in ctx.cad_chips) and ('mi' in ctx.cad_chips)
     p2y12_cnt_early = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
     asa_allergy_solo_p2y12 = (
-        'nsaid' in ctx.allergy_chips and not q.get('med_aspirin') and p2y12_cnt_early >= 1
+        'nsaid' in ctx.allergy_chips and p2y12_cnt_early >= 1
         and (not ctx.is_venous or bool(q.get('cad')) or bool(q.get('neuro')))
     )
     uninterrupted_p2y12_early = (p2y12_cnt_early >= 1) and (
@@ -184,10 +184,11 @@ def _eval_early_neuraxial_gate(ctx):
     if bool(s.get('echo_valve_issue')):
         hard_nx_reasons.append('მძიმე სარქვლოვანი მანკი / AS — სპინალური ბლოკადა საშიშია!')
     raw_sbp_low = any(
-        (v := _num(raw_s.get(k, s.get(k, inv_in.get(k))), lo=0, hi=95)) is not None and v < asra_cfg['sbp_min']
+        (v := _num(_s_raw(raw_s, k) if _s_raw(raw_s, k) is not None else _s_raw(s, k))) is not None
+        and (v < 30 or (ctx.eff_sys is None and v < asra_cfg['sbp_min']))
         for k in ('bp_sys', 'bp_sys_l')
     )
-    raw_hr_v = _num(raw_s.get('hr', s.get('hr', inv_in.get('hr'))), lo=0, hi=600)
+    raw_hr_v = _num(_s_raw(raw_s, 'hr') if _s_raw(raw_s, 'hr') is not None else _s_raw(s, 'hr'))
     if (ctx.eff_sys is not None and ctx.eff_sys < asra_cfg['sbp_min']) or raw_sbp_low or (ctx.shock_index is not None and ctx.shock_index >= 1.0) or (raw_hr_v is not None and (raw_hr_v > 260 or raw_hr_v < 15)):
         hard_nx_reasons.append('ჰიპოტენზია / შოკი (SBP <95 ან SI ≥1.0) — სიმპათექტომია საშიშია!')
 
@@ -365,6 +366,7 @@ def eval_renal_electrolytes(ctx):
 
     k_val = _num(s.get('k'), lo=1.0, hi=12.0)
     ctx.k_val = k_val
+    ctx.k_val_sat = _sat_num(_s_raw(s, 'k'), 1.0, 12.0)
     if k_val is not None:
         if k_val < el_cfg['k_red_lo'] or k_val >= el_cfg['k_red_hi']:
             ctx.red_flags.append(f'კალიუმის კრიტიკული დონე (K+ {k_val} მმოლ/ლ) — არითმიის რისკი! აცნობეთ ექიმს.')
@@ -439,16 +441,19 @@ def _eval_tsh_and_nutrition(ctx, nut_cfg):
     q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
     tsh_res = s.get('tsh_status') or 'pending'
     needs_tsh = q_filled and (not ctx.is_venous) and (
-        (bool(q.get('thyroid_disease')) and (ctx.uses_contrast or ctx.open_aortic))
-        or ('amiodarone' in ctx.med_chips and ctx.uses_contrast)
+        ((bool(q.get('thyroid_disease')) or 'amiodarone' in ctx.med_chips) and (ctx.uses_contrast or ctx.open_aortic))
         or (tsh_res != 'pending')
     )
     ctx.tsh_res, ctx.needs_tsh = tsh_res, needs_tsh
     if needs_tsh:
+        tsh_trig = (
+            'ფარისებრი ჯირკვლის პათოლოგია / ამიოდარონი + იოდის კონტრასტი'
+            if ctx.uses_contrast else 'ფარისებრი ჯირკვლის პათოლოგია / ამიოდარონი — ღია აორტული ოპერაციის წინ'
+        )
         ctx.reflex_orders.append({
             'key': 'tsh',
-            'trigger': 'ფარისებრი ჯირკვლის პათოლოგია / ამიოდარონი + იოდის კონტრასტი',
-            'action': 'TSH და FT4 კონტროლი იოდ-ინდუცირებული თირეოტოქსიკოზის / ჰიპოთირეოზის გამოსარიცხად',
+            'trigger': tsh_trig,
+            'action': 'TSH და FT4 კონტროლი თირეოტოქსიკოზის / ჰიპოთირეოზის გამოსარიცხად',
             'done': tsh_res != 'pending',
         })
     if tsh_res == 'hyperthyroid':
@@ -665,13 +670,16 @@ def eval_carotid_gastro(ctx):
     p2y12_early_cnt = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))]) if q_filled else 0
     has_dapt_high_gi = q_filled and (
         (p2y12_early_cnt >= 2)
-        or (bool(q.get('med_aspirin')) and p2y12_early_cnt >= 1 and (((ctx.age or 0) >= gi_cfg['ppi_age']) or ('steroid' in ctx.med_chips)))
+        or (bool(q.get('med_aspirin')) and p2y12_early_cnt >= 1)
     )
     has_oac_ap_ppi = q_filled and ctx.on_oral_anticoag and (ctx.has_antiplatelet or ('cilostazol' in ctx.med_chips))
     has_elder_steroid_ppi = q_filled and ((ctx.age or 0) >= gi_cfg['ppi_age']) and ('steroid' in ctx.med_chips) and ctx.has_any_antithrombotic
     needs_ppi = bool(
-        (bool(q.get('ulcer_active_symp')) or (q_filled and (bool(q.get('ulcer')) or has_dapt_high_gi or has_oac_ap_ppi or has_elder_steroid_ppi)))
-        and (not needs_gastro or bool(q.get('ulcer_active_symp')))
+        (
+            bool(q.get('ulcer_active_symp'))
+            or (gastro_res == 'acute_ulcer')
+            or (q_filled and (bool(q.get('ulcer')) or has_dapt_high_gi or has_oac_ap_ppi or has_elder_steroid_ppi))
+        )
         and 'ppi' not in ctx.med_chips
     )
     ctx.needs_ppi = needs_ppi
@@ -682,8 +690,8 @@ def eval_carotid_gastro(ctx):
             else 'ომეპრაზოლი / პანტოპრაზოლი 40 მგ'
         )
         ppi_trig_lbl = (
-            'ანამნეზში წყლულოვანი დაავადება / აქტიური GI სიმპტომი'
-            if (q.get('ulcer') or q.get('ulcer_active_symp'))
+            'ანამნეზში წყლულოვანი დაავადება / აქტიური GI სიმპტომი / ეგდს წყლული'
+            if (q.get('ulcer') or q.get('ulcer_active_symp') or gastro_res == 'acute_ulcer')
             else 'მაღალი გასტროინტესტინური სისხლდენის რისკი (DAPT / OAC+ანტიაგრეგანტი / ≥65 წ. სტეროიდზე — ESC 2022 Class I)'
         )
         ctx.reflex_orders.append({

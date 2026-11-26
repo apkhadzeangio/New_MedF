@@ -79,6 +79,25 @@ _VQI_CHECK_BOOLS = (
 )
 
 
+def _sync_med_hold_after_mutation(patient, ev_before, ev_after, save=True):
+    """Clear med_hold_agreed whenever medication hold signature changes, STOP triggers, or call stamp is stale."""
+    from ..nurse_ui import med_schedule_signature
+
+    sig_after = med_schedule_signature(ev_after)
+    s_cur = merged_studies(patient)
+    if (
+        med_schedule_signature(ev_before) != sig_after
+        or ev_after['clearance_seal']['code'] == 'stop'
+        or ev_after.get('has_hard_contraindication')
+        or (s_cur.get('nurse_med_called_sig') and s_cur.get('nurse_med_called_sig') != sig_after)
+    ):
+        if s_cur.get('med_hold_agreed'):
+            s_cur['med_hold_agreed'] = False
+            patient.studies = s_cur
+            if save:
+                patient.save(update_fields=['studies', 'updated_at'])
+
+
 class PreopPatientView(LoginRequiredMixin, generic.View):
     """Individual Preoperative Assessment Workspace for one patient (5 fast tabs)."""
     template_name = 'mdf/preop/patient.html'
@@ -91,6 +110,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         return self._render(request, patient)
 
     def post(self, request, pk):
+        from .. import evaluate
+
         patient = get_object_or_404(PreopPatient, pk=pk)
         section = request.POST.get('section') or 'header'
 
@@ -99,34 +120,27 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
 
             if section == 'header':
+                ev_before = evaluate(patient)
                 self._save_header(request, patient)
+                _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
                 messages.success(request, 'პაციენტის მონაცემები განახლდა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + f"?tab={request.POST.get('tab', 'q')}")
 
             if section in ('questionnaire', 'q'):
+                ev_before = evaluate(patient)
                 self._save_questionnaire(request, patient)
+                _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
                 messages.success(request, 'კითხვარები შეინახა — განახლდა ანამნეზი და მომზადების გეგმა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1')
 
             if section == 'stage1':
-                from .. import evaluate
                 from ..nurse_plan import summarize_stage1_clinical_delta
-                from ..nurse_ui import PREOP_UI_NEW, get_preop_ui_mode, med_schedule_signature
+                from ..nurse_ui import PREOP_UI_NEW, get_preop_ui_mode
 
                 ev_before = evaluate(patient)
                 self._save_stage1(request, patient)
                 ev_after = evaluate(patient)
-                sig_after = med_schedule_signature(ev_after)
-                if (
-                    med_schedule_signature(ev_before) != sig_after
-                    or ev_after['clearance_seal']['code'] == 'stop'
-                    or (patient.studies.get('nurse_med_called_sig') and patient.studies.get('nurse_med_called_sig') != sig_after)
-                ):
-                    s_sync = merged_studies(patient)
-                    if s_sync.get('med_hold_agreed'):
-                        s_sync['med_hold_agreed'] = False
-                        patient.studies = s_sync
-                        patient.save(update_fields=['studies', 'updated_at'])
+                _sync_med_hold_after_mutation(patient, ev_before, ev_after)
                 if get_preop_ui_mode(request) == PREOP_UI_NEW:
                     deltas = summarize_stage1_clinical_delta(ev_before, ev_after)
                     if deltas:
@@ -138,7 +152,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
 
             if section == 'stage2':
+                ev_before = evaluate(patient)
                 self._save_stage2(request, patient)
+                _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
                 messages.success(request, 'მომზადების გეგმა და კონსულტაციები შეინახა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
 
@@ -187,8 +203,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         op_sub = request.POST.get('op_subtype') or ''
         if op_sub in PreopPatient.OpSubtype.values:
             patient.op_subtype = op_sub
-        surg_raw = request.POST.get('surgeon') or ''
-        patient.surgeon = get_user_model().objects.filter(pk=int(surg_raw)).first() if surg_raw.isdigit() else None
+        surg_id = _int(request.POST.get('surgeon'), lo=1)
+        patient.surgeon = get_user_model().objects.filter(pk=surg_id).first() if surg_id is not None else None
 
         slot_kind = request.POST.get('slot_kind') or ''
         if slot_kind.startswith('someday:'):
@@ -289,9 +305,54 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         _invalidate_approval_if_needed(patient, uf)
         patient.save(update_fields=list(dict.fromkeys(uf)))
 
+    @staticmethod
+    def _apply_dos_vqi_post(post, s, today, dos_check_keys, form_present, dos_partial):
+        if 'planned_surgery_date' in post:
+            op_d = _date(post.get('planned_surgery_date'))
+            s['planned_surgery_date'] = op_d.isoformat() if op_d else ''
+        if 'operated_date' in post:
+            done_d = _date(post.get('operated_date'))
+            s['operated_date'] = done_d.isoformat() if (done_d and done_d <= today) else ''
+        for key, lo, hi in (
+            ('dos_bp_sys', 40, 300), ('dos_bp_dia', 20, 200),
+            ('dos_glucose', 0.5, 1000), ('dos_inr', 0.5, 15.0),
+        ):
+            if key in post:
+                _set_num_field(s, key, post.get(key), lo=lo, hi=hi)
+        present_keys = (
+            set(post.getlist('dos_present_keys'))
+            if (hasattr(post, 'getlist') and 'dos_present_keys' in post)
+            else dos_check_keys
+        )
+        for bf in _DOS_CHECK_BOOLS:
+            if form_present or (dos_partial and bf in present_keys) or bf in post:
+                s[bf] = post.get(bf) in ('1', 'on', 'true')
+        for bf in _VQI_CHECK_BOOLS:
+            if (form_present and not dos_partial) or (dos_partial and bf in present_keys) or bf in post:
+                s[bf] = post.get(bf) in ('1', 'on', 'true')
+        if post.get('case_outcome_status') in dict(CASE_OUTCOME_CHOICES):
+            s['case_outcome_status'] = post.get('case_outcome_status')
+        if post.get('vqi_30d_status') in dict(VQI_30D_CHOICES):
+            s['vqi_30d_status'] = post.get('vqi_30d_status')
+        if hasattr(post, 'getlist'):
+            if (form_present and not dos_partial) or 'cancel_reason_chips' in post:
+                s['cancel_reason_chips'] = [
+                    k for k in post.getlist('cancel_reason_chips')
+                    if k in CHIP_LABELS['cancel_reason_chips']
+                ]
+            if (form_present and not dos_partial) or 'vqi_complication_chips' in post:
+                s['vqi_complication_chips'] = [
+                    k for k in post.getlist('vqi_complication_chips')
+                    if k in CHIP_LABELS['vqi_complication_chips']
+                ]
+                if s['vqi_complication_chips'] and s.get('vqi_30d_status') in ('pending', 'uneventful', None, ''):
+                    s['vqi_30d_status'] = 'complication'
+
     def _save_dos_vqi(self, request, patient):
         from .. import evaluate
 
+        ev_before = evaluate(patient)
+        dos_check_keys = {c['key'] for c in ev_before['dos_checks']}
         s = merged_studies(patient)
         today = timezone.localdate()
         old_op_dt = s.get('planned_surgery_date')
@@ -299,47 +360,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         form_present = 'dos_form_present' in request.POST
         dos_partial = request.POST.get('dos_partial') == '1'
 
-        if 'planned_surgery_date' in request.POST:
-            op_d = _date(request.POST.get('planned_surgery_date'))
-            s['planned_surgery_date'] = op_d.isoformat() if op_d else ''
-        if 'operated_date' in request.POST:
-            done_d = _date(request.POST.get('operated_date'))
-            s['operated_date'] = done_d.isoformat() if (done_d and done_d <= today) else ''
-
-        for key, lo, hi in (
-            ('dos_bp_sys', 40, 300),
-            ('dos_bp_dia', 20, 200),
-            ('dos_glucose', 0.5, 1000),
-            ('dos_inr', 0.5, 15.0),
-        ):
-            if key in request.POST:
-                _set_num_field(s, key, request.POST.get(key), lo=lo, hi=hi)
-
-        for bf in _DOS_CHECK_BOOLS:
-            if form_present or dos_partial or bf in request.POST:
-                s[bf] = request.POST.get(bf) in ('1', 'on', 'true')
-        for bf in _VQI_CHECK_BOOLS:
-            if (form_present and not dos_partial) or bf in request.POST:
-                s[bf] = request.POST.get(bf) in ('1', 'on', 'true')
-
-        if request.POST.get('case_outcome_status') in dict(CASE_OUTCOME_CHOICES):
-            s['case_outcome_status'] = request.POST.get('case_outcome_status')
-        if request.POST.get('vqi_30d_status') in dict(VQI_30D_CHOICES):
-            s['vqi_30d_status'] = request.POST.get('vqi_30d_status')
-
-        if hasattr(request.POST, 'getlist'):
-            if (form_present and not dos_partial) or 'cancel_reason_chips' in request.POST:
-                s['cancel_reason_chips'] = [
-                    k for k in request.POST.getlist('cancel_reason_chips')
-                    if k in CHIP_LABELS['cancel_reason_chips']
-                ]
-            if (form_present and not dos_partial) or 'vqi_complication_chips' in request.POST:
-                s['vqi_complication_chips'] = [
-                    k for k in request.POST.getlist('vqi_complication_chips')
-                    if k in CHIP_LABELS['vqi_complication_chips']
-                ]
-                if s['vqi_complication_chips'] and s.get('vqi_30d_status') in ('pending', 'uneventful', None, ''):
-                    s['vqi_30d_status'] = 'complication'
+        self._apply_dos_vqi_post(request.POST, s, today, dos_check_keys, form_present, dos_partial)
 
         if action == 'complete_and_board':
             s['case_outcome_status'] = 'operated'
@@ -374,8 +395,16 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             _invalidate_approval_if_needed(patient, uf)
         patient.studies = s
         patient.updated_by = request.user
-        if evaluate(patient).get('dos_hold_danger'):
+        ev_after = evaluate(patient)
+        if (
+            ev_after.get('dos_hold_danger')
+            or ev_after.get('has_hard_contraindication')
+            or ev_after['clearance_seal']['code'] == 'stop'
+            or ev_after.get('has_unacked_red')
+            or ev_after['alerts_sig'] != ev_before['alerts_sig']
+        ):
             _invalidate_approval_if_needed(patient, uf)
+        _sync_med_hold_after_mutation(patient, ev_before, ev_after, save=False)
         patient.save(update_fields=list(dict.fromkeys(uf)))
         messages.success(request, 'ოპერაციის დილის კარიბჭე და 30-დღიანი VQI მონიტორინგი შეინახა.')
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')

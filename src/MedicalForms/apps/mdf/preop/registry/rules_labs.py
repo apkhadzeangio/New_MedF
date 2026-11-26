@@ -172,7 +172,7 @@ LABS_RULES = (
         source_wording='Severe malnutrition (BMI <16 or serum albumin <30 g/L) and severe hepatic dysfunction (>=3x ULN) strongly predict wound failure and perioperative mortality.',
         value={'bmi_cachexia': 16.0, 'alb_red': 30, 'alb_amb': 35},
         value_label='BMI < 16 · ალბ. < 30 (<35 ყვ.) · ღვიძლი >= 3x',
-        match_patterns=('მძიმე კახექსია', 'მძიმე ჰიპოალბუმინემია', 'დაბალი ალბუმინი', 'ღვიძლის ფერმენტების', 'დადებითი ვირუსული', 'გამოხატული კლინიკური დაუძლურება'),
+        match_patterns=('მძიმე კახექსია', 'მძიმე ჰიპოალბუმინემია', 'დაბალი ალბუმინი', 'ღვიძლის ფერმენტების', 'დადებითი ვირუსული', 'გამოხატული კლინიკური დაუძლურება', 'დაუძლურების მაღალი ინდექსი (CFS'),
     ),
     # --- Infection, Stale Labs, Pulmonary, GI & Carotid ---
     RuleEntry(

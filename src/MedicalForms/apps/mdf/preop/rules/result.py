@@ -71,6 +71,8 @@ def _result_clinical_part(ctx):
         'anesth_lines_txt': ctx.anesth_lines_txt,
         'cied_plan_label': ctx.cied_plan_label,
         'needs_icu_bed': ctx.needs_icu_bed,
+        'is_self_filled': getattr(ctx, 'is_self_filled', False),
+        'has_glp1_any': getattr(ctx, 'has_glp1_any', False),
         'fasting_instruction': ctx.fasting_instruction,
         'surveillance_plan': ctx.surveillance_plan,
         'dos_checks': ctx.dos_checks,

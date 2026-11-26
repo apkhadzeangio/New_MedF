@@ -132,18 +132,30 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
     if post_data.get('ven_ceap') in ('C2', 'C3', 'C4', 'C5', 'C6'):
         q['ven_ceap'] = post_data.get('ven_ceap')
 
+    raw_inv = s.get('_invalid_inputs')
+    inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
     if q.get('cea_symp_event') or patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP:
-        ev_dt = _date(post_data.get('cea_event_date'))
-        if ev_dt and ev_dt <= today:
-            q['cea_event_date'] = ev_dt.isoformat()
-            q['cea_days_since_event'] = (today - ev_dt).days
+        raw_ev = (post_data.get('cea_event_date') or '').strip() if 'cea_event_date' in post_data else ''
+        ev_dt = _date(raw_ev) if raw_ev else None
+        if raw_ev:
+            if ev_dt and ev_dt <= today:
+                q['cea_event_date'] = ev_dt.isoformat()
+                q['cea_days_since_event'] = (today - ev_dt).days
+                inv.pop('cea_event_date', None)
+            else:
+                q['cea_event_date'] = ''
+                q['cea_days_since_event'] = None
+                inv['cea_event_date'] = clean_text(raw_ev, 24)
         elif 'cea_days_since_event' in post_data:
+            inv.pop('cea_event_date', None)
             d_ev = _int(post_data.get('cea_days_since_event'), lo=0, hi=3650)
             q['cea_days_since_event'] = d_ev
             try:
                 q['cea_event_date'] = (today - datetime.timedelta(days=d_ev)).isoformat() if d_ev is not None else ''
             except OverflowError:
                 q['cea_event_date'] = ''
+        elif 'cea_event_date' in post_data:
+            inv.pop('cea_event_date', None)
     else:
         q['cea_event_date'] = ''
         q['cea_days_since_event'] = None
@@ -151,6 +163,7 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
         q['cea_crescendo'] = False
         q['cea_thrombolysis'] = False
         q['cea_disabling_stroke'] = False
+        inv.pop('cea_event_date', None)
 
     if 'abf_claud_m' in post_data:
         q['abf_claud_m'] = _int(post_data.get('abf_claud_m'), lo=0, hi=5000)
@@ -177,7 +190,6 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
         h = _num(post_data.get('height_cm'), lo=100, hi=230)
         if h is not None:
             s['height_cm'] = h
-    inv = dict(s.get('_invalid_inputs')) if isinstance(s.get('_invalid_inputs'), dict) else {}
     if 'aaa_mm' in post_data:
         raw_aaa = (post_data.get('aaa_mm') or '').strip()
         s['aaa_mm'] = _num(raw_aaa, lo=10, hi=200)

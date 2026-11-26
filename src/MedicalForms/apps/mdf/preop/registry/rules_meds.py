@@ -17,7 +17,13 @@ MEDS_RULES = (
         value={'plt_min': 100, 'inr_max': 1.4, 'fib_min': 1.5, 'sbp_min': 95},
         value_label='PLT >= 100 · INR <= 1.4 · ფიბ. >= 1.5 გ/ლ · SBP >= 95',
         status=STATUS_LOCAL,
-        match_patterns=('ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია', 'ნეირაქსიული ანესთეზია / ეპიდურული კათეტერი უკუნაჩვენებია', 'მხოლოდ სპინალური/ეპიდურული გაუტკივარება'),
+        match_patterns=(
+            'ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია',
+            'ნეირაქსიული ანესთეზია / ეპიდურული კათეტერი უკუნაჩვენებია',
+            'მხოლოდ სპინალური/ეპიდურული გაუტკივარება',
+            'იხ. ASRA მედიკამენტების ცხრილი',
+            'შეჩერების დღის შეთანხმება',
+        ),
     ),
     # --- Oral Anticoagulants (CHEST 2022 / PAUSE / EHRA 2021 / ASRA 2025) ---
     RuleEntry(
@@ -25,15 +31,15 @@ MEDS_RULES = (
         domain='meds',
         kind='drug_hold',
         title_ka='ვარფარინის (VKA) შეჩერება და ხიდის პროტოკოლი',
-        description_ka='ვარფარინი ჩერდება 5 დღით ადრე (საკონტროლო INR < 1.5; ნეირაქსიულზე <= 1.4 / სასურველია <= 1.2); EVLA-ზე დასაშვებია მოუხსნელად თუ INR <= 3.0; რუტინული LMWH ხიდი AFib-ზე აკრძალულია; მექანიკურ სარქველზე ხიდი სავალდებულოა (CrCl<30 -> IV UFH; HIT -> IV ბივალირუდინი/არგატრობანი).',
+        description_ka='ვარფარინი ჩერდება 5 დღით ადრე (საკონტროლო INR <= 1.5; ნეირაქსიულზე <= 1.4 / სასურველია <= 1.2); EVLA-ზე დასაშვებია მოუხსნელად თუ INR <= 3.0; რუტინული LMWH ხიდი AFib-ზე აკრძალულია; მექანიკურ სარქველზე ხიდი სავალდებულოა (CrCl<30 -> IV UFH; HIT -> IV ბივალირუდინი/არგატრობანი).',
         source='CHEST 2022 Perioperative Management of Antithrombotic Therapy (Douketis et al.) & ESC 2022',
         year=2022,
         section='VKA interruption & heparin bridging (Table 2 / ESC Class III)',
         class_level='Strong recommendation (no routine bridging in AFib)',
         source_wording='Interrupt warfarin 5 days preoperatively and check INR before surgery; avoid routine LMWH bridging in non-valvular AFib; bridge high thromboembolic risk (mechanical valve, recent VTE <3m) with last LMWH 50% dose morning D-1 (>=24h pre-op).',
         value={'hold_days': 5, 'inr_surg_max': 1.5, 'inr_evla_max': 3.0, 'mech_inr_min': 2.0},
-        value_label='5 დღე · INR < 1.5 (EVLA <= 3.0) · მექ. სარქვ. >= 2.0',
-        match_patterns=('ვარფარინი შეჩერება 5 დღით ადრე', 'ვარფარინის ფონზე — EVLA-ს წინ', 'EVLA შესაძლებელია მოუხსნელადაც', 'ვარფარინი', 'ვარფარინის ფონზე'),
+        value_label='5 დღე · INR <= 1.5 (EVLA <= 3.0) · მექ. სარქვ. >= 2.0',
+        match_patterns=('ვარფარინი შეჩერება 5 დღით ადრე', 'ვარფარინის ფონზე — EVLA-ს წინ', 'ვარფარინი ESVS 2022: EVLA', 'ვარფარინი', 'ვარფარინის ფონზე'),
     ),
     RuleEntry(
         id='MED_DOAC_HOLD_INTERVALS',
@@ -169,6 +175,9 @@ MEDS_RULES = (
             'პრასუგრელი უკუნაჩვენებია', 'პრასუგრელი აბსოლუტურად უკუნაჩვენებია',
             'OAC + ტიკაგრელორი ESC Class III', 'OAC/დუბლირებულ P2Y12-თან',
             'CYP2C19 ურთიერთქმედება', 'CYP2C19', 'SAPT', 'რივაროქსაბან 2.5',
+            'ანტიკოაგულანტს / ანტიაგრეგანტს — დააზუსტეთ ქირურგთან',
+            'შეათანხმეთ მიღების/შეჩერების', 'არჩეულია პოსტოპ. DAPT',
+            'არჩეულია პოსტოპ. SAPT', 'არჩეულია პოსტოპ. VOYAGER',
         ),
     ),
     RuleEntry(
@@ -263,9 +272,8 @@ MEDS_RULES = (
         value_label='BB SBP>=100/HR>=55 · ACEi K+<5.2 · CCB SBP>=110',
         match_patterns=(
             'ინსულინი', 'ბეტა-ბლოკატორი', 'ACEi / ARB (პრილი/სარტანი)', 'ACEi / ARB', 'ამლოდიპინი',
-            'სტატინი გრძელდება უწყვეტად', 'სტატინი', 'ამიოდარონი გრძელდება უწყვეტად', 'ამიოდარონი',
-            'დიურეტიკი', 'სტეროიდი', 'ჰორმონული პრეპარატი', 'შეათანხმეთ მიღების/შეჩერების',
-            'შეჩერების დღის შეთანხმება',
+            'სტატინი გრძელდება უწყვეტად', 'სტატინი ღვიძლის ფერმენტები', 'ამიოდარონი გრძელდება უწყვეტად', 'ამიოდარონი',
+            'დიურეტიკი', 'სტეროიდი', 'ჰორმონული პრეპარატი',
         ),
     ),
     RuleEntry(
@@ -273,12 +281,12 @@ MEDS_RULES = (
         domain='meds',
         kind='alert',
         title_ka='HIT, ალერგიები, ანტიბიოტიკოპროფილაქტიკა (ცეფაზოლინი 2 გ / 3 გ >=120 კგ) და იოდის პრემედიკაცია',
-        description_ka='HIT კრძალავს ჰეპარინს/LMWH; β-ლაქტამზე ალერგია ცვლის ცეფაზოლინს ვანკომიცინით/კლინდამიცინით (მსუბუქ პენიცილინზე ცეფაზოლინი დასაშვებია — AAAAI 2022); >=120 კგ-ზე ცეფაზოლინი 3 გ; ლატექსი/ქლორჰექსიდინზე -> პოვიდონ-იოდი; ასპირინზე/კლოპიდოგრელზე ალერგია კრძალავს დანიშვნას.',
+        description_ka='HIT კრძალავს ჰეპარინს/LMWH; β-ლაქტამზე ალერგია ცვლის ცეფაზოლინს ვანკომიცინით/კლინდამიცინით (მსუბუქ პენიცილინზე ცეფაზოლინი დასაშვებია — AAAAI 2022); >=120 კგ-ზე ცეფაზოლინი 3 გ; ლატექსი/ქლორჰექსიდინზე -> პოვიდონ-იოდი; ადგილობრივ ანესთეტიკზე/ასპირინზე/კლოპიდოგრელზე ალერგია კრძალავს დანიშვნას.',
         source='ASHP/IDSA Surgical Prophylaxis & AAAAI 2022 Drug Allergy Practice Parameter & ASH HIT Guidelines',
         year=2022,
         section='Cefazolin weight dosing (>=120 kg -> 3g) & beta-lactam cross-reactivity',
         class_level='Class I, Level A',
-        source_wording='Administer cefazolin 2 g IV (3 g if >=120 kg) <=60 min before incision; cefazolin is safe in non-anaphylactic penicillin allergy; avoid all heparin/LMWH in HIT; never prescribe aspirin/P2Y12 in documented allergy.',
+        source_wording='Administer cefazolin 2 g IV (3 g if >=120 kg) <=60 min before incision; cefazolin is safe in non-anaphylactic penicillin allergy; avoid all heparin/LMWH in HIT; never prescribe aspirin/P2Y12/local anaesthetics in documented allergy.',
         value={'cefazolin_3g_kg': 120},
         value_label='ცეფაზოლინი 2 გ (3 გ >= 120 კგ) · HIT = 0 ჰეპარინი',
         match_patterns=(
@@ -287,6 +295,7 @@ MEDS_RULES = (
             'დაუზუსტებელი მედიკამენტური ალერგია', 'ალერგია იოდზე',
             'იოდზე / კონტრასტზე ალერგია', 'ასპირინზე / აასს-ზე ალერგია',
             'ასპირინზე/აასს-ზე ალერგია', 'კლოპიდოგრელის აუტანლობა/ალერგია',
+            'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე',
         ),
     ),
 )

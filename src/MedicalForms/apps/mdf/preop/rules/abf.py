@@ -23,7 +23,7 @@ def _eval_abf_clinical(ctx, is_clti):
             'ტერფის სველი ნეკროზი / ჩირქოვანი გამონადენი / ფლეგმონა — სინთეზური ბიფურკაციული პროთეზის სეფსისის უმაღლესი რისკი! '
             'სასწრაფოდ აცნობეთ ქირურგს სანაციისა და ეტაპობრივი ტაქტიკის გადასაწყვეტად.'
         )
-    if q_filled and q.get('abf_groin_issue'):
+    if q.get('abf_groin_issue'):
         ctx.red_flags.append(
             'საზარდულის არეში სოკოვანი გამოყელვა (ინტერტრიგო) / გამონაყარი / ანთებითი კვანძი — '
             'ბარძაყის ანასტომოზისა და პროთეზის ინფიცირების უმაღლესი რისკი! აცნობეთ ქირურგს.'
@@ -122,7 +122,7 @@ def eval_abf(ctx):
     if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
         ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — განიხილეთ ლიპიდდამწევი თერაპიის გაძლიერება (ESVS 2024).')
 
-    ctx.needs_wound_care = q_filled and (bool(q.get('abf_ulcer')) or bool(q.get('abf_wet_infection')) or bool(q.get('abf_groin_issue')))
+    ctx.needs_wound_care = bool(q.get('abf_wet_infection') or q.get('abf_groin_issue')) or (q_filled and bool(q.get('abf_ulcer')))
 
 
 def _eval_bypass_conduit(ctx, is_clti):
@@ -226,7 +226,7 @@ def eval_pad_bypass(ctx):
         ctx.amber_flags.append('მიუთითეთ საოპერაციო კიდურის მხარე (მარჯვენა ან მარცხენა).')
     if q.get('abf_wet_infection'):
         ctx.red_flags.append('ტერფის სველი განგრენა / ჩირქოვანი ინფექცია — სასწრაფოდ აცნობეთ ქირურგს დრენირებისა და ანტიბიოტიკოთერაპიისთვის!')
-    if q_filled and q.get('abf_groin_issue'):
+    if q.get('abf_groin_issue'):
         ctx.red_flags.append('საზარდულის არეში ინტერტრიგო / ინფექცია — შუნტის ინფიცირების მაღალი რისკი! აცნობეთ ქირურგს.')
     if ctx.days > ctx.t_days and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
         msg = f'გახანგრძლივებული მომზადება პერიფერიულ შუნტირებაზე: გავიდა {ctx.days} დღე (ლიმიტი: {ctx.t_days} დღე).'
@@ -271,4 +271,4 @@ def eval_pad_bypass(ctx):
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I).')
     if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
         ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — განიხილეთ სტატინის ინტენსიფიკაცია ± ეზეტიმიბი.')
-    ctx.needs_wound_care = q_filled and (bool(q.get('abf_ulcer')) or bool(q.get('abf_wet_infection')) or bool(q.get('abf_groin_issue')))
+    ctx.needs_wound_care = bool(q.get('abf_wet_infection') or q.get('abf_groin_issue')) or (q_filled and bool(q.get('abf_ulcer')))

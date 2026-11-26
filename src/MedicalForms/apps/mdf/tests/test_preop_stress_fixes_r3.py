@@ -281,13 +281,21 @@ class StressR3HttpAndTemplateTests(TestCase):
         self.assertTrue(p.studies.get('urine_nitrite'))
         self.assertTrue(evaluate(p, today=TODAY)['neuraxial_hard_blocked'])
 
-        # R3-S1-01 (S2-2): patient_new.html nw-dos-form MUST NOT wipe VQI/ICU flags!
+        # R3-S1-01 (S2-2): patient_new.html nw-dos-form MUST NOT wipe unrendered VQI flags (or unrendered ICU flag on non-ICU patient)!
         self.client.post(reverse('preop-patient', args=[p.pk]), {
-            'section': 'dos_vqi', 'dos_partial': '1', 'dos_identity_consent': '1',
+            'section': 'dos_vqi', 'dos_partial': '1', 'dos_identity_consent': '1', 'icu_bed_booked': '1',
         })
         p.refresh_from_db()
         self.assertTrue(p.studies.get('vqi_discharge_antiplatelet'))
         self.assertTrue(p.studies.get('icu_bed_booked'))
+        p_no_icu = _go('evla', s={'icu_bed_booked': True, 'vqi_discharge_statin': True})
+        p_no_icu.save()
+        self.client.post(reverse('preop-patient', args=[p_no_icu.pk]), {
+            'section': 'dos_vqi', 'dos_partial': '1', 'dos_identity_consent': '1',
+        })
+        p_no_icu.refresh_from_db()
+        self.assertTrue(p_no_icu.studies.get('icu_bed_booked'))
+        self.assertTrue(p_no_icu.studies.get('vqi_discharge_statin'))
 
         # R3-S1-09: Extreme/garbage DoS vitals POST MUST keep dos_hold_danger=True STOP & invalidate approved_at!
         p_app = _go('open', approved_at=timezone.now(), approved_by=self.doc)

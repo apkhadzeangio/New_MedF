@@ -71,7 +71,8 @@ class PreopNurseRegisterView(LoginRequiredMixin, generic.View):
         age = _int(request.POST.get('age'), lo=1, hi=120)
         op_date = _date(request.POST.get('planned_surgery_date'))
         surgeon_raw = request.POST.get('surgeon') or ''
-        surgeon = get_user_model().objects.filter(pk=int(surgeon_raw)).first() if surgeon_raw.isdigit() else None
+        surg_id = _int(surgeon_raw, lo=1)
+        surgeon = get_user_model().objects.filter(pk=surg_id).first() if surg_id is not None else None
         if surgeon is None and hasattr(request.user, 'profile'):
             surgeon = request.user
 

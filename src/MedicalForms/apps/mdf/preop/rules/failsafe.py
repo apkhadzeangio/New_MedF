@@ -96,6 +96,13 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
             'შეყვანილია ფიზიოლოგიურ დიაპაზონს გარეთა ან არასწორი ფორმატის მონაცემი — შეფასება ვერ დადასტურდება.',
             blocking=True,
         )
+    if getattr(ctx, 'creat_unit_ambiguous', False) and not ctx.on_dialysis:
+        add(
+            'ambiguous_creat_unit', 's1', 'creat',
+            'კრეატინინის ერთეული დაუზუსტებელია (15–35 ზონა)',
+            'მიუთითეთ კრეატინინის ერთეული (µmol/L ან mg/dL) — ერთეულის გარეშე eGFR/CrCl ვერ ფასდება და GO ბეჭედი დაბლოკილია.',
+            blocking=True,
+        )
     has_any_lab = any(s.get(k) is not None for k in _LAB_KEYS)
     if has_any_lab:
         labs_dt = _date(s.get('labs_date'))
@@ -163,11 +170,8 @@ def eval_unknown_state_failsafe(ctx):
             'rule_id': 'WF_UNKNOWN_STATE_FAILSAFE',
         })
 
-    from ..utils import is_pregnancy_eligible
-    is_unverified_sf = (
-        (bool(q.get('self_fill_submitted')) or bool(q.get('self_filled')) or (q_filled and q.get('filled_by') == 'პაციენტი (ბმულით)'))
-        and not q.get('nurse_verified')
-    )
+    from ..utils import is_pregnancy_eligible, is_self_filled_q
+    is_unverified_sf = is_self_filled_q(q) and not q.get('nurse_verified')
     if is_unverified_sf:
         add(
             'unverified_self_fill', 'q', 'btn-verify-self',
@@ -197,16 +201,21 @@ def eval_unknown_state_failsafe(ctx):
             )
 
     repro_female_risk = (
-        patient.sex == 'F'
-        and is_pregnancy_eligible(patient)
-        and (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD) or ctx.is_pta or ctx.is_venous)
+        is_pregnancy_eligible(patient)
+        and (
+            (patient.sex == 'F' and (
+                patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)
+                or ctx.is_pta or ctx.is_venous
+            ))
+            or bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
+        )
         and not s.get('dos_bhcg_negative')
     )
     if repro_female_risk:
         add(
             'reproductive_pregnancy_unverified', 'dos', 'dos_bhcg_negative',
             'ორსულობის გამორიცხვა დაუზუსტებელია (12–55 წ. ქალი)',
-            'ფლუოროსკოპიულ (EVAR/PTA) ან ვენურ ჩარევაზე ოპერაციამდე სავალდებულოა ორსულობის სტატუსის დაზუსტება / β-hCG.',
+            'ორსულობის სტატუსის დაზუსტების / უარყოფითი β-hCG-ის გარეშე ოპერაციაზე GO დაშვება არ გაიცემა.',
             blocking=True,
         )
 

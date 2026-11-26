@@ -1,7 +1,7 @@
 """Track B3/B5 plain-Georgian missing-item checklist, phone med-call script, and postponement detector."""
 from .constants import STATUS_NO_Q
 from .nurse_ui import _med_call_status, med_schedule_signature
-from .utils import _date, _fmt_ka_date
+from .utils import _date, _fmt_ka_date, is_self_filled_q
 
 _DRUG_PLAIN_PREFIX = {
     'SGLT2 (ჯარდიანსი / ფორსიგა)': 'შაქრის წამალი — ჯარდიანსი / ფორსიგა (SGLT2)',
@@ -27,11 +27,15 @@ def build_plain_georgian_missing_items(patient, ev, today):
     items = []
     q = ev['q']
 
-    if ev['has_hard_contraindication'] or ev['clearance_seal']['code'] == 'stop':
-        reason = ev['red_flags'][0] if ev['red_flags'] else 'ოპერაციაზე დაშვება შეჩერებულია'
+    if ev['has_hard_contraindication'] or ev['clearance_seal']['code'] == 'stop' or ev.get('dos_hold_danger'):
+        reason = (
+            ev['dos_warnings'][0] if ev.get('dos_warnings')
+            else (ev['red_flags'][0] if ev['red_flags'] else 'ოპერაციაზე დაშვება შეჩერებულია')
+        )
         items.append({
             'kind': 'stop', 'label': f'STOP — აცნობეთ ქირურგს: {reason}',
-            'target_section': 'nw-sec-doc', 'target_input': '', 'action_label': 'ექიმის სექცია',
+            'target_section': 'nw-dos-card' if ev.get('dos_warnings') else 'nw-sec-doc',
+            'target_input': '', 'action_label': 'ექიმის სექცია',
         })
     elif ev['has_unacked_red']:
         for rf in ev['red_flags'][:3]:
@@ -47,32 +51,42 @@ def build_plain_georgian_missing_items(patient, ev, today):
             'kind': 'q', 'label': 'შესავსებია პაციენტის წინასაოპერაციო კითხვარი (ან გაუგზავნეთ ბმული)',
             'target_section': 'nw-sec-q', 'target_input': '', 'action_label': 'კითხვარის გახსნა',
         })
-    elif (q.get('self_filled') or q.get('self_fill_submitted') or q.get('filled_by') == 'პაციენტი (ბმულით)') and not q.get('nurse_verified'):
+    elif is_self_filled_q(q) and not q.get('nurse_verified'):
         has_q_banner = True
         items.append({
             'kind': 'q', 'label': 'პაციენტმა შეავსო კითხვარი — საჭიროა ექთნის გადამოწმება',
             'target_section': 'nw-sec-q', 'target_input': '', 'action_label': 'გადამოწმება',
         })
 
-    seen_s2 = set()
+    seen_s2, seen_fields = set(), set()
     for m in ev['missing_items']:
         if m.get('tab') == 'q' and has_q_banner:
             continue
         fld = m.get('field') or ''
+        if fld:
+            seen_fields.add(fld)
         if m.get('tab') == 's2':
             seen_s2.add(fld or m.get('label'))
         inp_id = _FIELD_TO_INPUT_ID.get(fld, '')
-        if m.get('tab') == 'q':
-            sec = 'nw-sec-q'
-        elif inp_id:
-            sec = 'nw-vitals-card'
-        elif m.get('tab') == 's2':
-            sec = 'nw-sec-s2'
-        else:
-            sec = 'nw-vitals-card'
+        sec = 'nw-sec-q' if m.get('tab') == 'q' else ('nw-sec-s2' if (not inp_id and m.get('tab') == 's2') else 'nw-vitals-card')
         items.append({
             'kind': 'missing', 'label': f"აკლია: {m['label']}",
             'target_section': sec, 'target_input': inp_id, 'action_label': 'შევსება',
+        })
+
+    for u in (ev.get('unknown_state_flags') or []):
+        if not u.get('blocking'):
+            continue
+        if u.get('key') == 'unverified_self_fill' and has_q_banner:
+            continue
+        ufld = u.get('field') or ''
+        if ufld and ufld in seen_fields:
+            continue
+        tab_u = u.get('tab') or ''
+        sec_u = {'dos': 'nw-dos-card', 'q': 'nw-sec-q', 's2': 'nw-sec-s2', 'header': 'nw-sec-header'}.get(tab_u, 'nw-vitals-card')
+        items.append({
+            'kind': 'missing', 'label': f"დასაზუსტებელია: {u['label']}",
+            'target_section': sec_u, 'target_input': _FIELD_TO_INPUT_ID.get(ufld, ''), 'action_label': 'შესწორება',
         })
 
     for t in ev['tasks']:
@@ -192,7 +206,13 @@ def detect_postponement_impacts(patient, ev, today):
 
     med_call = _med_call_status(ev, today)
     hold_drugs = [r['drug'] for r in ev['med_schedule'] if r.get('hold_or_skip')]
-    if hold_drugs:
+    stop_locked = (ev['clearance_seal']['code'] == 'stop' or ev.get('has_hard_contraindication'))
+    if hold_drugs and stop_locked:
+        impacts.append({
+            'tone': 'danger',
+            'text': 'ოპერაციაზე დაშვება დაბლოკილია (STOP) — წამლები არ შეწყვიტოთ და შეჩერების თარიღს ნუ მისცემთ ქირურგის გადაწყვეტილებამდე!',
+        })
+    elif hold_drugs:
         if med_call['outdated_call']:
             impacts.append({
                 'tone': 'danger',

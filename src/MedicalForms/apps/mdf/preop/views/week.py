@@ -98,7 +98,10 @@ def _find_overdue_patients(all_non_archived, ev_by_id, pathway_filter, monday, s
         if pathway_filter != 'all' and ev['pathway'] != pathway_filter:
             continue
         has_acute_red = bool(
-            ev['q'].get('aaa_pain') or ev['q'].get('cea_crescendo') or ev['q'].get('abf_wet_infection')
+            ev['q'].get('aaa_pain')
+            or ev['q'].get('cea_crescendo')
+            or ev['q'].get('abf_wet_infection')
+            or (ev['pathway'] in ('abf', 'pad_bypass', 'pad_pta') and ev['q'].get('abf_duration') == '< 2 კვირა')
         )
         off_week_acute = (
             has_acute_red
@@ -233,9 +236,9 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
     """Inline 1-line Tweek add (POST) or 1-click transfer/re-sync from a Conference Case (GET/POST)."""
 
     def get(self, request):
-        case_id = request.GET.get('case', '')
-        if case_id.isdigit():
-            case = get_object_or_404(Case, pk=int(case_id))
+        case_id_int = _int(request.GET.get('case'), lo=1)
+        if case_id_int is not None:
+            case = get_object_or_404(Case, pk=case_id_int)
             existing = PreopPatient.objects.filter(case=case, archived=False).first()
             if existing:
                 if request.GET.get('sync') == '1':
@@ -273,9 +276,9 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
         side = request.POST.get('side') if request.POST.get('side') in ('R', 'L', 'B') else ''
 
         surgeon = None
-        surgeon_raw = request.POST.get('surgeon') or ''
-        if surgeon_raw.isdigit():
-            surgeon = get_user_model().objects.filter(pk=int(surgeon_raw)).first()
+        surg_id = _int(request.POST.get('surgeon'), lo=1)
+        if surg_id is not None:
+            surgeon = get_user_model().objects.filter(pk=surg_id).first()
         if surgeon is None and hasattr(request.user, 'profile'):
             surgeon = request.user
 

@@ -392,7 +392,7 @@
             <span>{% if ev.labs_date_ka %}ანალიზების თარიღი: {{ ev.labs_date_ka }}{% endif %}</span>
         </h2>
         <div class="pp-grid">
-            <div class="pp-kv"><b>წნევა / პულსი / SpO₂</b><span {% if s.bp_sys is not None and s.bp_sys >= 180 or s.bp_sys is not None and s.bp_sys < 90 or s.bp_dia is not None and s.bp_dia >= 110 or s.hr is not None and s.hr > 110 or s.hr is not None and s.hr < 45 or s.spo2 is not None and s.spo2 < 90 %}class="bad"{% endif %}>{{ s.bp_sys|default_if_none:"—" }}/{{ s.bp_dia|default_if_none:"—" }}{% if s.bp_sys_l is not None %} (L {{ s.bp_sys_l }}/{{ s.bp_dia_l|default_if_none:"—" }}){% endif %} · HR {{ s.hr|default_if_none:"—" }} · {{ s.spo2|default_if_none:"—" }}%</span></div>
+            <div class="pp-kv"><b>წნევა / პულსი / SpO₂</b><span {% if s.bp_sys is not None and s.bp_sys >= 180 or s.bp_sys is not None and s.bp_sys < 90 or s.bp_dia is not None and s.bp_dia >= 110 or s.bp_sys_l is not None and s.bp_sys_l >= 180 or s.bp_sys_l is not None and s.bp_sys_l < 90 or s.bp_dia_l is not None and s.bp_dia_l >= 110 or s.bp_sys is not None and s.bp_dia is not None and s.bp_sys <= s.bp_dia or s.bp_sys_l is not None and s.bp_dia_l is not None and s.bp_sys_l <= s.bp_dia_l or ev.shock_index is not None and ev.shock_index >= 1.0 or s.hr is not None and s.hr > 110 or s.hr is not None and s.hr < 45 or s.spo2 is not None and s.spo2 < 90 %}class="bad"{% endif %}>{{ s.bp_sys|default_if_none:"—" }}/{{ s.bp_dia|default_if_none:"—" }}{% if s.bp_sys_l is not None %} (L {{ s.bp_sys_l }}/{{ s.bp_dia_l|default_if_none:"—" }}){% endif %} · HR {{ s.hr|default_if_none:"—" }} · {{ s.spo2|default_if_none:"—" }}%</span></div>
             <div class="pp-kv"><b>წონა / BMI / Caprini</b><span>{% if s.weight_kg is not None %}{{ s.weight_kg }} კგ · {% endif %}{% if ev.bmi is not None %}{{ ev.bmi }} კგ/მ²{% else %}—{% endif %} · Caprini {{ ev.caprini_score }} ({{ ev.caprini_tier }})</span></div>
             <div class="pp-kv"><b>სისხლის ჯგუფი</b><span>{{ s.blood_group|default:"—" }}</span></div>
             <div class="pp-kv"><b>Hb / WBC / PLT</b><span {% if ev.hb_gl is not None and ev.hb_gl < 115 or ev.plt is not None and ev.plt < 100 or ev.wbc is not None and ev.wbc > 12 or ev.wbc is not None and ev.wbc < 3.5 %}class="bad"{% endif %}>{{ ev.hb_gl|default_if_none:"—" }} გ/ლ · {{ ev.wbc|default_if_none:"—" }} · {{ ev.plt|default_if_none:"—" }}</span></div>
@@ -422,7 +422,7 @@
             {% if p.approved_at and ev.clearance_seal.code != 'pending' and not ev.has_blocking_unknown_state %}· <strong>[დადასტურებულია ექიმთან ✓]</strong>{% else %}· <strong>[სტატუსი: ექიმთან ჯერ არ არის დადასტურებული!]</strong>{% endif %}
         </div>
         {% endif %}
-        <div class="pp-fast-box" style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if q.glp1 and ev.clearance_seal.code != 'stop' %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
+        <div class="pp-fast-box" style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if ev.has_glp1_any and ev.clearance_seal.code != 'stop' %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
             <strong>{{ ev.fasting_instruction }}</strong>
         </div>
         {% if ev.med_schedule %}
@@ -486,7 +486,7 @@
     <footer class="pp-sig-row">
         <div>
             <div><strong>1. წინასაოპერაციო ექთანი:</strong> {{ q.nurse_verified_by|default:"—" }}</div>
-            {% if q.filled_by == 'პაციენტი (ბმულით)' and not q.nurse_verified %}
+            {% if ev.is_self_filled and not q.nurse_verified %}
             <div class="pp-sub warn-txt">კითხვარი შევსებულია პაციენტის ბმულით (გადასამოწმებელია)</div>
             {% else %}
             <div class="pp-sub">მომზადების ჩეკლისტი გადამოწმებულია</div>

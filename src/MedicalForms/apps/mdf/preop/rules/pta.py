@@ -16,7 +16,7 @@ def eval_pta(ctx):
         ctx.amber_flags.append('მიუთითეთ ჩარევის მხარე (მარჯვენა, მარცხენა ან ორმხრივი).')
     if q.get('abf_wet_infection'):
         ctx.red_flags.append('ტერფის სველი ინფექცია / ფლეგმონა — რევასკულარიზაციასთან ერთად საჭიროა გადაუდებელი ქირურგიული სანაცია!')
-    if q_filled and q.get('abf_groin_issue'):
+    if q.get('abf_groin_issue'):
         ctx.red_flags.append('საზარდულის არეში ინტერტრიგო / ინფექცია — პუნქციის ზონის ინფიცირების რისკი! განიხილეთ ალტერნატიული მიდგომა და სანაცია.')
     if ctx.days > ctx.t_days and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
         msg = f'გახანგრძლივებული მომზადება PTA/სტენტირებაზე: გავიდა {ctx.days} დღე (ლიმიტი: {ctx.t_days} დღე).'
@@ -74,7 +74,7 @@ def eval_pta(ctx):
     if q_filled and q.get('pta_cant_lie_flat'):
         ctx.amber_flags.append('პაციენტს უჭირს ზურგზე გაუნძრევლად წოლა 60–90 წთ — ავტომატურად ჩაირთო ანესთეზიოლოგი (სედაციისთვის).')
     if 'clopidogrel_intol' in ctx.allergy_chips:
-        has_oac_pta = bool(q_filled and (q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran') or ('rivaroxaban_2_5' in ctx.med_chips)))
+        has_oac_pta = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran') or ('rivaroxaban_2_5' in ctx.med_chips))
         if has_oac_pta and 'nsaid' in ctx.allergy_chips:
             alt_pta_txt = 'ინდივიდუალური რეჟიმი კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია — OAC + ტიკაგრელორი ESC Class III არ ინიშნება!)'
         elif has_oac_pta:
@@ -98,4 +98,4 @@ def eval_pta(ctx):
     elif is_clti:
         ctx.key_badge = 'CLTI'
         ctx.key_badge_urgent = True
-    ctx.needs_wound_care = q_filled and (bool(q.get('abf_ulcer')) or bool(q.get('abf_wet_infection')) or bool(q.get('abf_groin_issue')))
+    ctx.needs_wound_care = bool(q.get('abf_wet_infection') or q.get('abf_groin_issue')) or (q_filled and bool(q.get('abf_ulcer')))

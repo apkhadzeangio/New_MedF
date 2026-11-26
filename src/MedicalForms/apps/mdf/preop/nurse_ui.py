@@ -6,7 +6,7 @@ import re
 from ..board import person_name
 from ..models import StaffProfile
 from .constants import STATUS_ALERT, STATUS_NO_Q, STATUS_READY
-from .utils import _date, _fmt_ka_date
+from .utils import _date, _fmt_ka_date, is_self_filled_q
 
 PREOP_UI_OLD = 'old'
 PREOP_UI_NEW = 'new'
@@ -141,9 +141,9 @@ def _med_call_status(ev, today):
 def self_fill_status_info(ev):
     """4-stage nurse-readable status for patient self-fill questionnaire link."""
     q, s = ev['q'], ev['s']
-    if q.get('nurse_verified') or (q.get('filled') and not q.get('self_fill_submitted')):
+    if q.get('nurse_verified') or (q.get('filled') and not is_self_filled_q(q)):
         return {'code': 'verified', 'label': 'ექთანმა გადაამოწმა ✓', 'tone': 'ok'}
-    if q.get('self_fill_submitted'):
+    if is_self_filled_q(q):
         return {'code': 'returned', 'label': 'პაციენტმა შეავსო — გადაამოწმეთ!', 'tone': 'warn'}
     if s.get('self_link_sent_at') and not s.get('self_fill_revoked'):
         return {'code': 'sent', 'label': 'გაგზავნილია — ელოდება პაციენტს', 'tone': 'info'}
@@ -239,7 +239,12 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
         verdict = get_nurse_readiness_verdict(p, ev)
         med_call = _med_call_status(ev, today)
         sf_info = self_fill_status_info(ev)
-        has_acute = bool(ev['q'].get('aaa_pain') or ev['q'].get('cea_crescendo') or ev['q'].get('abf_wet_infection'))
+        has_acute = bool(
+            ev['q'].get('aaa_pain')
+            or ev['q'].get('cea_crescendo')
+            or ev['q'].get('abf_wet_infection')
+            or (ev['pathway'] in ('abf', 'pad_bypass', 'pad_pta') and ev['q'].get('abf_duration') == '< 2 კვირა')
+        )
 
         item = {
             'p': p,

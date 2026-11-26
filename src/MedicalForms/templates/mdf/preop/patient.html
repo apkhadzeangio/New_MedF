@@ -300,8 +300,8 @@
             <span>მზაობა: {{ ev.done_count }}/{{ ev.total_count }}</span>
             <span class="po-next-meter"><span style="width:{% widthratio ev.done_count ev.total_count 100 %}%"></span></span>
         </div>
-        {% if ev.has_hard_contraindication %}
-        <span class="bad fw-bold">STOP — ფიქსირდება აბსოლუტური კლინიკური უკუჩვენება!</span>
+        {% if ev.clearance_seal.code == 'stop' or ev.has_hard_contraindication or ev.dos_hold_danger %}
+        <span class="bad fw-bold">STOP — {{ ev.clearance_seal.detail|default:"ოპერაციაზე დაშვება შეჩერებულია!" }}</span>
         {% elif ev.missing_items %}
         <span class="small text-muted fw-semibold">დააწკაპეთ პირდაპირ შესავსებად:</span>
         {% for mi in ev.missing_items %}
@@ -309,6 +309,11 @@
             {{ mi.label }} →
         </button>
         {% endfor %}
+        {% elif not ev.workup_ready %}
+        <span class="small fw-semibold" style="color:var(--warn)">{{ ev.clearance_seal.badge }} — {{ ev.clearance_seal.detail }}</span>
+        <button type="button" class="po-jump-chip" data-jump-tab="doc" data-jump-field="btn-surgeon-approve">
+            დოსიეს ნახვა →
+        </button>
         {% elif not p.approved_at %}
         <span class="small fw-semibold" style="color:var(--ok)">✓ ყველა კვლევა და რეფლექს-ორდერი შესრულებულია —</span>
         <button type="button" class="po-jump-chip" data-jump-tab="doc" data-jump-field="btn-surgeon-approve">

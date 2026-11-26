@@ -272,9 +272,14 @@ def eval_cross_pathway_and_urgency(ctx):
         (pathway == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic')
         or bool(q.get('abf_wet_infection'))
     )
+    is_ali_urgent = (
+        pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
+        and q.get('abf_duration') == '< 2 კვირა'
+    )
     ctx.is_urgent_case = bool(
         ctx.is_acute_emergency
         or ctx.is_septic_or_mycotic_urgent
+        or is_ali_urgent
         or (ctx.aaa_mm is not None and ctx.aaa_mm >= rule_value('AAA_GIANT_MM'))
         or ctx.is_symp_cea
         or ctx.is_clti_any

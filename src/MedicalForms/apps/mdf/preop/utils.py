@@ -24,11 +24,18 @@ from .constants import (
 def chip_summary(selected_keys, field_name, fallback_text=''):
     labels = CHIP_LABELS.get(field_name, {})
     seq = selected_keys if isinstance(selected_keys, (list, tuple, set)) else ()
-    picked = [labels[k] for k in seq if k in labels]
+    picked = [labels[k] for k in seq if isinstance(k, str) and k in labels]
     extra = fallback_text.strip() if isinstance(fallback_text, str) else ''
     if extra and extra not in picked:
         picked.append(extra)
     return ', '.join(picked)
+
+
+def is_self_filled_q(q):
+    """Return True if questionnaire was filled/submitted by the patient via self-fill link."""
+    if not isinstance(q, dict):
+        return False
+    return bool(q.get('self_fill_submitted') or q.get('self_filled') or q.get('filled_by') == 'პაციენტი (ბმულით)')
 
 
 # --------------------------------------------------------------------------
@@ -166,7 +173,10 @@ def target_prep_days(patient, today=None):
     if pw == PreopPatient.Pathway.CEA:
         is_symp = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=True)
         return cfg['cea_symp'] if is_symp else cfg['elective_art']
+    has_ali_q = (q.get('abf_duration') == '< 2 კვირა')
     has_clti_q = q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')))
+    if pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and has_ali_q:
+        return cfg['cea_symp']
     if pw == PreopPatient.Pathway.ABF:
         return cfg['aaa_clti'] if (patient.op_subtype == PreopPatient.OpSubtype.ABF_CLTI or has_clti_q) else cfg['elective_art']
     if pw == PreopPatient.Pathway.PAD_BYPASS:

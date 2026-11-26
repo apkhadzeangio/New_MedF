@@ -131,6 +131,10 @@ class PreopSelfFillView(generic.View):
                 if ph:
                     patient.phone = ph
                     uf.append('phone')
+            from .. import evaluate
+            from ..nurse_ui import med_schedule_signature
+
+            ev_before = evaluate(patient) if s_cur.get('med_hold_agreed') else None
             apply_self_fill_post(request.POST, patient)
             s_mut = merged_studies(patient)
             pid = _clean_person_id(request.POST.get('person_id'))
@@ -144,5 +148,14 @@ class PreopSelfFillView(generic.View):
                     if 'age' not in uf:
                         uf.append('age')
             patient.studies = s_mut
+            if ev_before is not None:
+                ev_after = evaluate(patient)
+                if (
+                    med_schedule_signature(ev_before) != med_schedule_signature(ev_after)
+                    or ev_after['clearance_seal']['code'] == 'stop'
+                    or ev_after.get('has_hard_contraindication')
+                ):
+                    s_mut['med_hold_agreed'] = False
+                    patient.studies = s_mut
             patient.save(update_fields=uf)
         return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?done=1')

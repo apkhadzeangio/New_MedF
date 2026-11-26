@@ -6,6 +6,7 @@ from django.utils import timezone
 from ...models import PreopPatient
 from ..calculators import (
     _parse_scr_mgdl,
+    _s_raw,
     calc_bmi,
     calc_caprini,
     calc_crcl,
@@ -68,9 +69,10 @@ def _fmt_bad_val(lbl, raw):
     return f'{lbl}={txt[:24]}'
 
 
-def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=None):
+def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=None, q=None):
     src = raw_s if isinstance(raw_s, dict) else {}
     inv = src.get('_invalid_inputs') if isinstance(src.get('_invalid_inputs'), dict) else {}
+    q_d = q if isinstance(q, dict) else {}
     bad = []
     seen = set()
     for key, lbl, lo, hi in _IMPLAUSIBLE_SPEC:
@@ -107,13 +109,16 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today
         elif key not in seen and key in inv and _has_raw(inv[key]):
             bad.append(_fmt_bad_val(lbl, inv[key]))
             seen.add(key)
-    raw_cta = src['cta_date'] if 'cta_date' in src else s.get('cta_date')
-    if _has_raw(raw_cta):
-        cta_dt = _date(raw_cta)
-        if cta_dt is None or (today and cta_dt > today):
-            bad.append(_fmt_bad_val('CTA თარიღი', raw_cta))
-    elif 'cta_date' in inv and _has_raw(inv['cta_date']):
-        bad.append(_fmt_bad_val('CTA თარიღი', inv['cta_date']))
+    for dkey, dlbl, raw_val in (
+        ('cta_date', 'CTA თარიღი', src['cta_date'] if 'cta_date' in src else s.get('cta_date')),
+        ('cea_event_date', 'CEA ეპიზოდის თარიღი', q_d.get('cea_event_date')),
+    ):
+        if _has_raw(raw_val):
+            dt_v = _date(raw_val)
+            if dt_v is None or (today and dt_v > today):
+                bad.append(_fmt_bad_val(dlbl, raw_val))
+        elif dkey in inv and _has_raw(inv[dkey]):
+            bad.append(_fmt_bad_val(dlbl, inv[dkey]))
     return bad
 
 
@@ -274,15 +279,17 @@ def init_eval_context(patient, today=None):
     case_outcome = s.get('case_outcome_status') if s.get('case_outcome_status') in dict(CASE_OUTCOME_CHOICES) else 'scheduled'
     on_dialysis = bool(q.get('on_dialysis'))
     creat_unit = s.get('creat_unit') or ''
-    _, creat_unit_ambiguous = _parse_scr_mgdl(s.get('creat'), creat_unit)
-    egfr = calc_egfr(s.get('creat'), patient.age, patient.sex or '', creat_unit, on_dialysis=on_dialysis)
+    raw_creat = _s_raw(s, 'creat')
+    raw_weight = _s_raw(s, 'weight_kg')
+    _, creat_unit_ambiguous = _parse_scr_mgdl(raw_creat, creat_unit)
+    egfr = calc_egfr(raw_creat, patient.age, patient.sex or '', creat_unit, on_dialysis=on_dialysis)
     crcl = calc_crcl(
-        s.get('creat'), patient.age, patient.sex or '', s.get('weight_kg'),
+        raw_creat, patient.age, patient.sex or '', raw_weight,
         creat_unit, on_dialysis=on_dialysis, height_cm=s.get('height_cm'),
     )
     car_r, car_l = _int(s.get('carotid_r'), lo=0, hi=100), _int(s.get('carotid_l'), lo=0, hi=100)
     raw_s = patient.studies if isinstance(patient.studies, dict) else {}
-    implausible_fields = _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=today)
+    implausible_fields = _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=today, q=q)
 
     ctx = EvalContext(
         patient=patient,

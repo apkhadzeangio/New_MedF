@@ -735,7 +735,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         p_s2 = PreopPatient.objects.create(
             patient_name='შენახვა სტეიჯაძე', age=70, sex='M', pathway='aaa_infra', op_subtype='open',
             visit_date=today, started_on=today,
-            questionnaire={'filled': True, 'ulcer': True, 'mets_ok': True},
+            questionnaire={'filled': True, 'mets_ok': True},
             studies={'hb': 94, 'ferritin': 45, 'inr': 1.0, 'creat': 85, 'ecg': 'normal', 'lvef': 58, 'aaa_mm': 58, 'pbm_iv_iron_done': True, 'ppi_started': True},
         )
         self.client.post(reverse('preop-patient', args=[p_s2.pk]), {'section': 'stage2', 'gastro_result': 'remission', 'blood_reserved': '1', 'anesth_done': '1'})

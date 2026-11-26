@@ -220,7 +220,8 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
             hyd_mode = 'იზოტონური ჰიდრატაცია'
         tasks.append({'key': 'hydration', 'label': f'კონტრასტ-ნეფროპროტექცია (CrCl/eGFR < 60): {hyd_mode}{c_tag}', 'done': bool(s.get('hydration_planned'))})
     if ctx.needs_tsh and not bypass_em:
-        tasks.append({'key': 'tsh', 'label': 'რეფლექს-ანალიზი იოდის კონტრასტამდე: TSH და FT4', 'done': ctx.tsh_res != 'pending'})
+        tsh_lbl = 'რეფლექს-ანალიზი იოდის კონტრასტამდე: TSH და FT4' if ctx.uses_contrast else 'რეფლექს-ანალიზი ოპერაციამდე: TSH და FT4'
+        tasks.append({'key': 'tsh', 'label': tsh_lbl, 'done': ctx.tsh_res != 'pending'})
     if ctx.needs_dental and not bypass_sep:
         tasks.append({'key': 'dental', 'label': 'სტომატოლოგის სანაცია პროთეზირებამდე (წერილობითი ცნობა)', 'done': bool(s.get('dental_sanitation_done'))})
     if ctx.needs_contrast_premed:
@@ -290,11 +291,12 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         )
         tasks.append({'key': 'comp', 'label': comp_lbl, 'done': bool(s.get('compression_ready')) and tbi_comp_ok})
     if ctx.is_pta and ctx.q_filled:
-        dapt_lbl = (
-            f'ანტითრომბოზული სქემა OAC ფონზე: ანტიკოაგულანტი + {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე!)'
-            if ctx.has_full_oac else
-            f'ანტითრომბოზული მზაობა (DAPT: ასპირინი + {ctx.alt_p2y12_lbl} ან VOYAGER PAD)'
-        )
+        if ctx.has_full_oac:
+            dapt_lbl = f'ანტითრომბოზული სქემა OAC ფონზე: ანტიკოაგულანტი + {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე!)'
+        elif 'nsaid' in ctx.allergy_chips:
+            dapt_lbl = f'ანტითრომბოზული მზაობა: {ctx.alt_p2y12_lbl} (ასპირინზე/აასს-ზე ალერგია!)'
+        else:
+            dapt_lbl = f'ანტითრომბოზული მზაობა (DAPT: ასპირინი + {ctx.alt_p2y12_lbl} ან VOYAGER PAD)'
         tasks.append({'key': 'dapt', 'label': dapt_lbl, 'done': bool(s.get('dapt_ready'))})
     if ctx.open_major:
         tasks.append({'key': 'blood', 'label': 'სისხლის კომპონენტების რეზერვის მომზადება', 'done': bool(s.get('blood_reserved'))})

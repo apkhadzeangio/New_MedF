@@ -84,7 +84,10 @@ def _eval_asa_airway_and_modality(ctx):
     elif ctx.is_pta:
         eff_lbl = 'სედაცია / ანესთეზიოლოგიური მხარდაჭერა (ზურგზე წოლის შეზღუდვა)' if (q_filled and q.get('pta_cant_lie_flat')) else 'ადგილობრივი ანესთეზია (± სედაცია)'
     elif pathway == PreopPatient.Pathway.CEA:
-        eff_lbl = 'ზოგადი ენდოტრაქეული ან რეგიონული ბლოკადა (ცერებრული მონიტორინგით)'
+        eff_lbl = (
+            'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია — ადგილობრივი/წნულის გაუტკივარება უკუნაჩვენებია!)'
+            if lido_alg else 'ზოგადი ენდოტრაქეული ან რეგიონული ბლოკადა (ცერებრული მონიტორინგით)'
+        )
     elif pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype == 'tbd':
         eff_lbl = 'ზუსტდება CTA ტაქტიკით (ღია: ზოგადი ენდოტრაქეული vs EVAR: ზოგადი / ადგილობრივი)'
     elif ctx.is_phleb or patient.op_subtype == 'evar' or ctx.is_pad_bypass:
@@ -250,17 +253,18 @@ def _build_dos_checks(ctx):
             'label': 'ანტიკოაგულანტის / P2Y12 / SGLT2 / ინსულინის / სტეროიდის რეჟიმი და დილის დაშვებული წამლების მიღება გადამოწმდა',
             'done': bool(s.get('dos_med_hold_verified')),
         })
-    if q.get('sglt2'):
+    if q.get('sglt2') or ('sglt2' in ctx.ft_meds.get('matched_keys', ())):
         dos_checks.append({
             'key': 'dos_ketones_ok',
             'label': 'SGLT2 უსაფრთხოება (ეუგლიკემიური DKA-ს გამორიცხვა): სისხლის/შარდის კეტონები ნორმაშია (β-OHB < 0.6 მმოლ/ლ) და პრეპარატი შეჩერებულია ≥72–96 სთ',
             'done': bool(s.get('dos_ketones_ok')),
         })
-    if (q_filled and ctx.on_dialysis) or (ctx.k_val is not None and ctx.k_val >= 5.4):
+    k_eff = getattr(ctx, 'k_val_sat', ctx.k_val)
+    if ctx.on_dialysis or (k_eff is not None and k_eff >= 5.4):
         k_lbl = (
             'დიალიზის შემდგომი საკონტროლო კალიუმი (K+ < 5.4 მმოლ/ლ) გადამოწმებულია და AV ფისტულის მკლავი დაცულია (მანჟეტი/კათეტერი აკრძალულია!)'
             if ctx.on_dialysis else
-            f'საბაზისო ჰიპერკალიემიის (K+ {ctx.k_val}) შემდგომი საკონტროლო კალიუმი (K+ < 5.4 მმოლ/ლ) გადამოწმებულია'
+            f'საბაზისო ჰიპერკალიემიის (K+ {ctx.k_val if ctx.k_val is not None else k_eff}) შემდგომი საკონტროლო კალიუმი (K+ < 5.4 მმოლ/ლ) გადამოწმებულია'
         )
         dos_checks.append({'key': 'dos_k_verified', 'label': k_lbl, 'done': bool(s.get('dos_k_verified'))})
     if 'latex_chlorhex' in ctx.allergy_chips:
@@ -269,17 +273,9 @@ def _build_dos_checks(ctx):
             'label': 'ულატექსო საოპერაციო გარემო (ხელთათმანები/კათეტერი) და პოვიდონ-იოდის ანტისეპტიკი (ქლორჰექსიდინის გარეშე!) მზადაა',
             'done': bool(s.get('dos_latex_free_or')),
         })
-    preg_flagged = bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
-    needs_bhcg = (
-        is_pregnancy_eligible(patient)
-        and (
-            (patient.sex == 'F' and (
-                patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)
-                or ctx.is_pta
-                or ctx.is_venous
-            ))
-            or preg_flagged
-        )
+    needs_bhcg = is_pregnancy_eligible(patient) and (
+        bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
+        or (patient.sex == 'F' and (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD) or ctx.is_pta or ctx.is_venous))
     )
     if needs_bhcg:
         dos_checks.append({
@@ -373,11 +369,11 @@ def _eval_dos_and_vqi(ctx):
     ctx.has_hard_contraindication = bool(ctx.hard_contraindications)
     ctx.dos_hold_danger = bool(dos_warnings)
     if ctx.dos_hold_danger or ctx.has_hard_contraindication or ctx.solo_neuraxial_anatomic_mismatch:
+        ctx.is_local_evla_fasting = False
         if ctx.has_glp1_any:
             ctx.fasting_instruction = 'STOP — ოპერაცია დაბლოკილია! 24-საათიანი თხევადი დიეტა და GLP-1 რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!'
-        elif ctx.is_local_evla_fasting:
-            ctx.is_local_evla_fasting = False
-            ctx.fasting_instruction = 'STOP — ოპერაცია შეჩერებულია საოპერაციო დილის / უკუჩვენების დაზუსტებამდე (კვების რეჟიმი შეათანხმეთ ექიმთან)!'
+        else:
+            ctx.fasting_instruction = 'STOP — ოპერაცია შეჩერებულია საოპერაციო დილის / უკუჩვენების დაზუსტებამდე (უზმოდ ყოფნის რეჟიმი შეათანხმეთ ექიმთან)!'
     ctx.dos_done_count = sum(1 for c in dos_checks if c['done'])
     ctx.dos_total_count = len(dos_checks)
     ctx.vqi_bundle_applicable = not ctx.is_venous
@@ -404,7 +400,7 @@ def _eval_triage_and_passport_cautions(ctx):
         passport_cautions.append(
             'კარდიო-სიფრთხილე (დაშვებულია ✓): მნიშვნელოვანი სარქვლოვანი პათოლოგია / AS — მოერიდეთ სწრაფ ვაზოდილატაციას/ჰიპოტენზიას (A-line, ვაზოპრესორი)!'
         )
-    elif ctx.cardio_cleared and ctx.lvef is not None and ctx.lvef < 40:
+    if ctx.cardio_cleared and ctx.lvef is not None and ctx.lvef < 40:
         passport_cautions.append(
             f'კარდიო-სიფრთხილე (დაშვებულია ✓): დაქვეითებული განდევნის ფრაქცია (LVEF {ctx.lvef}%) — ფრთხილი ინფუზია და ჰემოდინამიკური კონტროლი.'
         )

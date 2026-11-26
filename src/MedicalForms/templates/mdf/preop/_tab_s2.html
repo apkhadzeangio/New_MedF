@@ -305,7 +305,7 @@
                             </select>
                         </div>
                     </div>
-                    <div class="po-alert {% if q.glp1 and ev.clearance_seal.code != 'stop' %}amber{% else %}reflex{% endif %}" style="padding:8px 12px;font-size:13px">
+                    <div class="po-alert {% if ev.has_glp1_any and ev.clearance_seal.code != 'stop' %}amber{% else %}reflex{% endif %}" style="padding:8px 12px;font-size:13px">
                         <span><strong>{{ ev.fasting_instruction }}</strong></span>
                     </div>
                     {% endif %}
@@ -346,13 +346,13 @@
                                 ზემოთ მოცემული ავტომატური სქემა გადამოწმდეს ქირურგთან და გაეცეს პაციენტს (A4 პასპორტით).
                             </div>
                         </div>
-                        <label class="chip-check" style="height:34px"><input type="checkbox" name="med_hold_agreed" value="1" {% if s.med_hold_agreed %}checked{% endif %}>შეთანხმებულია ქირურგთან ✓</label>
+                        <label class="chip-check" style="height:34px"><input type="checkbox" name="med_hold_agreed" value="1" {% if s.med_hold_agreed %}checked{% endif %} {% if ev.clearance_seal.code == 'stop' %}disabled{% endif %}>შეთანხმებულია ქირურგთან ✓</label>
                     </div>
                     {% endif %}
 
                     {% if ev.needs_anesth %}
                     <div class="po-task-row {% if s.anesth_done %}done{% endif %}">
-                        <span><strong>ანესთეზიოლოგის წინასაოპერაციო კონსულტაცია</strong>{% if ev.is_phleb %} <small class="text-muted">(სპინალური / ზოგადი გაუტკივარება)</small>{% elif ev.is_pta %} <small class="text-muted">(სედაციისთვის — უჭირს გაუნძრევლად წოლა)</small>{% elif q.glp1 %} <small class="text-muted">(GLP-1 აგონისტი — ასპირაციის რისკი)</small>{% endif %}</span>
+                        <span><strong>ანესთეზიოლოგის წინასაოპერაციო კონსულტაცია</strong>{% if ev.is_phleb %} <small class="text-muted">(სპინალური / ზოგადი გაუტკივარება)</small>{% elif ev.is_pta %} <small class="text-muted">(სედაციისთვის — უჭირს გაუნძრევლად წოლა)</small>{% elif ev.has_glp1_any %} <small class="text-muted">(GLP-1 აგონისტი — ასპირაციის რისკი)</small>{% endif %}</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="anesth_done" value="1" {% if s.anesth_done %}checked{% endif %}>კონსულტაცია ჩატარდა ✓</label>
                     </div>
                     {% else %}

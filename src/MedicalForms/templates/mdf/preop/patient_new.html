@@ -427,6 +427,7 @@
 
                 <div class="d-flex flex-column gap-2" role="group" aria-label="ოპერაციის დილის ჩეკლისტი">
                     {% for dc in ev.dos_checks %}
+                    <input type="hidden" name="dos_present_keys" value="{{ dc.key }}">
                     <label class="nw-who-row {% if dc.done %}checked{% endif %}">
                         <input type="checkbox" name="{{ dc.key }}" value="1" {% if dc.done %}checked{% endif %} class="nw-who-cb">
                         <span class="nw-who-lbl"><strong>{{ forloop.counter }}.</strong> {{ dc.label }}</span>

@@ -163,17 +163,20 @@ def _oracle_gi_anemia_ppi(oracles, patient, ev, q, s, is_venous, is_pta, med_chi
     oracles['esaic_pbm_anemia_gate'].record(exp_anemia, ev['needs_anemia_panel'])
 
     p2y12_sim_cnt = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
-    has_dapt_sim = (
-        (p2y12_sim_cnt >= 2)
-        or (bool(q.get('med_aspirin')) and p2y12_sim_cnt >= 1 and (((patient.age or 0) >= 65) or ('steroid' in med_chips)))
-    )
+    has_dapt_sim = (p2y12_sim_cnt >= 2) or (bool(q.get('med_aspirin')) and p2y12_sim_cnt >= 1)
     has_oac_sim = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
     has_ap_sim = bool(q.get('med_aspirin') or p2y12_sim_cnt >= 1 or 'cilostazol' in med_chips)
     has_any_at_sim = has_oac_sim or has_ap_sim or ('rivaroxaban_2_5' in med_chips)
     has_elder_steroid_sim = ((patient.age or 0) >= 65) and ('steroid' in med_chips) and has_any_at_sim
     exp_ppi = bool(
-        (bool(q.get('ulcer')) or bool(q.get('ulcer_active_symp')) or has_dapt_sim or (has_oac_sim and has_ap_sim) or has_elder_steroid_sim)
-        and (not ev['needs_gastro'] or bool(q.get('ulcer_active_symp')))
+        (
+            bool(q.get('ulcer'))
+            or bool(q.get('ulcer_active_symp'))
+            or (s.get('gastro_result') == 'acute_ulcer')
+            or has_dapt_sim
+            or (has_oac_sim and has_ap_sim)
+            or has_elder_steroid_sim
+        )
         and 'ppi' not in med_chips
     )
     oracles['esc2022_ppi_gate'].record(exp_ppi, ev['needs_ppi'])

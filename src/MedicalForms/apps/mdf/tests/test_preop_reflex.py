@@ -96,7 +96,7 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
             'anemia_panel_done': '1', 'hba1c': '9.1', 'endo_consult_done': '1',
             'nephro_panel_done': '1', 'hydration_planned': '1', 'tsh_status': 'euthyroid',
             'dental_sanitation_done': '1', 'contrast_premed_done': '1',
-            'abi_r': '0.94', 'abi_l': '0.91', 'gastro_result': 'remission',
+            'abi_r': '0.94', 'abi_l': '0.91', 'gastro_result': 'remission', 'ppi_started': '1',
             'evar_sized': '1', 'decolonization_ready': '1', 'med_hold_agreed': '1',
             'cardiologist': 'ლიკა ინჯია', 'cardio_decision': 'cleared',
             'cardio_note_chips': ['cleared_rx', 'added_bb_statin'],
@@ -267,7 +267,7 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
         self.assertTrue(evaluate(pta)['needs_cardio'])
 
         self.client.post(reverse('preop-patient', args=[pta.pk]), {
-            'section': 'stage2', 'hydration_planned': '1', 'dapt_ready': '1',
+            'section': 'stage2', 'hydration_planned': '1', 'dapt_ready': '1', 'ppi_started': '1',
             'cardiologist': 'ლიკა ინჯია', 'cardio_decision': 'cleared', 'anesth_done': '1',
         })
         pta.refresh_from_db()

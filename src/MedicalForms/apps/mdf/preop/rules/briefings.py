@@ -4,7 +4,7 @@ from ..anamnesis import build_self_fill_highlights
 from ..calculators import _ihd_and_chf_flags, calc_ariscat_pulm, calc_rcri, calc_vsg_cri
 from ..constants import AAA_MORPHOLOGY_CHOICES, AAA_NECK_CHOICES, POPLITEAL_SCREEN_CHOICES, STATUS_READY
 from ..meds import _apply_stop_lock_to_med_schedule
-from ..utils import _num
+from ..utils import _num, is_self_filled_q
 
 
 def _eval_scores_and_frailty(ctx):
@@ -45,7 +45,7 @@ def _eval_scores_and_missing_s1(ctx):
     missing_items = []
     if not q_filled:
         missing_items.append({'tab': 'q', 'field': 'mets_ok', 'label': 'კითხვარი'})
-    elif (q.get('self_fill_submitted') or q.get('filled_by') == 'პაციენტი (ბმულით)') and not q.get('nurse_verified'):
+    elif is_self_filled_q(q) and not q.get('nurse_verified'):
         missing_items.append({'tab': 'q', 'field': 'btn-verify-self', 'label': 'პაციენტის კითხვარის გადამოწმება'})
 
     def _req_s1(fname, missing_cond, lbl):
@@ -122,46 +122,50 @@ def _eval_scores_and_missing_s1(ctx):
     ctx.missing_items = missing_items
 
 
+_S2_FIELD_MAP = {
+    'stale_labs': ('stale_labs_refreshed', 'ანალიზების განახლება'),
+    'anemia': ('ferritin', 'ფერიტინი / TSAT'),
+    'pbm_iron': ('pbm_iv_iron_done', 'IV რკინა (PBM)'),
+    'hba1c': ('hba1c', 'HbA1c'),
+    'endo': ('endo_consult_done', 'ენდოკრინოლოგი'),
+    'nephro': ('nephro_panel_done', 'ნეფროლოგი / დიალიზი'),
+    'hydration': ('hydration_planned', 'ჰიდრატაციის გეგმა'),
+    'tsh': ('tsh_status', 'TSH / FT4'),
+    'dental': ('dental_sanitation_done', 'სტომატოლოგი'),
+    'premed': ('contrast_premed_done', 'იოდის პრემედიკაცია'),
+    'cied': ('cied_checked', 'CIED შემოწმება'),
+    'alt_vein': ('alt_vein_mapped', 'ალტ. ვენის კარტირება'),
+    'cea_antiplatelet': ('cea_antiplatelet_started', 'CEA ანტიაგრეგანტი'),
+    'neuro': ('neuro_consult_done', 'ნევროლოგი'),
+    'laryng': ('laryngoscopy_res', 'ლარინგოსკოპია'),
+    'abi': ('abi_r', 'საბაზისო ABI'),
+    'vte': ('vte_prophylaxis_planned', 'VTE პროფილაქტიკა'),
+    'spiro': ('spiro_fev1', 'სპირომეტრია'),
+    'gastro': ('gastro_result', 'გასტროსკოპია'),
+    'ppi': ('ppi_started', 'PPI გასტროპროტექცია'),
+    'uti': ('urine_culture_done', 'შარდის ნათესი'),
+    'wound': ('wound_care_done', 'ჭრილობის/კანის სანაცია'),
+    'comp': ('compression_ready', 'კომპრესიული წინდა'),
+    'dapt': ('dapt_ready', 'DAPT / ანტითრომბოზული'),
+    'blood': ('blood_reserved', 'სისხლის რეზერვი'),
+    'sizing': ('evar_sized', 'EVAR ზომების დათვლა'),
+    'decol': ('decolonization_ready', 'ანტისეპტიკური შხაპი'),
+    'med_hold': ('med_hold_agreed', 'წამლების სქემის შეთანხმება'),
+    'cardio': ('cardio_decision', 'კარდიოლოგი'),
+    'anesth': ('anesth_done', 'ანესთეზიოლოგი'),
+}
+
+
 def _eval_missing_s2_and_clearance_seal(ctx):
     patient, pathway, q = ctx.patient, ctx.pathway, ctx.q
-    s2_field_map = {
-        'stale_labs': ('stale_labs_refreshed', 'ანალიზების განახლება'),
-        'anemia': ('ferritin', 'ფერიტინი / TSAT'),
-        'pbm_iron': ('pbm_iv_iron_done', 'IV რკინა (PBM)'),
-        'hba1c': ('hba1c', 'HbA1c'),
-        'endo': ('endo_consult_done', 'ენდოკრინოლოგი'),
-        'nephro': ('nephro_panel_done', 'ნეფროლოგი / დიალიზი'),
-        'hydration': ('hydration_planned', 'ჰიდრატაციის გეგმა'),
-        'tsh': ('tsh_status', 'TSH / FT4'),
-        'dental': ('dental_sanitation_done', 'სტომატოლოგი'),
-        'premed': ('contrast_premed_done', 'იოდის პრემედიკაცია'),
-        'cied': ('cied_checked', 'CIED შემოწმება'),
-        'tbi': ('tp_r' if patient.side != 'L' else 'tp_l', 'Toe Pressure / TBI'),
-        'alt_vein': ('alt_vein_mapped', 'ალტ. ვენის კარტირება'),
-        'cea_antiplatelet': ('cea_antiplatelet_started', 'CEA ანტიაგრეგანტი'),
-        'neuro': ('neuro_consult_done', 'ნევროლოგი'),
-        'laryng': ('laryngoscopy_res', 'ლარინგოსკოპია'),
-        'abi': ('abi_r', 'საბაზისო ABI'),
-        'vte': ('vte_prophylaxis_planned', 'VTE პროფილაქტიკა'),
-        'spiro': ('spiro_fev1', 'სპირომეტრია'),
-        'gastro': ('gastro_result', 'გასტროსკოპია'),
-        'ppi': ('ppi_started', 'PPI გასტროპროტექცია'),
-        'uti': ('urine_culture_done', 'შარდის ნათესი'),
-        'wound': ('wound_care_done', 'ჭრილობის/კანის სანაცია'),
-        'comp': ('compression_ready', 'კომპრესიული წინდა'),
-        'dapt': ('dapt_ready', 'DAPT / ანტითრომბოზული'),
-        'blood': ('blood_reserved', 'სისხლის რეზერვი'),
-        'sizing': ('evar_sized', 'EVAR ზომების დათვლა'),
-        'decol': ('decolonization_ready', 'ანტისეპტიკური შხაპი'),
-        'med_hold': ('med_hold_agreed', 'წამლების სქემის შეთანხმება'),
-        'cardio': ('cardio_decision', 'კარდიოლოგი'),
-        'anesth': ('anesth_done', 'ანესთეზიოლოგი'),
-    }
     for t_obj in ctx.tasks:
         tk = t_obj['key']
         if tk in ('q', 's1') or t_obj['done']:
             continue
-        fld_name, short_lbl = s2_field_map.get(tk, ('', t_obj['label']))
+        if tk == 'tbi':
+            fld_name, short_lbl = ('tp_r' if patient.side != 'L' else 'tp_l', 'Toe Pressure / TBI')
+        else:
+            fld_name, short_lbl = _S2_FIELD_MAP.get(tk, ('', t_obj['label']))
         ctx.missing_items.append({'tab': 's2', 'field': fld_name, 'label': short_lbl})
 
     if ctx.has_hard_contraindication:
@@ -180,7 +184,8 @@ def _eval_missing_s2_and_clearance_seal(ctx):
         next_step_hint = '✓ დადასტურებულია'
     ctx.next_step_hint = next_step_hint
 
-    is_self_filled = bool(q.get('self_fill_submitted') or q.get('self_filled') or q.get('filled_by') == 'პაციენტი (ბმულით)')
+    is_self_filled = is_self_filled_q(q)
+    ctx.is_self_filled = is_self_filled
     ctx.self_fill_highlights = build_self_fill_highlights(q) if is_self_filled else []
     ctx.side_badge = {
         'R': 'მარჯვენა (R)', 'L': 'მარცხენა (L)', 'B': 'ორმხრივი (B)',
@@ -333,7 +338,7 @@ def _build_surgical_abx_regimen(ctx):
 
 
 def _build_surgical_brief(ctx):
-    patient, pathway, s, q_filled = ctx.patient, ctx.pathway, ctx.s, ctx.q_filled
+    patient, pathway, s = ctx.patient, ctx.pathway, ctx.s
     anat_summary, tactical_note = _build_surgical_anatomy_brief(ctx)
     abx_regimen = _build_surgical_abx_regimen(ctx)
 
@@ -372,9 +377,9 @@ def _build_surgical_brief(ctx):
             contrast_plan += f' · CrCl/eGFR < 30: უპირატესია CO2 ანგიოგრაფია / IVUS + {hyd_fluid_note}!'
         elif ctx.needs_hydration:
             contrast_plan += f' + {hyd_fluid_note}'
-        if q_filled and ctx.eff_allergy_iodine:
+        if ctx.eff_allergy_iodine:
             contrast_plan += ' · იოდზე ალერგია: სავალდებულო პრემედიკაცია (სტეროიდი + H1-ბლოკატორი)!'
-    elif q_filled and ctx.eff_allergy_iodine and not ctx.is_venous:
+    elif ctx.eff_allergy_iodine and not ctx.is_venous:
         contrast_plan = 'იოდზე ალერგია — სავალდებულო პრემედიკაცია (სტეროიდი + H1-ბლოკატორი) კონტრასტის გამოყენებისას!'
 
     statin_tail = '' if ctx.liver_3x else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ — ESVS Class I)'
@@ -387,21 +392,18 @@ def _build_surgical_brief(ctx):
     else:
         pause_oac_win = '48–72 სთ-ში (D+1 პროფილაქტ. LMWH)'
     asa_allergy = 'nsaid' in ctx.allergy_chips
-    is_cea_bleed_stop = bool(
-        pathway == PreopPatient.Pathway.CEA
-        and (
-            s.get('brain_imaging') == 'large_or_hemorrhage'
-            or (getattr(ctx, 'active_thrombolysis_window', False) and not (s.get('brain_imaging') == 'normal_small' and ctx.days_since_ev is not None and ctx.days_since_ev >= 1))
-        )
-    )
-    if is_cea_bleed_stop:
+    is_cea_ich_b = (pathway == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
+    is_cea_rtpa_b = (pathway == PreopPatient.Pathway.CEA and bool(getattr(ctx, 'active_thrombolysis_window', False)))
+    if is_cea_ich_b or (is_cea_rtpa_b and not (s.get('brain_imaging') == 'normal_small' and ctx.days_since_ev is not None and ctx.days_since_ev >= 1)):
         default_postop_at = 'ტვინის სისხლჩაქცევის / თრომბოლიზისის ფონზე ანტიკოაგულაციისა და ანტიაგრეგანტების აღდგენა დაბლოკილია — სავალდებულოა ნეიროქირურგისა და ნევროლოგის კონსილიუმი!'
+    elif is_cea_rtpa_b:
+        default_postop_at = 'თრომბოლიზისი ≤6 დღე: სისტემური ანტიკოაგულაციის/LMWH/DAPT აღდგენა დაბლოკილია — CT-ზე ჰემორაგიის გამორიცხვისას დასაშვებია მხოლოდ ასპირინი 75–100 მგ ნევროლოგთან შეთანხმებით!'
     elif ctx.is_venous:
         default_postop_at = ctx.caprini_advice
     elif ctx.post_antithrombotic_label:
         default_postop_at = ctx.post_antithrombotic_label + (statin_tail if 'სტატინი' not in ctx.post_antithrombotic_label else '')
     elif ctx.has_mech_valve:
-        mv_ap_b = f' + ჩვენებისას {ctx.alt_p2y12_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
+        mv_ap_b = f' + ჩვენებისას {ctx.oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
         default_postop_at = f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap_b} (DOAC აკრძალულია!){statin_tail}'
     elif ctx.has_full_oac:
         default_postop_at = f'მუდმივი ანტიკოაგულანტის (OAC) აღდგენა {pause_oac_win} ჰემოსტაზით (PAUSE) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
@@ -423,7 +425,7 @@ def _build_surgical_brief(ctx):
 
 
 def _build_anesthetic_neuraxial_and_bp(ctx):
-    patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
     neuraxial_blockers = list(ctx.hard_nx_reasons)
     if ctx.solo_neuraxial_anatomic_mismatch:
         neuraxial_blockers.insert(0, 'ანატომიურად შეუსაბამო სოლო-ნეირაქსიული გეგმა!')
@@ -434,14 +436,14 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
     )
     vka_inr_caution = (
         f' [ვარფარინის ფონზე ASRA 5th Ed რეკომენდაციით სასურველია INR-ის სრული ნორმალიზება ≤1.2 (მიმდინარე: {ctx.eff_inr_nx})!]'
-        if (q_filled and q.get('med_warfarin') and ctx.eff_inr_nx is not None and 1.2 < ctx.eff_inr_nx <= 1.4) else ''
+        if (q.get('med_warfarin') and ctx.eff_inr_nx is not None and 1.2 < ctx.eff_inr_nx <= 1.4) else ''
     )
     if ctx.has_neuraxial_plan:
         if ctx.plt is None:
             neuraxial_blockers.append('PLT უცნობია')
         if ctx.eff_inr_nx is None:
             neuraxial_blockers.append('INR უცნობია')
-        if not ctx.uninterrupted_p2y12 and q_filled and (
+        if not ctx.uninterrupted_p2y12 and (
             q.get('med_doac') or q.get('med_dabigatran') or q.get('med_warfarin')
             or q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel')
             or ('rivaroxaban_2_5' in ctx.med_chips) or ('cilostazol' in ctx.med_chips)
@@ -520,7 +522,8 @@ def _build_anesthetic_brief(ctx):
     airway_bits = [ctx.mallampati_label, f'STOP-Bang: {ctx.stop_bang_label}']
     if ctx.is_rupture_suspect:
         airway_bits.append('RSI ინდუქცია მხოლოდ საოპერაციო ველის დამუშავებისა და ქირურგიული მზადყოფნის შემდეგ!')
-    if (ctx.k_val is not None and ctx.k_val >= 5.5) or (q_filled and (q.get('cea_disabling_stroke') or (q.get('neuro') and ctx.is_symp_cea))):
+    k_eff = getattr(ctx, 'k_val_sat', ctx.k_val)
+    if (k_eff is not None and k_eff >= 5.5) or (q_filled and (q.get('cea_disabling_stroke') or (q.get('neuro') and ctx.is_symp_cea))):
         airway_bits.append('სუქცინილქოლინი უკუნაჩვენებია (ლეტალური ჰიპერკალიემიის რისკი — როკურონიუმი + სუგამადექსი)!')
     if q.get('glp1') or ctx.ft_meds.get('has_glp1'):
         airway_bits.append('GLP-1 ასპირაციის დაცვა (კუჭის POCUS / RSI)')

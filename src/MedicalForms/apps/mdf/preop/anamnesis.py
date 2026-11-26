@@ -1,12 +1,12 @@
 """Structured Georgian preoperative anamnesis generator and Self-Fill highlights extractor."""
 from ..board import person_name
 from ..models import PreopPatient
-from .utils import _str_list, chip_summary
+from .utils import _str_list, chip_summary, is_self_filled_q
 
 
 def build_self_fill_highlights(q):
     """Extract concise positive findings reported by the patient via Self-Fill link for 5-second nurse reconciliation."""
-    if not isinstance(q, dict) or not q.get('filled'):
+    if not isinstance(q, dict) or not (q.get('filled') or is_self_filled_q(q)):
         return []
     items = []
     if q.get('aaa_pain'):
@@ -198,6 +198,8 @@ def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
     lines.append(f'{head_prefix}, დაგეგმილია {side_word}{op_name} ({ind_lbl}){surgeon_str}.')
 
     claud_part = f"კოჭლობა {q['abf_claud_m']} მ-ში" if q.get('abf_claud_m') is not None else 'ხანგამოშვებითი კოჭლობა'
+    if q.get('abf_duration'):
+        claud_part += f", ხანგრძლივობა: {q['abf_duration']}"
     rest_part = 'მოსვენებითი ტკივილი (+)' if q.get('abf_rest_pain') else 'მოსვენებით ტკივილს უარყოფს'
     lines.append(f'სისხლძარღვოვანი ჩივილები: {claud_part}; {rest_part}.')
     if q.get('abf_ulcer'):
@@ -435,7 +437,7 @@ def _anam_anesth_labs(pathway, ev, q, s):
         anesth_flags.append('პროთეზი / მერყევი კბილები')
     if q.get('dental_infection'):
         anesth_flags.append('სტომატოლოგიური სანაცია საჭიროა')
-    if q.get('glp1'):
+    if q.get('glp1') or ev.get('has_glp1_any'):
         anesth_flags.append('GLP-1 აგონისტი (კუჭის შენელებული დაცლის რისკი)')
     lines.append(f"ანესთეზიოლოგიური სტატუსი: {'; '.join(anesth_flags)}.")
 
