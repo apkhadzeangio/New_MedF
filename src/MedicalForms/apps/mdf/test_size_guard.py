@@ -17,15 +17,12 @@ MAX_FUNC_LINES = 100
 
 # Pre-existing oversized files at the start of Track C (may ONLY shrink).
 OVERSIZED_FILES_BASELINE = {
-    'staging.py': 2031,
     'test_preop_sim.py': 1492,
     'tests.py': 7061,
 }
 
 # Pre-existing oversized functions/methods at the start of Track C (may ONLY shrink).
 OVERSIZED_FUNCTIONS_BASELINE = {
-    ('staging.py', '_limb_body_lines_ka'): 114,
-    ('staging.py', 'suggest_from_map'): 269,
     ('test_preop_sim.py', '_archetype_patient'): 143,
     ('test_preop_sim.py', '_random_stratified_patient'): 318,
     ('test_preop_sim.py', '_record_guideline_oracle'): 160,
