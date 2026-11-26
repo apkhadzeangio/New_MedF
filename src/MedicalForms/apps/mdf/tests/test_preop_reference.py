@@ -18,8 +18,8 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from PIL import Image
 
-from .models import PreopFile, PreopPatient
-from .preop import (
+from ..models import PreopFile, PreopPatient
+from ..preop import (
     apply_self_fill_post,
     build_med_schedule,
     calc_ariscat_pulm,

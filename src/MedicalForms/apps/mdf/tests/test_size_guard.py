@@ -11,14 +11,13 @@ import pathlib
 import unittest
 
 
-APP_ROOT = pathlib.Path(__file__).resolve().parent
+APP_ROOT = pathlib.Path(__file__).resolve().parent.parent
 MAX_FILE_LINES = 800
 MAX_FUNC_LINES = 100
 
 # Pre-existing oversized files at the start of Track C (may ONLY shrink).
 OVERSIZED_FILES_BASELINE = {
     'test_preop_sim.py': 1492,
-    'tests.py': 7061,
 }
 
 # Pre-existing oversized functions/methods at the start of Track C (may ONLY shrink).
@@ -28,21 +27,6 @@ OVERSIZED_FUNCTIONS_BASELINE = {
     ('test_preop_sim.py', '_record_guideline_oracle'): 160,
     ('test_preop_sim.py', 'check_clinical_invariants'): 299,
     ('test_preop_sim.py', 'run_simulation'): 125,
-    ('tests.py', 'PreopBoundaryMutationTests.test_sprint6_boundary_and_combinator_invariants'): 270,
-    ('tests.py', 'PreopBoundaryMutationTests.test_sprint6_evaluate_pathway_and_threshold_matrix'): 340,
-    ('tests.py', 'PreopCeaAndAbfTests.test_abf_esvs_2024_clti_wet_gangrene_groin_outflow_spirometry_and_pathway_filters'): 128,
-    ('tests.py', 'PreopCeaAndAbfTests.test_cea_esvs_2023_symptomatic_flow_laryngoscopy_antiplatelet_and_14day_window'): 123,
-    ('tests.py', 'PreopClaudePeerReviewFixesTests.test_sprint1_antithrombotic_stop_lock_mech_valve_freetext_and_renal_hepatic_pharmacology'): 127,
-    ('tests.py', 'PreopClaudePeerReviewFixesTests.test_sprint2_asra_neuraxial_cied_vitals_lab_units_and_passport_visibility'): 103,
-    ('tests.py', 'PreopClaudePeerReviewFixesTests.test_sprint3_esvs_never_events_fast_track_pause_and_metabolic'): 111,
-    ('tests.py', 'PreopPrePilotRefinementAndSimulationTests.test_pre_pilot_2_academic_two_page_dossier_risk_indices_and_specialist_briefings'): 103,
-    ('tests.py', 'PreopReflexZeroTextAndPeripheralTests.test_standing_reflex_orders_zero_text_chips_med_schedule_passport_and_consent'): 151,
-    ('tests.py', 'PreopStageP0SafetyTests.test_p0_1_pharmacology_asra_neuraxial_crcl_cea_clopidogrel_glp1_hit_and_cied'): 137,
-    ('tests.py', 'PreopStageP0SafetyTests.test_p0_4_unit_guards_live_dates_non_compressible_abi_tbi_and_case_auto_import'): 157,
-    ('tests.py', 'PreopStageP1RationalAndBridgeTests.test_p1_1_rational_testing_fast_track_cea_bnp_ppi_asb_spiro_evla_and_claudication_mets_audit'): 166,
-    ('tests.py', 'PreopStageP2AnesthDosAndVqiTests.test_p2_1_identifiers_dob_auto_age_ecosystem_prefills_and_exact_calendar_med_schedule'): 108,
-    ('tests.py', 'PreopStageP3ReferenceHardeningTests.test_p3_3_continuity_case_plan_same_name_board_isolation_archive_vqi_hold_pause_and_sticky_chips'): 126,
-    ('tests.py', 'PreopTests.test_aaa_thresholds_two_stage_flow_anamnesis_and_cardiology_audit'): 131,
 }
 
 

@@ -3,10 +3,10 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from .models import PreopRuleSignoff
-from .preop import build_med_schedule
-from .preop.registry import match_rule_for_reflex, match_rule_for_text
-from .preop.vignettes import CATEGORY_LABELS, VIGNETTES, VIGNETTES_BY_ID, evaluate_all_vignettes
+from ..models import PreopRuleSignoff
+from ..preop import build_med_schedule
+from ..preop.registry import match_rule_for_reflex, match_rule_for_text
+from ..preop.vignettes import CATEGORY_LABELS, VIGNETTES, VIGNETTES_BY_ID, evaluate_all_vignettes
 
 
 class ClinicalVignettesExecutionTests(SimpleTestCase):

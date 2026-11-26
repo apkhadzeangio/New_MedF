@@ -6,9 +6,9 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from .models import PreopPatient, PreopRuleSignoff
-from .preop import build_med_schedule, evaluate
-from .preop.registry import (
+from ..models import PreopPatient, PreopRuleSignoff
+from ..preop import build_med_schedule, evaluate
+from ..preop.registry import (
     CHANGELOG,
     DOMAIN_LABELS,
     KIND_LABELS,
@@ -24,7 +24,7 @@ from .preop.registry import (
     rule_value,
 )
 from .test_preop_golden import build_golden_scenarios
-from .test_preop_sim import SIM_TODAY
+from ..test_preop_sim import SIM_TODAY
 
 
 class PreopRuleRegistryTests(SimpleTestCase):

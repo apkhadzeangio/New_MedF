@@ -24,9 +24,9 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import PreopPatient
-from .preop import build_med_schedule, evaluate, generate_anamnesis, make_self_fill_token
-from .test_preop_sim import (
+from ..models import PreopPatient
+from ..preop import build_med_schedule, evaluate, generate_anamnesis, make_self_fill_token
+from ..test_preop_sim import (
     SIM_TODAY,
     _archetype_patient,
     _boundary_patient,
@@ -35,7 +35,7 @@ from .test_preop_sim import (
 )
 
 
-APP_ROOT = pathlib.Path(__file__).resolve().parent
+APP_ROOT = pathlib.Path(__file__).resolve().parent.parent
 SNAPSHOT_PATH = APP_ROOT / 'fixtures' / 'preop_golden_snapshot.json.xz'
 STATIC_PATIENT_JS = APP_ROOT.parent.parent / 'static' / 'js' / 'preop-patient.js'
 SIM_NOW = datetime.datetime(2026, 11, 25, 10, 0, 0, tzinfo=datetime.timezone.utc)
