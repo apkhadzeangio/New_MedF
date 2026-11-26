@@ -505,7 +505,7 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
         from django.utils import timezone
         from ..models import BoardPatient, Case, PreopPatient
         from ..preop import STATUS_READY, evaluate
-        from ..test_preop_sim import run_simulation
+        from .sim import run_simulation
 
         # 1. Fast CI Regression Slice of the Synthetic Simulation Engine (1,500 scenarios + 250 metamorphic pairs = 2,000 evaluations)
         sim_report = run_simulation(n=1500, n_mono=250, passport_sample=100, seed=2026)

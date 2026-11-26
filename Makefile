@@ -19,18 +19,10 @@ migrations-check: ## Verify no uncreated model migrations exist
 	DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) makemigrations --check --dry-run
 
 size-guard: ## Enforce <=800 lines/file and <=100 lines/function guard
-	@if [ -f src/MedicalForms/apps/mdf/tests/test_size_guard.py ]; then \
-		DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) test $(TEST_APP).tests.test_size_guard --verbosity=2; \
-	else \
-		DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) test $(TEST_APP).test_size_guard --verbosity=2; \
-	fi
+	DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) test $(TEST_APP).tests.test_size_guard --verbosity=2
 
 golden: ## Run Pre-op Golden Snapshot regression guard
-	@if [ -f src/MedicalForms/apps/mdf/tests/test_preop_golden.py ]; then \
-		DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) test $(TEST_APP).tests.test_preop_golden --verbosity=2; \
-	else \
-		DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) test $(TEST_APP).test_preop_golden --verbosity=2; \
-	fi
+	DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) test $(TEST_APP).tests.test_preop_golden --verbosity=2
 
 lint: ## Run Ruff static analysis across apps/mdf
 	$(RUFF) check src/MedicalForms/apps/mdf
@@ -38,19 +30,11 @@ lint: ## Run Ruff static analysis across apps/mdf
 test-fast: check migrations-check size-guard ## Run fast structural and schema checks (<5s)
 
 test-preop: ## Run Pre-op registry, reference, vignettes, and golden tests
-	@if [ -f src/MedicalForms/apps/mdf/tests/test_preop_registry.py ]; then \
-		DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) test \
-			$(TEST_APP).tests.test_preop_registry \
-			$(TEST_APP).tests.test_preop_reference \
-			$(TEST_APP).tests.test_preop_vignettes \
-			$(TEST_APP).tests.test_preop_golden --verbosity=2; \
-	else \
-		DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) test \
-			$(TEST_APP).test_preop_registry \
-			$(TEST_APP).test_preop_reference \
-			$(TEST_APP).test_preop_vignettes \
-			$(TEST_APP).test_preop_golden --verbosity=2; \
-	fi
+	DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) test \
+		$(TEST_APP).tests.test_preop_registry \
+		$(TEST_APP).tests.test_preop_reference \
+		$(TEST_APP).tests.test_preop_vignettes \
+		$(TEST_APP).tests.test_preop_golden --verbosity=2
 
 test: check migrations-check ## Run the complete Django test suite
 	DJANGO_SETTINGS_MODULE=$(SETTINGS) $(PYTHON) $(MANAGE) test $(TEST_APP)

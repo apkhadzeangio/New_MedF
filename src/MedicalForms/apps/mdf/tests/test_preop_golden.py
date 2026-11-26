@@ -26,7 +26,7 @@ from django.urls import reverse
 
 from ..models import PreopPatient
 from ..preop import build_med_schedule, evaluate, generate_anamnesis, make_self_fill_token
-from ..test_preop_sim import (
+from .sim import (
     SIM_TODAY,
     _archetype_patient,
     _boundary_patient,

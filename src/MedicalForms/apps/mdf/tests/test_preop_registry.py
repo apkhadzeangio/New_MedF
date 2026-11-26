@@ -24,7 +24,7 @@ from ..preop.registry import (
     rule_value,
 )
 from .test_preop_golden import build_golden_scenarios
-from ..test_preop_sim import SIM_TODAY
+from .sim import SIM_TODAY
 
 
 class PreopRuleRegistryTests(SimpleTestCase):

@@ -123,9 +123,9 @@ Supporting Pre-op Modules:
 
 | Guard | Location | What It Enforces |
 | --- | --- | --- |
-| **Size Guard** | `test_size_guard.py` | Every Python file under `apps/mdf/` (except `migrations/`) `<= 800` lines; every function/method `<= 100` lines. |
-| **Golden Snapshot** | `test_preop_golden.py` | Byte-identical regression lock on `evaluate()`, `generate_anamnesis()`, `build_med_schedule()`, and rendered pre-op HTML across fixtures & simulation cohorts. |
-| **Registry Coverage** | `test_preop_registry.py` | Every clinical rule in code resolves its threshold from `preop/registry/`; zero orphan rules or magic numbers. |
-| **Reference Math** | `test_preop_reference.py` | Published-source verification of RCRI, VSG-CRI, ARISCAT, CKD-EPI 2021, Cockcroft-Gault ABW, Caprini, Gurm, PAUSE/ASRA/EHRA. |
-| **Clinical Vignettes** | `test_preop_vignettes.py` | All 40 synthetic clinical cases assert expected stops, alerts, holds, and statuses + 100% registry rule firing. |
-| **Monte Carlo Sim** | `test_preop_sim.py` | Stratified cohort invariant & guideline-oracle stress testing across vascular pathways. |
+| **Size Guard** | `tests/test_size_guard.py` | Every Python file under `apps/mdf/` (except `migrations/`) `<= 800` lines; every function/method `<= 100` lines (zero grandfathered baselines). |
+| **Golden Snapshot** | `tests/test_preop_golden.py` | Byte-identical regression lock on `evaluate()`, `generate_anamnesis()`, `build_med_schedule()`, and rendered pre-op HTML across fixtures & simulation cohorts. |
+| **Registry Coverage** | `tests/test_preop_registry.py` | Every clinical rule in code resolves its threshold from `preop/registry/`; zero orphan rules or magic numbers. |
+| **Reference Math** | `tests/test_preop_reference.py` | Published-source verification of RCRI, VSG-CRI, ARISCAT, CKD-EPI 2021, Cockcroft-Gault ABW, Caprini, Gurm, PAUSE/ASRA/EHRA. |
+| **Clinical Vignettes** | `tests/test_preop_vignettes.py` | All 40 synthetic clinical cases assert expected stops, alerts, holds, and statuses + 100% registry rule firing. |
+| **Monte Carlo Sim** | `tests/sim/` | Stratified cohort invariant & guideline-oracle stress testing across vascular pathways. |

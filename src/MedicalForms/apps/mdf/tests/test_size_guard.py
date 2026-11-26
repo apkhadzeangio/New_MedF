@@ -15,19 +15,10 @@ APP_ROOT = pathlib.Path(__file__).resolve().parent.parent
 MAX_FILE_LINES = 800
 MAX_FUNC_LINES = 100
 
-# Pre-existing oversized files at the start of Track C (may ONLY shrink).
-OVERSIZED_FILES_BASELINE = {
-    'test_preop_sim.py': 1492,
-}
-
-# Pre-existing oversized functions/methods at the start of Track C (may ONLY shrink).
-OVERSIZED_FUNCTIONS_BASELINE = {
-    ('test_preop_sim.py', '_archetype_patient'): 143,
-    ('test_preop_sim.py', '_random_stratified_patient'): 318,
-    ('test_preop_sim.py', '_record_guideline_oracle'): 160,
-    ('test_preop_sim.py', 'check_clinical_invariants'): 299,
-    ('test_preop_sim.py', 'run_simulation'): 125,
-}
+# Zero grandfathered exceptions — every Python file under apps/mdf/ is <=800 lines
+# and every function/method is <=100 lines.
+OVERSIZED_FILES_BASELINE = {}
+OVERSIZED_FUNCTIONS_BASELINE = {}
 
 
 def _iter_python_files():
