@@ -63,7 +63,10 @@ class PreopFileView(LoginRequiredMixin, generic.View):
         response = FileResponse(fh, content_type=ctype)
         response['Cache-Control'] = 'private, max-age=604800'
         response['Content-Disposition'] = f'inline; filename="preop-file-{rec.pk}.{ext}"'
-        response['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; sandbox"
+        if ctype == 'application/pdf':
+            response['Content-Security-Policy'] = "default-src 'none'; object-src 'self'; frame-ancestors 'self'"
+        else:
+            response['Content-Security-Policy'] = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; sandbox"
         response['X-Frame-Options'] = 'SAMEORIGIN'
         response['X-Content-Type-Options'] = 'nosniff'
         return response

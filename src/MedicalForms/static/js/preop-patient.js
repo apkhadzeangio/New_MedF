@@ -237,7 +237,7 @@
     });
     document.querySelectorAll('input[name="glucose"], input[name="dos_glucose"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
-            var mmol = v >= 45 ? Math.round((v / 18.0) * 10) / 10 : v;
+            var mmol = v > 35 ? Math.round((v / 18.0) * 10) / 10 : v;
             if (mmol >= 14.0 || mmol < 3.9) return { level: 'crit', msg: 'კრიტიკული გლიკემია (' + mmol + ' მმოლ/ლ)!' };
             if (mmol >= 7.0) return { level: 'warn', msg: 'მომატებული გლუკოზა (ჩაირთვება HbA1c)' };
             return null;

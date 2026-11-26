@@ -310,7 +310,7 @@ def eval_renal_electrolytes(ctx):
         elif k_val < el_cfg['k_amb_lo'] or k_val > el_cfg['k_amb_hi']:
             ctx.amber_flags.append(f'კალიუმის სასაზღვრო დონე (K+ {k_val} მმოლ/ლ) — სასურველია კორექცია ოპერაციამდე.')
     elif ctx.hb_gl is not None and not ctx.is_venous and (
-        on_dialysis or (eff_renal is not None and eff_renal < ren_cfg['hydration']) or ('acei_arb' in ctx.med_chips) or ('ace_arb' in ctx.med_chips) or ('diuretic' in ctx.med_chips)
+        on_dialysis or (eff_renal is not None and eff_renal < ren_cfg['hydration']) or ('acei_arb' in ctx.med_chips) or ('diuretic' in ctx.med_chips)
     ):
         ctx.amber_flags.append('CKD / დიალიზი / ACEi-დიურეტიკის ფონზე შეიტანეთ შრატის კალიუმი (K+) ოპერაციამდე.')
 
@@ -373,7 +373,7 @@ def eval_glycemia_endocrine(ctx):
 
     tsh_res = s.get('tsh_status') or 'pending'
     needs_tsh = q_filled and (not ctx.is_venous) and (
-        bool(q.get('thyroid_disease'))
+        (bool(q.get('thyroid_disease')) and (ctx.uses_contrast or ctx.open_aortic))
         or ('amiodarone' in ctx.med_chips and ctx.uses_contrast)
         or (tsh_res != 'pending')
     )
@@ -507,20 +507,15 @@ def eval_pulmonary(ctx):
     if cxr == 'infiltrate':
         ctx.red_flags.append('გულმკერდის რენტგენზე ინფილტრაცია / გამონაჟონი / საყურადღებო კერა — აცნობეთ ქირურგს!')
 
-    if ctx.is_venous or ctx.is_pta:
-        needs_spirometry = ctx.is_phleb and (
+    needs_spirometry = (
+        (ctx.open_aortic and (
             (q_filled and bool(q.get('pulm')))
-            or (ctx.spo2 is not None and ctx.spo2 < 94)
             or cxr == 'emphysema'
-        )
-    else:
-        needs_spirometry = (
-            (q_filled and bool(q.get('pulm')))
-            or (ctx.spo2 is not None and ctx.spo2 < 94)
-            or cxr == 'emphysema'
-            or (ctx.open_aortic and ctx.true_low_mets)
-            or (s.get('spiro_fev1') is not None)
-        )
+            or ctx.true_low_mets
+        ))
+        or (ctx.spo2 is not None and ctx.spo2 < 94)
+        or (s.get('spiro_fev1') is not None)
+    )
     ctx.needs_spirometry = needs_spirometry
     if q_filled and q.get('smoker') and not needs_spirometry and not ctx.is_venous:
         ctx.amber_flags.append('თამბაქოს მწეველი — რეკომენდებულია თამბაქოს შეწყვეტა და სუნთქვითი ვარჯიშები (ESAIC 2024: უსიმპტომო მწეველთან რუტინული სპირომეტრია ოპერაციას არ აყოვნებს).')

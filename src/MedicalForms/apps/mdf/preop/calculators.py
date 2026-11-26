@@ -77,11 +77,13 @@ def normalize_hb_gl(hb):
 
 
 def normalize_glucose_mmol(gl):
-    """Return glucose in mmol/L (converts mg/dL ONLY when >=45.0; severe 38 mmol/L stays 38.0; synced 1:1 with JS)."""
+    """Return glucose in mmol/L (converts mg/dL when > 35.0 via registry so 36-44 mg/dL severe hypo -> ~2.0-2.4 mmol/L; synced 1:1 with JS)."""
+    from .registry import rule_value
     v = _num(gl, lo=0.5, hi=1000)
     if v is None:
         return None
-    return round(v / 18.0, 1) if v >= 45.0 else v
+    mgdl_cutoff = rule_value('GLY_UNIT_CONVERSION_MGDL')
+    return round(v / 18.0, 1) if v > mgdl_cutoff else v
 
 
 def normalize_albumin_gl(alb):

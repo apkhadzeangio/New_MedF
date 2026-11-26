@@ -234,6 +234,18 @@ def _build_dos_checks(ctx):
             'label': 'ულატექსო საოპერაციო გარემო (ხელთათმანები/კათეტერი) და პოვიდონ-იოდის ანტისეპტიკი (ქლორჰექსიდინის გარეშე!) მზადაა',
             'done': bool(s.get('dos_latex_free_or')),
         })
+    needs_fluoro_bhcg = (
+        patient.sex == 'F'
+        and patient.age is not None
+        and 12 <= patient.age <= 55
+        and (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD) or ctx.is_pta)
+    )
+    if needs_fluoro_bhcg:
+        dos_checks.append({
+            'key': 'dos_bhcg_negative',
+            'label': 'ორსულობის გამორიცხვა (β-hCG უარყოფითია) — ფლუოროსკოპიის/იოდის კონტრასტის უსაფრთხოება (12–55 წ. ქალი)',
+            'done': bool(s.get('dos_bhcg_negative')),
+        })
     ctx.is_uncomplicated_pta_abx = ctx.is_pta and not (q_filled and (q.get('abf_wet_infection') or q.get('abf_groin_issue')))
     if not ((ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA) or ctx.is_uncomplicated_pta_abx):
         cefaz_dose = f'3 გ (≥{cefaz_3g_kg} კგ!)' if (ctx.weight_num is not None and ctx.weight_num >= cefaz_3g_kg) else '2 გ'

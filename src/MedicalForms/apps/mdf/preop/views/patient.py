@@ -493,7 +493,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         for bf in (
             'dos_identity_consent', 'dos_site_marked', 'dos_fasting_confirmed',
             'dos_med_hold_verified', 'dos_ketones_ok', 'dos_k_verified', 'dos_latex_free_or',
-            'dos_abx_ready', 'dos_blood_implant_ready',
+            'dos_bhcg_negative', 'dos_abx_ready', 'dos_blood_implant_ready',
             'icu_bed_booked',
             'vqi_discharge_antiplatelet', 'vqi_discharge_statin',
             'vqi_smoking_cessation', 'vqi_surveillance_scheduled',

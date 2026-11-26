@@ -282,6 +282,10 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today):
         q['abf_prior_vasc'] = True
     if q.get('inf_chips'):
         q['active_infection'] = True
+    if q.get('sglt2') or q.get('metformin'):
+        q['dm'] = True
+    if q.get('recent_stent'):
+        q['cad'] = True
 
     # Patient may fill an empty surgical side, NEVER overwrite an already-set surgeon side!
     if not patient.side and 'side' in post_data and post_data.get('side') in ('R', 'L', 'B'):

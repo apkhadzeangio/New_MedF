@@ -679,6 +679,7 @@ DEFAULT_STUDIES = {
     'dos_ketones_ok': False,
     'dos_k_verified': False,
     'dos_latex_free_or': False,
+    'dos_bhcg_negative': False,
     'dos_abx_ready': False,
     'dos_blood_implant_ready': False,
     'dos_bp_sys': None,

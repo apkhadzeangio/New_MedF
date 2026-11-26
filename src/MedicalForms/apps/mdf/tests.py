@@ -4238,10 +4238,10 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
 
         today = timezone.localdate()
 
-        # 1. Unit guards: Hb 29 stays 29 g/L (severe anemia), Hb 13.4 -> 134 g/L; Glucose 38 stays 38 mmol/L, 180 -> 10 mmol/L
+        # 1. Unit guards (Track A3): Hb 29 stays 29 g/L, 13.4 -> 134 g/L; Glucose 34 stays 34.0 mmol/L HHS, 40 mg/dL -> 2.2 mmol/L hypo, 180 -> 10.0
         self.assertEqual(normalize_hb_gl(29), 29.0)
         self.assertEqual(normalize_hb_gl(13.4), 134.0)
-        self.assertEqual(normalize_glucose_mmol(38), 38.0)
+        self.assertEqual((normalize_glucose_mmol(34), normalize_glucose_mmol(40)), (34.0, 2.2))
         self.assertEqual(normalize_glucose_mmol(180), 10.0)
         # Missing age never substitutes age 68
         self.assertIsNone(calc_egfr(90, None, 'M'))
@@ -4256,7 +4256,7 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
         })
         self.client.post(reverse('preop-patient', args=[p_u.pk]), {
             'section': 'stage1',
-            'hb': '29', 'wbc': '7800', 'plt': '245000', 'inr': '1.0', 'glucose': '38', 'creat': '22',
+            'hb': '29', 'wbc': '7800', 'plt': '245000', 'inr': '1.0', 'glucose': '34', 'creat': '22',
             'abi_r': '0.62', 'abi_l': '0.95', 'pta_access_site': 'cfa_clean', 'ecg': 'normal',
         })
         p_u.refresh_from_db()
@@ -4268,7 +4268,7 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
         self.assertIsNone(ev_u['egfr'])
         self.assertFalse(ev_u['s1_core_done'])
         self.assertTrue(any('Hb 29 გ/ლ < 100' in rf for rf in ev_u['red_flags']))
-        self.assertTrue(any('კრიტიკული გლიკემია (გლუკოზა 38 მმოლ/ლ)' in rf for rf in ev_u['red_flags']))
+        self.assertTrue(any('კრიტიკული გლიკემია (გლუკოზა 34 მმოლ/ლ)' in rf for rf in ev_u['red_flags']))
 
         # Clarifying creat_unit='mgdl' resolves ambiguity and computes severe renal failure eGFR (<15)
         self.client.post(reverse('preop-patient', args=[p_u.pk]), {
@@ -6043,8 +6043,8 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
 
         today = timezone.localdate()
 
-        # C8.2: Lab unit normalizers (glucose >=45 mg/dL synced with JS, 38 stays 38.0 HHS; fibrinogen >15 mg/dL; LDL >20 mg/dL)
-        self.assertEqual(normalize_glucose_mmol(38), 38.0)
+        # C8.2 / Track A3: Lab unit normalizers (glucose >35 mg/dL synced with JS, 34 stays 34.0 HHS, 40 -> 2.2 hypo; fibrinogen >15; LDL >20)
+        self.assertEqual((normalize_glucose_mmol(34), normalize_glucose_mmol(40)), (34.0, 2.2))
         self.assertEqual(normalize_glucose_mmol(90), 5.0)
         self.assertEqual(normalize_fibrinogen_gl(140), 1.4)
         self.assertEqual(normalize_ldl_mmol(130), 3.36)
@@ -6436,7 +6436,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         })
         f_rec = PreopFile.objects.filter(patient=p_sec, is_pdf=True).first()
         r_pdf = self.client.get(reverse('preop-file', args=[f_rec.pk]))
-        self.assertIn('sandbox', r_pdf['Content-Security-Policy'])
+        self.assertTrue('sandbox' not in r_pdf['Content-Security-Policy'] and "object-src 'self'" in r_pdf['Content-Security-Policy'])
         self.assertIn('inline;', r_pdf['Content-Disposition'])
         self.assertEqual(r_pdf['X-Frame-Options'], 'SAMEORIGIN')
 
@@ -6857,8 +6857,8 @@ class PreopBoundaryMutationTests(_py_unittest.TestCase):
         self.assertGreater(len(ev_cfs5['frailty_notes']), len(ev_cfs3['frailty_notes']))
         self.assertGreater(len(ev_cfs5['amber_flags']), len(ev_cfs3['amber_flags']))
 
-        self.assertTrue(pm.evaluate(PreopPatient(age=55, sex='F', op_subtype='phlebectomy', pathway='venous', side='R', questionnaire={'filled': True, 'pulm': True}), today=d0)['needs_spirometry'])
-        self.assertFalse(pm.evaluate(PreopPatient(age=55, sex='F', op_subtype='phlebectomy', pathway='venous', side='R', questionnaire={'filled': False, 'pulm': True}), today=d0)['needs_spirometry'])
+        self.assertFalse(pm.evaluate(PreopPatient(age=55, sex='F', op_subtype='phlebectomy', pathway='venous', side='R', questionnaire={'filled': True, 'pulm': True}), today=d0)['needs_spirometry'])
+        self.assertTrue(pm.evaluate(PreopPatient(age=55, sex='F', op_subtype='phlebectomy', pathway='venous', side='R', questionnaire={'filled': True, 'pulm': True}, studies={'spo2': 92}), today=d0)['needs_spirometry'])
         self.assertGreater(
             len(pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='open', pathway='aaa_infra', questionnaire={'filled': True}, studies={'hb': 130}), today=d0)['amber_flags']),
             len(pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='evla', pathway='venous', side='R', questionnaire={'filled': True}, studies={'hb': 130}), today=d0)['amber_flags']),
