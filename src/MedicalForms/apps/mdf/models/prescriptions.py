@@ -295,6 +295,11 @@ def medicine_key(names):
 
 class StaffProfile(models.Model):
     """A person shown on the login page (photo + name)."""
+
+    class PreopUiMode(models.TextChoices):
+        OLD = 'old', 'ძველი ხედი'
+        NEW = 'new', 'ახალი ხედი'
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile'
     )
@@ -306,6 +311,12 @@ class StaffProfile(models.Model):
     photo = models.ImageField('ფოტო', upload_to='staff/', blank=True)
     order = models.PositiveSmallIntegerField('რიგითობა', default=0)
     show_on_login = models.BooleanField('ჩანს შესვლის გვერდზე', default=True)
+    preop_ui_mode = models.CharField(
+        'წინასაოპერაციოს ხედი',
+        max_length=10,
+        choices=PreopUiMode.choices,
+        default=PreopUiMode.OLD,
+    )
 
     class Meta:
         db_table = 'staff_profiles'

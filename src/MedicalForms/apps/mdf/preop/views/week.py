@@ -26,6 +26,7 @@ from ..constants import (
     WEEKDAYS_KA,
     _sqlite_acquire_write_lock,
 )
+from ..nurse_ui import PREOP_UI_NEW, build_nurse_handover_queues, get_preop_ui_mode
 from ..utils import (
     _date,
     _int,
@@ -108,8 +109,13 @@ def _find_overdue_patients(all_non_archived, ev_by_id, pathway_filter, monday, s
 
 
 class PreopWeekView(LoginRequiredMixin, generic.TemplateView):
-    """Tweek.so-style weekly calendar + Someday lists for Nurse-Led Preoperative Assessment."""
+    """Tweek.so-style weekly calendar + Someday lists (or Track B Nurse Workspace when toggled)."""
     template_name = 'mdf/preop/week.html'
+
+    def get_template_names(self):
+        if get_preop_ui_mode(self.request) == PREOP_UI_NEW:
+            return ['mdf/preop/week_new.html']
+        return [self.template_name]
 
     def get_context_data(self, **kwargs):
         from .. import evaluate
@@ -167,7 +173,11 @@ class PreopWeekView(LoginRequiredMixin, generic.TemplateView):
         ]
         overdue_patients = _find_overdue_patients(all_non_archived, ev_by_id, pathway_filter, monday, sunday)
 
+        ui_mode = get_preop_ui_mode(self.request)
+        if ui_mode == PREOP_UI_NEW:
+            ctx['nurse_queues'] = build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=q)
         ctx.update({
+            'preop_ui_mode': ui_mode,
             'today': today, 'monday': monday,
             'prev_week': (monday - datetime.timedelta(days=7)).isoformat(),
             'next_week': (monday + datetime.timedelta(days=7)).isoformat(),

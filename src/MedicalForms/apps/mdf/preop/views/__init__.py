@@ -8,6 +8,7 @@ from .board import (
     resolve_preop_for_board,
 )
 from .files import PreopFileDeleteView, PreopFileUploadView, PreopFileView
+from .nurse import PreopUiModeView
 from .passport import PreopPassportView
 from .patient import PreopPatientView
 from .rules_catalog import PreopChangelogView, PreopRulesView
@@ -28,6 +29,7 @@ __all__ = [
     'PreopPatientView',
     'PreopRulesView',
     'PreopSelfFillView',
+    'PreopUiModeView',
     'PreopVignettesView',
     'PreopWeekView',
     '_admit_preop_to_board_locked',

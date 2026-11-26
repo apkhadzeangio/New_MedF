@@ -108,6 +108,7 @@ DUTY_URLS = [
 # Preoperative assessment (Tweek-style weekly calendar + nurse POA + cardiology audit)
 PREOP_URLS = [
     path('preop/', preop.PreopWeekView.as_view(), name='preop'),
+    path('preop/ui-mode/', preop.PreopUiModeView.as_view(), name='preop-ui-mode'),
     path('preop/audit/', preop.PreopAuditView.as_view(), name='preop-audit'),
     path('preop/rules/', preop.PreopRulesView.as_view(), name='preop-rules'),
     path('preop/vignettes/', preop.PreopVignettesView.as_view(), name='preop-vignettes'),

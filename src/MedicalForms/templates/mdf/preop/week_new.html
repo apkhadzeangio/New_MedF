@@ -1,0 +1,367 @@
+{% extends 'base.html' %}
+{% load static_version %}
+
+{% block title %}წინასაოპერაციო — ექთნის სივრცე{% endblock %}
+{% block extra_styles %}
+<link rel="stylesheet" href="{% static_v 'css/preop.css' %}">
+<link rel="stylesheet" href="{% static_v 'css/preop-nurse.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="nw-wrap" id="nw-handover-root">
+    <header class="nw-header">
+        <div>
+            <h1>წინასაოპერაციო — ექთნის სივრცე</h1>
+            <p class="nw-header-sub">დღეს: {{ today|date:"d.m.Y" }} · აქტიური პაციენტები: {{ nurse_queues.total_active }}</p>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <div class="nw-switch-group" role="group" aria-label="ხედის არჩევა">
+                <span class="nw-switch-btn active" aria-current="true">ახალი ხედი</span>
+                <form method="post" action="{% url 'preop-ui-mode' %}" class="m-0">
+                    {% csrf_token %}
+                    <input type="hidden" name="mode" value="old">
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="nw-switch-btn" id="btn-switch-old-ui">ძველი ხედი</button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <!-- 03:00 1-Glance Instant Search + Quick Add -->
+    <div class="nw-action-bar">
+        <div class="nw-search-box">
+            <label for="nw-quick-search" class="visually-hidden">პაციენტის სწრაფი ძებნა გვარით ან ტელეფონით</label>
+            <input type="search" id="nw-quick-search" value="{{ q }}" class="nw-search-input"
+                   placeholder="სწრაფი ძებნა (გვარი ან ტელეფონი) — მზადაა თუ არა?" autocomplete="off">
+            <button type="button" id="nw-search-clear" class="nw-search-clear" aria-label="ძებნის გასუფთავება" hidden>✕</button>
+        </div>
+        <a href="#nw-quick-add-box" class="nw-btn primary" id="btn-open-quick-add"
+           onclick="var d=document.getElementById('nw-quick-add-box'); if(d){d.open=true; d.scrollIntoView({behavior:'smooth'});}">
+            + ახალი პაციენტი
+        </a>
+    </div>
+
+    <!-- 1-Glance Shift Summary KPIs -->
+    <nav class="nw-kpi-strip" aria-label="მორიგეობის სწრაფი შეჯამება">
+        <a href="#nw-q-or" class="nw-kpi {% if nurse_queues.or_urgent %}tone-red{% endif %}">
+            <span class="nw-kpi-num">{{ nurse_queues.or_urgent|length }}</span>
+            <span class="nw-kpi-lbl">დღეს/ხვალ და STOP</span>
+        </a>
+        <a href="#nw-q-meds" class="nw-kpi {% if nurse_queues.med_calls %}tone-amber{% endif %}">
+            <span class="nw-kpi-num">{{ nurse_queues.med_calls|length }}</span>
+            <span class="nw-kpi-lbl">წამალზე დასარეკი</span>
+        </a>
+        <a href="#nw-q-selffill" class="nw-kpi {% if nurse_queues.self_returned %}tone-blue{% endif %}">
+            <span class="nw-kpi-num">{{ nurse_queues.self_returned|length }}</span>
+            <span class="nw-kpi-lbl">შევსებული ბმული</span>
+        </a>
+        <a href="#nw-directory" class="nw-kpi tone-green">
+            <span class="nw-kpi-num">{{ nurse_queues.ready_count }}/{{ nurse_queues.total_active }}</span>
+            <span class="nw-kpi-lbl">მზადაა ოპერაციისთვის</span>
+        </a>
+    </nav>
+
+    <!-- Instant Search Results Banner (shown only while typing in 03:00 search bar) -->
+    <section class="nw-section" id="nw-search-results" hidden aria-live="polite">
+        <div class="nw-section-head" style="cursor:default">
+            <h2 class="nw-section-title">ძებნის პასუხი (1 წამში)</h2>
+            <span class="nw-count-pill blue" id="nw-search-count">0</span>
+        </div>
+        <div class="nw-list" id="nw-search-list"></div>
+    </section>
+
+    <div id="nw-handover-queues">
+        <!-- Queue 1: Today / Tomorrow OR & STOP Signals -->
+        <details class="nw-section" id="nw-q-or" open>
+            <summary class="nw-section-head">
+                <h2 class="nw-section-title">1. საოპერაციო დღეს / ხვალ და STOP-სიგნალები</h2>
+                <span class="nw-count-pill {% if nurse_queues.or_urgent %}red{% endif %}">{{ nurse_queues.or_urgent|length }}</span>
+            </summary>
+            <div class="nw-list">
+                {% for it in nurse_queues.or_urgent %}
+                <article class="nw-patient-row">
+                    <div class="nw-row-top">
+                        <div>
+                            <a class="nw-pname-link" href="{% url 'preop-patient' it.p.pk %}">{{ it.p.patient_name }}</a>
+                            <div class="nw-meta-line">{{ it.procedure_ka }}{% if it.side_ka %} · {{ it.side_ka }}{% endif %} · <strong>{{ it.op_label }}</strong></div>
+                        </div>
+                        <span class="nw-verdict nw-verdict-{{ it.verdict.code }}">{{ it.verdict.badge }}</span>
+                    </div>
+                    <div class="nw-detail-line {% if it.verdict.code == 'stop' %}stop{% endif %}">{{ it.verdict.detail }}</div>
+                    <div class="nw-row-actions">
+                        <a class="nw-btn primary" href="{% url 'preop-patient' it.p.pk %}?tab=dos">დილის შემოწმება ({{ it.dos_progress }})</a>
+                        <a class="nw-btn" href="{% url 'preop-patient' it.p.pk %}">ბარათის გახსნა</a>
+                        {% if it.p.phone %}<a class="nw-btn soft" href="tel:{{ it.p.phone }}">დარეკვა: {{ it.p.phone }}</a>{% endif %}
+                    </div>
+                </article>
+                {% empty %}
+                <div class="nw-empty">დღეს და ხვალ სასწრაფო საოპერაციო ან STOP-სიგნალი არ არის.</div>
+                {% endfor %}
+            </div>
+        </details>
+
+        <!-- Queue 2: Medication Stop Phone Calls Due -->
+        <details class="nw-section" id="nw-q-meds" open>
+            <summary class="nw-section-head">
+                <h2 class="nw-section-title">2. დასარეკია პაციენტთან — წამლის შეჩერება</h2>
+                <span class="nw-count-pill {% if nurse_queues.med_calls %}amber{% endif %}">{{ nurse_queues.med_calls|length }}</span>
+            </summary>
+            <div class="nw-list">
+                {% for it in nurse_queues.med_calls %}
+                <article class="nw-patient-row">
+                    <div class="nw-row-top">
+                        <div>
+                            <a class="nw-pname-link" href="{% url 'preop-patient' it.p.pk %}?tab=s2">{{ it.p.patient_name }}</a>
+                            <div class="nw-meta-line">{{ it.op_label }} · {{ it.procedure_ka }}</div>
+                        </div>
+                        {% if it.med_call.outdated_call %}
+                        <span class="nw-verdict nw-verdict-stop">თარიღი შეიცვალა — დაურეკეთ თავიდან!</span>
+                        {% else %}
+                        <span class="nw-verdict nw-verdict-alert">დასარეკია</span>
+                        {% endif %}
+                    </div>
+                    <div class="nw-detail-line">შესაჩერებელი წამლები: <strong>{{ it.med_call.drugs|join:", " }}</strong></div>
+                    <div class="nw-row-actions">
+                        <a class="nw-btn primary" href="{% url 'preop-patient' it.p.pk %}?tab=s2">წამლების გეგმა და დარეკვა</a>
+                        {% if it.p.phone %}<a class="nw-btn ok" href="tel:{{ it.p.phone }}">დარეკვა: {{ it.p.phone }}</a>{% endif %}
+                    </div>
+                </article>
+                {% empty %}
+                <div class="nw-empty">მომდევნო 48 საათში წამლის შეჩერებაზე დასარეკი პაციენტი არ არის.</div>
+                {% endfor %}
+            </div>
+        </details>
+
+        <!-- Queue 3: Returned Patient Self-Fill Questionnaires -->
+        <details class="nw-section" id="nw-q-selffill" {% if nurse_queues.self_returned %}open{% endif %}>
+            <summary class="nw-section-head">
+                <h2 class="nw-section-title">3. დაბრუნებული თვითშევსება — გადაამოწმეთ</h2>
+                <span class="nw-count-pill {% if nurse_queues.self_returned %}blue{% endif %}">{{ nurse_queues.self_returned|length }}</span>
+            </summary>
+            <div class="nw-list">
+                {% for it in nurse_queues.self_returned %}
+                <article class="nw-patient-row">
+                    <div class="nw-row-top">
+                        <div>
+                            <a class="nw-pname-link" href="{% url 'preop-patient' it.p.pk %}?tab=q">{{ it.p.patient_name }}</a>
+                            <div class="nw-meta-line">{{ it.procedure_ka }} · {{ it.op_label }}</div>
+                        </div>
+                        <span class="nw-verdict nw-verdict-pending">პაციენტმა შეავსო</span>
+                    </div>
+                    <div class="nw-row-actions">
+                        <a class="nw-btn primary" href="{% url 'preop-patient' it.p.pk %}?tab=q">კითხვარის გადამოწმება</a>
+                    </div>
+                </article>
+                {% empty %}
+                <div class="nw-empty">გადასამოწმებელი თვითშევსებული კითხვარი არ არის.</div>
+                {% endfor %}
+            </div>
+        </details>
+
+        <!-- Queue 4: Missing Items / Expiring Labs -->
+        <details class="nw-section" id="nw-q-missing" {% if nurse_queues.missing_overdue %}open{% endif %}>
+            <summary class="nw-section-head">
+                <h2 class="nw-section-title">4. აკლია კვლევა ან ვადა ეწურება</h2>
+                <span class="nw-count-pill">{{ nurse_queues.missing_overdue|length }}</span>
+            </summary>
+            <div class="nw-list">
+                {% for it in nurse_queues.missing_overdue %}
+                <article class="nw-patient-row">
+                    <div class="nw-row-top">
+                        <div>
+                            <a class="nw-pname-link" href="{% url 'preop-patient' it.p.pk %}">{{ it.p.patient_name }}</a>
+                            <div class="nw-meta-line">{{ it.procedure_ka }}{% if it.side_ka %} · {{ it.side_ka }}{% endif %} · {{ it.op_label }}</div>
+                        </div>
+                        <span class="nw-verdict nw-verdict-{{ it.verdict.code }}">{{ it.verdict.badge }}</span>
+                    </div>
+                    <div class="nw-detail-line">{{ it.verdict.detail }}</div>
+                    <div class="nw-row-actions">
+                        <a class="nw-btn" href="{% url 'preop-patient' it.p.pk %}">ბარათის გახსნა</a>
+                    </div>
+                </article>
+                {% empty %}
+                <div class="nw-empty">ყველა დანარჩენ პაციენტს კვლევები სრულად აქვს.</div>
+                {% endfor %}
+            </div>
+        </details>
+    </div>
+
+    <!-- All Active Patients (03:00 Directory with 1-Tap Status Filter) -->
+    <section class="nw-section" id="nw-directory">
+        <div class="nw-section-head" style="cursor:default">
+            <h2 class="nw-section-title">ყველა აქტიური პაციენტი (სწრაფი სტატუსი)</h2>
+            <span class="nw-count-pill">{{ nurse_queues.total_active }}</span>
+        </div>
+        <div class="nw-filter-row" role="group" aria-label="სტატუსით ფილტრი">
+            <button type="button" class="nw-chip-btn active" data-nw-filter="all">ყველა ({{ nurse_queues.total_active }})</button>
+            <button type="button" class="nw-chip-btn" data-nw-filter="stop">STOP ({{ nurse_queues.stop_count }})</button>
+            <button type="button" class="nw-chip-btn" data-nw-filter="pending">მიმდინარე</button>
+            <button type="button" class="nw-chip-btn" data-nw-filter="ready">მზადაა ✓ ({{ nurse_queues.ready_count }})</button>
+        </div>
+        <div class="nw-list" id="nw-directory-list">
+            {% for it in nurse_queues.directory %}
+            <article class="nw-patient-row" data-nw-card="1" data-nw-status="{{ it.verdict.code }}" data-nw-search="{{ it.search_blob|escape }}">
+                <div class="nw-row-top">
+                    <div>
+                        <a class="nw-pname-link" href="{% url 'preop-patient' it.p.pk %}">{{ it.p.patient_name }}</a>
+                        <div class="nw-meta-line">{{ it.procedure_ka }}{% if it.side_ka %} · {{ it.side_ka }}{% endif %} · {{ it.op_label }}{% if it.surgeon_name %} · ქირურგი: {{ it.surgeon_name }}{% endif %}</div>
+                    </div>
+                    <span class="nw-verdict nw-verdict-{{ it.verdict.code }}">{{ it.verdict.badge }}</span>
+                </div>
+                <div class="nw-detail-line {% if it.verdict.code == 'stop' %}stop{% endif %}">{{ it.verdict.detail }} · თვითშევსება: {{ it.self_fill.label }}</div>
+                <div class="nw-row-actions">
+                    <a class="nw-btn primary" href="{% url 'preop-patient' it.p.pk %}">ბარათის გახსნა</a>
+                    <a class="nw-btn" href="{% url 'preop-passport' it.p.pk %}" target="_blank" rel="noopener">პასპორტი</a>
+                    {% if it.p.phone %}<a class="nw-btn soft" href="tel:{{ it.p.phone }}">{{ it.p.phone }}</a>{% endif %}
+                </div>
+            </article>
+            {% empty %}
+            <div class="nw-empty">აქტიური პაციენტი ჯერ არ არის დამატებული.</div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- Fast Inline Registration Card (upgraded to dedicated page in B2) -->
+    <details class="nw-section" id="nw-quick-add-box">
+        <summary class="nw-section-head">
+            <h2 class="nw-section-title">+ ახალი პაციენტის სწრაფი დამატება</h2>
+            <span class="nw-count-pill blue">1 წუთი</span>
+        </summary>
+        <form method="post" action="{% url 'preop-new' %}" class="p-3 d-flex flex-column gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="slot" value="{{ today|date:'Y-m-d' }}">
+            <input type="hidden" name="open_card" value="1">
+            <div class="nw-field-grid">
+                <div class="nw-field">
+                    <label for="nw-add-name">პაციენტის სახელი და გვარი *</label>
+                    <input type="text" id="nw-add-name" name="patient_name" required placeholder="მაგ. ბერიძე გიორგი" autocomplete="off">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-add-op">დაგეგმილი ოპერაცია *</label>
+                    <select id="nw-add-op" name="op_subtype">
+                        {% for grp_lbl, items in op_subtype_groups %}
+                        <optgroup label="{{ grp_lbl }}">
+                            {% for val, lbl in items %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
+                        </optgroup>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="nw-field">
+                    <label for="nw-add-side">საოპერაციო მხარე</label>
+                    <select id="nw-add-side" name="side">
+                        <option value="">არ ეხება / ზუსტდება</option>
+                        <option value="R">მარჯვენა</option>
+                        <option value="L">მარცხენა</option>
+                        <option value="B">ორივე მხარე</option>
+                    </select>
+                </div>
+                <div class="nw-field">
+                    <label for="nw-add-surgeon">ქირურგი</label>
+                    <select id="nw-add-surgeon" name="surgeon">
+                        <option value="">აირჩიეთ ქირურგი...</option>
+                        {% for uid, uname in doctors %}<option value="{{ uid }}">{{ uname }}</option>{% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div>
+                <button type="submit" class="nw-btn primary">დამატება და ბარათის გახსნა</button>
+            </div>
+        </form>
+    </details>
+
+    <!-- Secondary Links & Optional Weekly Calendar Glance -->
+    <div class="d-flex flex-wrap gap-2 mt-2">
+        <a class="nw-btn soft" href="{% url 'preop-rules' %}">კლინიკური წესები</a>
+        <a class="nw-btn soft" href="{% url 'preop-audit' %}">აუდიტი</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    var searchInp = document.getElementById('nw-quick-search');
+    var clearBtn = document.getElementById('nw-search-clear');
+    var resSection = document.getElementById('nw-search-results');
+    var resList = document.getElementById('nw-search-list');
+    var resCount = document.getElementById('nw-search-count');
+    var queuesWrap = document.getElementById('nw-handover-queues');
+    var dirCards = Array.prototype.slice.call(document.querySelectorAll('[data-nw-card="1"]'));
+    var filterBtns = Array.prototype.slice.call(document.querySelectorAll('[data-nw-filter]'));
+    var activeFilter = 'all';
+
+    function applyDirectoryFilter() {
+        dirCards.forEach(function (card) {
+            var st = card.dataset.nwStatus;
+            var ok = (activeFilter === 'all') || (st === activeFilter) || (activeFilter === 'pending' && (st === 'pending' || st === 'alert'));
+            card.hidden = !ok;
+        });
+    }
+
+    filterBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            activeFilter = btn.dataset.nwFilter;
+            filterBtns.forEach(function (b) { b.classList.toggle('active', b === btn); });
+            applyDirectoryFilter();
+        });
+    });
+
+    function runInstantSearch() {
+        var q = (searchInp ? searchInp.value : '').trim().toLowerCase();
+        if (clearBtn) clearBtn.hidden = !q;
+        if (!q) {
+            if (resSection) resSection.hidden = true;
+            if (queuesWrap) queuesWrap.hidden = false;
+            return;
+        }
+        if (queuesWrap) queuesWrap.hidden = true;
+        if (resSection) resSection.hidden = false;
+        if (resList) {
+            resList.innerHTML = '';
+            var matched = 0;
+            dirCards.forEach(function (card) {
+                if ((card.dataset.nwSearch || '').indexOf(q) >= 0) {
+                    var clone = card.cloneNode(true);
+                    clone.hidden = false;
+                    resList.appendChild(clone);
+                    matched += 1;
+                }
+            });
+            if (matched === 0) {
+                var empty = document.createElement('div');
+                empty.className = 'nw-empty';
+                empty.textContent = 'ასეთი პაციენტი აქტიურ სიაში ვერ მოიძებნა.';
+                resList.appendChild(empty);
+            }
+            if (resCount) resCount.textContent = String(matched);
+        }
+    }
+
+    if (searchInp) {
+        searchInp.addEventListener('input', runInstantSearch);
+        if (searchInp.value.trim()) runInstantSearch();
+    }
+    if (clearBtn && searchInp) {
+        clearBtn.addEventListener('click', function () {
+            searchInp.value = '';
+            runInstantSearch();
+            searchInp.focus();
+        });
+    }
+
+    // CEA bilateral guard on quick add
+    var opSel = document.getElementById('nw-add-op');
+    var sideSel = document.getElementById('nw-add-side');
+    if (opSel && sideSel) {
+        var syncSide = function () {
+            var isCea = opSel.value.indexOf('cea_') === 0;
+            var optB = sideSel.querySelector('option[value="B"]');
+            if (optB) optB.disabled = isCea;
+            if (isCea && sideSel.value === 'B') sideSel.value = '';
+        };
+        opSel.addEventListener('change', syncSide);
+        syncSide();
+    }
+})();
+</script>
+{% endblock %}

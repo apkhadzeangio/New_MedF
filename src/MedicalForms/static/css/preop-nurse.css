@@ -1,0 +1,447 @@
+/* =====================================================================
+   Track B — Nurse Mobile-First Preoperative Workspace ("ახალი ხედი")
+   Design priorities: >=16px body text, >=48px touch targets, high WCAG
+   contrast, zero horizontal overflow at 390px, calm hospital hierarchy.
+   ===================================================================== */
+
+.nw-wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 12px 12px 48px;
+    font-size: 16px;
+    line-height: 1.45;
+    color: var(--ink, #172033);
+    overflow-x: hidden;
+}
+
+.nw-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.nw-header h1 {
+    font-size: 22px;
+    font-weight: 800;
+    margin: 0;
+    letter-spacing: -0.01em;
+    color: var(--ink, #172033);
+}
+
+.nw-header-sub {
+    font-size: 15px;
+    color: #475467;
+    margin: 2px 0 0;
+}
+
+/* Segmented UI switch: ახალი ხედი / ძველი ხედი */
+.nw-switch-group {
+    display: inline-flex;
+    align-items: center;
+    background: #EAECF0;
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+}
+
+.nw-switch-btn {
+    min-height: 44px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 9px;
+    font-size: 15px;
+    font-weight: 700;
+    background: transparent;
+    color: #344054;
+    cursor: pointer;
+    transition: background .14s ease, color .14s ease, box-shadow .14s ease;
+    white-space: nowrap;
+}
+
+.nw-switch-btn.active {
+    background: #fff;
+    color: var(--ink, #172033);
+    box-shadow: 0 1px 3px rgba(16, 24, 40, .14);
+}
+
+/* Primary action row + 03:00 instant search */
+.nw-action-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.nw-search-box {
+    flex: 1 1 240px;
+    position: relative;
+}
+
+.nw-search-input {
+    width: 100%;
+    min-height: 50px;
+    padding: 10px 44px 10px 16px;
+    border: 2px solid #D0D5DD;
+    border-radius: 12px;
+    background: #fff;
+    font-size: 16px;
+    color: var(--ink, #172033);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .05);
+}
+
+.nw-search-input:focus {
+    outline: none;
+    border-color: #1D4ED8;
+    box-shadow: 0 0 0 3px rgba(29, 78, 216, .16);
+}
+
+.nw-search-clear {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    min-width: 40px;
+    min-height: 40px;
+    border: 0;
+    background: transparent;
+    color: #475467;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 8px;
+}
+
+.nw-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 10px 18px;
+    border-radius: 12px;
+    border: 1px solid #D0D5DD;
+    background: #fff;
+    color: var(--ink, #172033);
+    font-size: 16px;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform .08s ease, background .14s ease, border-color .14s ease;
+}
+
+.nw-btn:hover {
+    background: #F9FAFB;
+    color: var(--ink, #172033);
+}
+
+.nw-btn:active {
+    transform: scale(0.985);
+}
+
+.nw-btn.primary {
+    background: #1D4ED8;
+    border-color: #1D4ED8;
+    color: #fff;
+}
+
+.nw-btn.primary:hover {
+    background: #1E40AF;
+    color: #fff;
+}
+
+.nw-btn.ok {
+    background: #047857;
+    border-color: #047857;
+    color: #fff;
+}
+
+.nw-btn.ok:hover {
+    background: #065F46;
+    color: #fff;
+}
+
+.nw-btn.danger {
+    background: #B91C1C;
+    border-color: #B91C1C;
+    color: #fff;
+}
+
+.nw-btn.soft {
+    background: #F2F4F7;
+    border-color: #E4E7EC;
+}
+
+/* Summary KPI strip (1-glance shift overview) */
+.nw-kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 680px) {
+    .nw-kpi-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.nw-kpi {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 68px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid #E4E7EC;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .05);
+    text-decoration: none;
+    color: inherit;
+}
+
+.nw-kpi-num {
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+
+.nw-kpi-lbl {
+    font-size: 14px;
+    font-weight: 600;
+    color: #475467;
+    margin-top: 3px;
+}
+
+.nw-kpi.tone-red { background: #FEF3F2; border-color: #FECDCA; color: #912018; }
+.nw-kpi.tone-red .nw-kpi-lbl { color: #912018; }
+.nw-kpi.tone-amber { background: #FFFAEB; border-color: #FEDF89; color: #93370D; }
+.nw-kpi.tone-amber .nw-kpi-lbl { color: #93370D; }
+.nw-kpi.tone-green { background: #ECFDF3; border-color: #ABEFC6; color: #067647; }
+.nw-kpi.tone-green .nw-kpi-lbl { color: #067647; }
+.nw-kpi.tone-blue { background: #EFF8FF; border-color: #B2DDFF; color: #175CD3; }
+.nw-kpi.tone-blue .nw-kpi-lbl { color: #175CD3; }
+
+/* 09:00 Handover Queue Sections */
+.nw-section {
+    background: #fff;
+    border: 1px solid #E4E7EC;
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(16, 24, 40, .06);
+    margin-bottom: 14px;
+    overflow: hidden;
+}
+
+.nw-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 54px;
+    padding: 12px 16px;
+    background: #F9FAFB;
+    border-bottom: 1px solid #EAECF0;
+    cursor: pointer;
+    list-style: none;
+}
+
+.nw-section-head::-webkit-details-marker { display: none; }
+
+.nw-section-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--ink, #172033);
+    margin: 0;
+}
+
+.nw-count-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 15px;
+    font-weight: 800;
+    background: #E4E7EC;
+    color: #1D2939;
+    font-variant-numeric: tabular-nums;
+}
+
+.nw-count-pill.red { background: #D92D20; color: #fff; }
+.nw-count-pill.amber { background: #DC6803; color: #fff; }
+.nw-count-pill.blue { background: #1D4ED8; color: #fff; }
+.nw-count-pill.green { background: #047857; color: #fff; }
+
+.nw-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.nw-patient-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #EAECF0;
+    background: #fff;
+}
+
+.nw-patient-row:last-child {
+    border-bottom: 0;
+}
+
+.nw-row-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.nw-pname-link {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--ink, #172033);
+    text-decoration: none;
+    line-height: 1.25;
+}
+
+.nw-pname-link:hover {
+    color: #1D4ED8;
+    text-decoration: underline;
+}
+
+.nw-meta-line {
+    font-size: 15px;
+    color: #475467;
+    margin-top: 2px;
+}
+
+.nw-detail-line {
+    font-size: 15px;
+    color: #1D2939;
+    background: #F9FAFB;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.nw-detail-line.stop {
+    background: #FEF3F2;
+    color: #912018;
+    font-weight: 600;
+}
+
+/* Unmistakable 03:00 verdict badges */
+.nw-verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 15px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.nw-verdict-ready { background: #ECFDF3; color: #065F46; border: 1px solid #6CE9A6; }
+.nw-verdict-stop { background: #FEF3F2; color: #912018; border: 1px solid #FDA29B; }
+.nw-verdict-alert { background: #FFF7ED; color: #9A3412; border: 1px solid #FDBA74; }
+.nw-verdict-pending { background: #EFF8FF; color: #1E40AF; border: 1px solid #93C5FD; }
+
+.nw-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 2px;
+}
+
+.nw-row-actions .nw-btn {
+    min-height: 48px;
+    padding: 8px 14px;
+    font-size: 15px;
+}
+
+.nw-empty {
+    padding: 18px 16px;
+    font-size: 16px;
+    color: #475467;
+}
+
+/* Filter chips for 03:00 full directory */
+.nw-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #EAECF0;
+    background: #FCFCFD;
+}
+
+.nw-chip-btn {
+    min-height: 44px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid #D0D5DD;
+    background: #fff;
+    color: #344054;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.nw-chip-btn.active {
+    background: #172033;
+    border-color: #172033;
+    color: #fff;
+}
+
+/* Quick mobile form controls */
+.nw-field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+@media (max-width: 680px) {
+    .nw-field-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .nw-header h1 { font-size: 20px; }
+    .nw-btn { width: auto; }
+    .nw-action-bar > .nw-btn { width: 100%; }
+}
+
+.nw-field label {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    color: #344054;
+    margin-bottom: 5px;
+}
+
+.nw-field input,
+.nw-field select,
+.nw-field textarea {
+    width: 100%;
+    min-height: 48px;
+    padding: 10px 14px;
+    border: 1.5px solid #D0D5DD;
+    border-radius: 10px;
+    font-size: 16px;
+    color: var(--ink, #172033);
+    background: #fff;
+}
+
+.nw-field input:focus,
+.nw-field select:focus,
+.nw-field textarea:focus {
+    outline: none;
+    border-color: #1D4ED8;
+    box-shadow: 0 0 0 3px rgba(29, 78, 216, .14);
+}

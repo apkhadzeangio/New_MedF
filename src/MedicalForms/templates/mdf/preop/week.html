@@ -32,6 +32,14 @@
             <a class="x-btn sm" href="{% url 'preop-audit' %}{% if pathway_filter != 'all' %}?pathway={{ pathway_filter }}{% endif %}">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>კარდიო &amp; VQI აუდიტი
             </a>
+            <form method="post" action="{% url 'preop-ui-mode' %}" class="d-inline-flex align-items-center m-0" id="form-ui-mode-old">
+                {% csrf_token %}
+                <input type="hidden" name="mode" value="new">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="x-btn sm primary" id="btn-switch-new-ui" title="გადართვა ექთნის მობილურ ახალ ხედზე">
+                    ახალი ხედი / ძველი ხედი
+                </button>
+            </form>
         </div>
     </div>
 
