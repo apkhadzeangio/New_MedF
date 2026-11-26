@@ -76,7 +76,8 @@ class PreopNurseWorkspaceB1Tests(TestCase):
             questionnaire={'filled': True, 'nurse_verified': True, 'ven_ceap': 'C2', 'mets_ok': True},
             studies={
                 'planned_surgery_date': tomorrow, 'labs_date': today.isoformat(),
-                'hb': 134, 'plt': 230, 'glucose': 5.2,
+                'bp_sys': 122, 'bp_dia': 76, 'hr': 72, 'spo2': 99,
+                'hb': 134, 'plt': 230, 'glucose': 5.2, 'dos_bhcg_negative': True,
                 'ven_duplex_status': 'deep_patent_reflux', 'compression_ready': True,
             },
         )
@@ -381,7 +382,10 @@ class PreopNurseWorkspaceB5Tests(TestCase):
             pathway='venous', op_subtype='evla', visit_date=today,
             approved_at=timezone.now(), approved_by=self.nurse,
             questionnaire={'filled': True, 'ven_ceap': 'C2', 'mets_ok': True},
-            studies={'labs_date': today.isoformat(), 'hb': 134, 'plt': 230, 'ven_duplex_status': 'deep_patent_reflux'},
+            studies={
+                'labs_date': today.isoformat(), 'bp_sys': 120, 'bp_dia': 76, 'hr': 70, 'spo2': 99,
+                'hb': 134, 'plt': 230, 'dos_bhcg_negative': True, 'ven_duplex_status': 'deep_patent_reflux',
+            },
         )
         r_ok = self.client.get(reverse('preop-patient-guide', args=[p_ok.pk]))
         self.assertContains(r_ok, 'დადასტურებულია ექიმთან ✓')

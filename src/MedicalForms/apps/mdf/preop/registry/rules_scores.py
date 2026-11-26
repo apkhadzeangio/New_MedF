@@ -168,7 +168,7 @@ SCORES_AND_WORKFLOW_RULES = (
         source_wording='Verify patient identity, consent, site marking, fasting, antithrombotic holds, safe morning BP (<180/110, >=90), glucose (3.9-13.9 mmol/L), INR within limit, and pregnancy exclusion before fluoroscopy.',
         value={'sbp_hi': 180, 'dbp_hi': 110, 'sbp_lo': 90, 'gl_hi': 14.0, 'gl_lo': 3.9, 'gl_amb': 10.0, 'inr_std': 1.5, 'inr_nx': 1.4, 'inr_evla': 3.0},
         value_label='BP <180/110 & >=90 · გლუკ. 3.9–14.0 · INR <= 1.5/1.4',
-        match_patterns=('ოპერაციის დილის', 'საბაზისო INR (', 'კრიტიკულად დაუშვებელია', 'სავალდებულოა ოპერაციამდე INR'),
+        match_patterns=('ოპერაციის დილის', 'საბაზისო INR (', 'კრიტიკულად დაუშვებელია', 'სავალდებულოა ოპერაციამდე INR', 'ვარფარინის ფონზე EVLA-მდე'),
     ),
     # --- Clinic Workflow & Unknown-State Fail-Safe ---
     RuleEntry(

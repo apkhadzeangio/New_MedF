@@ -363,7 +363,7 @@
     <details class="nw-section" id="nw-sec-s2" {% if tab == 's2' %}open{% endif %}>
         <summary class="nw-section-head">
             <h2 class="nw-section-title">მომზადების გეგმა, კონსულტაციები და წამლების გრაფიკი</h2>
-            <span class="nw-count-pill blue">{{ ev.tasks_done }}/{{ ev.tasks_total }}</span>
+            <span class="nw-count-pill blue">{{ ev.done_count }}/{{ ev.total_count }}</span>
         </summary>
         <div class="p-3">{% include "mdf/preop/_tab_s2.html" with tab="s2" %}</div>
     </details>

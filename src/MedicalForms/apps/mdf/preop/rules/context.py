@@ -19,6 +19,7 @@ from ..constants import CASE_OUTCOME_CHOICES
 from ..meds import _detect_freetext_high_risk_meds, _effective_allergy_state
 from ..registry import rule_value
 from ..utils import (
+    _date,
     _int,
     _num,
     _resolve_pathway,
@@ -37,10 +38,11 @@ _IMPLAUSIBLE_SPEC = (
     ('hb', 'Hb', 1, 260), ('inr', 'INR', 0.4, 20.0),
     ('k', 'K+', 1.0, 12.0), ('na', 'Na+', 95, 190),
     ('glucose', 'გლუკოზა', 0.5, 1000), ('hba1c', 'HbA1c', 3.0, 25.0),
-    ('albumin', 'ალბუმინი', 0.5, 80), ('ferritin', 'ფერიტინი', 1, 5000),
-    ('tsat', 'TSAT', 1, 100), ('lvef', 'LVEF', 5, 95),
-    ('nt_probnp', 'NT-proBNP', 1, 100000), ('hs_ctn', 'hs-cTn', 0.1, 50000),
-    ('aaa_mm', 'AAA მმ', 10, 200), ('carotid_r', 'ICA R', 0, 100),
+    ('albumin', 'ალბუმინი', 0.5, 80), ('ldl', 'LDL', 0.2, 500),
+    ('ferritin', 'ფერიტინი', 1, 5000), ('tsat', 'TSAT', 1, 100),
+    ('lvef', 'LVEF', 5, 95), ('nt_probnp', 'NT-proBNP', 1, 100000),
+    ('hs_ctn', 'hs-cTn', 0.1, 50000), ('aaa_mm', 'AAA მმ', 10, 200),
+    ('cta_months', 'CTA თვე', 0, 240), ('carotid_r', 'ICA R', 0, 100),
     ('carotid_l', 'ICA L', 0, 100), ('abi_r', 'ABI R', 0.0, 3.0),
     ('abi_l', 'ABI L', 0.0, 3.0), ('tp_r', 'TP R', 0, 400),
     ('tp_l', 'TP L', 0, 400), ('tbi_r', 'TBI R', 0.0, 3.0),
@@ -53,27 +55,58 @@ _IMPLAUSIBLE_SPEC = (
 
 
 def _has_raw(val):
-    return val is not None and str(val).strip() != ''
+    return val is not None and (isinstance(val, bool) or str(val).strip() != '')
 
 
-def _detect_implausible_fields(s, creat_unit, creat_unit_ambiguous):
+def _fmt_bad_val(lbl, raw):
+    import math
+    txt = str(raw).strip()
+    if (isinstance(raw, float) and not math.isfinite(raw)) or txt.lower() in (
+        'nan', '+nan', '-nan', 'inf', '+inf', '-inf', 'infinity', '+infinity', '-infinity',
+    ):
+        return f'{lbl} (არასწორი რიცხვი)'
+    return f'{lbl}={txt[:24]}'
+
+
+def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous):
+    src = raw_s if isinstance(raw_s, dict) else {}
+    inv = src.get('_invalid_inputs') if isinstance(src.get('_invalid_inputs'), dict) else {}
     bad = []
+    seen = set()
     for key, lbl, lo, hi in _IMPLAUSIBLE_SPEC:
-        raw = s.get(key)
+        raw = src[key] if key in src else s.get(key)
         if _has_raw(raw) and _num(raw, lo=lo, hi=hi) is None:
-            bad.append(f'{lbl}={raw}')
-    if _has_raw(s.get('creat')) and not creat_unit_ambiguous:
-        scr_mg, _ = _parse_scr_mgdl(s.get('creat'), creat_unit)
-        if scr_mg is None:
-            bad.append(f"კრეატინინი={s.get('creat')}")
-    if _has_raw(s.get('fibrinogen')):
-        from ..calculators import normalize_fibrinogen_gl
-        if normalize_fibrinogen_gl(s.get('fibrinogen')) is None:
-            bad.append(f"ფიბრინოგენი={s.get('fibrinogen')}")
-    if _has_raw(s.get('wbc')) and _num(s.get('wbc'), lo=0.1, hi=150000) is None:
-        bad.append(f"WBC={s.get('wbc')}")
-    if _has_raw(s.get('plt')) and _num(s.get('plt'), lo=1, hi=2000000) is None:
-        bad.append(f"PLT={s.get('plt')}")
+            bad.append(_fmt_bad_val(lbl, raw))
+            seen.add(key)
+        elif key in inv and _has_raw(inv[key]):
+            bad.append(_fmt_bad_val(lbl, inv[key]))
+            seen.add(key)
+    for key, lbl, check_fn in (
+        ('creat', 'კრეატინინი', None),
+        ('fibrinogen', 'ფიბრინოგენი', None),
+        ('wbc', 'WBC', lambda v: _num(v, lo=0.1, hi=150000) is not None),
+        ('plt', 'PLT', lambda v: _num(v, lo=1, hi=2000000) is not None),
+    ):
+        raw = src[key] if key in src else s.get(key)
+        if key == 'creat' and _has_raw(raw):
+            scr_mg, ambig = _parse_scr_mgdl(raw, creat_unit)
+            if scr_mg is None and (not creat_unit_ambiguous or creat_unit in ('umol', 'mgdl')):
+                bad.append(_fmt_bad_val(lbl, raw))
+                seen.add(key)
+            elif ambig and creat_unit in ('umol', 'mgdl'):
+                bad.append(f'{_fmt_bad_val(lbl, raw)} ({creat_unit})')
+                seen.add(key)
+        elif key == 'fibrinogen' and _has_raw(raw):
+            from ..calculators import normalize_fibrinogen_gl
+            if normalize_fibrinogen_gl(raw) is None:
+                bad.append(_fmt_bad_val(lbl, raw))
+                seen.add(key)
+        elif check_fn and _has_raw(raw) and not check_fn(raw):
+            bad.append(_fmt_bad_val(lbl, raw))
+            seen.add(key)
+        elif key not in seen and key in inv and _has_raw(inv[key]):
+            bad.append(_fmt_bad_val(lbl, inv[key]))
+            seen.add(key)
     return bad
 
 
@@ -227,7 +260,7 @@ def _init_base_flags_and_pre_reflex(ctx):
 
 
 def init_eval_context(patient, today=None):
-    today = today or timezone.localdate()
+    today = _date(today) or timezone.localdate()
     pathway = _resolve_pathway(patient)
     q = merged_q(patient)
     s = merged_studies(patient)
@@ -241,7 +274,7 @@ def init_eval_context(patient, today=None):
         creat_unit, on_dialysis=on_dialysis, height_cm=s.get('height_cm'),
     )
     car_r, car_l = _int(s.get('carotid_r'), lo=0, hi=100), _int(s.get('carotid_l'), lo=0, hi=100)
-    implausible_fields = _detect_implausible_fields(s, creat_unit, creat_unit_ambiguous)
+    implausible_fields = _detect_implausible_fields(patient.studies, s, creat_unit, creat_unit_ambiguous)
 
     ctx = EvalContext(
         patient=patient,

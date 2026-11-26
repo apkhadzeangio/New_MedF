@@ -13,7 +13,7 @@ def _eval_cea_symptoms_and_clocks(ctx):
     ctx.days_since_ev = days_since_ev
     ctx.is_symp_cea = is_symp_cea
     ctx.active_thrombolysis_window = bool(
-        q_filled and q.get('cea_thrombolysis')
+        q.get('cea_thrombolysis')
         and (days_since_ev is None or days_since_ev <= tl_days)
     )
 
@@ -25,7 +25,7 @@ def _eval_cea_symptoms_and_clocks(ctx):
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა ნევროლოგიური სიმპტომი ბოლო 6 თვეში — გადაამოწმეთ სიმპტომური CEA-ს სტატუსი (14-დღიანი ფანჯარა)!'
         )
-    if q_filled and q.get('cea_crescendo'):
+    if q.get('cea_crescendo'):
         ctx.red_flags.append(
             'Crescendo TIA / მერყევი ნევროლოგიური დეფიციტი ბოლო 24–48 სთ-ში — სასწრაფოდ აცნობეთ ქირურგსა და ნევროლოგს!'
         )

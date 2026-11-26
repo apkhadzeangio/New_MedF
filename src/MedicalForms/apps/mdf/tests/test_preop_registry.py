@@ -209,6 +209,7 @@ class PreopFailSafeUnknownStateTests(TestCase):
                 'med_doac': True, 'med_chips': ['statin'], 'mets_ok': True,
             },
             studies={
+                'bp_sys': 128, 'bp_dia': 78, 'hr': 72,
                 'hb': 138, 'plt': 230, 'inr': 1.0, 'creat': 88, 'spo2': 98,
                 'carotid_r': 82, 'carotid_l': 25, 'cea_cta_status': 'concordant',
                 'ecg': 'normal', 'med_hold_agreed': True, 'decolonization_ready': True,

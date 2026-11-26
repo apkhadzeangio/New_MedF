@@ -314,12 +314,12 @@ class TrackA3FourBugFixesRegressionTests(TestCase):
     def test_fix2_glucose_36_to_44_mgdl_severe_hypoglycemia_converts_safely(self):
         self.assertEqual(normalize_glucose_mmol(35.0), 35.0)
         self.assertEqual(normalize_glucose_mmol(36.0), 2.0)
-        self.assertEqual(normalize_glucose_mmol(40.0), 2.2)
-        self.assertEqual(normalize_glucose_mmol(44.0), 2.4)
+        self.assertEqual(normalize_glucose_mmol(40.0), 2.22)
+        self.assertEqual(normalize_glucose_mmol(44.0), 2.44)
         p = _pt(PreopPatient.OpSubtype.EVAR, q={'filled': True}, s={'glucose': 40})
         ev = evaluate(p, today=REF_TODAY)
-        self.assertEqual(ev['gl_mmol'], 2.2)
-        self.assertTrue(any('2.2 მმოლ/ლ' in rf for rf in ev['red_flags']))
+        self.assertEqual(ev['gl_mmol'], 2.22)
+        self.assertTrue(any('2.22 მმოლ/ლ' in rf for rf in ev['red_flags']))
 
     def test_fix3_nice_ng45_rational_tsh_and_spirometry_non_overblocking(self):
         # Stable thyroid disease on non-contrast CEA or PAD bypass does NOT block on TSH

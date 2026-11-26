@@ -1,25 +1,75 @@
 """Clinical calculators, lab unit normalizers, risk indices (RCRI, VSG-CRI, ARISCAT, Caprini, ASA), and surveillance."""
 from ..models import PreopPatient
 from .meds import _effective_allergy_state
-from .utils import _int, _num, _resolve_pathway, _str_list, cea_live_days_since_event, is_symp_cea_patient
+from .utils import (
+    _int,
+    _num,
+    _resolve_pathway,
+    _str_list,
+    cea_live_days_since_event,
+    is_pregnancy_eligible,
+    is_symp_cea_patient,
+)
+
+
+def _sat_num(val, lo, hi):
+    """Parse finite number and saturate out-of-range values to [lo, hi] for monotonic risk scoring."""
+    v = _num(val)
+    if v is None:
+        return None
+    return max(lo, min(hi, v))
+
+
+def _sat_age(val):
+    v = _num(val)
+    if v is None or v < 1:
+        return 0
+    return int(round(min(v, 120)))
+
+
+def _parse_plt_k(val):
+    """Normalize PLT to x10^9/L (converts /uL >=3000 via /1000; saturates <=0 to 0 for monotonicity)."""
+    v = _num(val)
+    if v is None:
+        return None
+    if v < 0:
+        return 0
+    if v >= 3000:
+        return int(round(v / 1000.0))
+    return int(round(min(v, 2500)))
 
 
 def _parse_scr_mgdl(creat, creat_unit=''):
-    """Return (scr_mgdl, is_ambiguous). Range 15.0 < c < 35.0 requires explicit unit ('mgdl'|'umol')."""
+    """Return (scr_mgdl, is_ambiguous). Rejects explicit unit mismatches and 15..35 auto-detect ambiguity."""
     from .registry import rule_value
     ren_u = rule_value('SCORE_RENAL_CKDEPI_CG')
     c = _num(creat, lo=0.1, hi=3000)
     if c is None:
         return None, False
     if creat_unit == 'mgdl':
+        if c > ren_u['ambig_hi']:
+            return None, True
         return c, False
     if creat_unit == 'umol':
+        if c < ren_u['ambig_lo']:
+            return None, True
         return c / ren_u['umol_factor'], False
     if 0.1 <= c <= ren_u['ambig_lo']:
         return c, False
     if c >= ren_u['ambig_hi']:
         return c / ren_u['umol_factor'], False
     return None, True
+
+
+def _sat_scr_mgdl(creat, creat_unit=''):
+    """Return scr_mgdl for risk scoring, saturating extreme >3000 umol/L to worst-case renal failure."""
+    scr, ambig = _parse_scr_mgdl(creat, creat_unit)
+    if scr is not None:
+        return scr
+    raw = _num(creat)
+    if raw is not None and raw > 3000 and not ambig:
+        return 3000.0 / 88.4
+    return None
 
 
 def calc_egfr(creat, age, sex='M', creat_unit='', on_dialysis=False):
@@ -79,13 +129,13 @@ def normalize_hb_gl(hb):
 
 
 def normalize_glucose_mmol(gl):
-    """Return glucose in mmol/L (converts mg/dL when > 35.0 via registry so 36-44 mg/dL severe hypo -> ~2.0-2.4 mmol/L; synced 1:1 with JS)."""
+    """Return glucose in mmol/L (converts mg/dL > 35.0 with 2-decimal precision for unit-boundary parity)."""
     from .registry import rule_value
     v = _num(gl, lo=0.5, hi=1000)
     if v is None:
         return None
     mgdl_cutoff = rule_value('GLY_UNIT_CONVERSION_MGDL')
-    return round(v / 18.0, 1) if v > mgdl_cutoff else v
+    return round(v / 18.0, 2) if v > mgdl_cutoff else v
 
 
 def normalize_albumin_gl(alb):
@@ -127,8 +177,8 @@ def calc_max_contrast_ml(egfr, on_dialysis=False):
 
 def _valid_bilateral_sbp(s):
     """Return max valid systolic BP across R/L arms, rejecting inverted readings (SBP <= DBP)."""
-    bp_sys, bp_dia = _int(s.get('bp_sys'), lo=30, hi=320), _int(s.get('bp_dia'), lo=20, hi=220)
-    bp_sys_l, bp_dia_l = _int(s.get('bp_sys_l'), lo=30, hi=320), _int(s.get('bp_dia_l'), lo=20, hi=220)
+    bp_sys, bp_dia = _sat_num(s.get('bp_sys'), 30, 320), _sat_num(s.get('bp_dia'), 20, 220)
+    bp_sys_l, bp_dia_l = _sat_num(s.get('bp_sys_l'), 30, 320), _sat_num(s.get('bp_dia_l'), 20, 220)
     r_inv = (bp_sys is not None and bp_dia is not None and bp_sys <= bp_dia)
     l_inv = (bp_sys_l is not None and bp_dia_l is not None and bp_sys_l <= bp_dia_l)
     valid = [v for v, inv in ((bp_sys, r_inv), (bp_sys_l, l_inv)) if v is not None and not inv]
@@ -137,7 +187,7 @@ def _valid_bilateral_sbp(s):
 
 def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
     pts = 0
-    age = _int(patient.age, lo=1, hi=120) or 0
+    age = _sat_age(patient.age)
     if age >= 75:
         pts += 3
     elif age >= 61:
@@ -159,10 +209,9 @@ def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
     bmi_v = _num(bmi, lo=8, hi=90)
     if bmi_v is not None and bmi_v > 25:
         pts += 1
-    is_female = (patient.sex == 'F')
-    if is_female and q.get('ven_hormones'):
+    if (patient.sex or '') == 'F' and q.get('ven_hormones'):
         pts += 1
-    if is_female and (age == 0 or age <= 55) and (q.get('ven_pregnant') or q.get('pregnant_possible')):
+    if is_pregnancy_eligible(patient) and (q.get('ven_pregnant') or q.get('pregnant_possible')):
         pts += 1
     if q.get('pulm'):
         pts += 1
@@ -262,35 +311,54 @@ def calc_caprini(patient, q, bmi=None, today=None, eff_renal=None, liver_status=
     return pts, tier, advice
 
 
+def _sat_hb_gl(raw):
+    hb_gl = normalize_hb_gl(raw)
+    if hb_gl is not None:
+        return hb_gl
+    v = _num(raw)
+    return 0.5 if (v is not None and v < 1) else None
+
+
+def _sat_fib_gl(raw):
+    fib = normalize_fibrinogen_gl(raw)
+    if fib is not None:
+        return fib
+    v = _num(raw)
+    return 0.1 if (v is not None and v < 0.2) else None
+
+
 def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     """Estimate ASA Physical Status ('I'..'IV') deterministically from vascular pathway, comorbidities & acute vitals/labs."""
+    from .registry import rule_value
     q = q if isinstance(q, dict) else {}
     s = s if isinstance(s, dict) else {}
     egfr_v = _num(egfr, lo=0, hi=300)
+    if egfr_v is None and not q.get('on_dialysis'):
+        sat_cr = _sat_scr_mgdl(s.get('creat'), s.get('creat_unit') or '')
+        if sat_cr is not None and sat_cr >= 20.0:
+            egfr_v = 2
     bmi_v = _num(bmi, lo=8, hi=90)
     pw = _resolve_pathway(patient)
     cad_chips = set(_str_list(q.get('cad_chips')))
     allergy_chips, _, _ = _effective_allergy_state(q)
-    from .registry import rule_value
     aaa_mm = _num(s.get('aaa_mm'), lo=10, hi=250)
-    lvef = _int(s.get('lvef'), lo=5, hi=95)
-    fev1 = _int(s.get('spiro_fev1'), lo=10, hi=160)
-    hb_gl = normalize_hb_gl(s.get('hb'))
+    lvef = _sat_num(s.get('lvef'), 5, 95)
+    fev1 = _sat_num(s.get('spiro_fev1'), 10, 160)
+    hb_gl = _sat_hb_gl(s.get('hb'))
     gl_mmol = normalize_glucose_mmol(s.get('glucose'))
     hba1c = _num(s.get('hba1c'), lo=3.0, hi=25.0)
-    spo2 = _int(s.get('spo2'), lo=30, hi=100)
+    spo2 = _sat_num(s.get('spo2'), 30, 100)
     eff_sbp = _valid_bilateral_sbp(s)
-    raw_sbp_low = min([v for v in (_int(s.get('bp_sys'), lo=30, hi=320), _int(s.get('bp_sys_l'), lo=30, hi=320)) if v is not None], default=None)
-    hr_val = _int(s.get('hr'), lo=15, hi=260)
-    k_val = _num(s.get('k'), lo=1.0, hi=12.0)
-    plt_val = _int(s.get('plt'), lo=1, hi=2500)
-    fib_val = normalize_fibrinogen_gl(s.get('fibrinogen'))
-    inr_val = _num(s.get('inr'), lo=0.4, hi=20.0)
-    nt_probnp = _int(s.get('nt_probnp'), lo=1, hi=100000)
-    hs_ctn = _num(s.get('hs_ctn'), lo=0.1, hi=50000)
+    raw_sbp_low = min([v for v in (_sat_num(s.get('bp_sys'), 30, 320), _sat_num(s.get('bp_sys_l'), 30, 320)) if v is not None], default=None)
+    hr_val = _sat_num(s.get('hr'), 15, 260)
+    k_val = _sat_num(s.get('k'), 1.0, 12.0)
+    plt_val = _parse_plt_k(s.get('plt'))
+    fib_val = _sat_fib_gl(s.get('fibrinogen'))
+    inr_val = _sat_num(s.get('inr'), 0.4, 20.0)
+    nt_probnp = _sat_num(s.get('nt_probnp'), 1, 100000)
+    hs_ctn = _sat_num(s.get('hs_ctn'), 0.1, 50000)
     cea_d = cea_live_days_since_event(q, today=today, s=s)
     is_symp_cea = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=False)
-    repro_female = (patient.sex == 'F') and ((_int(patient.age, lo=1, hi=120) or 30) <= 55)
 
     if (
         bool(q.get('aaa_pain'))
@@ -308,7 +376,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or (spo2 is not None and spo2 < 90)
         or (eff_sbp is not None and eff_sbp < 90)
         or (eff_sbp is not None and eff_sbp <= 100 and hr_val is not None and hr_val >= eff_sbp)
-        or (eff_sbp is None and raw_sbp_low is not None and raw_sbp_low <= 100 and hr_val is not None and hr_val >= raw_sbp_low)
+        or (eff_sbp is None and raw_sbp_low is not None and raw_sbp_low <= 100 and hr_val is not None and hr_val >= 100 and hr_val >= raw_sbp_low)
         or (hr_val is not None and (hr_val >= 135 or hr_val < 40))
         or (k_val is not None and (k_val >= 6.0 or k_val < 3.0))
         or (hb_gl is not None and hb_gl < 70)
@@ -324,37 +392,23 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         return 'IV'
 
     if (
-        pw != PreopPatient.Pathway.VENOUS
-        or bool(q.get('on_dialysis'))
-        or (egfr_v is not None and egfr_v < 60)
-        or bool(q.get('cad'))
-        or bool(q.get('neuro'))
-        or (s.get('ecg') == 'afib_controlled')
-        or ('afib' in cad_chips)
-        or bool(q.get('ven_dvt_history'))
-        or bool(q.get('ven_cancer_immob'))
-        or (s.get('liver_status') == '3x')
-        or (hb_gl is not None and hb_gl < 100)
-        or (hba1c is not None and hba1c >= 8.5)
-        or (gl_mmol is not None and gl_mmol >= 16.7)
-        or bool(q.get('dm_insulin'))
-        or (bmi_v is not None and bmi_v >= 40)
-        or bool(q.get('pacemaker'))
-        or ('copd' in _str_list(q.get('pulm_chips')))
-        or (spo2 is not None and spo2 < 94)
-        or (eff_sbp is not None and eff_sbp >= 180)
-        or (k_val is not None and (k_val >= 5.4 or k_val < 3.3))
-        or (q.get('cfs_level') == '5_plus')
+        pw != PreopPatient.Pathway.VENOUS or bool(q.get('on_dialysis'))
+        or (egfr_v is not None and egfr_v < 60) or bool(q.get('cad')) or bool(cad_chips)
+        or bool(q.get('neuro')) or (s.get('ecg') == 'afib_controlled')
+        or bool(q.get('ven_dvt_history')) or bool(q.get('ven_cancer_immob'))
+        or (s.get('liver_status') == '3x') or (hb_gl is not None and hb_gl < 100)
+        or (hba1c is not None and hba1c >= 8.5) or (gl_mmol is not None and gl_mmol >= 16.7)
+        or bool(q.get('dm_insulin')) or (bmi_v is not None and bmi_v >= 40)
+        or bool(q.get('pacemaker')) or ('copd' in _str_list(q.get('pulm_chips')))
+        or (spo2 is not None and spo2 < 94) or (eff_sbp is not None and eff_sbp >= 180)
+        or (k_val is not None and (k_val >= 5.4 or k_val < 3.3)) or (q.get('cfs_level') == '5_plus')
     ):
         return 'III'
 
     if (
-        bool(q.get('htn'))
-        or bool(q.get('dm'))
-        or bool(q.get('smoker'))
-        or bool(q.get('pulm'))
-        or bool(q.get('thyroid_disease'))
-        or (repro_female and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible'))))
+        bool(q.get('htn')) or bool(q.get('dm')) or bool(q.get('smoker'))
+        or bool(q.get('pulm')) or bool(q.get('thyroid_disease'))
+        or (is_pregnancy_eligible(patient) and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible'))))
         or (bmi_v is not None and bmi_v >= 30)
     ):
         return 'II'
@@ -388,7 +442,7 @@ def _ihd_and_chf_flags(q, s):
     q_filled = bool(q.get('filled'))
     cad_chips = set(_str_list(q.get('cad_chips')))
     ecg = s.get('ecg') or 'pending'
-    lvef = _int(s.get('lvef'), lo=5, hi=95)
+    lvef = _sat_num(s.get('lvef'), 5, 95)
     ihd = bool(
         q.get('recent_stent')
         or bool(cad_chips & {'mi', 'angina', 'cabg', 'stent_old', 'stent_6_12m'})
@@ -411,7 +465,7 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
     pathway = _resolve_pathway(patient)
     q_filled = bool(q.get('filled'))
     ihd, chf = _ihd_and_chf_flags(q, s)
-    scr_mgdl, _ = _parse_scr_mgdl(s.get('creat'), s.get('creat_unit') or '')
+    scr_mgdl = _sat_scr_mgdl(s.get('creat'), s.get('creat_unit') or '')
 
     factors = []
     # Original Lee 1999 high-risk surgery factor: strictly intraperitoneal, intrathoracic,
@@ -472,12 +526,12 @@ def calc_vsg_cri(patient, q, s):
     pulm_chips = set(_str_list(q.get('pulm_chips')))
     med_chips = set(_str_list(q.get('med_chips')))
     ihd, chf = _ihd_and_chf_flags(q, s)
-    scr_mgdl, _ = _parse_scr_mgdl(s.get('creat'), s.get('creat_unit') or '')
-    spiro_fev1 = _int(s.get('spiro_fev1'), lo=10, hi=160)
+    scr_mgdl = _sat_scr_mgdl(s.get('creat'), s.get('creat_unit') or '')
+    spiro_fev1 = _sat_num(s.get('spiro_fev1'), 10, 160)
 
     pts = 0
     factors = []
-    age = _int(patient.age, lo=1, hi=120) or 0
+    age = _sat_age(patient.age)
     if age >= 80:
         pts += 4
         factors.append('ასაკი ≥80 (+4)')
@@ -545,11 +599,14 @@ def calc_vsg_cri(patient, q, s):
 def calc_ariscat_pulm(patient, q, s, hb_gl=None):
     """Validated ARISCAT postoperative pulmonary complication (PPC) score (Canet et al. 2010 / ESAIC 2024)."""
     from .registry import rule_value
+    q = q if isinstance(q, dict) else {}
+    s = s if isinstance(s, dict) else {}
     ari_cfg = rule_value('SCORE_ARISCAT_CANET_2010')
     pathway = _resolve_pathway(patient)
     q_filled = bool(q.get('filled'))
     inf_chips = set(_str_list(q.get('inf_chips')))
-    spo2 = _int(s.get('spo2'), lo=30, hi=100)
+    spo2 = _sat_num(s.get('spo2'), 30, 100)
+    eff_hb = hb_gl if hb_gl is not None else _sat_hb_gl(s.get('hb'))
     open_aortic = (
         (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
         or pathway == PreopPatient.Pathway.ABF
@@ -557,7 +614,7 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
 
     pts = 0
     factors = []
-    age = _int(patient.age, lo=1, hi=120) or 0
+    age = _sat_age(patient.age)
     if age > 80:
         pts += 16
         factors.append('ასაკი >80 (+16)')
@@ -566,18 +623,19 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
         factors.append('ასაკი 51–80 (+3)')
 
     if spo2 is not None:
+        spo2_i = int(round(spo2))
         if spo2 <= 90:
             pts += 24
-            factors.append(f'SpO2 {spo2}% ≤90 (+24)')
+            factors.append(f'SpO2 {spo2_i}% ≤90 (+24)')
         elif spo2 <= 95:
             pts += 8
-            factors.append(f'SpO2 {spo2}% 91–95 (+8)')
+            factors.append(f'SpO2 {spo2_i}% 91–95 (+8)')
 
     if (q_filled and 'fever_resp' in inf_chips) or (s.get('cxr') == 'infiltrate'):
         pts += 17
         factors.append('რესპირატორული ინფექცია / ინფილტრაცია (+17)')
 
-    if hb_gl is not None and hb_gl <= ari_cfg['hb_max']:
+    if eff_hb is not None and eff_hb <= ari_cfg['hb_max']:
         pts += 11
         factors.append('ანემია Hb ≤100 გ/ლ (+11)')
 

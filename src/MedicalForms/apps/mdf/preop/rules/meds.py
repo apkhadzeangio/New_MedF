@@ -3,7 +3,7 @@ from ...models import PreopPatient
 from ..constants import POST_ANTITHROMBOTIC_CHOICES
 from ..meds import build_med_schedule
 from ..registry import rule_value
-from ..utils import _date, _int
+from ..utils import _date, _int, is_pregnancy_eligible
 
 
 def _eval_allergy_cied_and_med_hold(ctx):
@@ -96,11 +96,16 @@ def _eval_allergy_cied_and_med_hold(ctx):
             'მეტფორმინი უკუნაჩვენებია თირკმლის მძიმე უკმარისობის (CrCl/eGFR <30 / დიალიზი) ან ღვიძლის ≥3x დისფუნქციის დროს '
             '(ლაქტატ-აციდოზის რისკი) — შეწყვიტეთ დაუყოვნებლივ და შეათანხმეთ ენდოკრინოლოგთან!'
         )
+    elif (q_filled or has_crit_q_meds) and metf_hold_48h and not ctx.uses_contrast and ctx.eff_renal is not None and ctx.eff_renal < metf_cfg['dose_cap_renal']:
+        ctx.amber_flags.append(
+            f'მეტფორმინი CrCl/eGFR {ctx.eff_renal} (30–44) ფონზე: დღიური დოზა ≤1000 მგ და ოპერაციაზე 48 სთ შეჩერება კრეატინინის კონტროლით.'
+        )
 
 
 def _eval_antithrombotic_conflicts(ctx):
     q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
     cilo_min_crcl = rule_value('MED_CILOSTAZOL_BLACKBOX')['crcl_min']
+    voy_min_egfr = rule_value('MED_VOYAGER_RIVAROXABAN_2_5')['min_egfr']
     mech_inr_min = rule_value('MED_MECH_VALVE_SAFETY')
     vka_hold_days = rule_value('MED_WARFARIN_HOLD_DAYS')['hold_days']
     triple_min = rule_value('MED_ANTITHROMBOTIC_CONFLICTS')
@@ -139,7 +144,7 @@ def _eval_antithrombotic_conflicts(ctx):
             'პაციენტი იღებს პერორალურ ანტიკოაგულანტს (OAC / რივაროქსაბანი 2.5 მგ) ტიკაგრელორთან ან პრასუგრელთან ერთად (ESC Class III — სისხლდენის უმაღლესი რისკი)! '
             'შეათანხმეთ დე-ესკალაცია კლოპიდოგრელზე ან ასპირინზე კარდიოლოგთან!'
         )
-    if q.get('med_prasugrel') and (q.get('neuro') or ctx.pathway == PreopPatient.Pathway.CEA):
+    if q.get('med_prasugrel') and (q.get('neuro') or ctx.is_symp_cea):
         ctx.red_flags.append(
             'პრასუგრელი აბსოლუტურად უკუნაჩვენებია გადატანილი ინსულტის / TIA-ს ანამნეზში (FDA Boxed Warning — ქალასშიდა სისხლჩაქცევის რისკი)! '
             'დაუყოვნებლივ შეცვალეთ ანტიაგრეგანტი კარდიოლოგთან!'
@@ -154,10 +159,12 @@ def _eval_antithrombotic_conflicts(ctx):
         )
 
     lvef_early = _int(s.get('lvef'), lo=5, hi=95)
-    repro_preg = (ctx.patient.sex == 'F') and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
+    bnp_early = _int(s.get('nt_probnp'), lo=1, hi=100000)
+    repro_preg = is_pregnancy_eligible(ctx.patient) and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
     cilostazol_contra = bool(
         ctx.chf_hyd_flag
         or (lvef_early is not None and lvef_early < 50)
+        or (bnp_early is not None and bnp_early >= 300)
         or ctx.on_dialysis
         or (ctx.eff_renal is not None and ctx.eff_renal <= cilo_min_crcl)
         or ((s.get('ecg') or 'pending') == 'ischemia_arrhythmia')
@@ -170,6 +177,10 @@ def _eval_antithrombotic_conflicts(ctx):
     if 'cilostazol' in ctx.med_chips and cilostazol_contra:
         ctx.red_flags.append(
             'ცილოსტაზოლი უკუნაჩვენებია გულის უკმარისობის / LVEF <50% / CrCl ≤25 / ღვიძლის ≥3x / სტენტის / წყლულის / ტაქიარითმიის დროს (FDA Black Box / EMA) — შეათანხმეთ მოხსნა!'
+        )
+    if 'rivaroxaban_2_5' in ctx.med_chips and (ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < voy_min_egfr)):
+        ctx.red_flags.append(
+            f'რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) უკუნაჩვენებია/საშიშია თირკმლის მძიმე უკმარისობისას (CrCl/eGFR <{voy_min_egfr} ან დიალიზი) — გადაამოწმეთ სქემა!'
         )
     if ctx.liver_3x and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips):
         ctx.red_flags.append(
@@ -198,7 +209,10 @@ def _eval_mech_valve_conflicts(ctx, has_mech_valve, mech_inr_min, vka_hold_days)
             'ფიქსირდება მექანიკური სარქველი ვარფარინის (VKA) გარეშე — სარქვლის მწვავე თრომბოზის საფრთხე! გადაამოწმეთ ანტიკოაგულაცია კარდიოლოგთან!'
         )
     elif ctx.inr is not None and ctx.inr < mech_inr_min:
-        in_vka_washout = bool(op_dt_early and 0 <= (op_dt_early - ctx.today).days <= vka_hold_days)
+        is_evla_cont = (
+            ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.has_neuraxial_plan
+        )
+        in_vka_washout = bool(op_dt_early and 0 <= (op_dt_early - ctx.today).days <= vka_hold_days and not is_evla_cont)
         if not in_vka_washout:
             bridge_opt = 'IV ბივალირუდინის/არგატრობანის ხიდი (HIT!)' if has_hit else 'ჰეპარინის ხიდი'
             ctx.red_flags.append(
@@ -296,7 +310,7 @@ def _eval_stent_dapt_and_hold_alerts(ctx):
         )
     )
     ctx.uninterrupted_p2y12 = uninterrupted_p2y12
-    if ctx.has_neuraxial_plan and uninterrupted_p2y12:
+    if ctx.has_neuraxial_plan and uninterrupted_p2y12 and not any('ნეირაქსიული' in rf and 'P2Y12' in rf for rf in ctx.red_flags):
         ctx.red_flags.append(
             'ნეირაქსიული ანესთეზია / ეპიდურული კათეტერი უკუნაჩვენებია უწყვეტი P2Y12 თერაპიის '
             '(კლოპიდოგრელი/ტიკაგრელორი/პრასუგრელი — სტენტი/DAPT/სიმპტ. CEA) ფონზე (ASRA 5th Ed — სპინალური ჰემატომის უმაღლესი რისკი)! '
@@ -329,7 +343,12 @@ def _eval_stent_dapt_and_hold_alerts(ctx):
             'ანტიაგრეგანტის შეჩერებამდე სავალდებულოა კარდიოლოგისა და ქირურგის შეთანხმება!'
         )
     if ctx.needs_med_hold and not s.get('med_hold_agreed'):
-        if ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.has_neuraxial_plan and not q.get('sglt2') and not q.get('glp1') and not q.get('dm_insulin') and not ctx.metf_contra_any:
+        has_red_med_row = any(r.get('tone') == 'red' or r.get('contraindicated') for r in ctx.med_schedule)
+        if (
+            ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
+            and not ctx.has_neuraxial_plan and not q.get('sglt2') and not q.get('glp1')
+            and not q.get('dm_insulin') and not ctx.metf_contra_any and not has_red_med_row
+        ):
             ctx.amber_flags.append('პაციენტი იღებს ანტიკოაგულანტს / ანტიაგრეგანტს — დააზუსტეთ ქირურგთან (ESVS 2022-ით EVLA შესაძლებელია მოუხსნელადაც).')
         elif ctx.has_neuraxial_plan:
             proc_word = 'ეპიდურული / სპინალური ანესთეზიისა და ფლებექტომიის' if ctx.is_phleb else 'ეპიდურული / სპინალური ანესთეზიის'

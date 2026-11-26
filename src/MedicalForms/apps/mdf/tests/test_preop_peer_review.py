@@ -357,7 +357,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         today = timezone.localdate()
 
         # C8.2 / Track A3: Lab unit normalizers (glucose >35 mg/dL synced with JS, 34 stays 34.0 HHS, 40 -> 2.2 hypo; fibrinogen >15; LDL >20)
-        self.assertEqual((normalize_glucose_mmol(34), normalize_glucose_mmol(40)), (34.0, 2.2))
+        self.assertEqual((normalize_glucose_mmol(34), normalize_glucose_mmol(40)), (34.0, 2.22))
         self.assertEqual(normalize_glucose_mmol(90), 5.0)
         self.assertEqual(normalize_fibrinogen_gl(140), 1.4)
         self.assertEqual(normalize_ldl_mmol(130), 3.36)
@@ -669,7 +669,10 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
             patient_name='თვითშევსება ექთანაძე', age=36, sex='F', side='R',
             pathway='venous', op_subtype='evla', surgeon=self.user,
             questionnaire={'filled': True, 'filled_by': 'პაციენტი (ბმულით)', 'nurse_verified': False, 'mets_ok': True},
-            studies={'hb': 132, 'plt': 240, 'labs_date': today.isoformat(), 'ven_duplex_status': 'deep_patent_reflux', 'compression_ready': True},
+            studies={
+                'bp_sys': 118, 'bp_dia': 74, 'hr': 72, 'spo2': 99, 'dos_bhcg_negative': True,
+                'hb': 132, 'plt': 240, 'labs_date': today.isoformat(), 'ven_duplex_status': 'deep_patent_reflux', 'compression_ready': True,
+            },
         )
         ev_sf_unver = evaluate(p_sf, today=today)
         self.assertEqual(ev_sf_unver['clearance_seal']['code'], 'pending')
@@ -701,7 +704,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
             pathway='cea', op_subtype='cea_asymp', surgeon=self.user,
             visit_date=today, started_on=today,
             questionnaire={'filled': True, 'mets_ok': True, 'med_aspirin': True, 'med_chips': ['statin']},
-            studies={'hb': 138, 'inr': 1.0, 'creat': 84, 'ecg': 'normal', 'carotid_r': 82, 'carotid_l': 25, 'cea_cta_status': 'concordant', 'anesth_done': True, 'dos_site_marked': True},
+            studies={'labs_date': today.isoformat(), 'bp_sys': 128, 'bp_dia': 78, 'hr': 72, 'spo2': 98, 'hb': 138, 'inr': 1.0, 'creat': 84, 'ecg': 'normal', 'carotid_r': 82, 'carotid_l': 25, 'cea_cta_status': 'concordant', 'anesth_done': True, 'dos_site_marked': True},
         )
         self.client.post(reverse('preop-patient', args=[p_op.pk]), {'section': 'signoff', 'action': 'approve', 'anamnesis': 'მარჯვენა CEA ანამნეზი'})
         p_op.refresh_from_db()

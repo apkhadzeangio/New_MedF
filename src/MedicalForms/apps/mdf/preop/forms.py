@@ -140,7 +140,10 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
         elif 'cea_days_since_event' in post_data:
             d_ev = _int(post_data.get('cea_days_since_event'), lo=0, hi=3650)
             q['cea_days_since_event'] = d_ev
-            q['cea_event_date'] = (today - datetime.timedelta(days=d_ev)).isoformat() if d_ev is not None else ''
+            try:
+                q['cea_event_date'] = (today - datetime.timedelta(days=d_ev)).isoformat() if d_ev is not None else ''
+            except OverflowError:
+                q['cea_event_date'] = ''
     else:
         q['cea_event_date'] = ''
         q['cea_days_since_event'] = None
@@ -238,7 +241,10 @@ def _apply_sf_pathway_fields(post_data, pw, q, today):
                 d_ev = _int(post_data.get('cea_days_since_event'), lo=0, hi=3650)
                 if d_ev is not None:
                     q['cea_days_since_event'] = d_ev
-                    q['cea_event_date'] = (today - datetime.timedelta(days=d_ev)).isoformat()
+                    try:
+                        q['cea_event_date'] = (today - datetime.timedelta(days=d_ev)).isoformat()
+                    except OverflowError:
+                        q['cea_event_date'] = ''
     elif pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
         for f in ('abf_buttock_pain', 'abf_rest_pain', 'abf_ulcer', 'abf_wet_infection'):
             q[f] = post_data.get(f) in ('1', 'on', 'true')

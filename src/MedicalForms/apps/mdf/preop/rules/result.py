@@ -45,6 +45,9 @@ def _result_clinical_part(ctx):
         'max_contrast_ml': ctx.max_contrast_ml,
         'co2_angio_advised': ctx.co2_angio_advised,
         'pbm_iv_iron_indicated': ctx.pbm_iv_iron_indicated,
+        'pbm_iron_required': ctx.pbm_iron_required,
+        'chf_hyd_flag': ctx.chf_hyd_flag,
+        'is_rupture_suspect': ctx.is_rupture_suspect,
         'nt_probnp': ctx.nt_probnp,
         'hs_ctn': ctx.hs_ctn,
         'tsat': ctx.tsat_val,
@@ -103,6 +106,7 @@ def _result_flags_and_needs_part(ctx):
             and not ctx.solo_neuraxial_anatomic_mismatch
             and not ctx.has_unacked_red
             and not ctx.has_blocking_unknown_state
+            and not (ctx.needs_stale_labs and not ctx.s.get('stale_labs_refreshed'))
         ),
         'priority_tier': ctx.priority_tier,
         'priority_label': PRIORITY_LABELS[ctx.priority_tier],
@@ -131,6 +135,7 @@ def _result_flags_and_needs_part(ctx):
         'eff_renal': ctx.eff_renal,
         'eff_allergy_chips': sorted(ctx.allergy_chips),
         'compression_contra': ctx.compression_contra,
+        'tbi_reduced_comp': ctx.tbi_reduced_comp,
         'creat_unit_ambiguous': ctx.creat_unit_ambiguous,
         'bmi': ctx.bmi,
         'hb_gl': ctx.hb_gl,

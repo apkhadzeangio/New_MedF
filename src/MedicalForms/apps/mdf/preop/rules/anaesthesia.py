@@ -13,7 +13,16 @@ from ..constants import (
     VQI_30D_CHOICES,
 )
 from ..registry import rule_value
-from ..utils import _alerts_signature, _clean_person_id, _date, _fmt_ka_date, _int, _num, chip_summary
+from ..utils import (
+    _alerts_signature,
+    _clean_person_id,
+    _date,
+    _fmt_ka_date,
+    _int,
+    _num,
+    chip_summary,
+    is_pregnancy_eligible,
+)
 
 
 def _eval_asa_airway_and_modality(ctx):
@@ -56,7 +65,7 @@ def _eval_asa_airway_and_modality(ctx):
     needs_ett_airway = (
         ctx.open_aortic
         or pathway == PreopPatient.Pathway.CEA
-        or (q_filled and (bool(q.get('aaa_pain')) or bool(q.get('glp1'))))
+        or (bool(q.get('aaa_pain')) or bool(q.get('glp1')))
         or (ctx.bmi is not None and ctx.bmi >= 40)
     )
     anesth_plan_raw = ctx.anesth_plan_raw
@@ -101,7 +110,7 @@ def _eval_asa_airway_and_modality(ctx):
     ctx.needs_icu_bed = bool(
         ctx.open_aortic or ctx.asa_roman == 'IV'
         or (ctx.lvef is not None and ctx.lvef < 40)
-        or (q_filled and bool(q.get('cea_crescendo')))
+        or bool(q.get('cea_crescendo'))
         or bool(ctx.anesth_lines_set & {'art_line', 'cvc', 'epidural'})
     )
 
@@ -150,11 +159,24 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
                     f'CLTI პაციენტის დაგეგმილი ოპერაცია ({ctx.planned_surgery_ka}) დაშორებულია {wait_to_op} დღით (UK NVR სამიზნე ≤{clti_lim} დღე) — კიდურის დაკარგვის რისკი!'
                 )
 
-    if q_filled and q.get('glp1'):
+    lido_alg = bool(q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips)
+    is_local_evla_fasting = (
+        patient.op_subtype == PreopPatient.OpSubtype.EVLA
+        and not ctx.has_neuraxial_plan
+        and ctx.anesth_plan_raw in ('auto', 'local')
+        and not lido_alg
+        and not bool(ctx.hard_contraindications)
+    )
+    ctx.is_local_evla_fasting = is_local_evla_fasting
+    if q.get('glp1'):
         ctx.fasting_instruction = (
             'GLP-1 პროტოკოლი (Multi-Society 2024 / ESAIC 2025): გართულების გარეშე უმეტეს პაციენტთან პრეპარატი გრძელდება, '
             'სავალდებულოა ოპერაციამდე 24 სთ მხოლოდ სუფთა თხევადი დიეტა, მყარი საკვები შეწყდეს ≥8 სთ-ით ადრე, სუფთა წყალი — 2 სთ-ით ადრე '
             '(GI სიმპტომებისას — შეჩერების განხილვა და კუჭის ექო-სკრინინგი / RSI).'
+        )
+    elif is_local_evla_fasting:
+        ctx.fasting_instruction = (
+            'ადგილობრივი ტუმესცენტური EVLA: მსუბუქი საუზმე დაშვებულია (თუ სედაცია ან უზმოზე მოსვლა არ არის დაგეგმილი — ESVS 2022).'
         )
     else:
         ctx.fasting_instruction = (
@@ -180,9 +202,10 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
         allergy_bits.append('აასს / NSAID ალერგია!')
     if 'clopidogrel_intol' in ctx.allergy_chips:
         allergy_bits.append('კლოპიდოგრელის აუტანლობა')
-    if (q.get('allergy_text') or '').strip():
-        allergy_bits.append(q['allergy_text'])
-    elif (q.get('allergy_other') or ctx.unclarified_allergy_other) and not allergy_bits:
+    raw_alg_txt = (q.get('allergy_text') or '').strip()
+    if raw_alg_txt and not any(raw_alg_txt.lower() in b.lower() for b in allergy_bits):
+        allergy_bits.append(raw_alg_txt)
+    elif not raw_alg_txt and (q.get('allergy_other') or ctx.unclarified_allergy_other) and not allergy_bits:
         allergy_bits.append('მედიკამენტური ალერგია (დასაზუსტებელია!)')
     ctx.allergy_summary = '; '.join(allergy_bits)
 
@@ -209,11 +232,12 @@ def _build_dos_checks(ctx):
             'label': f'საოპერაციო მხარის მარკირება კანზე ({side_hint}) — WHO Sign-In',
             'done': bool(s.get('dos_site_marked')) and (patient.side in valid_dos_sides),
         })
-    dos_fast_lbl = (
-        'უზმოდ ყოფნის რეჟიმი დაცულია: GLP-1 პროტოკოლი (24 სთ სუფთა თხევადი დიეტა / ≥8 სთ მყარი საკვები / 2 სთ წყალი)'
-        if (q_filled and q.get('glp1'))
-        else 'უზმოდ ყოფნის რეჟიმი დაცულია (6 სთ მყარი საკვები / 2 სთ სუფთა წყალი)'
-    )
+    if q.get('glp1'):
+        dos_fast_lbl = 'უზმოდ ყოფნის რეჟიმი დაცულია: GLP-1 პროტოკოლი (24 სთ სუფთა თხევადი დიეტა / ≥8 სთ მყარი საკვები / 2 სთ წყალი)'
+    elif ctx.is_local_evla_fasting:
+        dos_fast_lbl = 'ადგილობრივი EVLA: სედაციის გარეშე მსუბუქი საუზმე დაშვებულია (სედაციისას — 6 სთ მყარი საკვები / 2 სთ წყალი)'
+    else:
+        dos_fast_lbl = 'უზმოდ ყოფნის რეჟიმი დაცულია (6 სთ მყარი საკვები / 2 სთ სუფთა წყალი)'
     dos_checks.append({'key': 'dos_fasting_confirmed', 'label': dos_fast_lbl, 'done': bool(s.get('dos_fasting_confirmed'))})
     has_any_hold_row = any(r.get('hold_or_skip') for r in (ctx.med_schedule or ()))
     if ctx.needs_med_hold or ctx.has_any_antithrombotic or has_any_hold_row or ('steroid' in ctx.med_chips):
@@ -241,15 +265,16 @@ def _build_dos_checks(ctx):
             'label': 'ულატექსო საოპერაციო გარემო (ხელთათმანები/კათეტერი) და პოვიდონ-იოდის ანტისეპტიკი (ქლორჰექსიდინის გარეშე!) მზადაა',
             'done': bool(s.get('dos_latex_free_or')),
         })
+    preg_flagged = bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
     needs_bhcg = (
-        patient.sex == 'F'
-        and ctx.age is not None
-        and 12 <= ctx.age <= 55
+        is_pregnancy_eligible(patient)
         and (
-            patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)
-            or ctx.is_pta
-            or ctx.is_venous
-            or bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
+            (patient.sex == 'F' and ctx.age is not None and (
+                patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)
+                or ctx.is_pta
+                or ctx.is_venous
+            ))
+            or preg_flagged
         )
     )
     if needs_bhcg:
@@ -328,10 +353,10 @@ def _eval_dos_and_vqi(ctx):
     if dos_inr is not None:
         if dos_inr > inr_lim:
             dos_warnings.append(f'ოპერაციის დილის INR ({dos_inr}) აჭარბებს უსაფრთხო ზღვარს (≤ {inr_lim}) — სისხლდენის / სპინალური ჰემატომის რისკი!')
-    elif is_evla_warfarin_only and ctx.inr is None:
-        dos_warnings.append('ვარფარინის ფონზე EVLA-მდე აუცილებელია საკონტროლო INR (≤ 3.0) — ამჟამად INR შეყვანილი არ არის!')
     elif any_dos_ticked:
-        if ctx.inr is not None and ctx.inr > inr_lim:
+        if is_evla_warfarin_only and ctx.inr is None:
+            dos_warnings.append('ვარფარინის ფონზე EVLA-მდე აუცილებელია საკონტროლო INR (≤ 3.0) — ამჟამად INR შეყვანილი არ არის!')
+        elif ctx.inr is not None and ctx.inr > inr_lim:
             dos_warnings.append(f'საბაზისო INR ({ctx.inr}) აჭარბებს ზღვარს (≤ {inr_lim}), ხოლო ოპერაციის დილის საკონტროლო INR შეყვანილი არ არის!')
         elif q.get('med_warfarin') and not is_evla_warfarin_only:
             dos_warnings.append('ვარფარინის ფონზე ოპერაციის დილის საკონტროლო INR სავალდებულოა საოპერაციოში შეყვანამდე!')

@@ -45,7 +45,7 @@ def _eval_scores_and_missing_s1(ctx):
     missing_items = []
     if not q_filled:
         missing_items.append({'tab': 'q', 'field': 'mets_ok', 'label': 'კითხვარი'})
-    elif q.get('filled_by') == 'პაციენტი (ბმულით)' and not q.get('nurse_verified'):
+    elif (q.get('self_fill_submitted') or q.get('filled_by') == 'პაციენტი (ბმულით)') and not q.get('nurse_verified'):
         missing_items.append({'tab': 'q', 'field': 'btn-verify-self', 'label': 'პაციენტის კითხვარის გადამოწმება'})
 
     def _req_s1(fname, missing_cond, lbl):
@@ -56,12 +56,12 @@ def _eval_scores_and_missing_s1(ctx):
     if ctx.is_venous:
         is_lean_evla_ux = (not ctx.is_phleb) and (not ctx.has_neuraxial_plan) and (ctx.anesth_plan_raw != 'general')
         ven_needs_creat_ux = ctx.is_phleb or ctx.has_neuraxial_plan or bool(
-            q.get('med_doac') or q.get('med_dabigatran') or q.get('med_metformin') or q.get('med_rivaroxaban_2_5')
+            q.get('med_doac') or q.get('med_dabigatran') or q.get('metformin') or ('rivaroxaban_2_5' in ctx.med_chips)
         )
         ven_needs_inr_ux = (not is_lean_evla_ux) or ctx.on_oral_anticoag or (s.get('liver_status') in ('2x', '3x'))
         ven_needs_gl_ux = (not is_lean_evla_ux) or bool(
-            q.get('dm') or q.get('med_insulin') or q.get('med_metformin') or q.get('med_sglt2') or q.get('med_glp1')
-        ) or (ctx.bmi is not None and ctx.bmi >= 30) or ((ctx.age or 0) >= 45)
+            q.get('dm') or q.get('dm_insulin') or q.get('metformin') or q.get('sglt2') or q.get('glp1')
+        ) or (ctx.hba1c is not None and ctx.hba1c >= 6.5) or (ctx.bmi is not None and ctx.bmi >= 30) or ((ctx.age or 0) >= 45)
         _req_s1('hb', ctx.hb_gl is None, 'Hb')
         _req_s1('plt', ctx.plt is None, 'PLT')
         if ven_needs_inr_ux:
@@ -180,7 +180,8 @@ def _eval_missing_s2_and_clearance_seal(ctx):
         next_step_hint = '✓ დადასტურებულია'
     ctx.next_step_hint = next_step_hint
 
-    ctx.self_fill_highlights = build_self_fill_highlights(q) if q.get('filled_by') == 'პაციენტი (ბმულით)' else []
+    is_self_filled = bool(q.get('self_fill_submitted') or q.get('filled_by') == 'პაციენტი (ბმულით)')
+    ctx.self_fill_highlights = build_self_fill_highlights(q) if is_self_filled else []
     ctx.side_badge = {
         'R': 'მარჯვენა (R)', 'L': 'მარცხენა (L)', 'B': 'ორმხრივი (B)',
     }.get(patient.side or '', 'აორტა / ცენტრალური' if pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF) else 'მხარე დასაზუსტებელია')
@@ -196,10 +197,10 @@ def _eval_missing_s2_and_clearance_seal(ctx):
             'code': 'pending', 'badge': 'მომზადების პროცესში — ანესთეზიის გეგმა შესაცვლელია!',
             'detail': 'არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია (ASRA 5th Ed) — შეცვალეთ გაუტკივარების მეთოდი.',
         }
-    elif q.get('filled_by') == 'პაციენტი (ბმულით)' and not q.get('nurse_verified') and not patient.approved_at:
+    elif is_self_filled and not q.get('nurse_verified'):
         ctx.clearance_seal = {
             'code': 'pending', 'badge': 'მომზადების პროცესში — სავალდებულოა ექთნის ვერიფიკაცია!',
-            'detail': 'კითხვარი შევსებულია პაციენტის ბმულით; დაშვებამდე სავალდებულოა ექთნის მიერ გადამოწმება ან ქირურგის დასტური.',
+            'detail': 'კითხვარი შევსებულია პაციენტის ბმულით; დაშვებამდე სავალდებულოა ექთნის მიერ გადამოწმება.',
         }
     elif ctx.has_blocking_unknown_state:
         ctx.clearance_seal = {
@@ -348,7 +349,7 @@ def _build_surgical_brief(ctx):
             liver_arg = ' (ღვიძლის ≥3x-ზე არგატრობანის დოზა მცირდება 75%-ით!)' if ctx.liver_3x else ''
             heparin_plan = f'HIT ანამნეზში! UFH, LMWH, ფონდაპარინუქსი და DOAC (CrCl/eGFR <30 / დიალიზი) კატეგორიულად აკრძალულია → ინტრაოპ./პოსტოპ. ბივალირუდინი ან არგატრობანი{liver_arg}!'
         elif ctx.liver_3x:
-            heparin_plan = 'HIT ანამნეზში + ღვიძლის ≥3x დაზიანება! UFH, LMWH და DOAC აკრძალულია → უპირატესია ბივალირუდინი (არგატრობანის დოზა მცირდება 75%-ით!); პოსტოპ. ფონდაპარინუქსი (CrCl ≥30)!'
+            heparin_plan = 'HIT ანამნეზში + ღვიძლის ≥3x დაზიანება! UFH, LMWH, DOAC და ფონდაპარინუქსი არარეკომენდებულია → უპირატესია ბივალირუდინი (არგატრობანის დოზა მცირდება 75%-ით!) და პოსტოპ. IPC / IV ბივალირუდინი!'
         else:
             heparin_plan = 'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH კატეგორიულად აკრძალულია → ბივალირუდინი ან არგატრობანი (პოსტოპ. ფონდაპარინუქსი/DOAC CrCl ≥30-ზე)!'
     elif pathway == PreopPatient.Pathway.CEA and (s.get('brain_imaging') == 'large_or_hemorrhage' or getattr(ctx, 'active_thrombolysis_window', False)):
@@ -435,7 +436,7 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
                 neuraxial_blockers.append('ASRA წამლის შეჩერების ინტერვალი დასადასტურებელია')
         neuraxial_gate = (
             'საყურადღებო/შეზღუდულია (ASRA 5th Ed): ' + ', '.join(neuraxial_blockers) + vka_inr_caution + asra_ufh_note
-            if neuraxial_blockers else
+            if (neuraxial_blockers or ctx.neuraxial_hard_blocked) else
             f'ASRA 5th Ed კრიტერიუმები დაცულია (INR {ctx.eff_inr_nx}, PLT {ctx.plt}) ✓{vka_inr_caution}{asra_ufh_note}'
         )
     elif ctx.auto_spinal_candidate and ctx.hard_nx_reasons:

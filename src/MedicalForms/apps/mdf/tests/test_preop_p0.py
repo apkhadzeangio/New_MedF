@@ -46,7 +46,8 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
             'med_chips': ['statin'], 'mets_ok': '1',
         })
         self.client.post(reverse('preop-patient', args=[cea.pk]), {
-            'section': 'stage1', 'labs_date': today.isoformat(), 'spo2': '98',
+            'section': 'stage1', 'labs_date': today.isoformat(),
+            'bp_sys': '130', 'bp_dia': '78', 'hr': '70', 'spo2': '98',
             'hb': '142', 'creat': '84', 'inr': '1.0', 'urine_wbc': '1',
             'carotid_r': '85', 'carotid_l': '30',
             'cea_cta_status': 'concordant', 'brain_imaging': 'normal_small',
@@ -279,7 +280,7 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
         # 1. Unit guards (Track A3): Hb 29 stays 29 g/L, 13.4 -> 134 g/L; Glucose 34 stays 34.0 mmol/L HHS, 40 mg/dL -> 2.2 mmol/L hypo, 180 -> 10.0
         self.assertEqual(normalize_hb_gl(29), 29.0)
         self.assertEqual(normalize_hb_gl(13.4), 134.0)
-        self.assertEqual((normalize_glucose_mmol(34), normalize_glucose_mmol(40)), (34.0, 2.2))
+        self.assertEqual((normalize_glucose_mmol(34), normalize_glucose_mmol(40)), (34.0, 2.22))
         self.assertEqual(normalize_glucose_mmol(180), 10.0)
         self.assertIsNone(calc_egfr(90, None, 'M'))
 
@@ -354,6 +355,7 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
         })
         self.client.post(reverse('preop-patient', args=[ven.pk]), {
             'section': 'stage1', 'labs_date': today.isoformat(),
+            'bp_sys': '128', 'bp_dia': '78', 'hr': '72', 'spo2': '98',
             'hb': '130', 'plt': '230', 'inr': '1.0', 'glucose': '6.1',
             'ven_duplex_status': 'deep_patent_reflux', 'ecg': 'normal',
         })

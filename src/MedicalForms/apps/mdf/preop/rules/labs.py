@@ -15,7 +15,7 @@ def _parse_wbc(raw):
 
 def _parse_plt(raw):
     val = _num(raw, lo=1, hi=2000000)
-    if val is not None and val >= 1000:
+    if val is not None and val >= 3000:
         val = int(round(val / 1000.0))
     return _int(val, lo=1, hi=2500) if val is not None else None
 
@@ -67,7 +67,7 @@ def eval_vitals_bp(ctx):
             )
         else:
             ctx.red_flags.append(f'მაღალი არტერიული წნევა ({eff_sys or "?"}/{eff_dia or "?"} mmHg >= 180/110) — საჭიროა კორექცია ოპერაციამდე.')
-    elif pathway == PreopPatient.Pathway.CEA and eff_dia and eff_dia > 90:
+    elif pathway == PreopPatient.Pathway.CEA and eff_dia and eff_dia > htn_cfg['cea_dia_amber']:
         ctx.amber_flags.append(
             f'მომატებული არტერიული წნევა CEA-ზე ({eff_sys or "?"}/{eff_dia} mmHg > 180/90 — ESVS 2023 Class IIa/C) — '
             'ცერებრული ჰიპერპერფუზიისა და კისრის ჰემატომის პრევენციისთვის საჭიროა კორექცია ოპერაციამდე.'
@@ -85,16 +85,14 @@ def eval_vitals_bp(ctx):
         ctx.amber_flags.append(f'მომატებული არტერიული წნევა ({eff_sys or "?"}/{eff_dia or "?"} mmHg) — სასურველია ამბულატორიული კორექცია (ESC 2022: სტადია 2 ჰიპერტენზია <180/110 ოპერაციას არ აყოვნებს).')
 
     if shock_index is not None and shock_index >= hypo_cfg['shock_idx']:
-        ctx.red_flags.append(
-            f'შოკის ინდექსი მომატებულია (HR/SBP = {shock_index} >= 1.0) — ფარული ჰიპოვოლემიის / სისხლდენის / სეფსისის რისკი! სასწრაფოდ შეფასდეს ჰემოდინამიკა!'
-        )
+        ctx.red_flags.append(f'შოკის ინდექსი მომატებულია (HR/SBP = {shock_index} >= 1.0) — ფარული ჰიპოვოლემიის / სისხლდენის / სეფსისის რისკი! სასწრაფოდ შეფასდეს ჰემოდინამიკა!')
     if eff_sys is not None and eff_dia is not None and 0 < (eff_sys - eff_dia) < hypo_cfg['narrow_pp']:
-        ctx.amber_flags.append(
-            f'ვიწრო პულსური წნევა ({eff_sys - eff_dia} mmHg < 20 mmHg) — გამოირიცხოს ჰიპოვოლემია, აორტის სტენოზი ან დაბალი განდევნა.'
-        )
+        ctx.amber_flags.append(f'ვიწრო პულსური წნევა ({eff_sys - eff_dia} mmHg < 20 mmHg) — გამოირიცხოს ჰიპოვოლემია, აორტის სტენოზი ან დაბალი განდევნა.')
 
+    is_afib_tachy = ((s.get('ecg') or 'pending') == 'afib_controlled') and bool(hr and hr > hr_cfg['hr_hi'])
     if hr and (hr > hr_cfg['hr_hi'] or hr < hr_cfg['hr_lo']):
-        ctx.red_flags.append(f'პულსის კრიტიკული ცვლილება (HR {hr}/წთ) — საჭიროა ეკგ და კარდიოლოგის შეფასება.')
+        if not is_afib_tachy:
+            ctx.red_flags.append(f'პულსის კრიტიკული ცვლილება (HR {hr}/წთ) — საჭიროა ეკგ და კარდიოლოგის შეფასება.')
     elif s.get('irregular_hr'):
         if ctx.cardio_cleared:
             ctx.amber_flags.append(f'არარეგულარული რიტმი (HR {hr or "?"}/წთ) — შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
@@ -133,7 +131,8 @@ def _eval_early_neuraxial_gate(ctx):
     plt = _parse_plt(s.get('plt'))
     inr = _num(s.get('inr'), lo=0.4, hi=20.0)
     dos_inr_early = _num(s.get('dos_inr'), lo=0.5, hi=15)
-    eff_inr_nx = dos_inr_early if dos_inr_early is not None else inr
+    dos_inr_present = s.get('dos_inr') is not None and str(s.get('dos_inr')).strip() != ''
+    eff_inr_nx = dos_inr_early if dos_inr_present else inr
     fib = normalize_fibrinogen_gl(s.get('fibrinogen'))
     on_oral_anticoag = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
     ctx.plt, ctx.inr, ctx.eff_inr_nx, ctx.fib, ctx.on_oral_anticoag = plt, inr, eff_inr_nx, fib, on_oral_anticoag
@@ -146,8 +145,17 @@ def _eval_early_neuraxial_gate(ctx):
         or (ctx.is_pta and not q.get('med_prasugrel'))
         or (ctx.is_symp_cea and not q.get('med_prasugrel'))
     )
-    prewashout_vka = bool(q.get('med_warfarin') and dos_inr_early is None)
+    prewashout_vka = bool(q.get('med_warfarin') and not dos_inr_present)
     hard_nx_reasons = []
+    inv_in = s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {}
+    if (dos_inr_present and dos_inr_early is None) or ('dos_inr' in inv_in and dos_inr_early is None):
+        hard_nx_reasons.append('ოპერაციის დილის INR დაუშვებელია')
+    elif not dos_inr_present and ((s.get('inr') is not None and str(s.get('inr')).strip() != '') or 'inr' in inv_in) and inr is None:
+        hard_nx_reasons.append('INR დაუშვებელია')
+    if ((s.get('plt') is not None and str(s.get('plt')).strip() != '') or 'plt' in inv_in) and plt is None:
+        hard_nx_reasons.append('PLT დაუშვებელია')
+    if ((s.get('fibrinogen') is not None and str(s.get('fibrinogen')).strip() != '') or 'fibrinogen' in inv_in) and fib is None:
+        hard_nx_reasons.append('ფიბრინოგენი დაუშვებელია')
     if plt is not None and plt < asra_cfg['plt_min']:
         hard_nx_reasons.append(f'PLT {plt} < 100')
     if eff_inr_nx is not None and eff_inr_nx > asra_cfg['inr_max']:
@@ -189,7 +197,7 @@ def _eval_early_neuraxial_gate(ctx):
     ctx.neuraxial_hard_blocked = bool(ctx.explicit_neuraxial and (hard_nx_reasons or solo_neuraxial_anatomic_mismatch))
     if ctx.neuraxial_hard_blocked and not solo_neuraxial_anatomic_mismatch:
         ctx.red_flags.append(
-            f"არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია ({', '.join(hard_nx_reasons)}) — შეცვალეთ ანესთეზიის გეგმა (ASRA 5th Ed)!"
+            f"არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია ({', '.join(hard_nx_reasons)}) — სპინალური ჰემატომის უმაღლესი რისკი! შეცვალეთ ანესთეზიის გეგმა (ASRA 5th Ed)!"
         )
 
 
@@ -260,10 +268,11 @@ def eval_hematology_coag(ctx):
         and eff_inr and eff_inr <= coag_cfg['inr_evla']
         and not s.get('aptt_prolonged') and (fib is None or fib >= coag_cfg['fib_low'])
     )
+    fib_mild_low = (fib is not None and coag_cfg['fib_sev'] <= fib < coag_cfg['fib_low'])
     if evla_vka_ok:
         if eff_inr > coag_cfg['inr_red']:
             ctx.amber_flags.append(f'INR {eff_inr} ვარფარინის ფონზე — EVLA-ს წინ დააზუსტეთ ქირურგთან (ESVS 2022-ით მოხსნა აუცილებელი არ არის, თუ INR <= 3.0).')
-    elif (eff_inr and eff_inr > coag_cfg['inr_red']) or s.get('aptt_prolonged') or (fib is not None and fib < coag_cfg['fib_low']):
+    elif (eff_inr and eff_inr > coag_cfg['inr_red']) or s.get('aptt_prolonged') or fib_mild_low:
         ctx.red_flags.append('კოაგულოგრამის დარღვევა (INR > 1.35 / გახანგრძლივებული APTT / დაბალი ფიბრინოგენი) — აცნობეთ ქირურგს!')
 
 
@@ -523,6 +532,11 @@ def eval_infection_stale_labs(ctx):
             'action': f'სტომატოლოგის სანაცია (წერილობითი ცნობა) + {antiseptic_lbl}',
             'done': bool(s.get('dental_sanitation_done')),
         })
+        if not s.get('dental_sanitation_done'):
+            ctx.red_flags.append(
+                'აქტიური სტომატოლოგიური ინფექციური კერა სინთეზური პროთეზის/პატჩის ჩადგმამდე — '
+                'პროთეზის ინფიცირების მაღალი რისკი, სავალდებულოა სტომატოლოგის სანაცია!'
+            )
     if has_synthetic_implant and not ctx.is_rupture_suspect:
         shower_antiseptic = 'პოვიდონ-იოდის შხაპი (ქლორჰექსიდინზე ალერგია!)' if 'latex_chlorhex' in ctx.allergy_chips else 'ქლორჰექსიდინის ანტისეპტიკური შხაპი'
         ctx.reflex_orders.append({
@@ -610,20 +624,20 @@ def eval_carotid_gastro(ctx):
     gastro_res = s.get('gastro_result') or 'pending'
     if ctx.is_venous or ctx.is_pta:
         needs_gastro = (
-            (q_filled and bool(q.get('ulcer_active_symp')))
+            bool(q.get('ulcer_active_symp'))
             or ((q_filled and bool(q.get('ulcer'))) and (ctx.hb_gl is not None and ctx.hb_gl < 100) and not ctx.is_urgent_case and not ctx.on_dialysis)
             or gastro_res != 'pending'
         )
     else:
         needs_gastro = (
-            (q_filled and bool(q.get('ulcer_active_symp')))
+            bool(q.get('ulcer_active_symp'))
             or ((ctx.hb_gl is not None and ctx.hb_gl < 100) and not ctx.is_urgent_case and not ctx.on_dialysis)
             or gastro_res != 'pending'
         )
     ctx.gastro_res, ctx.needs_gastro = gastro_res, needs_gastro
     if needs_gastro and gastro_res == 'acute_ulcer':
         ctx.red_flags.append('გასტროსკოპიაზე მწვავე წყლული / ეროზიული გასტრიტი — აცნობეთ ქირურგს.')
-    elif q_filled and q.get('ulcer_active_symp') and gastro_res == 'pending':
+    elif q.get('ulcer_active_symp') and gastro_res == 'pending':
         ctx.red_flags.append(
             'აქტიური გასტროინტესტინური სისხლდენის / მწვავე წყლულის სიმპტომები (ტკივილი/მელენა) — '
             'აუცილებელია ეგდს, PPI გასტროპროტექცია და ქირურგის შეფასება!'

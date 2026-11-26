@@ -105,6 +105,8 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
         sf_p.refresh_from_db()
         self.assertEqual(merged_studies(sf_p)['person_id'], '01000000002')
         self.assertIsNotNone(sf_p.age)
+        self.assertIn('მსუბუქი საუზმე დაშვებულია', evaluate(sf_p)['fasting_instruction'])
+        sf_p.studies = {'anesthesia_plan': 'sedation'}
         self.assertIn('6 საათით ადრე', evaluate(sf_p)['fasting_instruction'])
 
     def test_p2_2_structured_anesthesiology_cabinet_asa_mallampati_stop_bang_cied_and_waiting_guard(self):
@@ -139,7 +141,8 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
             'weight_kg': '112', 'height_cm': '174',
         })
         self.client.post(reverse('preop-patient', args=[cea.pk]), {
-            'section': 'stage1', 'labs_date': today.isoformat(), 'spo2': '97',
+            'section': 'stage1', 'labs_date': today.isoformat(),
+            'bp_sys': '132', 'bp_dia': '78', 'hr': '72', 'spo2': '97',
             'weight_kg': '112', 'height_cm': '174',
             'hb': '142', 'plt': '230', 'inr': '1.02', 'creat': '88', 'urine_wbc': '2',
             'carotid_r': '85', 'carotid_l': '30',

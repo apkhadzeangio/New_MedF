@@ -223,6 +223,9 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                     patient.approved_at = None
                     patient.approved_by = None
                     uf.extend(['approved_at', 'approved_by'])
+                    if patient.someday_list == PreopPatient.SomedayList.READY:
+                        patient.someday_list = PreopPatient.SomedayList.CONF
+                        uf.append('someday_list')
             s['planned_surgery_date'] = new_dt.isoformat()
             patient.studies = s
             ev_new = evaluate(patient)

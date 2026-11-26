@@ -46,7 +46,7 @@
                     </div>
                     {% endif %}
 
-                    {% if ev.pbm_iv_iron_indicated and not ev.is_urgent_case %}
+                    {% if ev.pbm_iron_required %}
                     <div class="po-task-row reflex-row {% if s.pbm_iv_iron_done %}done{% endif %}">
                         <span><strong>PBM (ESAIC / ESVS) — რკინადეფიციტური ანემია:</strong> გეგმურ ოპერაციამდე ინტრავენური რკინის ინფუზია (IV Iron — ფერიტინი &lt;30 ან TSAT &lt;20%)</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="pbm_iv_iron_done" value="1" {% if s.pbm_iv_iron_done %}checked{% endif %}>IV რკინა ჩატარდა/დაიგეგმა ✓</label>
@@ -85,7 +85,7 @@
 
                     {% if ev.needs_hydration %}
                     <div class="po-task-row reflex-row {% if s.hydration_planned %}done{% endif %}">
-                        <span><strong>კონტრასტ-ნეფროპროტექცია (CrCl/eGFR {{ ev.eff_renal|default:ev.egfr }} &lt; 60):</strong> {% if s.na is not None and s.na >= 150 %}<span class="text-danger fw-bold">ჰიპერნატრიემია (Na⁺ {{ s.na }}) — 0.9% NaCl აკრძალულია; ჰიპოტონური ხსნარი ინტენსივისტთან (ΔNa⁺ &le;8/24სთ)</span>{% else %}იზოტონური ჰიდრატაცია (0.9% NaCl) ჩარევის წინ და შემდეგ{% endif %}{% if ev.max_contrast_ml is not None %} · მაქს. კონტრასტი &le; {{ ev.max_contrast_ml }} მლ{% endif %}</span>
+                        <span><strong>კონტრასტ-ნეფროპროტექცია (CrCl/eGFR {{ ev.eff_renal|default:ev.egfr }} &lt; 60):</strong> {% if s.na is not None and s.na >= 150 %}<span class="text-danger fw-bold">ჰიპერნატრიემია (Na⁺ {{ s.na }}) — 0.9% NaCl აკრძალულია; ჰიპოტონური ხსნარი ინტენსივისტთან (ΔNa⁺ &le;8/24სთ)</span>{% elif ev.chf_hyd_flag %}<span class="text-danger fw-bold">შეზღუდული ჰიდრატაცია (0.5 მლ/კგ/სთ — HFrEF სითხით გადატვირთვის რისკი!)</span>{% else %}იზოტონური ჰიდრატაცია (0.9% NaCl) ჩარევის წინ და შემდეგ{% endif %}{% if ev.max_contrast_ml is not None %} · მაქს. კონტრასტი &le; {{ ev.max_contrast_ml }} მლ{% endif %}</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="hydration_planned" value="1" {% if s.hydration_planned %}checked{% endif %}>დაგეგმილია ✓</label>
                     </div>
                     {% endif %}
@@ -125,7 +125,7 @@
 
                     {% if ev.needs_tbi_check %}
                     <div class="po-task-row reflex-row {% if ev.tbi_measured %}done{% endif %}">
-                        <span><strong>რეფლექს-დოპლერი (ABI {{ ev.max_abi }} &gt; 1.40 — არაკომპრესირებადი):</strong> სამიზნე კიდურზე თითის წნევა (Toe Pressure, mmHg) ან TBI{% if ev.is_venous %} <small class="text-muted">(კომპრესიამდე TP &ge; 60 ან TBI &ge; 0.70)</small>{% endif %}</span>
+                        <span><strong>რეფლექს-დოპლერი ({% if ev.abi_non_compressible %}ABI {{ ev.max_abi }} &gt; 1.40 — არაკომპრესირებადი{% else %}დიაბეტი / დიალიზი + CLTI{% endif %}):</strong> სამიზნე კიდურზე თითის წნევა (Toe Pressure, mmHg) ან TBI{% if ev.is_venous %} <small class="text-muted">(კომპრესიამდე TP &ge; 60 ან TBI &ge; 0.70)</small>{% endif %}</span>
                         <div class="d-flex flex-wrap align-items-center gap-1">
                             <span class="small">TP R/L:</span>
                             <input type="number" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="R mmHg" min="0" max="400" class="form-control form-control-sm" style="width:78px">
@@ -151,7 +151,7 @@
 
                     {% if ev.pathway == 'cea' and ev.needs_cea_antiplatelet %}
                     <div class="po-task-row reflex-row {% if s.cea_antiplatelet_started %}done{% endif %}">
-                        <span><strong>ESVS 2023 Class I — CEA ანტიაგრეგანტი:</strong> თავის ტვინის CT-ით სისხლჩაქცევის გამორიცხვის შემდეგ დაწყებულია ასპირინი (± კლოპიდოგრელი)</span>
+                        <span><strong>ESVS 2023 Class I — CEA ანტიაგრეგანტი:</strong> თავის ტვინის CT-ით სისხლჩაქცევის გამორიცხვის შემდეგ დაწყებულია {% if 'clopidogrel_intol' in ev.eff_allergy_chips %}ასპირინი (კლოპიდოგრელზე აუტანლობა!){% else %}ასპირინი (± კლოპიდოგრელი){% endif %}</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="cea_antiplatelet_started" value="1" {% if s.cea_antiplatelet_started %}checked{% endif %}>დაწყებულია ✓</label>
                     </div>
                     {% endif %}
@@ -175,9 +175,9 @@
                     </div>
                     {% endif %}
 
-                    {% if ev.is_venous and ev.min_abi is None or ev.is_venous and ev.min_abi >= 0.8 %}
-                    <div class="po-task-row {% if s.compression_ready and not ev.abi_non_compressible or s.compression_ready and ev.tbi_comp_safe %}done{% endif %}">
-                        <span><strong>2 კლასის კომპრესიული ტრიკოტაჟი (წინდა / გეტრი, 20–30 mmHg)</strong> <small class="text-muted">({% if ev.abi_non_compressible %}სავალდებულოა სამიზნე კიდურზე TP &ge; 60 ან TBI &ge; 0.70!{% else %}ზომის შერჩევა ჩარევამდე{% endif %})</small></span>
+                    {% if ev.is_venous and not ev.compression_contra %}
+                    <div class="po-task-row {% if s.compression_ready and not ev.abi_non_compressible or s.compression_ready and ev.tbi_comp_safe or s.compression_ready and ev.tbi_reduced_comp %}done{% endif %}">
+                        <span><strong>{% if ev.tbi_reduced_comp %}მსუბუქი I კლასის კომპრესიული წინდა (&le;20 mmHg — სასაზღვრო TP/TBI){% else %}2 კლასის კომპრესიული ტრიკოტაჟი (წინდა / გეტრი, 20–30 mmHg){% endif %}</strong> <small class="text-muted">({% if ev.abi_non_compressible and not ev.tbi_reduced_comp %}სავალდებულოა სამიზნე კიდურზე TP &ge; 60 ან TBI &ge; 0.70!{% else %}ზომის შერჩევა ჩარევამდე{% endif %})</small></span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="compression_ready" value="1" {% if s.compression_ready %}checked{% endif %}>შერჩეულია / მზადაა ✓</label>
                     </div>
                     {% endif %}
@@ -186,9 +186,9 @@
                     <div class="po-task-row {% if s.dapt_ready %}done{% endif %}">
                         <span>
                             {% if ev.has_full_oac %}
-                            <strong>ანტითრომბოზული გეგმა OAC ფონზე: OAC + კლოპიდოგრელი (სამმაგი თერაპიის — OAC+ASA+P2Y12 — გარეშე!)</strong>
+                            <strong>ანტითრომბოზული გეგმა OAC ფონზე: {% if 'clopidogrel_intol' in ev.eff_allergy_chips %}OAC + ასპირინი (კლოპიდოგრელზე აუტანლობა — OAC + ტიკაგრელორი არა!){% else %}OAC + კლოპიდოგრელი (სამმაგი თერაპიის — OAC+ASA+P2Y12 — გარეშე!){% endif %}</strong>
                             {% else %}
-                            <strong>ორმაგი ანტიაგრეგანტული თერაპია — DAPT (ასპირინი + კლოპიდოგრელი / დატვირთვის დოზა)</strong>
+                            <strong>ორმაგი ანტიაგრეგანტული თერაპია — DAPT ({% if 'clopidogrel_intol' in ev.eff_allergy_chips %}ასპირინი + ტიკაგრელორი — კლოპიდოგრელზე აუტანლობა!{% else %}ასპირინი + კლოპიდოგრელი / დატვირთვის დოზა{% endif %})</strong>
                             {% endif %}
                         </span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="dapt_ready" value="1" {% if s.dapt_ready %}checked{% endif %}>დადასტურებულია / მზადაა ✓</label>
@@ -225,7 +225,7 @@
 
                     {% if ev.needs_ppi %}
                     <div class="po-task-row reflex-row {% if s.ppi_started %}done{% endif %}">
-                        <span><strong>ESC 2022 Class I — გასტროპროტექცია (PPI):</strong> ომეპრაზოლი / პანტოპრაზოლი წყლულის ანამნეზისა და ანტითრომბოზული თერაპიის ფონზე (რუტინული ეგდს-ის გარეშე)</span>
+                        <span><strong>ESC 2022 Class I — გასტროპროტექცია (PPI):</strong> {% if q.med_clopidogrel or 'cilostazol' in q.med_chips %}პანტოპრაზოლი 40 მგ (CYP2C19 უსაფრთხო — ომეპრაზოლი არა!){% else %}ომეპრაზოლი / პანტოპრაზოლი{% endif %} წყლულის ანამნეზისა და ანტითრომბოზული თერაპიის ფონზე (რუტინული ეგდს-ის გარეშე)</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="ppi_started" value="1" {% if s.ppi_started %}checked{% endif %}>PPI ჩართულია ✓</label>
                     </div>
                     {% endif %}

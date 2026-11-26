@@ -43,7 +43,6 @@ def _compute_score_completeness(ctx):
 
 def _collect_med_allergy_unknowns(ctx, add):
     patient, q, s = ctx.patient, ctx.q, ctx.s
-    is_lean_evla = ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.has_neuraxial_plan
     renal_oac = bool(q.get('med_doac') or q.get('med_dabigatran'))
     renal_other = bool(q.get('metformin') or 'rivaroxaban_2_5' in ctx.med_chips)
     if not ctx.on_dialysis and (renal_oac or renal_other) and (ctx.crcl is None or ctx.creat_unit_ambiguous):
@@ -59,8 +58,8 @@ def _collect_med_allergy_unknowns(ctx, add):
         add(
             'renal_drug_no_crcl', 's1', target_fld,
             f'წამლის დოზირებისთვის აკლია: {miss_txt}',
-            'თირკმელ-დამოკიდებულ პრეპარატზე (DOAC / დაბიგატრანი / მეტფორმინი) CrCl-ის გარეშე შეჩერების საათების ზუსტი გამოთვლა შეუძლებელია.',
-            blocking=bool((renal_oac and not is_lean_evla) or renal_other),
+            'თირკმელ-დამოკიდებულ პრეპარატზე (DOAC / დაბიგატრანი / მეტფორმინი) CrCl-ის გარეშე შეჩერების საათებისა და უკუჩვენებების გადამოწმება შეუძლებელია.',
+            blocking=True,
         )
 
     if ctx.unclarified_allergy_other:
@@ -97,7 +96,8 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
             'შეყვანილია ფიზიოლოგიურ დიაპაზონს გარეთა ან არასწორი ფორმატის მონაცემი — შეფასება ვერ დადასტურდება.',
             blocking=True,
         )
-    if any(s.get(k) is not None for k in _LAB_KEYS):
+    has_any_lab = any(s.get(k) is not None for k in _LAB_KEYS)
+    if has_any_lab:
         labs_dt = _date(s.get('labs_date'))
         if labs_dt is None or labs_dt > ctx.today:
             add(
@@ -106,7 +106,7 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
                 'შეყვანილია ლაბორატორიული შედეგები ვალიდური აღების თარიღის გარეშე — 14-დღიანი ვარგისიანობის გადამოწმება შეუძლებელია.',
                 blocking=True,
             )
-    if (not age_ok or patient.sex not in ('M', 'F')) and any(s.get(k) is not None for k in _LAB_KEYS):
+    if (not age_ok or patient.sex not in ('M', 'F')) and has_any_lab:
         add(
             'missing_demographics', 'header', 'age',
             'აკლია ან არასწორია ასაკი (12–120 წ.) / სქესი',
@@ -122,13 +122,29 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
                 'ლატერალიზებულ ოპერაციაზე მხარის (R / L) გარეშე შეუძლებელია იფსილატერალური სტენოზისა და ABI-ის გადამოწმება.',
                 blocking=True,
             )
-    if q_filled and not ctx.is_venous and any(s.get(k) is not None for k in _LAB_KEYS) and ctx.spo2 is None:
-        add(
-            'missing_core_vitals', 's1', 'spo2',
-            'აკლია საბაზისო სატურაცია (SpO2)',
-            'SpO2-ის გარეშე ფილტვის რისკი (ARISCAT) და ჰიპოქსემია ვერ ფასდება.',
-            blocking=True,
-        )
+    if q_filled and has_any_lab:
+        if not ctx.is_venous:
+            miss_v = []
+            if ctx.spo2 is None:
+                miss_v.append('SpO2')
+            if ctx.eff_sys is None or ctx.eff_dia is None:
+                miss_v.append('არტერიული წნევა (BP)')
+            if ctx.hr is None:
+                miss_v.append('პულსი (HR)')
+            if miss_v:
+                add(
+                    'missing_core_vitals', 's1', 'spo2' if ctx.spo2 is None else 'bp_sys',
+                    f'აკლია საბაზისო ვიტალური პარამეტრები ({", ".join(miss_v)})',
+                    'საბაზისო წნევის, პულსისა და SpO2-ის გარეშე ჰემოდინამიკური რისკი და ARISCAT სრულად ვერ ფასდება.',
+                    blocking=True,
+                )
+        elif ctx.eff_sys is None and ctx.eff_dia is None and ctx.hr is None and ctx.spo2 is None:
+            add(
+                'missing_core_vitals', 's1', 'bp_sys',
+                'აკლია საბაზისო ვიტალური პარამეტრები (BP / HR / SpO2)',
+                'მიღების საბაზისო ვიტალური პარამეტრების გარეშე ოპერაციაზე GO დაშვება არ გაიცემა.',
+                blocking=True,
+            )
 
 
 def eval_unknown_state_failsafe(ctx):
@@ -147,7 +163,12 @@ def eval_unknown_state_failsafe(ctx):
             'rule_id': 'WF_UNKNOWN_STATE_FAILSAFE',
         })
 
-    if q_filled and q.get('filled_by') == 'პაციენტი (ბმულით)' and not q.get('nurse_verified') and not patient.approved_at:
+    is_unverified_sf = (
+        q_filled
+        and (bool(q.get('self_fill_submitted')) or q.get('filled_by') == 'პაციენტი (ბმულით)')
+        and not q.get('nurse_verified')
+    )
+    if is_unverified_sf:
         add(
             'unverified_self_fill', 'q', 'btn-verify-self',
             'თვითშევსება გადაუმოწმებელია',
@@ -185,18 +206,17 @@ def eval_unknown_state_failsafe(ctx):
         and not s.get('dos_bhcg_negative')
     )
     if repro_female_risk:
-        is_fluoro = (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)) or ctx.is_pta
         add(
             'reproductive_pregnancy_unverified', 'dos', 'dos_bhcg_negative',
             'ორსულობის გამორიცხვა დაუზუსტებელია (12–55 წ. ქალი)',
-            'ფლუოროსკოპიულ (EVAR/PTA) ან ვენურ ჩარევაზე ოპერაციამდე საჭიროა ორსულობის სტატუსის დაზუსტება / β-hCG.',
-            blocking=is_fluoro,
+            'ფლუოროსკოპიულ (EVAR/PTA) ან ვენურ ჩარევაზე ოპერაციამდე სავალდებულოა ორსულობის სტატუსის დაზუსტება / β-hCG.',
+            blocking=True,
         )
 
     ctx.score_completeness = score_comp
     ctx.unknown_state_flags = flags
     ctx.has_blocking_unknown_state = any(item['blocking'] for item in flags)
-    if ctx.has_blocking_unknown_state:
+    if ctx.has_blocking_unknown_state or (ctx.needs_stale_labs and not s.get('stale_labs_refreshed')):
         if ctx.status == STATUS_READY:
             ctx.status = STATUS_PROGRESS
         ctx.dos_ready = False

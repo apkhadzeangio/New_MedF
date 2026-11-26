@@ -147,7 +147,7 @@ def self_fill_status_info(ev):
 
 
 def get_nurse_readiness_verdict(patient, ev):
-    """Single unmistakable 03:00 night-shift verdict: STOP / მზადაა ✓ / აკლია N პუნქტი."""
+    """Single unmistakable 03:00 night-shift verdict: STOP / ექიმის ნახვა / მზადაა ✓ / აკლია N პუნქტი."""
     seal_code = ev['clearance_seal']['code']
     open_tasks = [t for t in ev['tasks'] if not t['done']]
     missing_cnt = max(len(ev['missing_items']), len(open_tasks))
@@ -160,14 +160,29 @@ def get_nurse_readiness_verdict(patient, ev):
             'code': 'stop', 'badge': 'STOP — დაბლოკილია',
             'detail': reason, 'missing_cnt': missing_cnt, 'rank': 0,
         }
-    if ev.get('has_blocking_unknown_state') or ev.get('neuraxial_hard_blocked') or seal_code == 'pending':
-        blk = [u['label'] for u in (ev.get('unknown_state_flags') or []) if u.get('blocking')]
-        detail = ' · '.join(blk[:2]) if blk else ev['clearance_seal'].get('detail', 'შეფასება არასრულია')
+    if ev['status'] == STATUS_ALERT or ev.get('has_unacked_red'):
+        reason = ev['red_flags'][0] if ev['red_flags'] else 'საჭიროებს ექიმის შეფასებას'
+        return {
+            'code': 'alert', 'badge': 'საჭიროა ექიმის ნახვა',
+            'detail': reason, 'missing_cnt': max(1, missing_cnt), 'rank': 1,
+        }
+    if ev['status'] == STATUS_NO_Q and not ev.get('has_blocking_unknown_state'):
+        return {
+            'code': 'pending', 'badge': 'კითხვარი შესავსებია',
+            'detail': 'შეავსეთ კითხვარი ან გაუგზავნეთ ბმული პაციენტს',
+            'missing_cnt': max(1, missing_cnt), 'rank': 2,
+        }
+    if ev.get('has_blocking_unknown_state') or ev.get('neuraxial_hard_blocked') or ev.get('needs_stale_labs') or seal_code == 'pending':
+        miss_fields = {m.get('field') for m in ev['missing_items']}
+        blk_all = [u for u in (ev.get('unknown_state_flags') or []) if u.get('blocking')]
+        extra_blk = [u for u in blk_all if u.get('field') not in miss_fields]
+        detail = ' · '.join(u['label'] for u in blk_all[:2]) if blk_all else ev['clearance_seal'].get('detail', 'შეფასება არასრულია')
+        total_cnt = max(1, missing_cnt + len(extra_blk))
         return {
             'code': 'pending',
-            'badge': f'აკლია {max(1, missing_cnt + len(blk))} პუნქტი',
+            'badge': f'აკლია {total_cnt} პუნქტი',
             'detail': detail,
-            'missing_cnt': max(1, missing_cnt + len(blk)),
+            'missing_cnt': total_cnt,
             'rank': 2,
         }
     if ev['status'] == STATUS_READY:
@@ -175,18 +190,6 @@ def get_nurse_readiness_verdict(patient, ev):
         return {
             'code': 'ready', 'badge': 'მზადაა ✓',
             'detail': sub, 'missing_cnt': 0, 'rank': 3,
-        }
-    if ev['status'] == STATUS_ALERT:
-        reason = ev['red_flags'][0] if ev['red_flags'] else 'საჭიროებს ექიმის შეფასებას'
-        return {
-            'code': 'alert', 'badge': 'საჭიროა ექიმის ნახვა',
-            'detail': reason, 'missing_cnt': max(1, missing_cnt), 'rank': 1,
-        }
-    if ev['status'] == STATUS_NO_Q:
-        return {
-            'code': 'pending', 'badge': 'კითხვარი შესავსებია',
-            'detail': 'შეავსეთ კითხვარი ან გაუგზავნეთ ბმული პაციენტს',
-            'missing_cnt': max(1, missing_cnt), 'rank': 2,
         }
     top_missing = [m['label'] for m in ev['missing_items'][:2]] or [t['label'] for t in open_tasks[:2]]
     return {

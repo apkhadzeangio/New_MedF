@@ -46,7 +46,7 @@
                         <b>VTE {{ ev.caprini_score }} ქ.</b>
                         <span>{{ ev.caprini_tier }} · {{ ev.stop_bang_label }}</span>
                     </div>
-                    <div class="po-risk-tile {% if q.on_dialysis or ev.egfr is not None and ev.egfr < 30 %}tier-high{% elif ev.egfr is not None and ev.egfr < 60 or ev.frailty_notes %}tier-intermediate{% endif %}">
+                    <div class="po-risk-tile {% if q.on_dialysis or ev.eff_renal is not None and ev.eff_renal < 30 %}tier-high{% elif ev.eff_renal is not None and ev.eff_renal < 60 or ev.frailty_notes %}tier-intermediate{% endif %}">
                         <small>თირკმელი &amp; Frailty <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.renal }}" aria-label="კლინიკური წყარო" title="CKD-EPI / Cockcroft-Gault წყარო">ⓘ</button></small>
                         <b>{% if q.on_dialysis %}დიალიზი{% else %}eGFR {{ ev.egfr|default_if_none:"—" }}{% endif %}</b>
                         <span>{% if ev.crcl is not None %}CrCl {{ ev.crcl }} მლ/წთ{% elif ev.frailty_notes %}{{ ev.frailty_notes.0 }}{% else %}კვებითი ფონი სტაბ.{% endif %}</span>

@@ -59,7 +59,7 @@ def eval_pta(ctx):
                 'სიმპტომების ხანგრძლივობა < 2 კვირა — გამოირიცხოს მწვავე კიდურის იშემია (ALI, ESVS 2020)! '
                 'სასწრაფოდ აცნობეთ ქირურგს!'
             )
-        if not q.get('ic_bmt_3m') or q.get('abf_duration') in ('< 2 კვირა', '1–3 თვე'):
+        elif not q.get('ic_bmt_3m') or q.get('abf_duration') == '1–3 თვე':
             ctx.amber_flags.append(
                 'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
             )
@@ -75,7 +75,7 @@ def eval_pta(ctx):
     if q_filled and q.get('pta_cant_lie_flat'):
         ctx.amber_flags.append('პაციენტს უჭირს ზურგზე გაუნძრევლად წოლა 60–90 წთ — ავტომატურად ჩაირთო ანესთეზიოლოგი (სედაციისთვის).')
     if 'clopidogrel_intol' in ctx.allergy_chips:
-        has_oac_pta = bool(q_filled and (q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran')))
+        has_oac_pta = bool(q_filled and (q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran') or ('rivaroxaban_2_5' in ctx.med_chips)))
         alt_pta_txt = (
             'OAC + ასპირინი 75–100 მგ (OAC + ტიკაგრელორი ESC Class III სისხლდენის რისკის გამო არ ინიშნება!)'
             if has_oac_pta else 'ალტერნატიული P2Y12 (ტიკაგრელორი)'

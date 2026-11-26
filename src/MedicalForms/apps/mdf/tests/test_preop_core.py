@@ -537,6 +537,7 @@ class PreopVenousTests(PrivateMediaTest):
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage1',
             'labs_date': timezone.localdate().isoformat(),
+            'bp_sys': '118', 'bp_dia': '74', 'hr': '70', 'spo2': '99',
             'hb': '132', 'wbc': '6.4', 'plt': '245', 'inr': '1.01', 'glucose': '4.9',
             'ven_duplex_status': 'deep_patent_reflux',
             'ven_target_vein': 'gsv',
@@ -545,6 +546,9 @@ class PreopVenousTests(PrivateMediaTest):
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage2',
             'compression_ready': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'dos_vqi', 'dos_bhcg_negative': '1',
         })
         p.refresh_from_db()
         # Unverified patient self-fill cannot reach STATUS_READY until nurse confirms questionnaire
@@ -601,6 +605,7 @@ class PreopVenousTests(PrivateMediaTest):
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage1',
             'labs_date': timezone.localdate().isoformat(),
+            'bp_sys': '124', 'bp_dia': '78', 'hr': '74', 'spo2': '98',
             'weight_kg': '94', 'height_cm': '165',
             'hb': '128', 'plt': '220', 'inr': '1.05', 'glucose': '5.3', 'creat': '74',
             'ven_duplex_status': 'acute_dvt',
@@ -643,6 +648,7 @@ class PreopVenousTests(PrivateMediaTest):
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage1',
             'labs_date': timezone.localdate().isoformat(),
+            'bp_sys': '124', 'bp_dia': '78', 'hr': '74', 'spo2': '98',
             'weight_kg': '94', 'height_cm': '165',
             'hb': '128', 'plt': '220', 'inr': '1.05', 'glucose': '5.3', 'creat': '74',
             'ven_duplex_status': 'deep_patent_reflux',
@@ -655,6 +661,9 @@ class PreopVenousTests(PrivateMediaTest):
             'compression_ready': '1',
             'med_hold_agreed': '1',
             'anesth_done': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'dos_vqi', 'dos_bhcg_negative': '1',
         })
         p.refresh_from_db()
         self.assertEqual(evaluate(p)['status'], STATUS_READY)

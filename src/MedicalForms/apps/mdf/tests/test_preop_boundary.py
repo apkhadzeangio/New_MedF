@@ -347,7 +347,8 @@ class PreopBoundaryMutationTests(unittest.TestCase):
 
         ev_pain_t = pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='open', pathway='aaa_infra', questionnaire={'filled': True, 'aaa_pain': True}), today=D0)
         ev_pain_f = pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='open', pathway='aaa_infra', questionnaire={'filled': False, 'aaa_pain': True}), today=D0)
-        self.assertGreater(len(ev_pain_t['red_flags']), len(ev_pain_f['red_flags']))
+        self.assertTrue(any('სიმპტომური AAA' in rf for rf in ev_pain_t['red_flags']))
+        self.assertTrue(any('სიმპტომური AAA' in rf for rf in ev_pain_f['red_flags']))
 
         # Liver, iodine contrast premed, P2Y12 / triple AT / recent stent / mech valve
         ev_liv3 = pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='open', pathway='aaa_infra', questionnaire={'filled': True}, studies={'liver_status': '3x'}), today=D0)

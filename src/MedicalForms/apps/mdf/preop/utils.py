@@ -214,11 +214,23 @@ def prep_days_elapsed(patient, today=None):
     return max(1, raw_days)
 
 
+def is_pregnancy_eligible(patient):
+    """Return True if patient is biologically eligible for pregnancy (not male; if age known, 12..55)."""
+    if (patient.sex or '') == 'M':
+        return False
+    age_v = _int(patient.age, lo=1, hi=120)
+    if age_v is not None and not (12 <= age_v <= 55):
+        return False
+    return True
+
+
 def cea_live_days_since_event(q, today=None, s=None):
     """Compute elapsed days from cea_event_date (freezing at operated_date once operated), else static field."""
+    if not isinstance(q, dict):
+        return None
     if not q.get('cea_symp_event') and not q.get('cea_event_date') and q.get('cea_days_since_event') is None:
         return None
-    ref_day = today or timezone.localdate()
+    ref_day = _date(today) or timezone.localdate()
     if isinstance(s, dict) and s.get('case_outcome_status') == 'operated':
         op_dt = _date(s.get('operated_date'))
         if op_dt:
@@ -231,7 +243,9 @@ def cea_live_days_since_event(q, today=None, s=None):
 
 def cta_live_months_age(s, today=None):
     """Compute exact calendar-month CTA age from cta_date if present (rounding up once past exact anniversary), else static cta_months."""
-    today = today or timezone.localdate()
+    if not isinstance(s, dict):
+        return None
+    today = _date(today) or timezone.localdate()
     cta_dt = _date(s.get('cta_date'))
     if cta_dt and cta_dt <= today:
         months = (today.year - cta_dt.year) * 12 + (today.month - cta_dt.month)

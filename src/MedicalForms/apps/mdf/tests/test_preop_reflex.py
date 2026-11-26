@@ -52,7 +52,6 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
     def test_standing_reflex_orders_zero_text_chips_med_schedule_passport_and_consent(self):
         from ..preop import (
             STATUS_ALERT,
-            STATUS_PROGRESS,
             STATUS_READY,
             consent_url_for_preop,
             evaluate,
@@ -89,7 +88,8 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
         })
         p.refresh_from_db()
         self.assertTrue(evaluate(p)['needs_endo_reflex'])
-        self.assertEqual(evaluate(p)['status'], STATUS_PROGRESS)
+        # Unsanitized dental infection on EVAR implant keeps STATUS_ALERT until dental_sanitation_done
+        self.assertEqual(evaluate(p)['status'], STATUS_ALERT)
 
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage2', 'stale_labs_refreshed': '1', 'ferritin': '42',
@@ -202,7 +202,8 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
         from django.utils import timezone
         # Ipsilateral GSV is 2.3 mm (< 3.0 mm) -> automatically triggers contralateral/arm vein mapping!
         self.client.post(reverse('preop-patient', args=[byp.pk]), {
-            'section': 'stage1', 'labs_date': timezone.localdate().isoformat(), 'spo2': '98',
+            'section': 'stage1', 'labs_date': timezone.localdate().isoformat(),
+            'bp_sys': '132', 'bp_dia': '78', 'hr': '72', 'spo2': '98',
             'hb': '136', 'creat': '86', 'inr': '1.02', 'urine_wbc': '2',
             'abi_r': '0.34', 'abi_l': '0.88',
             'pad_runoff_status': 'tibial_single',
@@ -245,7 +246,8 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
         # Normal eGFR (creat 82) + pta_cant_lie_flat -> lean endovascular workup: no cardiology needed, sedation anesthesia triggered
         today_iso = timezone.localdate().isoformat()
         pta_s1 = {
-            'section': 'stage1', 'labs_date': today_iso, 'spo2': '98',
+            'section': 'stage1', 'labs_date': today_iso,
+            'bp_sys': '130', 'bp_dia': '78', 'hr': '72', 'spo2': '98',
             'hb': '138', 'plt': '230', 'inr': '1.01', 'glucose': '5.6', 'creat': '82',
             'abi_r': '0.96', 'abi_l': '0.54', 'pta_lesion_site': 'femoropopliteal',
             'pta_access_site': 'cfa_clean', 'ecg': 'normal',

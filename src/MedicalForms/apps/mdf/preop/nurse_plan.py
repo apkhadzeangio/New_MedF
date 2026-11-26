@@ -40,12 +40,15 @@ def build_plain_georgian_missing_items(patient, ev, today):
                 'target_section': 'nw-sec-doc', 'target_input': '', 'action_label': 'ქირურგის ნახვა',
             })
 
+    has_q_banner = False
     if not q.get('filled') or ev['status'] == STATUS_NO_Q:
+        has_q_banner = True
         items.append({
             'kind': 'q', 'label': 'შესავსებია პაციენტის წინასაოპერაციო კითხვარი (ან გაუგზავნეთ ბმული)',
             'target_section': 'nw-sec-q', 'target_input': '', 'action_label': 'კითხვარის გახსნა',
         })
-    elif q.get('self_fill_submitted') and not q.get('nurse_verified'):
+    elif (q.get('self_fill_submitted') or q.get('filled_by') == 'პაციენტი (ბმულით)') and not q.get('nurse_verified'):
+        has_q_banner = True
         items.append({
             'kind': 'q', 'label': 'პაციენტმა შეავსო კითხვარი — საჭიროა ექთნის გადამოწმება',
             'target_section': 'nw-sec-q', 'target_input': '', 'action_label': 'გადამოწმება',
@@ -53,11 +56,20 @@ def build_plain_georgian_missing_items(patient, ev, today):
 
     seen_s2 = set()
     for m in ev['missing_items']:
+        if m.get('tab') == 'q' and has_q_banner:
+            continue
         fld = m.get('field') or ''
         if m.get('tab') == 's2':
             seen_s2.add(fld or m.get('label'))
         inp_id = _FIELD_TO_INPUT_ID.get(fld, '')
-        sec = 'nw-vitals-card' if inp_id else ('nw-sec-s2' if m.get('tab') == 's2' else 'nw-vitals-card')
+        if m.get('tab') == 'q':
+            sec = 'nw-sec-q'
+        elif inp_id:
+            sec = 'nw-vitals-card'
+        elif m.get('tab') == 's2':
+            sec = 'nw-sec-s2'
+        else:
+            sec = 'nw-vitals-card'
         items.append({
             'kind': 'missing', 'label': f"აკლია: {m['label']}",
             'target_section': sec, 'target_input': inp_id, 'action_label': 'შევსება',
@@ -88,7 +100,8 @@ def build_plain_georgian_missing_items(patient, ev, today):
 def _spoken_med_phrase(row, op_ka):
     """Turn a technical med_schedule row into one clear spoken Georgian sentence for phone calls."""
     plan = (row.get('date_plan') or '').strip()
-    if not row.get('hold_or_skip') and row.get('tone') == 'ok':
+    has_skip_or_warn = any(k in plan for k in ('გამოტოვეთ', 'არ მიიღოთ', 'შეწყვიტ', 'შეჩერ', 'შეათანხმეთ', 'STOP'))
+    if not row.get('hold_or_skip') and row.get('tone') == 'ok' and not has_skip_or_warn:
         return f'არ შეწყვიტოს! მიიღოს ჩვეულებრივად{f" ({op_ka}-ის დილასაც ყლუპი წყლით)" if op_ka else ""}.'
     if plan:
         return plan.replace('ბოლო:', 'ბოლო აბი მიიღოს:').replace('არ მიიღოთ', 'აღარ მიიღოს')
@@ -106,11 +119,14 @@ def build_phone_med_script(patient, ev, today):
     stop_rows, keep_rows = [], []
     for row in ev['med_schedule']:
         plain_drug = _DRUG_PLAIN_PREFIX.get(row['drug'], row['drug'])
-        is_hold = bool(row.get('hold_or_skip'))
-        preserve_stop = bool(row.get('acute_hold') or row.get('contraindicated') or row.get('glp1_diet'))
+        plan = (row.get('date_plan') or '').strip()
+        is_skip_text = ('გამოტოვეთ' in plan) or ('არ მიიღოთ' in plan)
+        is_hold = bool(row.get('hold_or_skip')) or is_skip_text
+        is_urgent = bool(row.get('acute_hold') or row.get('contraindicated'))
+        is_red_deesc = bool(row.get('tone') == 'red' and ('დე-ესკალაცია' in plan or 'შეათანხმეთ' in plan or 'შეცვალეთ' in plan))
         spoken_txt = (
             'არ შეწყვიტოთ თვითნებურად — ოპერაცია შეჩერებულია (STOP)!'
-            if (stop_locked and is_hold and not preserve_stop)
+            if (stop_locked and is_hold and not is_urgent)
             else _spoken_med_phrase(row, op_ka)
         )
         entry = {
@@ -119,12 +135,11 @@ def build_phone_med_script(patient, ev, today):
             'spoken': spoken_txt,
             'rule': row['rule'],
             'tone': row['tone'],
-            'date_plan': row.get('date_plan') or '',
+            'date_plan': plan,
             'hold_or_skip': is_hold,
+            'urgent_contact': is_urgent or is_red_deesc,
         }
-        # Only rows that actually hold/skip/change (or contraindicated/unstructured) belong in stop_rows;
-        # red "DO NOT STOP!" rows (e.g. recent stent P2Y12) stay in keep_rows!
-        if is_hold or row.get('contraindicated') or row.get('unstructured'):
+        if is_hold or is_urgent or row.get('unstructured') or is_red_deesc:
             stop_rows.append(entry)
         else:
             keep_rows.append(entry)
@@ -190,7 +205,8 @@ def detect_postponement_impacts(patient, ev, today):
             'tone': 'danger',
             'text': f'სიმპტომური საძილე არტერიის (CEA) 14-დღიანი ფანჯარა ირღვევა (სიმპტომიდან იქნება {(cur_dt - cea_ev_dt).days} დღე) — აცნობეთ ქირურგს!',
         })
-    if ev.get('target_days', 14) <= 7 and patient.started_on and (cur_dt - patient.started_on).days > ev['target_days']:
+    started_dt = _date(patient.started_on)
+    if ev.get('target_days', 14) <= 7 and started_dt and (cur_dt - started_dt).days > ev['target_days']:
         impacts.append({
             'tone': 'warn',
             'text': f'ოპერაციის ახალი თარიღი ცდება {ev["target_days"]}-დღიან სამიზნე მომზადების ვადას — გადაამოწმეთ ქირურგთან.',
@@ -271,10 +287,13 @@ def build_patient_plain_explanation(patient, ev, today):
         arrival_items.append('წამოიღეთ თქვენი ყოველდღიური ინჰალატორი ან ძილის აპარატი (CPAP).')
 
     anesth_plan = s.get('anesthesia_plan') or 'auto'
+    lido_allergy = bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in (ev.get('eff_allergy_chips') or ()))
     is_local_evla = (
         patient.op_subtype == 'evla'
         and not ev.get('has_neuraxial_plan')
         and anesth_plan in ('auto', 'local')
+        and not lido_allergy
+        and not med_script['stop_locked']
     )
     if q.get('glp1'):
         fasting_plain = (
@@ -300,6 +319,7 @@ def build_patient_plain_explanation(patient, ev, today):
         'arrival_items': arrival_items,
         'fasting_plain': fasting_plain,
         'stop_meds': med_script['stop_rows'],
+        'urgent_meds': [r for r in med_script['stop_rows'] if r.get('urgent_contact')],
         'keep_meds': med_script['keep_rows'],
         'stop_locked': med_script['stop_locked'],
         'emergency_sign': _PATHWAY_EMERGENCY_SIGNS_KA.get(pw, 'უეცარი ძლიერი ტკივილი, სიცხე ან სუნთქვის გაძნელება — დაუყოვნებლივ დარეკეთ კლინიკაში.'),

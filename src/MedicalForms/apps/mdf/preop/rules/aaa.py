@@ -3,11 +3,11 @@ from ..registry import rule_value
 
 
 def _eval_aaa_anatomy(ctx, aaa_morph, aaa_neck, pop_scr):
-    patient, q, s, q_filled, aaa_mm = ctx.patient, ctx.q, ctx.s, ctx.q_filled, ctx.aaa_mm
+    patient, q, s, aaa_mm = ctx.patient, ctx.q, ctx.s, ctx.aaa_mm
     giant_mm = rule_value('AAA_GIANT_MM')
     young_age = rule_value('AAA_YOUNG_AGE_GENETIC')
 
-    if q_filled and q.get('aaa_pain'):
+    if q.get('aaa_pain'):
         ctx.red_flags.append(
             'საეჭვოა სიმპტომური AAA (ახალი ტკივილი მუცლის/წელის/გვერდის არეში) — '
             'გეგმური კვლევების ნაცვლად დაუყოვნებლივ აცნობეთ ქირურგს!'
@@ -41,7 +41,7 @@ def _eval_aaa_anatomy(ctx, aaa_morph, aaa_neck, pop_scr):
                     f'ESVS 2024: სწრაფი ზრდის დინამიკა (≥10 მმ/წ, {aaa_mm} მმ) — '
                     f'სტანდარტულ ზღვრამდე ({min_thresh} მმ) ჩარევამდე გადაამოწმეთ გაზომვა ჭეშმარიტი ზრდის დასადასტურებლად (Class IIa/C).'
                 )
-            elif aaa_morph != 'inflammatory_mycotic' and not (q_filled and q.get('aaa_pain')):
+            elif aaa_morph != 'inflammatory_mycotic' and not q.get('aaa_pain'):
                 ctx.red_flags.append(
                     f'ფუზიფორმული ანევრიზმის დიამეტრი ({aaa_mm} მმ) სტანდარტულ ზღვარზე (< {min_thresh} მმ) ნაკლებია '
                     '(ESVS 2024 Class III) — გეგმური ოპერაციული ჩვენება გადაამოწმეთ ქირურგთან!'

@@ -422,7 +422,7 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
     ('prasugrel', 'პრასუგრელი (ეფიენტი)', True, ('ეფიენტ', 'effient', 'efient', 'პრასუგრელ', 'prasugrel')),
     ('cilostazol', 'ცილოსტაზოლი (პლეტალი)', True, ('ცილოსტაზოლ', 'cilostazol', 'პლეტალ', 'pletal')),
     ('sglt2', 'SGLT2 ინჰიბიტორი (ჯარდიანსი / ფორსიგა / სტეგლატრო)', False, (
-        'ჯარდიანს', 'jardiance', 'ფორსიგ', 'forxiga', 'farxiga', 'სინჯარდ', 'synjardy',
+        'ჯარდიანს', 'jardiance', 'ფორსიგ', 'ფორქსიგ', 'forxiga', 'farxiga', 'სინჯარდ', 'synjardy',
         'ქსიგდუო', 'xigduo', 'ინვოკან', 'invokana', 'ემპაგლიფ', 'empaglif',
         'დაპაგლიფ', 'dapaglif', 'ერტუგლიფ', 'ertuglif', 'სტეგლატრ', 'steglatro', 'კანაგლიფ', 'canaglif',
     )),
@@ -439,6 +439,7 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
     )),
     ('metformin', 'მეტფორმინი (გლუკოფაჟი / სიოფორი)', False, (
         'მეტფორმინ', 'metformin', 'გლუკოფაჟ', 'glucophage', 'სიოფორ', 'siofor',
+        'სინჯარდ', 'synjardy', 'ქსიგდუო', 'xigduo', 'ვოკანამეტ', 'vokanamet', 'იანუმეტ', 'janumet',
     )),
     ('steroid', 'სტეროიდი (პრედნიზოლონი / მედროლი)', False, (
         'პრედნიზოლ', 'prednisol', 'მედროლ', 'medrol', 'მეთილპრედ', 'methylpred', 'დექსამეტაზ', 'dexamethas',

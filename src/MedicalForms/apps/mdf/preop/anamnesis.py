@@ -6,7 +6,7 @@ from .utils import _str_list, chip_summary
 
 def build_self_fill_highlights(q):
     """Extract concise positive findings reported by the patient via Self-Fill link for 5-second nurse reconciliation."""
-    if not q.get('filled'):
+    if not isinstance(q, dict) or not q.get('filled'):
         return []
     items = []
     if q.get('aaa_pain'):
@@ -79,15 +79,17 @@ def build_self_fill_highlights(q):
         meds.append('მეტფორმინი')
     if meds:
         items.append(('warn', 'მედიკამენტები: ' + ', '.join(meds)))
-    if (q.get('other_meds') or '').strip():
+    raw_other_meds = q.get('other_meds') if isinstance(q.get('other_meds'), str) else ''
+    if raw_other_meds.strip():
         from .meds import _detect_freetext_high_risk_meds
-        ft = _detect_freetext_high_risk_meds(q.get('other_meds') or '', q=q)
+        ft = _detect_freetext_high_risk_meds(raw_other_meds, q=q)
         lvl = 'urgent' if ft.get('unstructured_labels') else 'info'
-        items.append((lvl, f"სხვა წამალი: {q['other_meds']}"))
+        items.append((lvl, f'სხვა წამალი: {raw_other_meds}'))
     if q.get('allergy_iodine'):
         items.append(('urgent', 'ალერგია იოდზე / კონტრასტზე!'))
-    if q.get('allergy_other') or q.get('allergy_chips') or (q.get('allergy_text') or '').strip():
-        alg_txt = chip_summary(q.get('allergy_chips'), 'allergy_chips', q.get('allergy_text')) or 'მედიკამენტური ალერგია'
+    raw_alg_txt = q.get('allergy_text') if isinstance(q.get('allergy_text'), str) else ''
+    if q.get('allergy_other') or q.get('allergy_chips') or raw_alg_txt.strip():
+        alg_txt = chip_summary(q.get('allergy_chips'), 'allergy_chips', raw_alg_txt) or 'მედიკამენტური ალერგია'
         items.append(('urgent', f'ალერგია: {alg_txt}'))
     if q.get('smoker'):
         items.append(('info', 'მწეველი'))
@@ -353,19 +355,19 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
             c_det = '; '.join([x for x in ('კორონარული სტენტი <6 თვ.', c_det) if x])
         cad_head = 'გულის იშემიური დაავადება' if has_ihd_chip else 'კარდიოლოგიური პათოლოგია'
         comorb.append(f"{cad_head}{f' ({c_det})' if c_det else ''}")
-    if q.get('dm'):
+    if q.get('dm') or q.get('dm_insulin'):
         dm_kind = 'ინსულინზე' if q.get('dm_insulin') else 'ტაბლეტებზე'
         comorb.append(f'შაქრიანი დიაბეტი ({dm_kind})')
     if q.get('on_dialysis'):
         comorb.append('პროგრამული დიალიზი')
-    if q.get('pulm'):
+    if q.get('pulm') or q.get('pulm_chips'):
         p_det = chip_summary(q.get('pulm_chips'), 'pulm_chips', q.get('pulm_detail'))
         comorb.append(f"ფილტვების ქრ. დაავადება{f' ({p_det})' if p_det else ''}")
     if q.get('thyroid_disease'):
         comorb.append('ფარისებრი ჯირკვლის პათოლოგია')
     if q.get('neuro'):
         comorb.append('ანამნეზში ინსულტი/TIA')
-    if q.get('ulcer'):
+    if q.get('ulcer') or q.get('ulcer_active_symp'):
         comorb.append('წყლულოვანი დაავადება (აქტიური ჩივილით)' if q.get('ulcer_active_symp') else 'წყლულოვანი დაავადება ანამნეზში')
     if q.get('smoker'):
         comorb.append('თამბაქოს მწეველი')
@@ -387,7 +389,9 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
 
     allergies = []
     raw_alg_chips = list(q.get('allergy_chips') or [])
-    if q.get('ven_lidocaine_allergy') and 'lidocaine' not in raw_alg_chips:
+    alg_txt_low = (q.get('allergy_text') or '').lower()
+    lido_in_txt = any(st in alg_txt_low for st in ('ლიდოკაინ', 'lidocain', 'ნოვოკაინ'))
+    if q.get('ven_lidocaine_allergy') and 'lidocaine' not in raw_alg_chips and not lido_in_txt:
         allergies.append('ლიდოკაინი / ადგილობრივი ანესთეტიკი!')
     if q.get('allergy_iodine'):
         allergies.append('იოდი / კონტრასტი!')
@@ -438,6 +442,8 @@ def _anam_anesth_labs(pathway, ev, q, s):
         if s.get('bp_sys_l') and s.get('bp_dia_l'):
             bp_str += f" (L: {s['bp_sys_l']}/{s['bp_dia_l']})"
         lab_bits.append(f'{bp_str} mmHg')
+    elif s.get('bp_sys_l') and s.get('bp_dia_l'):
+        lab_bits.append(f"BP (L) {s['bp_sys_l']}/{s['bp_dia_l']} mmHg")
     if ev.get('bmi') is not None:
         lab_bits.append(f"BMI {ev['bmi']}")
     if ev['hb_gl'] is not None:

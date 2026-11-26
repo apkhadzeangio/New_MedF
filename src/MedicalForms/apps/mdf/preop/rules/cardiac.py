@@ -84,23 +84,15 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
     )
     cardio_non_compliant = False
     if ctx.cardio_decision in ('stress', 'cag', 'pci'):
-        if ctx.cardio_decision in ('cag', 'pci'):
-            cardio_non_compliant = not guideline_justifies_cag
-        else:
-            cardio_non_compliant = not guideline_justifies_extra_cardio
+        cardio_non_compliant = not (guideline_justifies_cag if ctx.cardio_decision in ('cag', 'pci') else guideline_justifies_extra_cardio)
         who_cardio = patient.cardiologist or 'კარდიოლოგი'
+        dec_disp = patient.get_cardio_decision_display()
+        verb_dec = dec_disp if dec_disp.startswith('მოითხოვა') else f'მოითხოვა {dec_disp}'
         audit_tag = ' [ESC 2022 Class III / CARP — დაბალი/სტაბილური რისკის პაციენტთან!]' if cardio_non_compliant else ''
-        ctx.red_flags.append(
-            f'კარდიოლოგმა ({who_cardio}) მოითხოვა {patient.get_cardio_decision_display()}{audit_tag} — '
-            'დაყოვნებამდე ან სტენტირებამდე სავალდებულოა ქირურგთან შეთანხმება!'
-        )
+        ctx.red_flags.append(f'კარდიოლოგმა ({who_cardio}) {verb_dec}{audit_tag} — დაყოვნებამდე ან სტენტირებამდე სავალდებულოა ქირურგთან შეთანხმება!')
 
-    ctx.guideline_justifies_extra_cardio = guideline_justifies_extra_cardio
-    ctx.cardio_non_compliant = cardio_non_compliant
-    ctx.needs_cardio = (
-        ctx.open_aortic or guideline_justifies_extra_cardio
-        or bool(s.get('irregular_hr')) or ctx.severe_htn or bool(ctx.cardio_decision)
-    )
+    ctx.guideline_justifies_extra_cardio, ctx.cardio_non_compliant = guideline_justifies_extra_cardio, cardio_non_compliant
+    ctx.needs_cardio = ctx.open_aortic or guideline_justifies_extra_cardio or bool(s.get('irregular_hr')) or ctx.severe_htn or bool(ctx.cardio_decision)
     ctx.needs_echo_or_bnp = ctx.open_aortic or guideline_justifies_extra_cardio
     mandatory_tte = bool(('hf' in ctx.cad_chips) or ctx.has_mech_valve or s.get('echo_valve_issue') or (nt_probnp is not None and nt_probnp >= cb['bnp_red']))
     ctx.cardiac_screen_done = (lvef is not None or (not mandatory_tte and nt_probnp is not None and nt_probnp < cb['bnp_amb']))
@@ -144,7 +136,7 @@ def _eval_stage1_completeness(ctx):
         ven_needs_inr = (not is_lean_evla) or ctx.on_oral_anticoag or (s.get('liver_status') in ('2x', '3x'))
         ven_needs_gl = (
             (not is_lean_evla)
-            or bool(q.get('dm') or q.get('dm_insulin'))
+            or bool(q.get('dm') or q.get('dm_insulin') or q.get('metformin') or q.get('sglt2') or q.get('glp1'))
             or (ctx.hba1c is not None and ctx.hba1c >= 6.5)
             or (ctx.bmi is not None and ctx.bmi >= 30)
             or ((ctx.age or 0) >= 45)
@@ -222,7 +214,12 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
         tasks.append({'key': 'nephro', 'label': n_lbl, 'done': bool(s.get('nephro_panel_done'))})
     if ctx.needs_hydration and not ctx.is_rupture_suspect:
         c_tag = f' (მაქს. კონტრასტი ≤ {ctx.max_contrast_ml} მლ)' if ctx.max_contrast_ml else ''
-        hyd_mode = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე!' if (ctx.na_val is not None and ctx.na_val >= 150) else 'იზოტონური ჰიდრატაცია'
+        if ctx.na_val is not None and ctx.na_val >= 150:
+            hyd_mode = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე!'
+        elif ctx.chf_hyd_flag:
+            hyd_mode = 'შეზღუდული ჰიდრატაცია (0.5 მლ/კგ/სთ — HFrEF!)'
+        else:
+            hyd_mode = 'იზოტონური ჰიდრატაცია'
         tasks.append({'key': 'hydration', 'label': f'კონტრასტ-ნეფროპროტექცია (CrCl/eGFR < 60): {hyd_mode}{c_tag}', 'done': bool(s.get('hydration_planned'))})
     if ctx.needs_tsh and not bypass_em:
         tasks.append({'key': 'tsh', 'label': 'რეფლექს-ანალიზი იოდის კონტრასტამდე: TSH და FT4', 'done': ctx.tsh_res != 'pending'})
@@ -260,7 +257,7 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         if 'mech_valve' in ctx.cad_chips:
             vte_lbl = 'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT!)' if has_hit else 'ვარფარინი (VKA) — DOAC აკრძალულია!'
         elif has_hit:
-            vte_lbl = 'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!)' if ven_severe_renal_t else ('ფონდაპარინუქსი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
+            vte_lbl = 'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!)' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
         elif ven_severe_renal_t or ctx.liver_3x:
             vte_lbl = 'კანქვეშა UFH / დოზა-კორექტირებული LMWH (DOAC არა!)'
         else:

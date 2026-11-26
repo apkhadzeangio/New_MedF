@@ -357,7 +357,7 @@ class StressPathwayAndContradictionTests(TestCase):
         # VEN-02 / PHARM-08 / CONTRA-7.3: Unanticoagulated EVLA dos_inr=2.9 must STOP; warfarin EVLA missing INR must warn
         ev_inr = evaluate(_go_patient('evla', q={'med_warfarin': False}, s={'dos_inr': 2.9, 'dos_identity_consent': True, 'dos_site_marked': True, 'dos_fasting_confirmed': True}), today=TODAY)
         self.assertEqual(ev_inr['clearance_seal']['code'], 'stop')
-        ev_wm = evaluate(_go_patient('evla', q={'med_warfarin': True}, s={'inr': None, 'dos_inr': None}), today=TODAY)
+        ev_wm = evaluate(_go_patient('evla', q={'med_warfarin': True}, s={'inr': None, 'dos_inr': None, 'dos_identity_consent': True}), today=TODAY)
         self.assertTrue(any('INR' in w for w in ev_wm['dos_warnings']))
 
         # VEN-05 / CONTRA-4.3: Lidocaine allergy on EVLA -> hard STOP and lidocaine_max_mg is None

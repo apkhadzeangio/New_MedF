@@ -69,18 +69,28 @@ def rule_meta(rule_id):
 
 
 def match_rule_for_text(text, domain_hint=None):
-    """Deterministically link an emitted alert/med/DoS message to its canonical RuleEntry."""
+    """Deterministically link an emitted alert/med/DoS message to its canonical RuleEntry.
+
+    Prefers the longest matching pattern so specific safety rules (e.g. mechanical valve
+    DOAC prohibition, HIT, OAC+ticagrelor conflict) are never shadowed by shorter generic
+    patterns (e.g. ``INR ``, ``თრომბოციტოპენია``, ``ვარფარინი``).
+    """
     if not text:
         return None
     haystack = str(text)
-    if domain_hint:
-        for entry in RULES:
-            if entry.domain == domain_hint and any(pat in haystack for pat in entry.match_patterns):
-                return entry
-    for entry in RULES:
-        if any(pat in haystack for pat in entry.match_patterns):
-            return entry
-    return None
+    best_entry = None
+    best_key = None
+    for idx, entry in enumerate(RULES):
+        max_len = 0
+        for pat in entry.match_patterns:
+            if pat in haystack and len(pat) > max_len:
+                max_len = len(pat)
+        if max_len:
+            key = (max_len, 1 if (domain_hint and entry.domain == domain_hint) else 0, -idx)
+            if best_key is None or key > best_key:
+                best_key = key
+                best_entry = entry
+    return best_entry
 
 
 def match_rule_for_reflex(reflex_key, fallback_text=''):
