@@ -208,3 +208,28 @@ def detect_postponement_impacts(patient, ev, today):
         'sig': f'{prev_dt.isoformat()}->{cur_dt.isoformat()}',
         'impacts': impacts,
     }
+
+
+def summarize_stage1_clinical_delta(ev_before, ev_after):
+    """Describe clinically meaningful recalculations after correcting vitals/labs (e.g. weight or creatinine)."""
+    notes = []
+    r_before = min([v for v in (ev_before.get('crcl'), ev_before.get('egfr')) if v is not None], default=None)
+    r_after = min([v for v in (ev_after.get('crcl'), ev_after.get('egfr')) if v is not None], default=None)
+    if r_before is not None and r_after is not None and r_before != r_after:
+        notes.append(f'თირკმლის გაფილტვრა გადაითვალა: {r_before} → {r_after} მლ/წთ')
+    elif r_before is None and r_after is not None:
+        notes.append(f'გამოითვალა თირკმლის გაფილტვრა: {r_after} მლ/წთ')
+
+    if med_schedule_signature(ev_before) != med_schedule_signature(ev_after):
+        changed_drugs = []
+        before_map = {r['drug']: (r.get('rule'), r.get('date_plan')) for r in ev_before['med_schedule']}
+        for r in ev_after['med_schedule']:
+            if before_map.get(r['drug']) != (r.get('rule'), r.get('date_plan')):
+                changed_drugs.append(r['drug'])
+        if changed_drugs:
+            notes.append(f'შეიცვალა წამლის შეჩერების სქემა ({", ".join(changed_drugs[:3])}) — გადაამოწმეთ დარეკვის ბარათი!')
+
+    if ev_before['clearance_seal']['code'] != ev_after['clearance_seal']['code']:
+        notes.append(f"ოპერაციაზე დაშვების სტატუსი შეიცვალა: {ev_after['clearance_seal']['label']}")
+    return notes
+

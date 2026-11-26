@@ -264,3 +264,69 @@ class PreopNurseWorkspaceB3Tests(TestCase):
         self.assertFalse(p_stop.studies.get('med_hold_agreed'))
         r_stop = self.client.get(reverse('preop-patient', args=[p_stop.pk]))
         self.assertContains(r_stop, 'STOP — წამლები არ შეწყვიტოთ!')
+
+
+class PreopNurseWorkspaceB4Tests(TestCase):
+    """Verify B4 edit-recalculation delta feedback, Auto-Draft banner hooks, and mobile WHO Sign-In."""
+
+    def setUp(self):
+        self.nurse = User.objects.create_user('nurse_b4', password='pw')
+        StaffProfile.objects.create(user=self.nurse, display_name='მარიამ ექთანი', preop_ui_mode=PREOP_UI_NEW)
+        self.client.force_login(self.nurse)
+
+    def test_correcting_weight_and_creatinine_surfaces_crcl_and_doac_hold_change(self):
+        today = timezone.localdate()
+        op_dt = (today + datetime.timedelta(days=8)).isoformat()
+        # Initially healthy 80kg, creat 80 umol -> CrCl >= 50 -> DOAC 48h hold
+        p = PreopPatient.objects.create(
+            patient_name='წონა კორექციაძე', age=78, sex='F', side='R',
+            pathway='pad_bypass', op_subtype='bypass_clti', visit_date=today,
+            questionnaire={'filled': True, 'med_doac': True, 'mets_ok': True},
+            studies={
+                'planned_surgery_date': op_dt, 'weight_kg': 80, 'height_cm': 160,
+                'creat': 80, 'creat_unit': 'umol', 'hb': 130, 'plt': 220, 'inr': 1.0,
+            },
+        )
+        # Mark called under 48h plan
+        self.client.post(reverse('preop-med-call', args=[p.pk]), {'action': 'called'})
+        p.refresh_from_db()
+        self.assertTrue(p.studies['med_hold_agreed'])
+
+        # Correct wrong weight (80 -> 48kg) & creatinine (80 -> 135 umol) -> CrCl drops <30 -> DOAC hold jumps to >=96h!
+        r_fix = self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'weight_kg': '48', 'height_cm': '160', 'creat': '135', 'creat_unit': 'umol',
+            'hb': '130', 'plt': '220', 'inr': '1.0',
+        }, follow=True)
+        p.refresh_from_db()
+        self.assertFalse(p.studies['med_hold_agreed'])
+        self.assertContains(r_fix, 'თირკმლის გაფილტვრა გადაითვალა')
+        self.assertContains(r_fix, 'შეიცვალა წამლის შეჩერების სქემა')
+
+    def test_mobile_who_sign_in_comma_vitals_and_autodraft_hooks(self):
+        today = timezone.localdate()
+        p = PreopPatient.objects.create(
+            patient_name='დილა ჩეკლისტაძე', age=64, sex='M', side='R',
+            pathway='venous', op_subtype='evla', visit_date=today,
+            questionnaire={'filled': True, 'nurse_verified': True, 'ven_ceap': 'C2', 'mets_ok': True},
+            studies={
+                'planned_surgery_date': today.isoformat(),
+                'hb': 138, 'plt': 230, 'glucose': 5.4,
+                'ven_duplex_status': 'deep_patent_reflux', 'compression_ready': True,
+            },
+        )
+        r_page = self.client.get(reverse('preop-patient', args=[p.pk]))
+        self.assertContains(r_page, 'id="nw-draft-banner"')
+        self.assertContains(r_page, 'id="nw-dos-form"')
+
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'dos_vqi', 'dos_form_present': '1', 'action': 'save_dos',
+            'dos_bp_sys': '126', 'dos_bp_dia': '78', 'dos_glucose': '5,6', 'dos_inr': '1,04',
+            'dos_identity_consent': '1', 'dos_site_marked': '1', 'dos_fasting_confirmed': '1',
+            'dos_med_hold_verified': '1', 'dos_abx_ready': '1', 'dos_blood_implant_ready': '1',
+        })
+        p.refresh_from_db()
+        self.assertEqual(p.studies['dos_glucose'], 5.6)
+        self.assertEqual(p.studies['dos_inr'], 1.04)
+        self.assertTrue(p.studies['dos_identity_consent'])
+        self.assertTrue(p.studies['dos_site_marked'])

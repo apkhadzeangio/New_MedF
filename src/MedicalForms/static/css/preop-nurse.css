@@ -727,3 +727,52 @@
 .nw-med-drug { font-size: 17px; font-weight: 800; color: #172033; }
 .nw-med-spoken { font-size: 16px; font-weight: 700; color: #1D2939; margin-top: 4px; }
 .nw-med-rule { font-size: 14px; color: #475467; margin-top: 4px; }
+
+/* ---- B4: Auto-Draft recovery banner & 1-hand >=54px WHO Sign-In toggles ---- */
+.nw-draft-banner {
+    border: 2px solid #F79009;
+    background: #FFFAEB;
+    color: #7A2E0E;
+}
+
+.nw-who-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1.5px solid #D0D5DD;
+    background: #fff;
+    cursor: pointer;
+    user-select: none;
+    transition: background .12s ease, border-color .12s ease;
+}
+
+.nw-who-row:has(input:checked),
+.nw-who-row.checked {
+    background: #ECFDF3;
+    border-color: #32D583;
+}
+
+.nw-who-cb {
+    width: 24px;
+    height: 24px;
+    flex: none;
+    accent-color: #047857;
+    cursor: pointer;
+}
+
+.nw-who-lbl {
+    flex: 1 1 auto;
+    font-size: 16px;
+    font-weight: 700;
+    color: #172033;
+}
+
+.nw-who-state {
+    flex: none;
+    font-size: 18px;
+    font-weight: 800;
+    color: #047857;
+}

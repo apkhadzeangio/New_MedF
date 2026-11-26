@@ -331,7 +331,25 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1')
 
             if section == 'stage1':
+                from .. import evaluate
+                from ..nurse_plan import summarize_stage1_clinical_delta
+                from ..nurse_ui import PREOP_UI_NEW, get_preop_ui_mode, med_schedule_signature
+
+                ev_before = evaluate(patient)
                 self._save_stage1(request, patient)
+                ev_after = evaluate(patient)
+                if patient.studies.get('nurse_med_called_sig') and patient.studies.get('nurse_med_called_sig') != med_schedule_signature(ev_after):
+                    s_sync = merged_studies(patient)
+                    s_sync['med_hold_agreed'] = False
+                    patient.studies = s_sync
+                    patient.save(update_fields=['studies', 'updated_at'])
+                if get_preop_ui_mode(request) == PREOP_UI_NEW:
+                    deltas = summarize_stage1_clinical_delta(ev_before, ev_after)
+                    if deltas:
+                        messages.warning(request, 'ვიტალები/ანალიზები შეინახა — განახლდა გამოთვლა: ' + ' · '.join(deltas))
+                    else:
+                        messages.success(request, 'ვიტალები და ანალიზები შეინახა.')
+                    return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-vitals-card')
                 messages.success(request, 'საფეხური 1-ის ანალიზები და კვლევები შეინახა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
 

@@ -28,6 +28,16 @@
         </div>
     </header>
 
+    <!-- B4: Interruption Auto-Draft Recovery Banner (populated by preop-nurse.js) -->
+    <section class="nw-card nw-draft-banner" id="nw-draft-banner" hidden role="status" aria-live="polite">
+        <div class="fw-bold mb-1">აღდგენილია შეუნახავი ცვლილებები — დააჭირეთ შენახვას!</div>
+        <div class="nw-meta-line mb-2" id="nw-draft-meta"></div>
+        <div class="nw-row-actions">
+            <button type="button" class="nw-btn primary" id="btn-draft-resume">დაბრუნება ბოლო ველზე</button>
+            <button type="button" class="nw-btn soft" id="btn-draft-discard">შეუნახავის გასუფთავება</button>
+        </div>
+    </section>
+
     <!-- 1-Glance Readiness Verdict & Plain-Georgian Risk Strip -->
     <section class="nw-card nw-verdict-card tone-{{ nw_verdict.code }}" id="nw-verdict-banner">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -357,12 +367,65 @@
         <div class="p-3">{% include "mdf/preop/_tab_s2.html" with tab="s2" %}</div>
     </details>
 
-    <details class="nw-section" id="nw-sec-dos" {% if tab == 'dos' %}open{% endif %}>
+    <!-- B4: 1-Hand Glove-Friendly Mobile WHO Sign-In (Operation Morning Gate) -->
+    <details class="nw-section" id="nw-sec-dos" {% if tab == 'dos' or nw_op_label == 'ოპერაცია: დღეს' or nw_op_label == 'ოპერაცია: ხვალ' %}open{% endif %}>
         <summary class="nw-section-head">
-            <h2 class="nw-section-title">ოპერაციის დილის შემოწმება (WHO Sign-In)</h2>
-            <span class="nw-count-pill {% if ev.dos_ready %}green{% else %}blue{% endif %}">{{ ev.dos_done_count }}/{{ ev.dos_total_count }}</span>
+            <h2 class="nw-section-title">ოპერაციის დილის შემოწმება (საოპერაციოში შეყვანამდე)</h2>
+            <span class="nw-count-pill {% if ev.dos_hold_danger %}red{% elif ev.dos_ready %}green{% else %}blue{% endif %}">{{ ev.dos_done_count }}/{{ ev.dos_total_count }}</span>
         </summary>
-        <div class="p-3">{% include "mdf/preop/_tab_dos.html" with tab="dos" %}</div>
+        <div class="p-3">
+            <form method="post" class="d-flex flex-column gap-3" id="nw-dos-form" data-nw-draft="dos">
+                {% csrf_token %}
+                <input type="hidden" name="section" value="dos_vqi">
+                <input type="hidden" name="dos_form_present" value="1">
+
+                {% if ev.dos_hold_danger %}
+                <div class="nw-banner danger m-0" role="alert">საოპერაციო შეჩერება (STOP) — საშიში დილის მაჩვენებელი!</div>
+                {% elif ev.dos_ready %}
+                <div class="nw-banner ok m-0">✓ ყველა პუნქტი დადასტურებულია — მზადაა საოპერაციოში შესაყვანად</div>
+                {% else %}
+                <div class="nw-banner warn m-0">მონიშნეთ ყველა პუნქტი და შეიყვანეთ დილის წნევა / გლუკოზა საოპერაციოში შეყვანამდე.</div>
+                {% endif %}
+
+                {% for item in dos_warning_items %}
+                <div class="nw-banner danger m-0">{{ item.text }}</div>
+                {% endfor %}
+
+                <div class="nw-field-grid">
+                    <div class="nw-field">
+                        <label for="nw-dos-sbp">დილის ზედა წნევა (SBP)</label>
+                        <input type="text" id="nw-dos-sbp" name="dos_bp_sys" inputmode="numeric" value="{{ s.dos_bp_sys|default_if_none:'' }}" placeholder="მაგ. 130">
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-dos-dbp">დილის ქვედა წნევა (DBP)</label>
+                        <input type="text" id="nw-dos-dbp" name="dos_bp_dia" inputmode="numeric" value="{{ s.dos_bp_dia|default_if_none:'' }}" placeholder="მაგ. 80">
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-dos-gl">დილის შაქარი (მმოლ/ლ)</label>
+                        <input type="text" id="nw-dos-gl" name="dos_glucose" inputmode="decimal" class="js-comma-num" value="{{ s.dos_glucose|default_if_none:'' }}" placeholder="მაგ. 5,8">
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-dos-inr">დილის INR (საჭიროებისას)</label>
+                        <input type="text" id="nw-dos-inr" name="dos_inr" inputmode="decimal" class="js-comma-num" value="{{ s.dos_inr|default_if_none:'' }}" placeholder="მაგ. 1,08">
+                    </div>
+                </div>
+
+                <div class="d-flex flex-column gap-2" role="group" aria-label="ოპერაციის დილის ჩეკლისტი">
+                    {% for dc in ev.dos_checks %}
+                    <label class="nw-who-row {% if dc.done %}checked{% endif %}">
+                        <input type="checkbox" name="{{ dc.key }}" value="1" {% if dc.done %}checked{% endif %} class="nw-who-cb">
+                        <span class="nw-who-lbl"><strong>{{ forloop.counter }}.</strong> {{ dc.label }}</span>
+                        <span class="nw-who-state">{% if dc.done %}✓{% else %}○{% endif %}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+
+                <div class="nw-row-actions">
+                    <button type="submit" name="action" value="save_dos" class="nw-btn primary" id="btn-nw-save-dos" style="flex:1 1 220px">დილის შემოწმების შენახვა</button>
+                    <button type="submit" name="action" value="complete_and_board" class="nw-btn ok" id="btn-nw-complete-board">✓ ოპერაცია შესრულდა → დაფაზე</button>
+                </div>
+            </form>
+        </div>
     </details>
 
     <details class="nw-section" id="nw-sec-doc" {% if tab == 'doc' %}open{% endif %}>

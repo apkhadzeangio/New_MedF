@@ -152,3 +152,161 @@
         });
     });
 })();
+
+/* B4: localStorage Auto-Draft Interruption Recovery & Mobile WHO Sign-In toggle feedback */
+(function () {
+    var root = document.getElementById('nw-patient-root');
+    if (!root) return;
+    var pk = root.dataset.patientPk;
+    if (!pk) return;
+
+    var STORAGE_KEY = 'preop_nurse_draft_v1_' + pk;
+    var MAX_AGE_MS = 12 * 60 * 60 * 1000;
+    var banner = document.getElementById('nw-draft-banner');
+    var metaEl = document.getElementById('nw-draft-meta');
+    var btnResume = document.getElementById('btn-draft-resume');
+    var btnDiscard = document.getElementById('btn-draft-discard');
+    var draftForms = Array.prototype.slice.call(root.querySelectorAll('form[data-nw-draft]'));
+    var lastFocused = null;
+
+    function loadDraft() {
+        try {
+            var raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return null;
+            var obj = JSON.parse(raw);
+            if (!obj || !obj.savedAt || (Date.now() - obj.savedAt) > MAX_AGE_MS) {
+                localStorage.removeItem(STORAGE_KEY);
+                return null;
+            }
+            return obj;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function saveDraft(form, activeEl) {
+        var fKey = form.dataset.nwDraft;
+        var cur = loadDraft() || {forms: {}, lastField: null, savedAt: Date.now()};
+        var vals = {};
+        Array.prototype.slice.call(form.elements).forEach(function (el) {
+            if (!el.name || el.name === 'csrfmiddlewaretoken' || el.type === 'hidden' || el.type === 'submit' || el.type === 'button' || el.type === 'file') return;
+            if (el.type === 'checkbox') {
+                vals[el.name] = Boolean(el.checked);
+            } else if (el.type === 'radio') {
+                if (el.checked) vals[el.name] = el.value;
+            } else {
+                vals[el.name] = el.value;
+            }
+        });
+        cur.forms[fKey] = vals;
+        cur.savedAt = Date.now();
+        if (activeEl && activeEl.name) {
+            var lbl = activeEl.id ? document.querySelector('label[for="' + activeEl.id + '"]') : null;
+            cur.lastField = {
+                formKey: fKey,
+                id: activeEl.id || '',
+                name: activeEl.name,
+                label: lbl ? lbl.textContent.trim() : activeEl.name
+            };
+        }
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cur)); } catch (e) {}
+    }
+
+    function clearFormDraft(fKey) {
+        var cur = loadDraft();
+        if (!cur) return;
+        delete cur.forms[fKey];
+        if (Object.keys(cur.forms).length === 0) {
+            try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+        } else {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(cur)); } catch (e) {}
+        }
+    }
+
+    // Restore unsaved draft after interruption / reload
+    var restored = loadDraft();
+    var didRestore = false;
+    if (restored && restored.forms) {
+        draftForms.forEach(function (form) {
+            var fKey = form.dataset.nwDraft;
+            var vals = restored.forms[fKey];
+            if (!vals) return;
+            Array.prototype.slice.call(form.elements).forEach(function (el) {
+                if (!el.name || !(el.name in vals)) return;
+                if (el.type === 'checkbox') {
+                    if (el.checked !== Boolean(vals[el.name])) {
+                        el.checked = Boolean(vals[el.name]);
+                        didRestore = true;
+                    }
+                } else if (el.type === 'radio') {
+                    if (el.value === String(vals[el.name]) && !el.checked) {
+                        el.checked = true;
+                        didRestore = true;
+                    }
+                } else if (el.value !== String(vals[el.name])) {
+                    el.value = String(vals[el.name]);
+                    didRestore = true;
+                }
+            });
+        });
+    }
+
+    if (didRestore && banner) {
+        banner.hidden = false;
+        lastFocused = restored.lastField || null;
+        if (metaEl && lastFocused && lastFocused.label) {
+            metaEl.textContent = 'ბოლო შევსებული ველი: ' + lastFocused.label;
+        }
+        var vitForm = document.getElementById('nw-vitals-form');
+        if (vitForm) vitForm.dispatchEvent(new Event('input'));
+    }
+
+    if (btnResume) {
+        btnResume.addEventListener('click', function () {
+            var target = null;
+            if (lastFocused && lastFocused.id) target = document.getElementById(lastFocused.id);
+            if (!target && lastFocused && lastFocused.name) {
+                target = root.querySelector('[name="' + lastFocused.name + '"]');
+            }
+            if (target) {
+                var det = target.closest('details');
+                if (det) det.open = true;
+                target.scrollIntoView({behavior: 'smooth', block: 'center'});
+                setTimeout(function () { target.focus(); }, 200);
+            }
+        });
+    }
+
+    if (btnDiscard) {
+        btnDiscard.addEventListener('click', function () {
+            try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+            window.location.reload();
+        });
+    }
+
+    draftForms.forEach(function (form) {
+        form.addEventListener('input', function (e) { saveDraft(form, e.target); });
+        form.addEventListener('change', function (e) { saveDraft(form, e.target); });
+        form.addEventListener('submit', function () {
+            form.querySelectorAll('.js-comma-num').forEach(function (inp) {
+                if (inp.value && inp.value.indexOf(',') >= 0) {
+                    inp.value = inp.value.trim().replace(/,/g, '.');
+                }
+            });
+            clearFormDraft(form.dataset.nwDraft);
+        });
+    });
+
+    // Live check visual state on WHO Sign-In 56px rows
+    root.querySelectorAll('.nw-who-cb').forEach(function (cb) {
+        var sync = function () {
+            var row = cb.closest('.nw-who-row');
+            if (!row) return;
+            row.classList.toggle('checked', cb.checked);
+            var st = row.querySelector('.nw-who-state');
+            if (st) st.textContent = cb.checked ? '✓' : '○';
+        };
+        cb.addEventListener('change', sync);
+        sync();
+    });
+})();
