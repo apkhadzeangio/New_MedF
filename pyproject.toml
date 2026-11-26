@@ -1,0 +1,38 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+src = ["src/MedicalForms"]
+extend-exclude = [
+    "**/migrations/**",
+    "src/MedicalForms/staticfiles",
+    "tools/out",
+]
+
+[tool.ruff.lint]
+# Focused, low-noise rule set for readable, bug-free Django/Python code:
+#   E/W  - pycodestyle errors & warnings (E501 relaxed for Georgian prose/clinical strings)
+#   F    - Pyflakes (unused imports, undefined names, unused locals)
+#   I    - isort import ordering
+#   B    - flake8-bugbear (common Python pitfalls)
+#   UP   - pyupgrade (modern Python 3.12 idioms)
+select = ["E", "W", "F", "I", "B", "UP"]
+ignore = [
+    "E501",  # Long Georgian clinical labels & guideline citations are kept intact for clarity
+    "E701",  # Compact single-line guard clauses used intentionally across clinical rule tables
+    "E702",  # Compact statements in test fixtures / matrix builders
+    "E731",  # Short inline lambda helpers in calculators/rules
+    "B904",  # Explicit exception chaining not required in HTTP 404/400 view translations
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/MedicalForms/apps/mdf/**/__init__.py" = ["F401", "F403"]
+"src/MedicalForms/apps/mdf/preop/__init__.py" = ["F401", "F403"]
+"src/MedicalForms/apps/mdf/models/__init__.py" = ["F401", "F403"]
+"src/MedicalForms/apps/mdf/cases/__init__.py" = ["F401", "F403"]
+"src/MedicalForms/apps/mdf/artery_map/__init__.py" = ["F401", "F403"]
+"src/MedicalForms/apps/mdf/staging/__init__.py" = ["F401", "F403"]
+"src/MedicalForms/MedicalForms/settings/*.py" = ["F401", "F403", "F405"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["MedicalForms", "apps"]
+combine-as-imports = true

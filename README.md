@@ -148,3 +148,10 @@ python manage.py test --settings=MedicalForms.settings.dev
 ```
 
 PDF ბეჭდვისთვის საჭიროა LibreOffice (`soffice`).
+
+## დეველოპერებისთვის
+
+- არქიტექტურა და მოდულების რუკა: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- გარემოს გამართვა, ტესტები და კოდის წესები: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)
+- სწრაფი ბრძანებები: `make help` (`make test-fast`, `make test`, `make lint`, `make run`)
+

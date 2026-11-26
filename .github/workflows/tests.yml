@@ -12,6 +12,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'requirements/prod.txt'
       - name: System packages (mysqlclient build, LibreOffice for the PDF tests)
         run: |
           sudo apt-get update -q
@@ -23,4 +25,9 @@ jobs:
         run: |
           python manage.py check --settings=MedicalForms.settings.dev
           python manage.py makemigrations --check --dry-run --settings=MedicalForms.settings.dev
+          if [ -f apps/mdf/tests/test_size_guard.py ]; then
+            python manage.py test apps.mdf.tests.test_size_guard --settings=MedicalForms.settings.dev
+          else
+            python manage.py test apps.mdf.test_size_guard --settings=MedicalForms.settings.dev
+          fi
           python manage.py test --settings=MedicalForms.settings.dev
