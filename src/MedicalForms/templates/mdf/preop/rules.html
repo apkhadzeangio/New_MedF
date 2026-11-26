@@ -9,6 +9,7 @@
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
         <a href="{% url 'preop' %}" class="small">← წინასაოპერაციო კალენდარი</a>
         <div class="d-flex flex-wrap align-items-center gap-2">
+            <a href="{% url 'preop-vignettes' %}" class="x-btn sm">40 ვინიეტა</a>
             <a href="{% url 'preop-audit' %}" class="x-btn sm">კარდიო &amp; VQI აუდიტი</a>
             <span class="po-badge st-in_progress">პროტოკოლი v{{ summary.version }} · {{ summary.updated_on }}</span>
         </div>

@@ -12,6 +12,7 @@ from .passport import PreopPassportView
 from .patient import PreopPatientView
 from .rules_catalog import PreopRulesView
 from .self_fill import PreopSelfFillView
+from .vignettes import PreopVignettesView
 from .week import PreopCreateView, PreopMoveView, PreopWeekView
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     'PreopPatientView',
     'PreopRulesView',
     'PreopSelfFillView',
+    'PreopVignettesView',
     'PreopWeekView',
     '_admit_preop_to_board_locked',
     'admit_preop_to_board',

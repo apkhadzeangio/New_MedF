@@ -1,0 +1,156 @@
+{% extends 'base.html' %}
+{% load static_version mdf_tags %}
+
+{% block title %}40 კლინიკური ვინიეტა — წინასაოპერაციო{% endblock %}
+{% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/preop.css' %}">{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <a href="{% url 'preop' %}" class="small">← წინასაოპერაციო კალენდარი</a>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <a href="{% url 'preop-rules' %}" class="x-btn sm">კლინიკური წესები</a>
+            <a href="{% url 'preop-audit' %}" class="x-btn sm">კარდიო &amp; VQI აუდიტი</a>
+            <span class="po-badge st-in_progress">პროტოკოლი v{{ summary.version }} · {{ summary.updated_on }}</span>
+        </div>
+    </div>
+
+    <div class="page-head">
+        <h1>40 კლინიკური ვინიეტა <span class="count">სინთეტიკური საკონტროლო ქეისები (0 რეალური პაციენტი)</span></h1>
+    </div>
+
+    <section class="x-card">
+        <p class="lead-muted mb-2" style="font-size:14px">
+            თითოეული ვინიეტა გაშვებულია ცოცხალ წინასაოპერაციო შეფასების ძრავაზე. ექიმს შეუძლია გახსნას ნებისმიერი ქეისი,
+            შეადაროს მოსალოდნელი და ფაქტობრივი შედეგი (ბეჭედი, STOP/წითელი გაფრთხილებები, რისკ-ინდექსები, წამლების კალენდარი) და დააფიქსიროს დასტური.
+        </p>
+
+        <div class="au-kpis">
+            <div class="au-kpi">
+                <small>სულ კლინიკური ვინიეტა</small>
+                <b>{{ run.total }}</b>
+            </div>
+            <div class="au-kpi {% if run.failed_count %}bad{% endif %}">
+                <small>ავტომატურად დაემთხვა</small>
+                <b style="color:var(--ok)">{{ run.passed_count }} / {{ run.total }}</b>
+            </div>
+            <div class="au-kpi">
+                <small>ექიმის მიერ დადასტურებული</small>
+                <b>{{ signed_count }} / {{ run.total }}</b>
+            </div>
+            <div class="au-kpi {% if flagged_count %}bad{% endif %}">
+                <small>გადახედვაზე მონიშნული</small>
+                <b>{{ flagged_count }}</b>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-2">
+            <div class="tw-pills">
+                {% for skey, slbl, scnt in status_pills %}
+                <a href="?status={{ skey }}{% if cat_filter != 'all' %}&amp;cat={{ cat_filter }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}"
+                   class="tw-pill {% if status_filter == skey %}on{% endif %}">
+                    {{ slbl }} ({{ scnt }})
+                </a>
+                {% endfor %}
+            </div>
+            <form method="get" class="d-flex gap-2" style="min-width:240px">
+                {% if cat_filter != 'all' %}<input type="hidden" name="cat" value="{{ cat_filter }}">{% endif %}
+                {% if status_filter != 'all' %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+                <input type="search" name="q" value="{{ query }}" placeholder="ძებნა ვინიეტაში..." class="form-control form-control-sm" style="border-radius:999px;padding:0 14px;height:34px">
+                <button type="submit" class="x-btn sm">ძებნა</button>
+            </form>
+        </div>
+
+        <div class="tw-pills pt-1">
+            {% for ckey, clbl, ccnt in category_pills %}
+            <a href="?cat={{ ckey }}{% if status_filter != 'all' %}&amp;status={{ status_filter }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}"
+               class="tw-pill {% if cat_filter == ckey %}on{% endif %}">
+                {{ clbl }} ({{ ccnt }})
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+
+    <div class="d-flex flex-column gap-2">
+        {% for row in rows %}
+        {% with v=row.v ev=row.ev res=row.res so=row.signoff %}
+        <article id="vig-{{ v.id }}" class="x-card po-rule-card {% if not res.passed or row.is_flagged %}is-flagged{% elif not row.is_signed %}is-local-pending{% endif %}">
+            <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+                <div>
+                    <div class="d-flex flex-wrap align-items-center gap-1 mb-1">
+                        <code class="po-rule-id">{{ v.id }}</code>
+                        <span class="po-badge st-in_progress">{{ row.cat_label }}</span>
+                        {% if res.passed %}
+                        <span class="po-badge st-ready">✓ ემთხვევა ({{ res.checks|length }}/{{ res.checks|length }})</span>
+                        {% else %}
+                        <span class="po-badge st-alert">შეუსაბამობა ({{ res.failures|length }})</span>
+                        {% endif %}
+                        <span class="po-badge {% if ev.clearance_seal.code == 'stop' %}st-alert{% elif ev.clearance_seal.code == 'go' %}st-ready{% else %}st-in_progress{% endif %}">{{ ev.clearance_seal.badge }}</span>
+                        {% if row.is_signed %}
+                        <span class="po-badge st-ready">✓ დაადასტურა: {{ so.signed_by|who }} ({{ so.signed_at|date:"d.m.Y" }})</span>
+                        {% elif row.is_flagged %}
+                        <span class="po-badge st-alert">გადახედვაზე ({{ so.signed_by|who }})</span>
+                        {% endif %}
+                    </div>
+                    <h2 class="m-0" style="font-size:16px">{{ v.title_ka }}</h2>
+                </div>
+                <div class="po-rule-val">{{ ev.effective_asa }} · RCRI {{ ev.rcri.score }} · ARISCAT {{ ev.ariscat.score }}</div>
+            </div>
+
+            <p class="mb-0" style="font-size:14px"><strong>კლინიკური სურათი:</strong> {{ v.summary_ka }}</p>
+            <div class="po-rule-meta">
+                <div><b>მოსალოდნელი ქცევა:</b> {{ v.expected_summary_ka }}</div>
+                <div><b>წყარო:</b> {{ v.source_ref }}</div>
+                <div class="d-flex flex-wrap gap-2 pt-1">
+                    {% for chk in res.checks %}
+                    <span class="po-badge {% if chk.ok %}st-ready{% else %}st-alert{% endif %}" style="font-size:12px">{% if chk.ok %}✓{% else %}✕{% endif %} {{ chk.label }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <details class="po-rule-sign-drawer">
+                <summary class="small fw-semibold">ფაქტობრივი შედეგის სრული ნახვა ({{ ev.red_flags|length }} წით. · {{ ev.amber_flags|length }} ყვ. · {{ ev.med_schedule|length }} წამალი) და ექიმის დასტური</summary>
+                <div class="d-flex flex-column gap-2 pt-2">
+                    {% if ev.red_flags %}
+                    <div class="small">
+                        <strong style="color:#B42318">წითელი გაფრთხილებები:</strong>
+                        <ul class="mb-1 ps-3">{% for rf in ev.red_flags %}<li>{{ rf }}</li>{% endfor %}</ul>
+                    </div>
+                    {% endif %}
+                    {% if ev.amber_flags %}
+                    <div class="small">
+                        <strong style="color:#93370D">ყვითელი სიგნალები:</strong>
+                        <ul class="mb-1 ps-3">{% for af in ev.amber_flags %}<li>{{ af }}</li>{% endfor %}</ul>
+                    </div>
+                    {% endif %}
+                    {% if ev.med_schedule %}
+                    <div class="small">
+                        <strong>მედიკამენტების კალენდარი:</strong>
+                        <ul class="mb-1 ps-3">{% for m in ev.med_schedule %}<li><strong>{{ m.drug }}</strong>{% if m.date_plan %} ({{ m.date_plan }}){% endif %} — {{ m.rule }}</li>{% endfor %}</ul>
+                    </div>
+                    {% endif %}
+                    {% if so and so.note %}
+                    <div class="small"><strong>ექიმის შენიშვნა:</strong> {{ so.note }}</div>
+                    {% endif %}
+                    <form method="post" class="d-flex flex-wrap align-items-center gap-2 pt-1">
+                        {% csrf_token %}
+                        <input type="hidden" name="vignette_id" value="{{ v.id }}">
+                        <input type="hidden" name="ret_cat" value="{{ cat_filter }}">
+                        <input type="hidden" name="ret_status" value="{{ status_filter }}">
+                        <input type="hidden" name="ret_q" value="{{ query }}">
+                        <input type="text" name="note" value="{% if so %}{{ so.note }}{% endif %}" maxlength="300" placeholder="ექიმის კომენტარი ვინიეტაზე..." class="form-control form-control-sm" style="flex:1;min-width:220px">
+                        <button type="submit" name="verdict" value="approved" class="x-btn sm ok">✓ დადასტურება</button>
+                        <button type="submit" name="verdict" value="flagged" class="x-btn sm">⚑ გადახედვა</button>
+                    </form>
+                </div>
+            </details>
+        </article>
+        {% endwith %}
+        {% empty %}
+        <section class="x-card">
+            <p class="m-0 text-muted">არჩეული ფილტრებით ვინიეტა ვერ მოიძებნა.</p>
+        </section>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

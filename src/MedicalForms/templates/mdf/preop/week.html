@@ -26,6 +26,9 @@
             <a class="x-btn sm" href="{% url 'preop-rules' %}">
                 კლინიკური წესები
             </a>
+            <a class="x-btn sm" href="{% url 'preop-vignettes' %}">
+                ვინიეტები (40)
+            </a>
             <a class="x-btn sm" href="{% url 'preop-audit' %}{% if pathway_filter != 'all' %}?pathway={{ pathway_filter }}{% endif %}">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>კარდიო &amp; VQI აუდიტი
             </a>
