@@ -535,3 +535,43 @@
 @media print {
     .po-cite-btn { display: none !important; }
 }
+
+/* Fail-Safe Unknown-State Banner (Track A5) */
+.po-failsafe-box {
+    border: 1px dashed #667085;
+    border-left: 4px solid #F79009;
+    border-radius: 12px;
+    padding: 10px 14px;
+    background: #F8FAFC;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.po-failsafe-box.is-blocking {
+    border-left-color: #D92D20;
+    background: #FFFAF5;
+}
+.po-failsafe-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 13.5px;
+}
+.po-failsafe-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.po-failsafe-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    padding-top: 4px;
+    border-top: 1px solid rgba(16, 24, 40, .06);
+}
+

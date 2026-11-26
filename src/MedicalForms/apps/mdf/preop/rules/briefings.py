@@ -197,6 +197,11 @@ def _eval_missing_s2_and_clearance_seal(ctx):
             'code': 'pending', 'badge': 'მომზადების პროცესში — სავალდებულოა ექთნის ვერიფიკაცია!',
             'detail': 'კითხვარი შევსებულია პაციენტის ბმულით; დაშვებამდე სავალდებულოა ექთნის მიერ გადამოწმება ან ქირურგის დასტური.',
         }
+    elif ctx.has_blocking_unknown_state and not patient.approved_at:
+        ctx.clearance_seal = {
+            'code': 'pending', 'badge': 'შეფასება არასრულია — კრიტიკული მონაცემი დაუზუსტებელია!',
+            'detail': 'აკლია კლინიკურად გადამწყვეტი მონაცემი (მაგ. CrCl ანტიკოაგულანტზე ან დაუზუსტებელი ალერგია) — შევსებამდე GO ბეჭედი არ გაიცემა.',
+        }
     elif ctx.status == STATUS_READY and ctx.all_tasks_done:
         ctx.clearance_seal = {
             'code': 'go', 'badge': 'GO — უსაფრთხოდ მზადაა ოპერაციისთვის',

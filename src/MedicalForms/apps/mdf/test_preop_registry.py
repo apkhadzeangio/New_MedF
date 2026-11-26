@@ -161,3 +161,79 @@ class PreopRulesCatalogAndCitationUITests(TestCase):
         ):
             self.assertIn(required_score, cite_ids)
 
+
+class PreopFailSafeUnknownStateTests(TestCase):
+    """Track A5: Missing critical data triggers Fail-Safe banners and blocks false green GO."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.doc = User.objects.create_user(
+            username='fs_doc', password='FsDocPassword!1',
+            first_name='თამარ', last_name='ექიმი', is_staff=True,
+        )
+
+    def test_all_six_unknown_state_conditions_and_score_completeness(self):
+        p = PreopPatient(
+            patient_name='არასრული სატესტო',
+            age=35, sex='F', side='',
+            pathway=PreopPatient.Pathway.AAA_INFRA,
+            op_subtype=PreopPatient.OpSubtype.EVAR,
+            questionnaire={
+                'filled': True, 'filled_by': 'პაციენტი (ბმულით)', 'nurse_verified': False,
+                'med_doac': True, 'allergy_other': True, 'other_meds': 'ქსარელტო 20მგ',
+                'pregnant_possible': False, 'mets_ok': True,
+            },
+            studies={'aaa_mm': 52, 'hb': 126},  # no labs_date, no creat, no weight, no spo2
+        )
+        ev = evaluate(p, today=SIM_TODAY)
+        keys = {u['key'] for u in ev['unknown_state_flags']}
+        self.assertTrue({
+            'unverified_self_fill', 'renal_drug_no_crcl', 'unclarified_allergy',
+            'labs_missing_date', 'incomplete_risk_scores', 'reproductive_pregnancy_unverified',
+        }.issubset(keys))
+        self.assertTrue(ev['has_blocking_unknown_state'])
+        self.assertTrue(ev['score_completeness']['rcri']['incomplete'])
+        self.assertTrue(ev['score_completeness']['ariscat']['incomplete'])
+        self.assertNotEqual(ev['clearance_seal']['code'], 'go')
+
+    def test_doac_without_weight_blocks_false_go_until_crcl_computed_and_renders_banners(self):
+        self.client.force_login(self.doc)
+        p = PreopPatient.objects.create(
+            patient_name='დოაკ წონაძე',
+            age=70, sex='M', side='R',
+            pathway=PreopPatient.Pathway.CEA,
+            op_subtype=PreopPatient.OpSubtype.CEA_ASYMP,
+            questionnaire={
+                'filled': True, 'nurse_verified': True, 'med_aspirin': True,
+                'med_doac': True, 'med_chips': ['statin'], 'mets_ok': True,
+            },
+            studies={
+                'hb': 138, 'plt': 230, 'inr': 1.0, 'creat': 88, 'spo2': 98,
+                'carotid_r': 82, 'carotid_l': 25, 'cea_cta_status': 'concordant',
+                'ecg': 'normal', 'med_hold_agreed': True, 'decolonization_ready': True,
+                'ppi_started': True, 'anesth_done': True, 'cta_disc': True, 'blood_group': 'O (I) Rh (+)',
+            },
+        )
+        ev_no_wt = evaluate(p, today=SIM_TODAY)
+        self.assertIsNone(ev_no_wt['crcl'])
+        self.assertTrue(ev_no_wt['has_blocking_unknown_state'])
+        self.assertEqual(ev_no_wt['clearance_seal']['code'], 'pending')
+
+        resp_pt = self.client.get(reverse('preop-patient', args=[p.pk]) + '?tab=doc')
+        self.assertContains(resp_pt, 'შეფასება არასრულია — უცნობი მონაცემები')
+        self.assertContains(resp_pt, 'WF_UNKNOWN_STATE_FAILSAFE')
+        resp_pp = self.client.get(reverse('preop-passport', args=[p.pk]))
+        self.assertContains(resp_pp, 'შეფასება არასრულია — უცნობი მონაცემები')
+
+        # Adding weight_kg + labs_date computes CrCl, clears blocking unknown state, and unlocks GO!
+        p.studies['weight_kg'] = 80
+        p.studies['labs_date'] = SIM_TODAY.isoformat()
+        p.save(update_fields=['studies'])
+        ev_ok = evaluate(p, today=SIM_TODAY)
+        self.assertIsNotNone(ev_ok['crcl'])
+        self.assertFalse(ev_ok['has_blocking_unknown_state'])
+        self.assertEqual(ev_ok['unknown_state_flags'], [])
+        self.assertEqual(ev_ok['clearance_seal']['code'], 'go')
+
+

@@ -255,6 +255,26 @@
     </div>
     {% endif %}
 
+    {% if ev.unknown_state_flags %}
+    <div class="po-failsafe-box {% if ev.has_blocking_unknown_state %}is-blocking{% endif %}" role="status" aria-label="შეფასება არასრულია">
+        <div class="po-failsafe-head">
+            <span>
+                <strong>შეფასება არასრულია — უცნობი მონაცემები ({{ ev.unknown_state_flags|length }})</strong>
+                <button type="button" class="po-cite-btn" data-rule-id="WF_UNKNOWN_STATE_FAILSAFE" aria-label="კლინიკური წყარო" title="Fail-Safe უსაფრთხოების წესი">ⓘ</button>
+            </span>
+            <span class="small text-muted">ცარიელი ველი არ ნიშნავს ნორმას — გადაამოწმეთ დაშვებამდე</span>
+        </div>
+        <div class="po-failsafe-list">
+            {% for uf in ev.unknown_state_flags %}
+            <div class="po-failsafe-item">
+                <span><strong>{{ uf.label }}:</strong> {{ uf.detail }}</span>
+                <button type="button" class="po-jump-chip" data-jump-tab="{{ uf.tab }}" data-jump-field="{{ uf.field }}">შევსება →</button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- 5 Step Workspace Tabs -->
     <nav class="po-tabs" aria-label="მომზადების ეტაპები">
         <button type="button" class="po-tab {% if tab == 'q' %}on{% endif %}" data-tab="q">

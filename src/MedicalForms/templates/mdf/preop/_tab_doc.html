@@ -24,13 +24,13 @@
                     <div class="po-risk-tile {% if ev.rcri.tier == 'high' %}tier-high{% elif ev.rcri.tier == 'intermediate' %}tier-intermediate{% endif %}">
                         <small>RCRI (Lee / ESC) <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.rcri }}" aria-label="კლინიკური წყარო" title="RCRI წყარო">ⓘ</button></small>
                         <b>{{ ev.rcri.score }} / 6 ქ.</b>
-                        <span>{{ ev.rcri.tier_label }}</span>
+                        <span>{{ ev.rcri.tier_label }}{% if ev.score_completeness.rcri.incomplete %} · <em>არასრული მონაცემები ({{ ev.score_completeness.rcri.missing|join:", " }}) — რეალური რისკი შეიძლება მაღალი იყოს</em>{% endif %}</span>
                     </div>
                     <div class="po-risk-tile {% if ev.vsg_cri and ev.vsg_cri.tier == 'high' %}tier-high{% elif ev.vsg_cri and ev.vsg_cri.tier == 'intermediate' %}tier-intermediate{% endif %}">
                         <small>VSG-CRI (SVS VQI) <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.vsg_cri }}" aria-label="კლინიკური წყარო" title="VSG-CRI წყარო">ⓘ</button></small>
                         {% if ev.vsg_cri %}
                         <b>{{ ev.vsg_cri.score }} ქ.</b>
-                        <span>{{ ev.vsg_cri.tier_label }}</span>
+                        <span>{{ ev.vsg_cri.tier_label }}{% if ev.score_completeness.vsg_cri.incomplete %} · <em>არასრული მონაცემები ({{ ev.score_completeness.vsg_cri.missing|join:", " }})</em>{% endif %}</span>
                         {% else %}
                         <b>ვენური</b>
                         <span>&lt;1% MACE</span>
@@ -39,7 +39,7 @@
                     <div class="po-risk-tile {% if ev.ariscat.tier == 'high' %}tier-high{% elif ev.ariscat.tier == 'intermediate' %}tier-intermediate{% endif %}">
                         <small>ARISCAT (ფილტვი) <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.ariscat }}" aria-label="კლინიკური წყარო" title="ARISCAT წყარო">ⓘ</button></small>
                         <b>{{ ev.ariscat.score }} ქ.</b>
-                        <span>{{ ev.ariscat.tier_label }}</span>
+                        <span>{{ ev.ariscat.tier_label }}{% if ev.score_completeness.ariscat.incomplete %} · <em>არასრული მონაცემები ({{ ev.score_completeness.ariscat.missing|join:", " }})</em>{% endif %}</span>
                     </div>
                     <div class="po-risk-tile {% if ev.caprini_score >= 5 or ev.effective_stop_bang == 'high' %}tier-intermediate{% endif %}">
                         <small>Caprini / OSA <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.caprini }}" aria-label="კლინიკური წყარო" title="Caprini წყარო">ⓘ</button></small>

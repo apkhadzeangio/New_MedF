@@ -656,6 +656,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         rules_map = {rid: rule_meta(rid) for rid in score_rules.values()}
         if ev['clearance_seal'].get('code') == 'stop':
             rules_map['MED_STOP_LOCK_SAFETY'] = rule_meta('MED_STOP_LOCK_SAFETY')
+        if ev.get('unknown_state_flags'):
+            rules_map['WF_UNKNOWN_STATE_FAILSAFE'] = rule_meta('WF_UNKNOWN_STATE_FAILSAFE')
         for group in (red_items, amber_items, reflex_items, dos_items):
             for item in group:
                 meta = item.get('rule')

@@ -6,6 +6,7 @@ from .briefings import eval_briefings
 from .cardiac import eval_cardiac_and_tasks
 from .cea import eval_cea
 from .context import EvalContext, init_eval_context
+from .failsafe import eval_unknown_state_failsafe
 from .labs import (
     eval_carotid_gastro,
     eval_glycemia_endocrine,
@@ -39,6 +40,7 @@ __all__ = [
     'eval_pta',
     'eval_pulmonary',
     'eval_renal_electrolytes',
+    'eval_unknown_state_failsafe',
     'eval_venous',
     'eval_vitals_bp',
     'init_eval_context',

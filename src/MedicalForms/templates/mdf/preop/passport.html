@@ -224,6 +224,12 @@
         სამუშაო (დაუდასტურებელი) ასლი — პაციენტზე გაცემამდე და მედიკამენტების სქემის ამოქმედებამდე სავალდებულოა მკურნალი ექიმის / ქირურგის დადასტურება!
     </div>
     {% endif %}
+    {% if ev.unknown_state_flags %}
+    <div class="pp-draft-banner" style="padding:4px 9px;border-radius:6px;background:#F8FAFC;border:1px dashed #667085;color:#344054;font-size:10.8px">
+        <strong>შეფასება არასრულია — უცნობი მონაცემები:</strong>
+        {% for uf in ev.unknown_state_flags %}{{ uf.label }}{% if not forloop.last %} · {% endif %}{% endfor %}
+    </div>
+    {% endif %}
 
     <!-- Critical Safety, Allergies, Red Flags & Clinical Cautions -->
     <section class="pp-sec" style="{% if ev.allergy_summary or ev.red_flags or ev.difficult_airway_alert %}border-color:#FECDCA;background:#FEF3F2{% elif ev.passport_cautions %}border-color:#FEDF89;background:#FFFAEB{% else %}background:#F9FAFB{% endif %}">
@@ -261,13 +267,13 @@
             <div class="pp-rcard {% if ev.rcri.tier == 'high' %}high{% elif ev.rcri.tier == 'intermediate' %}inter{% endif %}">
                 <b>RCRI (Lee / ESC)</b>
                 <strong>{{ ev.rcri.score }} / 6 ქ.</strong>
-                <span>{{ ev.rcri.tier_label }}</span>
+                <span>{{ ev.rcri.tier_label }}{% if ev.score_completeness.rcri.incomplete %} (არასრული!){% endif %}</span>
             </div>
             <div class="pp-rcard {% if ev.vsg_cri and ev.vsg_cri.tier == 'high' %}high{% elif ev.vsg_cri and ev.vsg_cri.tier == 'intermediate' %}inter{% endif %}">
                 <b>VSG-CRI (SVS VQI)</b>
                 {% if ev.vsg_cri %}
                 <strong>{{ ev.vsg_cri.score }} ქ.</strong>
-                <span>{{ ev.vsg_cri.tier_label }}</span>
+                <span>{{ ev.vsg_cri.tier_label }}{% if ev.score_completeness.vsg_cri.incomplete %} (არასრული!){% endif %}</span>
                 {% else %}
                 <strong>ვენური</strong>
                 <span>დაბალი (&lt;1% MACE)</span>
@@ -276,7 +282,7 @@
             <div class="pp-rcard {% if ev.ariscat.tier == 'high' %}high{% elif ev.ariscat.tier == 'intermediate' %}inter{% endif %}">
                 <b>ARISCAT (ფილტვი)</b>
                 <strong>{{ ev.ariscat.score }} ქ.</strong>
-                <span>{{ ev.ariscat.tier_label }}</span>
+                <span>{{ ev.ariscat.tier_label }}{% if ev.score_completeness.ariscat.incomplete %} (არასრული!){% endif %}</span>
             </div>
             <div class="pp-rcard {% if ev.caprini_score >= 5 or ev.effective_stop_bang == 'high' %}inter{% endif %}">
                 <b>Caprini / OSA</b>

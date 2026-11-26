@@ -18,6 +18,7 @@ from .rules import (
     eval_pta,
     eval_pulmonary,
     eval_renal_electrolytes,
+    eval_unknown_state_failsafe,
     eval_venous,
     eval_vitals_bp,
     init_eval_context,
@@ -53,9 +54,10 @@ def evaluate(patient, today=None):
     eval_pulmonary(ctx)
     eval_carotid_gastro(ctx)
 
-    # 9-12. Medications, dual-track cardiology/tasks, anesthesiology/DoS/2D triage, briefings & result
+    # 9-13. Medications, dual-track cardiology/tasks, anesthesiology/DoS/2D triage, fail-safe unknown-state, briefings & result
     eval_meds_rules(ctx)
     eval_cardiac_and_tasks(ctx)
     eval_anaesthesia_and_triage(ctx)
+    eval_unknown_state_failsafe(ctx)
     eval_briefings(ctx)
     return assemble_eval_result(ctx)
