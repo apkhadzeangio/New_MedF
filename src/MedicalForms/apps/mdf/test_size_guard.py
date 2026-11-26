@@ -18,7 +18,6 @@ MAX_FUNC_LINES = 100
 # Pre-existing oversized files at the start of Track C (may ONLY shrink).
 OVERSIZED_FILES_BASELINE = {
     'artery_map.py': 825,
-    'cases.py': 811,
     'staging.py': 2031,
     'test_preop_sim.py': 1492,
     'tests.py': 7061,
