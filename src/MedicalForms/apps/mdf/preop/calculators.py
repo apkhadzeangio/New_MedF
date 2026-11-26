@@ -2,7 +2,6 @@
 from ..models import PreopPatient
 from .meds import _effective_allergy_state
 from .utils import (
-    _int,
     _num,
     _resolve_pathway,
     _str_list,
@@ -10,6 +9,16 @@ from .utils import (
     is_pregnancy_eligible,
     is_symp_cea_patient,
 )
+
+
+def _s_raw(s, key):
+    if not isinstance(s, dict):
+        return None
+    v = s.get(key)
+    if v is not None and str(v).strip() != '':
+        return v
+    inv = s.get('_invalid_inputs')
+    return inv.get(key) if isinstance(inv, dict) else None
 
 
 def _sat_num(val, lo, hi):
@@ -28,15 +37,15 @@ def _sat_age(val):
 
 
 def _parse_plt_k(val):
-    """Normalize PLT to x10^9/L (converts /uL >=3000 via /1000; saturates <=0 to 0 for monotonicity)."""
+    """Normalize PLT to x10^9/L (converts /uL >2500 via /1000; saturates <=0 to 0 for monotonicity)."""
     v = _num(val)
     if v is None:
         return None
     if v < 0:
         return 0
-    if v >= 3000:
+    if v > 2500:
         return int(round(v / 1000.0))
-    return int(round(min(v, 2500)))
+    return int(round(v))
 
 
 def _parse_scr_mgdl(creat, creat_unit=''):
@@ -76,8 +85,9 @@ def calc_egfr(creat, age, sex='M', creat_unit='', on_dialysis=False):
     """CKD-EPI 2021 race-free eGFR (mL/min/1.73m2). Never guesses missing age/sex or ambiguous units."""
     if on_dialysis:
         return None
-    scr_mgdl, _ = _parse_scr_mgdl(creat, creat_unit)
-    age_v = _int(age, lo=12, hi=120)
+    scr_mgdl = _sat_scr_mgdl(creat, creat_unit)
+    age_num = _num(age)
+    age_v = int(round(min(age_num, 120))) if (age_num is not None and age_num >= 12) else None
     if scr_mgdl is None or age_v is None or sex not in ('M', 'F'):
         return None
     female = (sex == 'F')
@@ -93,9 +103,11 @@ def calc_crcl(creat, age, sex='M', weight_kg=None, creat_unit='', on_dialysis=Fa
     """Cockcroft-Gault unindexed CrCl (mL/min) using Adjusted Body Weight in BMI >= 30 obesity."""
     if on_dialysis:
         return None
-    scr_mgdl, _ = _parse_scr_mgdl(creat, creat_unit)
-    w = _num(weight_kg, lo=25, hi=260)
-    age_v = _int(age, lo=12, hi=120)
+    scr_mgdl = _sat_scr_mgdl(creat, creat_unit)
+    w_raw = _num(weight_kg)
+    w = max(25.0, min(260.0, w_raw)) if (w_raw is not None and w_raw > 0) else None
+    age_num = _num(age)
+    age_v = int(round(min(age_num, 120))) if (age_num is not None and age_num >= 12) else None
     if scr_mgdl is None or w is None or age_v is None or sex not in ('M', 'F'):
         return None
     h = _num(height_cm, lo=100, hi=230)
@@ -163,26 +175,39 @@ def normalize_ldl_mmol(ldl):
 
 
 def calc_max_contrast_ml(egfr, on_dialysis=False):
-    """Safe iodinated contrast volume ceiling (mL) using contrast-to-eGFR ratio (ESVS / Gurm)."""
+    """Safe iodinated contrast volume ceiling (mL) using tiered contrast-to-eGFR ratios (ESVS / Gurm)."""
+    from .registry import rule_value
     if on_dialysis or egfr is None:
         return None
-    if egfr < 30:
-        return max(15, int(round(egfr * 1.0)))
-    if egfr < 45:
-        return int(round(egfr * 1.5))
-    if egfr < 60:
-        return int(round(egfr * 2.0))
-    return min(250, int(round(egfr * 3.0)))
+    ren = rule_value('REN_CKD_NEPHRO_HYDRATION')
+    if egfr < ren['red']:
+        return max(15, int(round(egfr * ren.get('mult_lt30', 1.0))))
+    if egfr < ren['nephro']:
+        return int(round(egfr * ren.get('mult_30_44', 1.5)))
+    if egfr < ren['hydration']:
+        return int(round(egfr * ren.get('mult_45_59', 2.0)))
+    return min(250, int(round(egfr * ren['gurm_mult'])))
 
 
 def _valid_bilateral_sbp(s):
     """Return max valid systolic BP across R/L arms, rejecting inverted readings (SBP <= DBP)."""
-    bp_sys, bp_dia = _sat_num(s.get('bp_sys'), 30, 320), _sat_num(s.get('bp_dia'), 20, 220)
-    bp_sys_l, bp_dia_l = _sat_num(s.get('bp_sys_l'), 30, 320), _sat_num(s.get('bp_dia_l'), 20, 220)
+    bp_sys, bp_dia = _sat_num(_s_raw(s, 'bp_sys'), 30, 320), _sat_num(_s_raw(s, 'bp_dia'), 20, 220)
+    bp_sys_l, bp_dia_l = _sat_num(_s_raw(s, 'bp_sys_l'), 30, 320), _sat_num(_s_raw(s, 'bp_dia_l'), 20, 220)
     r_inv = (bp_sys is not None and bp_dia is not None and bp_sys <= bp_dia)
     l_inv = (bp_sys_l is not None and bp_dia_l is not None and bp_sys_l <= bp_dia_l)
     valid = [v for v, inv in ((bp_sys, r_inv), (bp_sys_l, l_inv)) if v is not None and not inv]
     return max(valid, default=None)
+
+
+def _sat_bmi_from(bmi, s):
+    v = _sat_num(bmi, 8, 90)
+    if v is not None:
+        return v
+    w = _sat_num(_s_raw(s, 'weight_kg'), 25, 260)
+    h = _sat_num(_s_raw(s, 'height_cm'), 100, 230)
+    if w is not None and h is not None:
+        return _sat_num(round(w / ((h / 100.0) ** 2), 1), 8, 90)
+    return None
 
 
 def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
@@ -206,7 +231,7 @@ def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
     else:
         pts += 2  # major vascular surgery >45 min
 
-    bmi_v = _num(bmi, lo=8, hi=90)
+    bmi_v = _sat_bmi_from(bmi, s_cur)
     if bmi_v is not None and bmi_v > 25:
         pts += 1
     if (patient.sex or '') == 'F' and q.get('ven_hormones'):
@@ -327,6 +352,16 @@ def _sat_fib_gl(raw):
     return 0.1 if (v is not None and v < 0.2) else None
 
 
+def _sat_gl_mmol(raw):
+    gl = normalize_glucose_mmol(raw)
+    if gl is not None:
+        return gl
+    v = _num(raw)
+    if v is None:
+        return None
+    return 0.5 if v < 0.5 else round(1000.0 / 18.0, 2)
+
+
 def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     """Estimate ASA Physical Status ('I'..'IV') deterministically from vascular pathway, comorbidities & acute vitals/labs."""
     from .registry import rule_value
@@ -334,29 +369,29 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     s = s if isinstance(s, dict) else {}
     egfr_v = _num(egfr, lo=0, hi=300)
     if egfr_v is None and not q.get('on_dialysis'):
-        sat_cr = _sat_scr_mgdl(s.get('creat'), s.get('creat_unit') or '')
+        sat_cr = _sat_scr_mgdl(_s_raw(s, 'creat'), s.get('creat_unit') or '')
         if sat_cr is not None and sat_cr >= 20.0:
             egfr_v = 2
-    bmi_v = _num(bmi, lo=8, hi=90)
+    bmi_v = _sat_bmi_from(bmi, s)
     pw = _resolve_pathway(patient)
     cad_chips = set(_str_list(q.get('cad_chips')))
     allergy_chips, _, _ = _effective_allergy_state(q)
-    aaa_mm = _num(s.get('aaa_mm'), lo=10, hi=250)
-    lvef = _sat_num(s.get('lvef'), 5, 95)
-    fev1 = _sat_num(s.get('spiro_fev1'), 10, 160)
-    hb_gl = _sat_hb_gl(s.get('hb'))
-    gl_mmol = normalize_glucose_mmol(s.get('glucose'))
-    hba1c = _num(s.get('hba1c'), lo=3.0, hi=25.0)
-    spo2 = _sat_num(s.get('spo2'), 30, 100)
+    aaa_mm = _sat_num(_s_raw(s, 'aaa_mm'), 10, 250)
+    lvef = _sat_num(_s_raw(s, 'lvef'), 5, 95)
+    fev1 = _sat_num(_s_raw(s, 'spiro_fev1'), 10, 160)
+    hb_gl = _sat_hb_gl(_s_raw(s, 'hb'))
+    gl_mmol = _sat_gl_mmol(_s_raw(s, 'glucose'))
+    hba1c = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
+    spo2 = _sat_num(_s_raw(s, 'spo2'), 30, 100)
     eff_sbp = _valid_bilateral_sbp(s)
-    raw_sbp_low = min([v for v in (_sat_num(s.get('bp_sys'), 30, 320), _sat_num(s.get('bp_sys_l'), 30, 320)) if v is not None], default=None)
-    hr_val = _sat_num(s.get('hr'), 15, 260)
-    k_val = _sat_num(s.get('k'), 1.0, 12.0)
-    plt_val = _parse_plt_k(s.get('plt'))
-    fib_val = _sat_fib_gl(s.get('fibrinogen'))
-    inr_val = _sat_num(s.get('inr'), 0.4, 20.0)
-    nt_probnp = _sat_num(s.get('nt_probnp'), 1, 100000)
-    hs_ctn = _sat_num(s.get('hs_ctn'), 0.1, 50000)
+    raw_sbp_low = min([v for v in (_sat_num(_s_raw(s, 'bp_sys'), 30, 320), _sat_num(_s_raw(s, 'bp_sys_l'), 30, 320)) if v is not None], default=None)
+    hr_val = _sat_num(_s_raw(s, 'hr'), 15, 260)
+    k_val = _sat_num(_s_raw(s, 'k'), 1.0, 12.0)
+    plt_val = _parse_plt_k(_s_raw(s, 'plt'))
+    fib_val = _sat_fib_gl(_s_raw(s, 'fibrinogen'))
+    inr_val = _sat_num(_s_raw(s, 'inr'), 0.4, 20.0)
+    nt_probnp = _sat_num(_s_raw(s, 'nt_probnp'), 1, 100000)
+    hs_ctn = _sat_num(_s_raw(s, 'hs_ctn'), 0.1, 50000)
     cea_d = cea_live_days_since_event(q, today=today, s=s)
     is_symp_cea = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=False)
 
@@ -442,7 +477,7 @@ def _ihd_and_chf_flags(q, s):
     q_filled = bool(q.get('filled'))
     cad_chips = set(_str_list(q.get('cad_chips')))
     ecg = s.get('ecg') or 'pending'
-    lvef = _sat_num(s.get('lvef'), 5, 95)
+    lvef = _sat_num(_s_raw(s, 'lvef'), 5, 95)
     ihd = bool(
         q.get('recent_stent')
         or bool(cad_chips & {'mi', 'angina', 'cabg', 'stent_old', 'stent_6_12m'})
@@ -465,7 +500,7 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
     pathway = _resolve_pathway(patient)
     q_filled = bool(q.get('filled'))
     ihd, chf = _ihd_and_chf_flags(q, s)
-    scr_mgdl = _sat_scr_mgdl(s.get('creat'), s.get('creat_unit') or '')
+    scr_mgdl = _sat_scr_mgdl(_s_raw(s, 'creat'), s.get('creat_unit') or '')
 
     factors = []
     # Original Lee 1999 high-risk surgery factor: strictly intraperitoneal, intrathoracic,
@@ -489,7 +524,7 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
     )
     if has_prior_cvd:
         factors.append('ინსულტი / TIA ანამნეზში')
-    if q_filled and bool(q.get('dm_insulin')):
+    if bool(q.get('dm_insulin')):
         factors.append('ინსულინოთერაპია')
     if bool(q.get('on_dialysis')) or (scr_mgdl is not None and scr_mgdl > rcri_cfg['scr_mgdl']):
         factors.append('კრეატინინი >2.0 მგ/დლ (>177 მკმოლ/ლ) / დიალიზი')
@@ -526,8 +561,8 @@ def calc_vsg_cri(patient, q, s):
     pulm_chips = set(_str_list(q.get('pulm_chips')))
     med_chips = set(_str_list(q.get('med_chips')))
     ihd, chf = _ihd_and_chf_flags(q, s)
-    scr_mgdl = _sat_scr_mgdl(s.get('creat'), s.get('creat_unit') or '')
-    spiro_fev1 = _sat_num(s.get('spiro_fev1'), 10, 160)
+    scr_mgdl = _sat_scr_mgdl(_s_raw(s, 'creat'), s.get('creat_unit') or '')
+    spiro_fev1 = _sat_num(_s_raw(s, 'spiro_fev1'), 10, 160)
 
     pts = 0
     factors = []
@@ -545,7 +580,7 @@ def calc_vsg_cri(patient, q, s):
     if q_filled and q.get('smoker'):
         pts += 1
         factors.append('თამბაქო (+1)')
-    if q_filled and q.get('dm_insulin'):
+    if bool(q.get('dm_insulin')):
         pts += 1
         factors.append('ინსულინი (+1)')
     if ihd:
@@ -605,8 +640,8 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
     pathway = _resolve_pathway(patient)
     q_filled = bool(q.get('filled'))
     inf_chips = set(_str_list(q.get('inf_chips')))
-    spo2 = _sat_num(s.get('spo2'), 30, 100)
-    eff_hb = hb_gl if hb_gl is not None else _sat_hb_gl(s.get('hb'))
+    spo2 = _sat_num(_s_raw(s, 'spo2'), 30, 100)
+    eff_hb = hb_gl if hb_gl is not None else _sat_hb_gl(_s_raw(s, 'hb'))
     open_aortic = (
         (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
         or pathway == PreopPatient.Pathway.ABF
@@ -664,7 +699,7 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
         pts += 16
         factors.append(f'ოპერაციის ხანგრძლივობა 2–3 სთ{auto_sfx} (+16)')
 
-    if s.get('asa_emergency') or (q_filled and (q.get('aaa_pain') or q.get('cea_crescendo'))):
+    if s.get('asa_emergency') or q.get('aaa_pain') or q.get('cea_crescendo'):
         pts += 8
         factors.append('სასწრაფო/გადაუდებელი ჩვენება (+8)')
 

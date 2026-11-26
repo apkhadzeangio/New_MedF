@@ -47,7 +47,7 @@ def build_plain_georgian_missing_items(patient, ev, today):
             'kind': 'q', 'label': 'შესავსებია პაციენტის წინასაოპერაციო კითხვარი (ან გაუგზავნეთ ბმული)',
             'target_section': 'nw-sec-q', 'target_input': '', 'action_label': 'კითხვარის გახსნა',
         })
-    elif (q.get('self_fill_submitted') or q.get('filled_by') == 'პაციენტი (ბმულით)') and not q.get('nurse_verified'):
+    elif (q.get('self_filled') or q.get('self_fill_submitted') or q.get('filled_by') == 'პაციენტი (ბმულით)') and not q.get('nurse_verified'):
         has_q_banner = True
         items.append({
             'kind': 'q', 'label': 'პაციენტმა შეავსო კითხვარი — საჭიროა ექთნის გადამოწმება',
@@ -110,6 +110,8 @@ def _spoken_med_phrase(row, op_ka):
 
 def build_phone_med_script(patient, ev, today):
     """Build nurse phone-call medication-hold script with stop/continue groups and call-stamp state."""
+    from django.utils import timezone
+    today = _date(today) or timezone.localdate()
     s = ev['s']
     op_dt = _date(s.get('planned_surgery_date'))
     op_ka = _fmt_ka_date(op_dt, short=True) if op_dt else ''
@@ -122,8 +124,8 @@ def build_phone_med_script(patient, ev, today):
         plan = (row.get('date_plan') or '').strip()
         is_skip_text = ('გამოტოვეთ' in plan) or ('არ მიიღოთ' in plan)
         is_hold = bool(row.get('hold_or_skip')) or is_skip_text
-        is_urgent = bool(row.get('acute_hold') or row.get('contraindicated'))
-        is_red_deesc = bool(row.get('tone') == 'red' and ('დე-ესკალაცია' in plan or 'შეათანხმეთ' in plan or 'შეცვალეთ' in plan))
+        is_urgent = bool(row.get('acute_hold') or row.get('contraindicated') or row.get('unstructured'))
+        is_red_deesc = bool(row.get('tone') == 'red' and ('დე-ესკალაცია' in plan or 'შეათანხმეთ' in plan or 'შეცვალეთ' in plan or 'დააზუსტეთ' in plan))
         spoken_txt = (
             'არ შეწყვიტოთ თვითნებურად — ოპერაცია შეჩერებულია (STOP)!'
             if (stop_locked and is_hold and not is_urgent)
@@ -147,9 +149,10 @@ def build_phone_med_script(patient, ev, today):
     return {
         'has_meds': bool(stop_rows or keep_rows),
         'stop_rows': stop_rows,
+        'urgent_rows': [r for r in stop_rows if r['urgent_contact']],
         'keep_rows': keep_rows,
         'stop_locked': stop_locked,
-        'needs_op_date': bool(stop_rows and not op_dt),
+        'needs_op_date': bool(stop_rows and not op_dt and not stop_locked),
         'op_date_ka': _fmt_ka_date(op_dt) if op_dt else '',
         'called_valid': med_call['called_valid'],
         'outdated_call': med_call['outdated_call'],
@@ -161,6 +164,8 @@ def build_phone_med_script(patient, ev, today):
 
 def detect_postponement_impacts(patient, ev, today):
     """Compute exact re-check items when planned_surgery_date was changed / postponed."""
+    from django.utils import timezone
+    today = _date(today) or timezone.localdate()
     s = ev['s']
     prev_dt = _date(s.get('prev_planned_surgery_date'))
     cur_dt = _date(s.get('planned_surgery_date'))
@@ -271,6 +276,10 @@ _PATHWAY_EMERGENCY_SIGNS_KA = {
 
 def build_patient_plain_explanation(patient, ev, today):
     """Build plain-Georgian explanation card for the nurse to walk through with the patient."""
+    from django.utils import timezone
+
+    from .meds import _detect_freetext_high_risk_meds
+    today = _date(today) or timezone.localdate()
     q, s, pw = ev['q'], ev['s'], ev['pathway']
     op_dt = _date(s.get('planned_surgery_date'))
     med_script = build_phone_med_script(patient, ev, today)
@@ -288,6 +297,7 @@ def build_patient_plain_explanation(patient, ev, today):
 
     anesth_plan = s.get('anesthesia_plan') or 'auto'
     lido_allergy = bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in (ev.get('eff_allergy_chips') or ()))
+    has_glp1 = bool(q.get('glp1') or _detect_freetext_high_risk_meds(q.get('other_meds') or '', q=q)['has_glp1'])
     is_local_evla = (
         patient.op_subtype == 'evla'
         and not ev.get('has_neuraxial_plan')
@@ -295,7 +305,9 @@ def build_patient_plain_explanation(patient, ev, today):
         and not lido_allergy
         and not med_script['stop_locked']
     )
-    if q.get('glp1'):
+    if med_script['stop_locked']:
+        fasting_plain = 'ოპერაცია შეჩერებულია დაზუსტებამდე (STOP) — 24-საათიანი დიეტა ან უზმოდ რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!'
+    elif has_glp1:
         fasting_plain = (
             'ოპერაციამდე 24 საათით ადრე გადადით მხოლოდ სუფთა თხევად დიეტაზე (წყალი, ჩაი რძის გარეშე, გამჭვირვალე ბულიონი). '
             'მყარი საკვები შეწყვიტეთ მინიმუმ 8 საათით ადრე, 2 საათით ადრე — სუფთა წყალიც შეწყვიტეთ.'

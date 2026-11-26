@@ -313,7 +313,7 @@
                         <select name="cxr" class="form-select">
                             <option value="pending" {% if s.cxr == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
                             <option value="normal" {% if s.cxr == 'normal' %}selected{% endif %}>ნორმა / მწვავე კერის გარეშე</option>
-                            <option value="emphysema" {% if s.cxr == 'emphysema' %}selected{% endif %}>ემფიზემა / ქრ. ბრონქიტი (ჩართავს სპირომეტრიას)</option>
+                            <option value="emphysema" {% if s.cxr == 'emphysema' %}selected{% endif %}>ემფიზემა / ქრ. ბრონქიტი{% if ev.open_aortic %} (ჩართავს სპირომეტრიას){% endif %}</option>
                             <option value="infiltrate" {% if s.cxr == 'infiltrate' %}selected{% endif %}>ინფილტრაცია / გამონაჟონი / წარმონაქმნი</option>
                         </select>
                     </label>
@@ -597,7 +597,7 @@
                         <select name="cxr" class="form-select">
                             <option value="pending" {% if s.cxr == 'pending' %}selected{% endif %}>ჯერ არ ჩატარებულა</option>
                             <option value="normal" {% if s.cxr == 'normal' %}selected{% endif %}>ნორმა / მწვავე კეროვანი ცვლილების გარეშე</option>
-                            <option value="emphysema" {% if s.cxr == 'emphysema' %}selected{% endif %}>ემფიზემა / ქრ. ბრონქიტი (ჩართავს სპირომეტრიას)</option>
+                            <option value="emphysema" {% if s.cxr == 'emphysema' %}selected{% endif %}>ემფიზემა / ქრ. ბრონქიტი{% if ev.open_aortic %} (ჩართავს სპირომეტრიას){% endif %}</option>
                             <option value="infiltrate" {% if s.cxr == 'infiltrate' %}selected{% endif %}>ინფილტრაცია / გამონაჟონი / წარმონაქმნი</option>
                         </select>
                     </label>

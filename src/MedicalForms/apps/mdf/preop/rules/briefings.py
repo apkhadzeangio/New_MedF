@@ -180,7 +180,7 @@ def _eval_missing_s2_and_clearance_seal(ctx):
         next_step_hint = '✓ დადასტურებულია'
     ctx.next_step_hint = next_step_hint
 
-    is_self_filled = bool(q.get('self_fill_submitted') or q.get('filled_by') == 'პაციენტი (ბმულით)')
+    is_self_filled = bool(q.get('self_fill_submitted') or q.get('self_filled') or q.get('filled_by') == 'პაციენტი (ბმულით)')
     ctx.self_fill_highlights = build_self_fill_highlights(q) if is_self_filled else []
     ctx.side_badge = {
         'R': 'მარჯვენა (R)', 'L': 'მარცხენა (L)', 'B': 'ორმხრივი (B)',
@@ -349,7 +349,7 @@ def _build_surgical_brief(ctx):
             liver_arg = ' (ღვიძლის ≥3x-ზე არგატრობანის დოზა მცირდება 75%-ით!)' if ctx.liver_3x else ''
             heparin_plan = f'HIT ანამნეზში! UFH, LMWH, ფონდაპარინუქსი და DOAC (CrCl/eGFR <30 / დიალიზი) კატეგორიულად აკრძალულია → ინტრაოპ./პოსტოპ. ბივალირუდინი ან არგატრობანი{liver_arg}!'
         elif ctx.liver_3x:
-            heparin_plan = 'HIT ანამნეზში + ღვიძლის ≥3x დაზიანება! UFH, LMWH, DOAC და ფონდაპარინუქსი არარეკომენდებულია → უპირატესია ბივალირუდინი (არგატრობანის დოზა მცირდება 75%-ით!) და პოსტოპ. IPC / IV ბივალირუდინი!'
+            heparin_plan = 'HIT ანამნეზში + ღვიძლის ≥3x დაზიანება! UFH და LMWH კატეგორიულად აკრძალულია (DOAC და ფონდაპარინუქსი არარეკომენდებულია) → უპირატესია ბივალირუდინი (არგატრობანის დოზა მცირდება 75%-ით!) და პოსტოპ. IPC / IV ბივალირუდინი!'
         else:
             heparin_plan = 'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH კატეგორიულად აკრძალულია → ბივალირუდინი ან არგატრობანი (პოსტოპ. ფონდაპარინუქსი/DOAC CrCl ≥30-ზე)!'
     elif pathway == PreopPatient.Pathway.CEA and (s.get('brain_imaging') == 'large_or_hemorrhage' or getattr(ctx, 'active_thrombolysis_window', False)):
@@ -386,16 +386,30 @@ def _build_surgical_brief(ctx):
         pause_oac_win = '48–72 სთ-ში (CrCl<30: D+1 პროფილაქტ. კანქვეშა UFH / IPC)'
     else:
         pause_oac_win = '48–72 სთ-ში (D+1 პროფილაქტ. LMWH)'
-    if ctx.is_venous:
+    asa_allergy = 'nsaid' in ctx.allergy_chips
+    is_cea_bleed_stop = bool(
+        pathway == PreopPatient.Pathway.CEA
+        and (
+            s.get('brain_imaging') == 'large_or_hemorrhage'
+            or (getattr(ctx, 'active_thrombolysis_window', False) and not (s.get('brain_imaging') == 'normal_small' and ctx.days_since_ev is not None and ctx.days_since_ev >= 1))
+        )
+    )
+    if is_cea_bleed_stop:
+        default_postop_at = 'ტვინის სისხლჩაქცევის / თრომბოლიზისის ფონზე ანტიკოაგულაციისა და ანტიაგრეგანტების აღდგენა დაბლოკილია — სავალდებულოა ნეიროქირურგისა და ნევროლოგის კონსილიუმი!'
+    elif ctx.is_venous:
         default_postop_at = ctx.caprini_advice
     elif ctx.post_antithrombotic_label:
         default_postop_at = ctx.post_antithrombotic_label + (statin_tail if 'სტატინი' not in ctx.post_antithrombotic_label else '')
     elif ctx.has_mech_valve:
-        default_postop_at = f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით + ჩვენებისას ასპირინი 75–100 მგ (DOAC აკრძალულია!){statin_tail}'
+        mv_ap_b = f' + ჩვენებისას {ctx.alt_p2y12_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
+        default_postop_at = f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap_b} (DOAC აკრძალულია!){statin_tail}'
     elif ctx.has_full_oac:
         default_postop_at = f'მუდმივი ანტიკოაგულანტის (OAC) აღდგენა {pause_oac_win} ჰემოსტაზით (PAUSE) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
     elif ctx.has_active_stent_dapt:
-        default_postop_at = f'უწყვეტი DAPT: ასპირინი 100 მგ + {ctx.alt_p2y12_lbl} (კორონარული სტენტის დაცვა!){statin_tail}'
+        st_b = f'{ctx.alt_p2y12_lbl} (ასპირინზე ალერგია — კონსილიუმი!)' if asa_allergy else f'ასპირინი 100 მგ + {ctx.alt_p2y12_lbl}'
+        default_postop_at = f'უწყვეტი DAPT: {st_b} (კორონარული სტენტის დაცვა!){statin_tail}'
+    elif asa_allergy:
+        default_postop_at = f'{ctx.alt_p2y12_lbl} უწყვეტად (ასპირინზე/აასს-ზე ალერგია!){statin_tail}'
     elif 'clopidogrel_intol' in ctx.allergy_chips:
         default_postop_at = f'ასპირინი 100 მგ უწყვეტად (კლოპიდოგრელის აუტანლობა!){statin_tail}'
     else:
@@ -434,11 +448,12 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
         ):
             if not (s.get('med_hold_agreed') or s.get('dos_med_hold_verified')):
                 neuraxial_blockers.append('ASRA წამლის შეჩერების ინტერვალი დასადასტურებელია')
-        neuraxial_gate = (
-            'საყურადღებო/შეზღუდულია (ASRA 5th Ed): ' + ', '.join(neuraxial_blockers) + vka_inr_caution + asra_ufh_note
-            if (neuraxial_blockers or ctx.neuraxial_hard_blocked) else
-            f'ASRA 5th Ed კრიტერიუმები დაცულია (INR {ctx.eff_inr_nx}, PLT {ctx.plt}) ✓{vka_inr_caution}{asra_ufh_note}'
-        )
+        if ctx.neuraxial_hard_blocked:
+            neuraxial_gate = 'უკუნაჩვენებია (ASRA 5th Ed): ' + ', '.join(neuraxial_blockers) + vka_inr_caution + asra_ufh_note
+        elif neuraxial_blockers:
+            neuraxial_gate = 'საყურადღებო/შეზღუდულია (ASRA 5th Ed): ' + ', '.join(neuraxial_blockers) + vka_inr_caution + asra_ufh_note
+        else:
+            neuraxial_gate = f'ASRA 5th Ed კრიტერიუმები დაცულია (INR {ctx.eff_inr_nx}, PLT {ctx.plt}) ✓{vka_inr_caution}{asra_ufh_note}'
     elif ctx.auto_spinal_candidate and ctx.hard_nx_reasons:
         neuraxial_gate = 'ნეირაქსიული შეზღუდულია (ავტო-გადართვა ზოგადზე — ASRA 5th Ed): ' + ', '.join(ctx.hard_nx_reasons)
     elif ctx.auto_spinal_candidate:
@@ -507,7 +522,7 @@ def _build_anesthetic_brief(ctx):
         airway_bits.append('RSI ინდუქცია მხოლოდ საოპერაციო ველის დამუშავებისა და ქირურგიული მზადყოფნის შემდეგ!')
     if (ctx.k_val is not None and ctx.k_val >= 5.5) or (q_filled and (q.get('cea_disabling_stroke') or (q.get('neuro') and ctx.is_symp_cea))):
         airway_bits.append('სუქცინილქოლინი უკუნაჩვენებია (ლეტალური ჰიპერკალიემიის რისკი — როკურონიუმი + სუგამადექსი)!')
-    if q_filled and q.get('glp1'):
+    if q.get('glp1') or ctx.ft_meds.get('has_glp1'):
         airway_bits.append('GLP-1 ასპირაციის დაცვა (კუჭის POCUS / RSI)')
     if q_filled and q.get('cea_neck_limited'):
         airway_bits.append('კისრის გაშლა შეზღუდულია!')

@@ -163,9 +163,9 @@ def eval_unknown_state_failsafe(ctx):
             'rule_id': 'WF_UNKNOWN_STATE_FAILSAFE',
         })
 
+    from ..utils import is_pregnancy_eligible
     is_unverified_sf = (
-        q_filled
-        and (bool(q.get('self_fill_submitted')) or q.get('filled_by') == 'პაციენტი (ბმულით)')
+        (bool(q.get('self_fill_submitted')) or bool(q.get('self_filled')) or (q_filled and q.get('filled_by') == 'პაციენტი (ბმულით)'))
         and not q.get('nurse_verified')
     )
     if is_unverified_sf:
@@ -198,11 +198,8 @@ def eval_unknown_state_failsafe(ctx):
 
     repro_female_risk = (
         patient.sex == 'F'
-        and ctx.age is not None
-        and 12 <= ctx.age <= 55
+        and is_pregnancy_eligible(patient)
         and (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD) or ctx.is_pta or ctx.is_venous)
-        and not q.get('pregnant_possible')
-        and not q.get('ven_pregnant')
         and not s.get('dos_bhcg_negative')
     )
     if repro_female_risk:

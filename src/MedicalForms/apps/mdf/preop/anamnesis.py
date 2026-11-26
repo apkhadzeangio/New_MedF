@@ -282,7 +282,8 @@ def _anam_venous(patient, ev, q, s, head_prefix, surgeon_str):
         ven_notes.append(f'რეციდივული ვარიკოზი ({rec_txt})')
     if q.get('ven_hormones'):
         ven_notes.append('ჰორმონული პრეპარატები/კონტრაცეპტივი')
-    if (q.get('ven_pregnant') or q.get('pregnant_possible')) and patient.sex != 'M':
+    from .utils import is_pregnancy_eligible
+    if (q.get('ven_pregnant') or q.get('pregnant_possible')) and is_pregnancy_eligible(patient):
         ven_notes.append('ორსულობა / ლაქტაცია (!)')
     if ven_notes:
         lines.append('ვენური და თრომბოემბოლიური ფაქტორები: ' + '; '.join(ven_notes) + '.')
@@ -388,14 +389,16 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
     lines.append(f"მუდმივი მედიკამენტები: {', '.join(meds) if meds else 'არ იღებს'}.")
 
     allergies = []
-    raw_alg_chips = list(q.get('allergy_chips') or [])
-    alg_txt_low = (q.get('allergy_text') or '').lower()
+    raw_alg_chips = _str_list(q.get('allergy_chips'))
+    alg_txt_raw = (q.get('allergy_text') or '').strip()
+    alg_txt_low = alg_txt_raw.lower()
     lido_in_txt = any(st in alg_txt_low for st in ('ლიდოკაინ', 'lidocain', 'ნოვოკაინ'))
     if q.get('ven_lidocaine_allergy') and 'lidocaine' not in raw_alg_chips and not lido_in_txt:
         allergies.append('ლიდოკაინი / ადგილობრივი ანესთეტიკი!')
     if q.get('allergy_iodine'):
         allergies.append('იოდი / კონტრასტი!')
-    alg_extra = chip_summary(raw_alg_chips, 'allergy_chips', q.get('allergy_text'))
+    eff_alg_txt = '' if ('lidocaine' in raw_alg_chips and lido_in_txt and len(alg_txt_raw.split()) <= 2) else alg_txt_raw
+    alg_extra = chip_summary(raw_alg_chips, 'allergy_chips', eff_alg_txt)
     if alg_extra:
         allergies.append(alg_extra)
     elif q.get('allergy_other'):

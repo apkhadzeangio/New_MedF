@@ -101,6 +101,16 @@
                     <div class="d-flex flex-wrap align-items-center gap-2">
                         {% if ev.has_hard_contraindication %}
                         <span class="po-badge st-alert">აბსოლუტური უკუჩვენება — ოპერაციაზე დადასტურება დაბლოკილია!</span>
+                        {% elif ev.dos_hold_danger %}
+                        <span class="po-badge st-alert">ოპერაციის დილის STOP — დადასტურება დაბლოკილია!</span>
+                        {% elif ev.neuraxial_hard_blocked %}
+                        <span class="po-badge st-alert">ნეირაქსიული ბლოკადა უკუნაჩვენებია — შეცვალეთ ანესთეზიის გეგმა!</span>
+                        {% elif not q.filled %}
+                        <span class="po-badge st-alert">კითხვარი არ არის შევსებული — დადასტურება დაბლოკილია!</span>
+                        {% elif ev.has_blocking_unknown_state %}
+                        <span class="po-badge st-alert">არასრული ან შეუსაბამო მონაცემები — დადასტურება დაბლოკილია!</span>
+                        {% elif ev.needs_stale_labs and not s.stale_labs_refreshed %}
+                        <span class="po-badge st-alert">ანალიზები ხანდაზმულია (&gt;14 დღე) — საჭიროა განახლება!</span>
                         {% endif %}
                         {% if ev.has_unacked_red and not ev.has_hard_contraindication %}
                         <button type="submit" name="action" value="ack_alerts" class="x-btn">
@@ -112,7 +122,7 @@
                             დადასტურების მოხსნა
                         </button>
                         {% else %}
-                        <button type="submit" name="action" value="approve" id="btn-surgeon-approve" class="x-btn primary" {% if ev.has_hard_contraindication %}disabled title="აბსოლუტური კლინიკური უკუჩვენების გამო ოპერაციაზე დადასტურება დაბლოკილია!"{% endif %}>
+                        <button type="submit" name="action" value="approve" id="btn-surgeon-approve" class="x-btn primary" {% if not q.filled or ev.has_hard_contraindication or ev.dos_hold_danger or ev.neuraxial_hard_blocked or ev.has_blocking_unknown_state or ev.needs_stale_labs and not s.stale_labs_refreshed %}disabled title="ოპერაციაზე დადასტურება დაბლოკილია კლინიკური ან უსაფრთხოების ბარიერის გამო!"{% endif %}>
                             ✓ ვადასტურებ — მზადაა ოპერაციისთვის
                         </button>
                         {% endif %}

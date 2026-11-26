@@ -1,0 +1,310 @@
+"""POST field parsers and approval invalidation helpers for PreopPatientView."""
+from django.utils import timezone
+
+from ...board import clean_text
+from ...models import PreopPatient
+from ..calculators import normalize_fibrinogen_gl, normalize_ldl_mmol
+from ..constants import CHIP_LABELS
+from ..utils import _date, _int, _num, chip_summary, cta_live_months_age
+
+_S1_NUM_FIELDS = (
+    ('aaa_mm', 10, 200), ('cta_months', 0, 240),
+    ('ven_gsv_mm', 1, 50), ('pad_gsv_mm', 0.5, 30),
+    ('abi_r', 0.0, 3.0), ('abi_l', 0.0, 3.0),
+    ('tp_r', 0, 400), ('tp_l', 0, 400),
+    ('tbi_r', 0.0, 3.0), ('tbi_l', 0.0, 3.0),
+    ('bp_sys', 30, 320), ('bp_dia', 20, 220),
+    ('bp_sys_l', 30, 320), ('bp_dia_l', 20, 220),
+    ('hr', 15, 260), ('spo2', 30, 100),
+    ('weight_kg', 25, 260), ('height_cm', 100, 230),
+    ('hb', 1, 260), ('inr', 0.4, 20),
+    ('creat', 0.1, 3000), ('k', 1.0, 12.0), ('na', 95, 190),
+    ('glucose', 0.5, 1000), ('hba1c', 3, 25),
+    ('ferritin', 1, 5000), ('tsat', 1, 100),
+    ('nt_probnp', 1, 100000), ('hs_ctn', 0.1, 50000),
+    ('albumin', 0.5, 80),
+    ('urine_wbc', 0, 2000),
+    ('carotid_r', 0, 100), ('carotid_l', 0, 100), ('lvef', 5, 95),
+)
+
+_S1_BOOL_FIELDS = (
+    'cta_disc', 'irregular_hr', 'aptt_prolonged', 'viral_positive',
+    'urine_nitrite', 'carotid_symp', 'echo_valve_issue',
+    'aaa_renal_vein_anom', 'abf_renal_stenosis',
+    'ven_epifascial', 'ven_tortuous', 'ven_perforator',
+)
+
+_S1_SELECT_FIELDS = (
+    ('liver_status', ('normal', '2x', '3x')),
+    ('cxr', ('pending', 'normal', 'emphysema', 'infiltrate')),
+    ('ecg', ('pending', 'normal', 'afib_controlled', 'ischemia_arrhythmia')),
+    ('aaa_morphology', ('fusiform', 'saccular', 'rapid_growth', 'inflammatory', 'inflammatory_mycotic')),
+    ('aaa_neck_status', ('pending', 'friendly_ifu', 'hostile_neck')),
+    ('popliteal_screen_status', ('pending', 'normal', 'aneurysm_found')),
+    ('aaa_iliac_access', ('pending', 'ok_7mm', 'narrow_calcified', 'iliac_aneurysm')),
+    ('cea_cta_status', ('pending', 'concordant', 'high_calcified')),
+    ('brain_imaging', ('pending', 'normal_small', 'large_or_hemorrhage')),
+    ('abf_clamp_zone', ('pending', 'infrarenal', 'juxtarenal_calcified')),
+    ('abf_outflow', ('pending', 'patent', 'profunda_stenosis', 'poor_outflow')),
+    ('abf_mesenteric', ('normal', 'ima_dominant_iia_occ', 'sma_stenosis')),
+    ('pad_runoff_status', ('pending', 'popliteal_patent', 'tibial_single', 'desert_foot')),
+    ('pad_gsv_status', ('pending', 'adequate', 'inadequate')),
+    ('pta_lesion_site', ('iliac', 'femoropopliteal', 'infrapopliteal', 'multilevel')),
+    ('pta_access_site', ('pending', 'cfa_clean', 'cfa_calcified_scar')),
+    ('ven_duplex_status', ('pending', 'deep_patent_reflux', 'acute_dvt', 'deep_obstruction', 'superficial_thrombus')),
+    ('ven_target_vein', ('gsv', 'ssv', 'gsv_ssv', 'aagsv_trib')),
+)
+
+_S2_SELECT_FIELDS = (
+    ('anesthesia_plan', ('auto', 'local', 'plexus', 'neuraxial', 'general')),
+    ('asa_class', ('auto', 'I', 'II', 'III', 'IV')),
+    ('airway_mallampati', ('I_II', 'III', 'IV_difficult')),
+    ('stop_bang_risk', ('auto', 'low', 'intermediate', 'high')),
+    ('surg_duration_est', ('auto', 'lt_2h', '2_3h', 'gt_3h')),
+    ('cied_plan', ('pending', 'bipolar_only', 'magnet_async', 'ep_reprogram')),
+    ('gastro_result', ('pending', 'remission', 'acute_ulcer')),
+    ('laryngoscopy_res', ('pending', 'normal', 'palsy')),
+    ('tsh_status', ('pending', 'euthyroid', 'hyperthyroid', 'hypothyroid_severe')),
+    ('alt_vein_mapped', ('pending', 'contra_gsv_ok', 'arm_ssv_ok', 'no_autovein_prosthetic')),
+    ('post_antithrombotic_plan', ('auto', 'voyager', 'dapt', 'sapt', 'oac_sapt')),
+)
+
+_S2_BOOL_FIELDS = (
+    'urine_culture_done', 'blood_reserved', 'evar_sized', 'med_hold_agreed',
+    'anesth_done', 'neuro_consult_done', 'wound_care_done',
+    'vte_prophylaxis_planned', 'compression_ready',
+    'anemia_panel_done', 'pbm_iv_iron_done', 'cell_saver_ready', 'ppi_started',
+    'endo_consult_done', 'nephro_panel_done',
+    'hydration_planned', 'dental_sanitation_done', 'decolonization_ready',
+    'contrast_premed_done', 'dapt_ready', 'stale_labs_refreshed',
+    'cea_antiplatelet_started', 'cied_checked',
+)
+
+
+def _set_num_field(s, key, raw, lo=None, hi=None, norm_fn=None):
+    raw_inv = s.get('_invalid_inputs')
+    inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
+    if raw is None or str(raw).strip() == '':
+        s[key] = None
+        inv.pop(key, None)
+    else:
+        parsed = norm_fn(raw) if norm_fn else _num(raw, lo=lo, hi=hi)
+        s[key] = parsed
+        if parsed is None:
+            inv[key] = clean_text(raw, 24)
+        else:
+            inv.pop(key, None)
+    if inv:
+        s['_invalid_inputs'] = inv
+    else:
+        s.pop('_invalid_inputs', None)
+
+
+def _norm_plt_post(raw):
+    x = _num(raw, lo=1, hi=2000000)
+    if x is None or (2500 < x < 3000):
+        return None
+    val = int(round(x / 1000.0)) if x >= 3000 else x
+    return _num(val, lo=1, hi=2500)
+
+
+def _norm_wbc_post(raw):
+    x = _num(raw, lo=0.1, hi=150000)
+    if x is None:
+        return None
+    val = round(x / 1000.0, 2) if x >= 200 else x
+    return _num(val, lo=0.1, hi=200)
+
+
+def _parse_s1_numbers_and_dates(post, s, today):
+    if 'wbc' in post:
+        _set_num_field(s, 'wbc', post.get('wbc'), norm_fn=_norm_wbc_post)
+    if 'plt' in post:
+        _set_num_field(s, 'plt', post.get('plt'), norm_fn=_norm_plt_post)
+    for key, lo, hi in _S1_NUM_FIELDS:
+        if key in post:
+            _set_num_field(s, key, post.get(key), lo=lo, hi=hi)
+    if 'fibrinogen' in post:
+        _set_num_field(s, 'fibrinogen', post.get('fibrinogen'), norm_fn=normalize_fibrinogen_gl)
+    if 'ldl' in post:
+        _set_num_field(s, 'ldl', post.get('ldl'), norm_fn=normalize_ldl_mmol)
+    if 'cta_date' in post:
+        raw_cd = (post.get('cta_date') or '').strip()
+        cd = _date(raw_cd)
+        raw_inv = s.get('_invalid_inputs')
+        inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
+        if not raw_cd:
+            s['cta_date'] = ''
+            inv.pop('cta_date', None)
+        elif cd and cd <= today:
+            s['cta_date'] = cd.isoformat()
+            s['cta_months'] = cta_live_months_age({'cta_date': s['cta_date']}, today=today)
+            inv.pop('cta_date', None)
+        else:
+            s['cta_date'] = ''
+            inv['cta_date'] = clean_text(raw_cd, 24)
+        if inv:
+            s['_invalid_inputs'] = inv
+        else:
+            s.pop('_invalid_inputs', None)
+    if 'labs_date' in post:
+        ld = _date(post.get('labs_date'))
+        s['labs_date'] = ld.isoformat() if (ld and ld <= today) else ''
+        if ld and ld <= today and (today - ld).days <= 14:
+            s['stale_labs_refreshed'] = False
+    if 'creat_unit' in post and post.get('creat_unit') in ('', 'umol', 'mgdl'):
+        s['creat_unit'] = post.get('creat_unit')
+
+
+def _parse_s1_flags_and_selects(post, patient, s):
+    partial = post.get('s1_partial') == '1'
+    for bf in _S1_BOOL_FIELDS:
+        if partial:
+            if bf in post:
+                s[bf] = post.get(bf) in ('1', 'on', 'true')
+        elif bf in post or bf in ('irregular_hr', 'aptt_prolonged', 'viral_positive', 'carotid_symp', 'echo_valve_issue'):
+            s[bf] = post.get(bf) in ('1', 'on', 'true')
+        elif bf == 'cta_disc' and patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
+            s[bf] = False
+        elif bf == 'aaa_renal_vein_anom' and patient.pathway == PreopPatient.Pathway.AAA_INFRA:
+            s[bf] = False
+        elif bf == 'abf_renal_stenosis' and patient.pathway == PreopPatient.Pathway.ABF:
+            s[bf] = False
+        elif bf in ('ven_epifascial', 'ven_tortuous', 'ven_perforator') and patient.pathway == PreopPatient.Pathway.VENOUS:
+            s[bf] = False
+        elif bf == 'urine_nitrite' and patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
+            s[bf] = False
+
+    if 'blood_group' in post:
+        s['blood_group'] = clean_text(post.get('blood_group'), 30)
+    for sel_key, allowed in _S1_SELECT_FIELDS:
+        if post.get(sel_key) in allowed:
+            s[sel_key] = post.get(sel_key)
+
+
+def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
+    for key, fn, lo, hi in (
+        ('spiro_fev1', _int, 10, 160),
+        ('abi_r', _num, 0.0, 3.0), ('abi_l', _num, 0.0, 3.0),
+        ('tp_r', _int, 0, 400), ('tp_l', _int, 0, 400),
+        ('tbi_r', _num, 0.0, 3.0), ('tbi_l', _num, 0.0, 3.0),
+        ('hba1c', _num, 3, 25), ('ferritin', _num, 1, 5000), ('tsat', _num, 1, 100),
+    ):
+        if key in post:
+            _set_num_field(s, key, post.get(key), lo=lo, hi=hi, norm_fn=(lambda v, f=fn, a=lo, b=hi: f(v, lo=a, hi=b)))
+    if 'planned_surgery_date' in post:
+        op_d = _date(post.get('planned_surgery_date'))
+        s['planned_surgery_date'] = op_d.isoformat() if op_d else ''
+    for sel_key, allowed in _S2_SELECT_FIELDS:
+        if post.get(sel_key) in allowed:
+            s[sel_key] = post.get(sel_key)
+
+    s2_bool_visible = {
+        'anesth_done': True,
+        'stale_labs_refreshed': bool(ev_before['needs_stale_labs']),
+        'anemia_panel_done': bool(ev_before['needs_anemia_panel']),
+        'pbm_iv_iron_done': bool(ev_before.get('pbm_iron_required')),
+        'endo_consult_done': bool(ev_before['needs_endo_reflex']),
+        'nephro_panel_done': bool(ev_before['needs_nephro_panel']),
+        'hydration_planned': bool(ev_before['needs_hydration']),
+        'dental_sanitation_done': bool(ev_before['needs_dental']),
+        'contrast_premed_done': bool(ev_before['needs_contrast_premed']),
+        'cied_checked': bool(ev_before['needs_cied']),
+        'cea_antiplatelet_started': bool(ev_before['pathway'] == 'cea' and ev_before['needs_cea_antiplatelet']),
+        'vte_prophylaxis_planned': bool(ev_before['is_venous'] and ev_before['needs_vte_prophylaxis']),
+        'compression_ready': bool(ev_before['is_venous'] and not ev_before.get('compression_contra')),
+        'dapt_ready': bool(ev_before['is_pta'] and ev_before['q'].get('filled')),
+        'neuro_consult_done': bool(ev_before['pathway'] == 'cea' and ev_before['needs_neuro']),
+        'ppi_started': bool(ev_before['needs_ppi']),
+        'urine_culture_done': bool(ev_before['uti_suspected']),
+        'wound_care_done': bool(ev_before['needs_wound_care']),
+        'blood_reserved': bool(ev_before['needs_blood']),
+        'cell_saver_ready': bool(ev_before['needs_blood'] and ev_before['open_aortic']),
+        'evar_sized': bool(ev_before['pathway'] == 'aaa_infra' and patient.op_subtype == 'evar'),
+        'decolonization_ready': bool(ev_before['has_synthetic_implant']),
+        'med_hold_agreed': bool(ev_before['needs_med_hold']),
+    }
+    for bf in _S2_BOOL_FIELDS:
+        if bf in post:
+            s[bf] = post.get(bf) in ('1', 'on', 'true')
+        elif s2_bool_visible.get(bf, True):
+            s[bf] = False
+    if ev_before['clearance_seal']['code'] == 'stop' and s.get('med_hold_agreed'):
+        s['med_hold_agreed'] = False
+    if (s.get('cied_plan') or 'pending') != 'pending':
+        s['cied_checked'] = True
+
+    cab_present = 'anesth_cabinet_present' in post
+    if cab_present or 'asa_emergency' in post:
+        s['asa_emergency'] = post.get('asa_emergency') in ('1', 'on', 'true')
+    if 'icu_bed_field_present' in post or 'icu_bed_booked' in post:
+        s['icu_bed_booked'] = post.get('icu_bed_booked') in ('1', 'on', 'true')
+    return cab_present
+
+
+def _parse_s2_notes_and_cardio(post, patient, s, cab_present, old_nurse_chips, old_nurse_chip_txt, old_cardio_chips, old_cardio_chip_txt):
+    if hasattr(post, 'getlist'):
+        s['nurse_note_chips'] = [k for k in post.getlist('nurse_note_chips') if k in CHIP_LABELS['nurse_note_chips']]
+        s['cardio_note_chips'] = [k for k in post.getlist('cardio_note_chips') if k in CHIP_LABELS['cardio_note_chips']]
+        if cab_present or 'anesth_lines_chips' in post:
+            s['anesth_lines_chips'] = [k for k in post.getlist('anesth_lines_chips') if k in CHIP_LABELS['anesth_lines_chips']]
+
+    new_nurse_chip_txt = chip_summary(s.get('nurse_note_chips'), 'nurse_note_chips')
+    if 'nurse_note_custom' in post:
+        custom_nn = clean_text(post.get('nurse_note_custom'), 1000)
+        s['nurse_note_custom'] = custom_nn
+        s['nurse_note'] = '; '.join([x for x in (new_nurse_chip_txt, custom_nn) if x])[:1000]
+    else:
+        raw_nurse = clean_text(post.get('nurse_note'), 1000)
+        if raw_nurse == old_nurse_chip_txt and s['nurse_note_chips'] != old_nurse_chips:
+            raw_nurse = ''
+        s['nurse_note_custom'] = '' if raw_nurse == new_nurse_chip_txt else raw_nurse
+        s['nurse_note'] = raw_nurse or new_nurse_chip_txt
+
+    uf = ['studies', 'updated_at', 'updated_by']
+    if 'cardiologist' in post or 'cardiologist_custom' in post:
+        cardio_name = clean_text(post.get('cardiologist_custom') or post.get('cardiologist'), 100).replace('\n', ' ')
+        patient.cardiologist = cardio_name or 'ლიკა ინჯია'
+        uf.append('cardiologist')
+    if 'cardio_decision' in post:
+        dec = post.get('cardio_decision') or ''
+        if dec in PreopPatient.CardioDecision.values:
+            old_dec = patient.cardio_decision
+            patient.cardio_decision = dec
+            if dec and not patient.cardio_date:
+                patient.cardio_date = timezone.localdate()
+            elif not dec:
+                patient.cardio_date = None
+            uf.extend(['cardio_decision', 'cardio_date'])
+            if dec != old_dec and dec in ('stress', 'cag', 'pci'):
+                patient.alerts_ack_at = None
+                s['alerts_ack_sig'] = ''
+                uf.append('alerts_ack_at')
+
+    new_cardio_chip_txt = chip_summary(s.get('cardio_note_chips'), 'cardio_note_chips')
+    if 'cardio_note_custom' in post:
+        custom_cn = clean_text(post.get('cardio_note_custom'), 255).replace('\n', ' ')
+        s['cardio_note_custom'] = custom_cn
+        patient.cardio_note = '; '.join([x for x in (new_cardio_chip_txt, custom_cn) if x])[:255]
+        uf.append('cardio_note')
+    elif 'cardio_note' in post or 'cardio_note_chips' in post:
+        raw_cn = clean_text(post.get('cardio_note'), 255).replace('\n', ' ')
+        if raw_cn == old_cardio_chip_txt and s['cardio_note_chips'] != old_cardio_chips:
+            raw_cn = ''
+        s['cardio_note_custom'] = '' if raw_cn == new_cardio_chip_txt else raw_cn
+        patient.cardio_note = (raw_cn or new_cardio_chip_txt)[:255]
+        uf.append('cardio_note')
+    return uf
+
+
+def _invalidate_approval_if_needed(patient, uf, clear_anamnesis=False):
+    if clear_anamnesis and patient.anamnesis:
+        patient.anamnesis = ''
+        uf.append('anamnesis')
+    if patient.approved_at is not None:
+        patient.approved_at = None
+        patient.approved_by = None
+        uf.extend(['approved_at', 'approved_by'])
+        if patient.someday_list == PreopPatient.SomedayList.READY:
+            patient.someday_list = PreopPatient.SomedayList.CONF
+            uf.append('someday_list')

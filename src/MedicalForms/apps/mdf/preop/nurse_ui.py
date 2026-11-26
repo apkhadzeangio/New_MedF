@@ -104,6 +104,10 @@ def _extract_hold_start_date(row, op_dt):
 
 def _med_call_status(ev, today):
     """Determine whether nurse must call patient about drug holds today/next 48h."""
+    from django.utils import timezone
+    today = _date(today) or timezone.localdate()
+    if ev['clearance_seal']['code'] == 'stop' or ev.get('has_hard_contraindication'):
+        return {'needs_call': False, 'urgent_call': False, 'called_valid': False, 'outdated_call': False, 'drugs': []}
     s = ev['s']
     op_dt = _date(s.get('planned_surgery_date'))
     hold_rows = [r for r in ev['med_schedule'] if r.get('hold_or_skip')]
@@ -202,6 +206,8 @@ def get_nurse_readiness_verdict(patient, ev):
 
 
 def _relative_op_label(op_dt, today):
+    from django.utils import timezone
+    today = _date(today) or timezone.localdate()
     if not op_dt:
         return 'თარიღი უცნობია'
     diff = (op_dt - today).days
@@ -216,6 +222,8 @@ def _relative_op_label(op_dt, today):
 
 def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
     """Build 09:00 handover action queues + 03:00 instant-answer directory for active patients."""
+    from django.utils import timezone
+    today = _date(today) or timezone.localdate()
     q_low = (q_search or '').strip().lower()
     or_urgent, med_calls, self_returned, missing_overdue, directory = [], [], [], [], []
 
@@ -254,7 +262,7 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
         in_urgent = item['is_or_soon'] or verdict['code'] == 'stop' or has_acute
         if in_urgent:
             or_urgent.append(item)
-        if med_call['urgent_call']:
+        if med_call['urgent_call'] and verdict['code'] != 'stop':
             med_calls.append(item)
         if sf_info['code'] == 'returned':
             self_returned.append(item)
@@ -312,8 +320,8 @@ def plain_risk_badges(ev):
     """Translate technical scores (RCRI, ARISCAT, eGFR/CrCl, ASA) into plain Georgian badges."""
     badges = []
     rcri_sc = ev['rcri']['score']
-    cardio_lbl = 'დაბალი' if rcri_sc == 0 else ('საშუალო' if rcri_sc == 1 else 'მაღალი')
-    cardio_tone = 'ok' if rcri_sc == 0 else ('warn' if rcri_sc == 1 else 'danger')
+    cardio_lbl = 'დაბალი' if rcri_sc <= 1 else ('საშუალო' if rcri_sc == 2 else 'მაღალი')
+    cardio_tone = 'ok' if rcri_sc <= 1 else ('warn' if rcri_sc == 2 else 'danger')
     badges.append({'label': 'გულის რისკი', 'value': cardio_lbl, 'tone': cardio_tone})
 
     ari_sc = ev['ariscat']['score']

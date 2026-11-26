@@ -253,6 +253,12 @@ def eval_cross_pathway_and_urgency(ctx):
             if is_elective_claud:
                 ctx.hard_contraindications.append(preg_art_msg)
 
+    if not ctx.is_venous and (bool(q.get('ven_lidocaine_allergy')) or 'lidocaine' in ctx.allergy_chips):
+        if ctx.is_pta or s.get('anesthesia_plan') in ('local', 'plexus'):
+            ctx.red_flags.append(
+                'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე — ადგილობრივი/წნულის ანესთეზია საშიშია! '
+                'სავალდებულოა ანესთეზიოლოგის ჩართვა და ალტერნატიული გაუტკივარების შეთანხმება.'
+            )
     # Distinguish hemodynamically unstable rupture suspect (SBP <90 or Shock Index >=1.0) from intact symptomatic AAA (ESVS 2024)
     eff_sbp_pre = _valid_bilateral_sbp(s)
     hr_pre = _int(s.get('hr'), lo=15, hi=260)
@@ -264,7 +270,7 @@ def eval_cross_pathway_and_urgency(ctx):
     ctx.is_acute_emergency = bool(bool(q.get('aaa_pain')) or bool(q.get('cea_crescendo')))
     ctx.is_septic_or_mycotic_urgent = bool(
         (pathway == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic')
-        or (q_filled and bool(q.get('abf_wet_infection')))
+        or bool(q.get('abf_wet_infection'))
     )
     ctx.is_urgent_case = bool(
         ctx.is_acute_emergency

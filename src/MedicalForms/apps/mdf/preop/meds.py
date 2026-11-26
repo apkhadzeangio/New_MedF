@@ -11,8 +11,8 @@ from .constants import (
 from .utils import _date, _int, _num, _resolve_pathway, _str_list, cea_live_days_since_event, is_pregnancy_eligible
 
 _RIVA_STEM = r'(?:ქსარელტ\w*|xarelto|რივაროქსაბ\w*|rivaroxab\w*)'
-_RIVA_LOW_RE = re.compile(rf'(?:{_RIVA_STEM}[^\d,;:\n]{{0,12}}2[.,]5\b|\b2[.,]5\s*(?:მგ|mg)?[^\w\n]{{0,8}}{_RIVA_STEM})')
-_RIVA_THER_RE = re.compile(rf'(?:{_RIVA_STEM}[^\d,;:\n]{{0,12}}(?:10|15|20)\b|\b(?:10|15|20)\s*(?:მგ|mg)?[^\w\n]{{0,8}}{_RIVA_STEM})')
+_RIVA_LOW_RE = re.compile(rf'(?:{_RIVA_STEM}[^\d,;:\n]{{0,12}}(?<![\d.,])2[.,]5(?![\d.,])|(?<![\d.,])2[.,]5\s*(?:მგ|mg)?[^\w\n]{{0,8}}{_RIVA_STEM})')
+_RIVA_THER_RE = re.compile(rf'(?:{_RIVA_STEM}[^\d,;:\n]{{0,12}}(?<![\d.,])(?:10|15|20)(?![\d.,])|(?<![\d.,])(?:10|15|20)\s*(?:მგ|mg)?[^\w\n]{{0,8}}{_RIVA_STEM})')
 
 
 def _detect_freetext_allergies(text):
@@ -34,7 +34,7 @@ def _detect_freetext_high_risk_meds(text, q=None):
     if not isinstance(text, str) or not text.strip():
         return {
             'matched_keys': set(), 'unstructured_labels': [], 'unstructured_antithrombotic': False,
-            'ertugliflozin': False, 'daily_glp1': False, 'has_omeprazole': False,
+            'ertugliflozin': False, 'daily_glp1': False, 'has_omeprazole': False, 'has_glp1': False,
         }
     low = text.lower()
     q_d = q if isinstance(q, dict) else {}
@@ -81,6 +81,7 @@ def _detect_freetext_high_risk_meds(text, q=None):
         'ertugliflozin': is_ertug,
         'daily_glp1': is_daily_glp1,
         'has_omeprazole': 'omeprazole' in matched_keys,
+        'has_glp1': 'glp1' in matched_keys,
     }
 
 
@@ -99,7 +100,10 @@ def _apply_stop_lock_to_med_schedule(rows):
     for r in rows:
         if r.get('acute_hold'):
             continue
-        if r.get('contraindicated'):
+        if r.get('unstructured'):
+            r['date_plan'] = 'STOP — დააზუსტეთ ექიმთან (არასტრუქტურირებულია)!'
+            r['tone'] = 'red'
+        elif r.get('contraindicated'):
             r['date_plan'] = 'STOP — დაუყოვნებლივ დაუკავშირდით ექიმს!'
             r['tone'] = 'red'
         elif r.get('hold_or_skip'):
@@ -126,7 +130,7 @@ def _make_med_row_helpers(op_dt):
         return f'ბოლო: {d_str(-hold_days - 1)} · არ მიიღოთ {d_str(-hold_days)}-დან{sfx}'
 
     def add_row(drug, rule, tone, date_plan='', hold_or_skip=False, force_date_plan=False,
-                acute_hold=False, contraindicated=False, glp1_diet=False):
+                acute_hold=False, contraindicated=False, glp1_diet=False, unstructured=False):
         row = {
             'drug': drug,
             'rule': rule,
@@ -140,6 +144,8 @@ def _make_med_row_helpers(op_dt):
             row['contraindicated'] = True
         if glp1_diet:
             row['glp1_diet'] = True
+        if unstructured:
+            row['unstructured'] = True
         rows.append(row)
 
     return rows, d_str, hold_str, add_row
@@ -179,6 +185,7 @@ def _med_renal_and_flags(patient, q, s, egfr, crcl):
 
 
 def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=None):
+    from .registry import rule_value
     from .utils import is_symp_cea_patient
     pw = _resolve_pathway(patient)
     is_evla = (patient.op_subtype == PreopPatient.OpSubtype.EVLA)
@@ -220,6 +227,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     has_full_oac = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
     p2y12_cnt = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
     oac_count = sum([bool(q.get('med_warfarin')), bool(q.get('med_doac')), bool(q.get('med_dabigatran')), ('rivaroxaban_2_5' in med_chips)])
+    total_at_cnt = oac_count + p2y12_cnt + (1 if q.get('med_aspirin') else 0) + (1 if 'cilostazol' in med_chips else 0)
     has_hit = 'hit_heparin' in eff_allergy_chips
     severe_renal = on_dialysis or (eff_renal is not None and eff_renal < 30)
     dup_oac_warn = ' [ყურადღება: ერთდროულად ≥2 ანტიკოაგულანტია მონიშნული — გადაამოწმეთ დუბლირება!]' if oac_count >= 2 else ''
@@ -234,10 +242,11 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
         postop_oac_res = ' · აღდგენა: თერაპ. დოზა 48–72 სთ-ში ჰემოსტაზით (D+1 პროფილაქტ. LMWH; ეპიდურული კათეტერიდან ≥24 სთ!)'
 
     repro_pregnant = is_pregnancy_eligible(patient) and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
+    tl_days = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
     is_cea_ich = (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
     is_cea_rtpa_24h = (
         pw == PreopPatient.Pathway.CEA and bool(q.get('cea_thrombolysis'))
-        and (cea_d is None or cea_d < 1 or (cea_d == 1 and s.get('brain_imaging') in (None, '', 'pending', 'large_or_hemorrhage')))
+        and (cea_d is None or cea_d < 1 or (cea_d <= tl_days and s.get('brain_imaging') != 'normal_small'))
     )
     return {
         'patient': patient, 'q': q, 's': s, 'pw': pw, 'cea_d': cea_d,
@@ -253,7 +262,8 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
         'med_chips': med_chips, 'cad_chips': cad_chips, 'ven_dvt_chips': ven_dvt_chips,
         'eff_allergy_chips': eff_allergy_chips, 'ft_meds': ft_meds, 'has_hit': has_hit,
         'has_mech_valve': has_mech_valve, 'has_acs_stent_12m': has_acs_stent_12m,
-        'has_full_oac': has_full_oac, 'p2y12_cnt': p2y12_cnt, 'repro_pregnant': repro_pregnant,
+        'has_full_oac': has_full_oac, 'p2y12_cnt': p2y12_cnt, 'total_at_cnt': total_at_cnt,
+        'repro_pregnant': repro_pregnant,
         'bp_sys_cur': bp_sys_cur, 'hr_cur': hr_cur, 'lvef_cur': lvef_cur, 'k_cur': k_cur,
         'chf_any': chf_any, 'has_true_hfref': has_true_hfref, 'oac_count': oac_count,
         'dup_oac_warn': dup_oac_warn,
@@ -266,6 +276,8 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
 def _cea_bleed_rule(c, label):
     if c['is_cea_ich']:
         return f'თავის ტვინის სისხლჩაქცევა / >1/3 MCA ინფარქტი — {label} დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!'
+    if c['cea_d'] is not None and c['cea_d'] >= 1:
+        return f'თრომბოლიზისი (rt-PA, {c["cea_d"]} დღე ≤6 დღე) — საკონტროლო თავის ტვინის CT-ით სისხლჩაქცევის გამორიცხვამდე {label} დაუყოვნებლივ შეათანხმეთ ნევროლოგთან!'
     return f'თრომბოლიზიდან (rt-PA) <24 სთ — {label} დაუყოვნებლივ შეათანხმეთ ნევროლოგთან (საკონტროლო CT-მდე უკუნაჩვენებია)!'
 
 
@@ -293,38 +305,41 @@ def _append_antiplatelet_rows(c):
         elif is_phleb and not has_cardiac_risk:
             add_row('ასპირინი (75–100 მგ)', 'შეთანხმება ქირურგთან (დაბალი კარდიორისკისას შესაძლოა მოიხსნას 5–7 დღით ადრე)', 'amber', f'შეათანხმეთ ({d_str(-5)}-დან?)', hold_or_skip=True)
         else:
-            add_row('ასპირინი (75–100 მგ)', 'გრძელდება უწყვეტად ოპერაციის დილის ჩათვლით (ESVS Class I)', 'ok', f'მიიღეთ {d_str(0)}-ის დილის ჩათვლით', hold_or_skip=False)
+            t3_warn = ' [≥3 ანტითრომბოზული — შეათანხმეთ დე-ესკალაცია ქირურგთან!]' if c['total_at_cnt'] >= 3 else ''
+            add_row('ასპირინი (75–100 მგ)', f'გრძელდება უწყვეტად ოპერაციის დილის ჩათვლით (ESVS Class I){t3_warn}', 'amber' if t3_warn else 'ok', f'მიიღეთ {d_str(0)}-ის დილის ჩათვლით', hold_or_skip=False)
 
     if q.get('med_clopidogrel'):
         clop_intol = 'clopidogrel_intol' in eff_allergy_chips
         clop_intol_warn = ' [კლოპიდოგრელის აუტანლობა/ალერგია მონიშნულია — დაუყოვნებლივ გადაამოწმეთ დანიშნულება!]' if clop_intol else ''
         dup_p2y_red = c['p2y12_cnt'] >= 2
+        dup_p2y_warn = ' [ყურადღება: ≥2 P2Y12 დუბლირება — გადაამოწმეთ სქემა!]' if dup_p2y_red else ''
         if is_bleed:
             add_row('კლოპიდოგრელი / P2Y12', f'{_cea_bleed_rule(c, "თვითნებურად არ გააგრძელოთ,")}{clop_intol_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif clop_intol:
             add_row('კლოპიდოგრელი / P2Y12', f'კლოპიდოგრელის აუტანლობა/ალერგია — პრეპარატი საშიშია, დაუყოვნებლივ შეცვალეთ ალტერნატივით ექიმთან!{clop_intol_warn}', 'red', 'შეცვალეთ ექიმთან (ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif q.get('recent_stent') or has_acs_stent_12m:
             stent_note = 'სტენტი <6 თვ' if q.get('recent_stent') else 'ინფარქტის შემდგომი სტენტი 6–12 თვ (DAPT 12 თვე)'
-            add_row('კლოპიდოგრელი / P2Y12', f'{stent_note} — თვითნებური მოხსნა აკრძალულია! კარდიოლოგ-ქირურგის კონსილიუმი', 'red', 'არ მოხსნათ კონსილიუმის გარეშე!', hold_or_skip=False, force_date_plan=True)
+            add_row('კლოპიდოგრელი / P2Y12', f'{stent_note} — თვითნებური მოხსნა აკრძალულია! კარდიოლოგ-ქირურგის კონსილიუმი{dup_p2y_warn}', 'red', 'არ მოხსნათ კონსილიუმის გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=dup_p2y_red)
         elif is_symp_cea:
-            add_row('კლოპიდოგრელი / P2Y12', 'გრძელდება უწყვეტად CEA-მდე! (ESVS 2023 — სიმპტომურ CEA-ზე მოხსნა ზრდის ინსულტის რისკს)', 'red' if dup_p2y_red else 'ok', f'მიიღეთ {d_str(0)}-ის ჩათვლით', hold_or_skip=False, contraindicated=dup_p2y_red)
+            add_row('კლოპიდოგრელი / P2Y12', f'გრძელდება უწყვეტად CEA-მდე! (ESVS 2023 — სიმპტომურ CEA-ზე მოხსნა ზრდის ინსულტის რისკს){dup_p2y_warn}', 'red' if dup_p2y_red else ('amber' if c['total_at_cnt'] >= 3 else 'ok'), f'მიიღეთ {d_str(0)}-ის ჩათვლით', hold_or_skip=False, contraindicated=dup_p2y_red)
         elif is_pta:
-            add_row('კლოპიდოგრელი / P2Y12', 'გრძელდება უწყვეტად (DAPT რეჟიმი სტენტირებისთვის)', 'red' if dup_p2y_red else 'ok', f'მიიღეთ {d_str(0)}-ის ჩათვლით', hold_or_skip=False, contraindicated=dup_p2y_red)
-        elif is_evla and not is_neuraxial:
-            add_row('კლოპიდოგრელი / P2Y12', 'ESVS 2022: EVLA შესაძლებელია მოუხსნელადაც — დააზუსტეთ ქირურგთან', 'red' if dup_p2y_red else 'amber', f'დააზუსტეთ ქირურგთან ({d_str(0)})', hold_or_skip=True, contraindicated=dup_p2y_red)
+            add_row('კლოპიდოგრელი / P2Y12', f'გრძელდება უწყვეტად (DAPT რეჟიმი სტენტირებისთვის){dup_p2y_warn}', 'red' if dup_p2y_red else ('amber' if c['total_at_cnt'] >= 3 else 'ok'), f'მიიღეთ {d_str(0)}-ის ჩათვლით', hold_or_skip=False, contraindicated=dup_p2y_red)
+        elif is_evla and not is_neuraxial and not dup_p2y_red:
+            add_row('კლოპიდოგრელი / P2Y12', 'ESVS 2022: EVLA შესაძლებელია მოუხსნელადაც — დააზუსტეთ ქირურგთან', 'amber', f'დააზუსტეთ ქირურგთან ({d_str(0)})', hold_or_skip=True)
         elif not q.get('med_aspirin') and (pw != PreopPatient.Pathway.VENOUS or q.get('cad') or q.get('neuro')):
             if asa_allergy:
-                add_row('კლოპიდოგრელი / P2Y12', 'ასპირინზე/აასს-ზე ალერგია (ESVS 2023 Rec 10) — კლოპიდოგრელის მონოთერაპია თვითნებურად არ მოხსნათ, შეათანხმეთ ქირურგთან!', 'red', 'შეათანხმეთ ქირურგთან (ასპირინზე ალერგია!)', hold_or_skip=False, force_date_plan=True)
+                add_row('კლოპიდოგრელი / P2Y12', f'ასპირინზე/აასს-ზე ალერგია (ESVS 2023 Rec 10) — კლოპიდოგრელის მონოთერაპია თვითნებურად არ მოხსნათ, შეათანხმეთ ქირურგთან!{dup_p2y_warn}', 'red', 'შეათანხმეთ ქირურგთან (ასპირინზე ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=dup_p2y_red)
             else:
                 asra_tag = ' (ASRA სპინალურ/ეპიდურულამდე მინ. 5–7 დღე)' if is_neuraxial else ''
                 hold_d = p2y_cfg['clop_nx'] if is_neuraxial else p2y_cfg['clop_std']
-                add_row('კლოპიდოგრელი / P2Y12', f'შეჩერება ოპერაციამდე 5–7 დღით ადრე{asra_tag} — სავალდებულოა ჩანაცვლება ასპირინი 75–100 მგ-ით (უანტიაგრეგანტოდ დატოვება საშიშია!)', 'amber', hold_str(hold_d, ' (ასპირინით!)'), hold_or_skip=True)
+                add_row('კლოპიდოგრელი / P2Y12', f'შეჩერება ოპერაციამდე 5–7 დღით ადრე{asra_tag} — სავალდებულოა ჩანაცვლება ასპირინი 75–100 მგ-ით (უანტიაგრეგანტოდ დატოვება საშიშია!){dup_p2y_warn}', 'red' if dup_p2y_red else 'amber', hold_str(hold_d, ' (ასპირინით!)'), hold_or_skip=True, contraindicated=dup_p2y_red)
         else:
             asra_tag = ' (ASRA ნეირაქსიალურ ბლოკადამდე მინ. 5–7 დღე)' if is_neuraxial else ''
             hold_d = p2y_cfg['clop_nx'] if is_neuraxial else p2y_cfg['clop_std']
             asa_sfx = ' (ასპირინის ფონზე)' if q.get('med_aspirin') else ''
-            add_row('კლოპიდოგრელი / P2Y12', f'შეჩერება ოპერაციამდე 5–7 დღით ადრე{asra_tag}{asa_sfx}', 'amber', hold_str(hold_d), hold_or_skip=True)
+            add_row('კლოპიდოგრელი / P2Y12', f'შეჩერება ოპერაციამდე 5–7 დღით ადრე{asra_tag}{asa_sfx}{dup_p2y_warn}', 'red' if dup_p2y_red else 'amber', hold_str(hold_d), hold_or_skip=True, contraindicated=dup_p2y_red)
 
+    solo_p2y_asa_alg = asa_allergy and not q.get('med_aspirin') and not q.get('med_clopidogrel') and (pw != PreopPatient.Pathway.VENOUS or q.get('cad') or q.get('neuro'))
     if q.get('med_ticagrelor'):
         tica_bad_combo = c['has_full_oac'] or c['p2y12_cnt'] >= 2 or ('rivaroxaban_2_5' in med_chips)
         if is_bleed:
@@ -336,6 +351,8 @@ def _append_antiplatelet_rows(c):
         elif is_pta:
             rule_t = 'OAC/დუბლირებულ P2Y12-თან ერთად ESC Class III სისხლდენის რისკი — შეათანხმეთ დე-ესკალაცია კარდიოლოგთან!' if tica_bad_combo else 'გრძელდება ან შეთანხმდება ქირურგთან (ენდოვასკულური DAPT)'
             add_row('ტიკაგრელორი (ბრილინტა)', rule_t, 'red' if tica_bad_combo else 'ok', 'შეათანხმეთ დე-ესკალაცია!' if tica_bad_combo else f'მიიღეთ {d_str(0)}-ის ჩათვლით', hold_or_skip=False, force_date_plan=tica_bad_combo, contraindicated=tica_bad_combo)
+        elif solo_p2y_asa_alg:
+            add_row('ტიკაგრელორი (ბრილინტა)', 'ასპირინზე/აასს-ზე ალერგია — ტიკაგრელორის მონოთერაპია თვითნებურად არ მოხსნათ (უანტიაგრეგანტოდ დატოვება საშიშია)! შეათანხმეთ ქირურგთან/კარდიოლოგთან!', 'red', 'შეათანხმეთ ქირურგთან (ასპირინზე ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=tica_bad_combo)
         elif is_neuraxial:
             add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება სპინალურ/ეპიდურულ ანესთეზიამდე 5 დღით ადრე (ASRA 5th Ed: 5 დღე) — {asa_sub_txt}', 'red' if (tica_bad_combo or asa_allergy) else 'amber', hold_str(p2y_cfg['tica_nx'], ' (5 დღე)'), hold_or_skip=True, contraindicated=tica_bad_combo)
         else:
@@ -353,6 +370,8 @@ def _append_antiplatelet_rows(c):
             add_row('პრასუგრელი (ეფიენტი)', f'OAC/დუბლირებულ P2Y12-თან ერთად ESC Class III სისხლდენის რისკი — შეათანხმეთ დე-ესკალაცია კარდიოლოგთან!{stroke_warn}', 'red', 'შეათანხმეთ დე-ესკალაცია!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif is_pta and not is_neuraxial and not stroke_warn:
             add_row('პრასუგრელი (ეფიენტი)', 'ენდოვასკულური PTA — შეათანხმეთ ქირურგთან (გაგრძელება ან კლოპიდოგრელზე დეესკალაცია)', 'amber', f'შეათანხმეთ ქირურგთან ({d_str(0)})', hold_or_skip=True)
+        elif solo_p2y_asa_alg and not stroke_warn:
+            add_row('პრასუგრელი (ეფიენტი)', 'ასპირინზე/აასს-ზე ალერგია — პრასუგრელის მონოთერაპია თვითნებურად არ მოხსნათ (უანტიაგრეგანტოდ დატოვება საშიშია)! შეათანხმეთ ქირურგთან/კარდიოლოგთან!', 'red', 'შეათანხმეთ ქირურგთან (ასპირინზე ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=pras_contra)
         else:
             hold_d = p2y_cfg['pras_nx'] if is_neuraxial else p2y_cfg['pras_std']
             add_row('პრასუგრელი (ეფიენტი)', f'შეჩერება ოპერაციამდე და სპინალურ/ეპიდურულ ანესთეზიამდე 7–10 დღით ადრე (ASRA/ESC) — {asa_sub_txt}{stroke_warn}', 'red', hold_str(hold_d), hold_or_skip=True, contraindicated=pras_contra)
@@ -413,7 +432,7 @@ def _append_doac_dabigatran_rows(c):
             add_row('DOAC (ქსარელტო / ელიქვისი)', f'შეიყვანეთ კრეატინინი (CrCl / eGFR) — DOAC-ის შეჩერების დრო (48–96+ სთ) დამოკიდებულია თირკმლის ფუნქციაზე!{doac_extra_warn}', 'red', 'შეიყვანეთ კრეატინინი თარიღისთვის', hold_or_skip=True, force_date_plan=True, contraindicated=contra_doac)
         elif renal_cl < 30:
             add_row('DOAC (ქსარელტო / ელიქვისი)', f'{cl_label} (<30) — შეჩერება ≥96 სთ-ით ადრე + ნეფროლოგ/ქირურგთან შეთანხმება (ნეირაქსიალური ბლოკადა მოერიდეთ!){frail_no_wt_note}{doac_extra_warn}{postop_oac_res}', 'red', hold_str(doac_cfg['crcl_lt30_days'], ' (≥96 სთ)'), hold_or_skip=True, contraindicated=True)
-        elif is_evla and not is_neuraxial and not liver_3x:
+        elif is_evla and not is_neuraxial and not liver_3x and c['oac_count'] < 2:
             add_row('DOAC (ქსარელტო / ელიქვისი)', f'ESVS 2022: EVLA-ზე შესაძლებელია მოუხსნელად ან დილის დოზის გამოტოვებით{doac_extra_warn}{postop_oac_res}', 'red' if force_doac_red else 'amber', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=True, contraindicated=contra_doac)
         elif is_neuraxial:
             add_row('DOAC (ქსარელტო / ელიქვისი)', f'სპინალური/ეპიდურული ანესთეზია (ASRA 5th Ed): სავალდებულო შეჩერება მინიმუმ 72 საათით (3 დღით) ადრე! ({cl_label}){frail_no_wt_note}{doac_extra_warn}{postop_oac_res}', 'red' if force_doac_red else 'amber', hold_str(doac_cfg['neuraxial_days'], ' (72 სთ)'), hold_or_skip=True, contraindicated=contra_doac)
@@ -435,7 +454,7 @@ def _append_doac_dabigatran_rows(c):
         elif renal_cl < 30:
             nx_tag = 'სპინალური/ეპიდურული ბლოკადა უკუნაჩვენებია (ASRA 5th Ed)! ' if is_neuraxial else ''
             add_row('დაბიგატრანი (პრადაქსა)', f'{cl_label} (<30) — დაბიგატრანი უკუნაჩვენებია (EMA/EHRA 2021)! {nx_tag}შეჩერება ≥120 საათით + TT კონტროლი და ნეფროლოგ/კარდიოლოგთან ჩანაცვლება!{frail_no_wt_note}{doac_extra_warn}', 'red', hold_str(d_map['lt30'], ' (≥120 სთ — ჩანაცვლება!)'), hold_or_skip=True, contraindicated=True)
-        elif is_evla and not is_neuraxial and not liver_3x:
+        elif is_evla and not is_neuraxial and not liver_3x and c['oac_count'] < 2:
             add_row('დაბიგატრანი (პრადაქსა)', f'ESVS 2022: EVLA-ზე შესაძლებელია მოუხსნელად ან დილის დოზის გამოტოვებით — დააზუსტეთ ქირურგთან{doac_extra_warn}{postop_oac_res}', 'red' if force_doac_red else 'amber', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=True, contraindicated=contra_doac)
         elif is_neuraxial:
             if renal_cl < 50:
@@ -491,12 +510,13 @@ def _append_rivaroxaban_warfarin_rows(c):
         dup_vka = c['oac_count'] >= 2
         if c['is_cea_bleed_stop']:
             add_row('ვარფარინი', f'{_cea_bleed_rule(c, "ვარფარინი / ანტიკოაგულაცია")}{liver_vka_warn}{dup_oac_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
-        elif is_evla and not is_neuraxial:
-            add_row('ვარფარინი', f'ESVS 2022: EVLA შესაძლებელია მოუხსნელად, თუ INR ≤ 3.0{liver_vka_warn}{dup_oac_warn}', 'red' if (dup_vka or c['liver_3x']) else 'amber', f'INR ≤3.0 შემოწმება {d_str(-1)}', hold_or_skip=False, contraindicated=dup_vka)
+        elif is_evla and not is_neuraxial and not dup_vka:
+            add_row('ვარფარინი', f'ESVS 2022: EVLA შესაძლებელია მოუხსნელად, თუ INR ≤ 3.0{liver_vka_warn}{dup_oac_warn}', 'red' if c['liver_3x'] else 'amber', f'INR ≤3.0 შემოწმება {d_str(-1)}', hold_or_skip=False)
         else:
             inr_target = 'INR ≤ 1.4 (ASRA 5th Ed: ნეირაქსიულამდე სასურველია ≤1.2 ნორმალიზება!)' if is_neuraxial else 'INR < 1.5 (ქირურგიული ჰემოსტაზისთვის)'
             if has_mech_valve and c['has_hit']:
-                bridge_txt = 'მექანიკური სარქველი + HIT — უხიდოდ დატოვება და ჰეპარინი/LMWH აკრძალულია! სავალდებულოა სტაციონარული IV ბივალირუდინი ან არგატრობანი (aPTT კონტროლით)!'
+                liver_arg = ' (ღვიძლის ≥3x-ზე უპირატესია ბივალირუდინი; არგატრობანი −75%!)' if c['liver_3x'] else ''
+                bridge_txt = f'მექანიკური სარქველი + HIT — უხიდოდ დატოვება და ჰეპარინი/LMWH აკრძალულია! სავალდებულოა სტაციონარული IV ბივალირუდინი ან არგატრობანი (aPTT კონტროლით){liver_arg}!'
             elif c['has_hit']:
                 bridge_txt = 'HIT ანამნეზში — LMWH/ჰეპარინის ხიდი კატეგორიულად აკრძალულია!'
             elif high_thromb_vka:
@@ -541,7 +561,7 @@ def _append_metabolic_rows(c):
     if q.get('sglt2'):
         hold_sglt2 = sglt2_cfg['ertugliflozin_days'] if c['ft_meds']['ertugliflozin'] else sglt2_cfg['std_days']
         hrs_sglt2 = f'{hold_sglt2 * 24} სთ'
-        glp_dka = ' [GLP-1-ის 24 სთ თხევადი დიეტა აძლიერებს DKA-ს რისკს — კეტონების მკაცრი კონტროლი!]' if q.get('glp1') else ''
+        glp_dka = ' [GLP-1-ის 24 სთ თხევადი დიეტა აძლიერებს DKA-ს რისკს — კეტონების მკაცრი კონტროლი!]' if (q.get('glp1') or c['ft_meds']['has_glp1']) else ''
         add_row(
             'SGLT2 (ჯარდიანსი / ფორსიგა)',
             f'სავალდებულო შეჩერება ოპერაციამდე 72 საათით (3 დღით) ადრე (ერტუგლიფლოზინი/სტეგლატრო — 96 სთ / 4 დღით ადრე) + ოპერაციის დილას სისხლის კეტონების კონტროლი (ეუგლიკემიური DKA-ს პრევენცია)! აღდგენა მხოლოდ ნორმალური პერორალური კვების აღდგენის შემდეგ.{glp_dka}',
@@ -558,6 +578,7 @@ def _append_metabolic_rows(c):
         )
 
     if q.get('metformin'):
+        pure_local_evla = c['is_evla'] and not c['is_neuraxial'] and c['anesth_plan'] not in ('general', 'sedation')
         if on_dialysis or (eff_renal is not None and eff_renal < metf_cfg['contra_renal']):
             add_row(
                 'მეტფორმინი',
@@ -574,7 +595,7 @@ def _append_metabolic_rows(c):
             c['is_ia_first_pass']
             or (c['uses_contrast'] and (eff_renal is None or eff_renal < metf_cfg['contrast_hold_renal']))
             or c['is_open_major']
-            or (not c['is_evla'] and eff_renal is not None and eff_renal < metf_cfg['dose_cap_renal'])
+            or (not pure_local_evla and eff_renal is not None and eff_renal < metf_cfg['dose_cap_renal'])
         ):
             dose_cap = ' [CrCl/eGFR 30–44: მაქს. დღიური დოზა ≤1000 მგ/დღ!]' if (eff_renal is not None and eff_renal < metf_cfg['dose_cap_renal']) else ''
             add_row(
@@ -583,7 +604,7 @@ def _append_metabolic_rows(c):
                 'amber', f'არ მიიღოთ {d_str(0)}–{d_str(1)} (48 სთ · კრეატინინის კონტროლით)', hold_or_skip=True,
             )
         else:
-            add_row('მეტფორმინი', 'გამოტოვება ოპერაციის დილას (უზმოზე; არაკონტრასტულ/მეორადი-გავლის ჩარევაზე 48 სთ შეჩერება არ ესაჭიროება)', 'ok', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=False)
+            add_row('მეტფორმინი', 'გამოტოვება ოპერაციის დილას (უზმოზე; არაკონტრასტულ/მეორადი-გავლის ჩარევაზე 48 სთ შეჩერება არ ესაჭიროება)', 'ok', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=True)
 
 
 def _append_cardio_other_rows(c):
@@ -663,6 +684,7 @@ def _append_cardio_other_rows(c):
             f'დასაზუსტებელი წამალი ({labels})',
             f"თავისუფალ ტექსტში („{q.get('other_meds')}“) მითითებულია მაღალი რისკის პრეპარატი — მონიშნეთ ჩამრთველი შეჩერების ზუსტი თარიღისთვის!",
             'red', 'დააზუსტეთ ექიმთან — არასტრუქტურირებულია!', hold_or_skip=True, force_date_plan=True,
+            contraindicated=bool(c['is_cea_bleed_stop'] and c['ft_meds']['unstructured_antithrombotic']), unstructured=True,
         )
 
 

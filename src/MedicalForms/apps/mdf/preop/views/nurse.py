@@ -207,7 +207,11 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
             old_dt = _date(s.get('planned_surgery_date'))
             if action == 'shift_3d':
                 base = old_dt or timezone.localdate()
-                new_dt = base + datetime.timedelta(days=3)
+                try:
+                    new_dt = base + datetime.timedelta(days=3)
+                except OverflowError:
+                    messages.error(request, 'თარიღი სცდება დასაშვებ კალენდარულ დიაპაზონს.')
+                    return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
             else:
                 new_dt = _date(request.POST.get('planned_surgery_date'))
 
@@ -216,9 +220,11 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
 
             uf = ['studies', 'updated_at', 'updated_by']
-            if old_dt and old_dt != new_dt:
-                s['prev_planned_surgery_date'] = old_dt.isoformat()
-                s['postpone_ack_sig'] = ''
+            if old_dt != new_dt:
+                if old_dt:
+                    s['prev_planned_surgery_date'] = old_dt.isoformat()
+                    s['postpone_ack_sig'] = ''
+                s['med_hold_agreed'] = False
                 if patient.approved_at is not None:
                     patient.approved_at = None
                     patient.approved_by = None

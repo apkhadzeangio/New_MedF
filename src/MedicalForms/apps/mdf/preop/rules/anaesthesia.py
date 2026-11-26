@@ -62,24 +62,25 @@ def _eval_asa_airway_and_modality(ctx):
             'მაღალი ობსტრუქციული ძილის აპნოეს რისკი (STOP-Bang ≥5 / OSA) — ოპიოიდების დაზოგვა, პოსტოპ. პულსოქსიმეტრია და CPAP მზადყოფნა.'
         )
 
+    lido_alg = bool(q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips)
+    has_glp1_any = bool(q.get('glp1') or ctx.ft_meds.get('has_glp1'))
     needs_ett_airway = (
         ctx.open_aortic
         or pathway == PreopPatient.Pathway.CEA
-        or (bool(q.get('aaa_pain')) or bool(q.get('glp1')))
+        or (bool(q.get('aaa_pain')) or has_glp1_any)
         or (ctx.bmi is not None and ctx.bmi >= 40)
     )
     anesth_plan_raw = ctx.anesth_plan_raw
     if ctx.neuraxial_hard_blocked:
         eff_lbl = 'ზოგადი ანესთეზია (არჩეული ნეირაქსიული უკუნაჩვენებია — შესაცვლელია!)'
+    elif lido_alg and (anesth_plan_raw in ('local', 'plexus') or (anesth_plan_raw == 'auto' and (patient.op_subtype == PreopPatient.OpSubtype.EVLA or ctx.is_pta))):
+        eff_lbl = 'ანესთეზიოლოგთან შესათანხმებელი (ლიდოკაინზე ალერგია!)'
     elif anesth_plan_raw == 'general' and needs_ett_airway:
         eff_lbl = 'ზოგადი ენდოტრაქეული ანესთეზია' + (' + ეპიდურული ანალგეზია' if 'epidural' in ctx.anesth_lines_set else '')
     elif anesth_plan_raw != 'auto':
         eff_lbl = dict(ANESTH_PLAN_CHOICES).get(anesth_plan_raw, anesth_plan_raw)
     elif patient.op_subtype == PreopPatient.OpSubtype.EVLA:
-        if q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips:
-            eff_lbl = 'ანესთეზიოლოგთან შესათანხმებელი (ლიდოკაინზე ალერგია!)'
-        else:
-            eff_lbl = 'ტუმესცენტური ადგილობრივი ანესთეზია'
+        eff_lbl = 'ტუმესცენტური ადგილობრივი ანესთეზია'
     elif ctx.is_pta:
         eff_lbl = 'სედაცია / ანესთეზიოლოგიური მხარდაჭერა (ზურგზე წოლის შეზღუდვა)' if (q_filled and q.get('pta_cant_lie_flat')) else 'ადგილობრივი ანესთეზია (± სედაცია)'
     elif pathway == PreopPatient.Pathway.CEA:
@@ -160,6 +161,7 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
                 )
 
     lido_alg = bool(q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips)
+    has_glp1_any = bool(q.get('glp1') or ctx.ft_meds.get('has_glp1'))
     is_local_evla_fasting = (
         patient.op_subtype == PreopPatient.OpSubtype.EVLA
         and not ctx.has_neuraxial_plan
@@ -168,7 +170,8 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
         and not bool(ctx.hard_contraindications)
     )
     ctx.is_local_evla_fasting = is_local_evla_fasting
-    if q.get('glp1'):
+    ctx.has_glp1_any = has_glp1_any
+    if has_glp1_any:
         ctx.fasting_instruction = (
             'GLP-1 პროტოკოლი (Multi-Society 2024 / ESAIC 2025): გართულების გარეშე უმეტეს პაციენტთან პრეპარატი გრძელდება, '
             'სავალდებულოა ოპერაციამდე 24 სთ მხოლოდ სუფთა თხევადი დიეტა, მყარი საკვები შეწყდეს ≥8 სთ-ით ადრე, სუფთა წყალი — 2 სთ-ით ადრე '
@@ -192,7 +195,7 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
         allergy_bits.append('β-ლაქტამი (ცეფაზოლინი არა!)')
     elif 'penicillin_mild' in ctx.allergy_chips:
         allergy_bits.append('პენიცილინი (მსუბუქი გამონაყარი — ცეფაზოლინი დასაშვებია)')
-    if q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips:
+    if lido_alg:
         allergy_bits.append('ლიდოკაინი / ადგილობრივი ანესთეტიკი!')
     if 'latex_chlorhex' in ctx.allergy_chips:
         allergy_bits.append('ლატექსი / ქლორჰექსიდინი!')
@@ -203,7 +206,8 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
     if 'clopidogrel_intol' in ctx.allergy_chips:
         allergy_bits.append('კლოპიდოგრელის აუტანლობა')
     raw_alg_txt = (q.get('allergy_text') or '').strip()
-    if raw_alg_txt and not any(raw_alg_txt.lower() in b.lower() for b in allergy_bits):
+    is_dup_lido_txt = lido_alg and raw_alg_txt.lower() in ('ლიდოკაინი', 'ლიდოკაინზე ალერგია', 'ალერგია ლიდოკაინზე', 'lidocaine', 'lidocaine allergy')
+    if raw_alg_txt and not is_dup_lido_txt and not any(raw_alg_txt.lower() in b.lower() for b in allergy_bits):
         allergy_bits.append(raw_alg_txt)
     elif not raw_alg_txt and (q.get('allergy_other') or ctx.unclarified_allergy_other) and not allergy_bits:
         allergy_bits.append('მედიკამენტური ალერგია (დასაზუსტებელია!)')
@@ -232,7 +236,7 @@ def _build_dos_checks(ctx):
             'label': f'საოპერაციო მხარის მარკირება კანზე ({side_hint}) — WHO Sign-In',
             'done': bool(s.get('dos_site_marked')) and (patient.side in valid_dos_sides),
         })
-    if q.get('glp1'):
+    if ctx.has_glp1_any:
         dos_fast_lbl = 'უზმოდ ყოფნის რეჟიმი დაცულია: GLP-1 პროტოკოლი (24 სთ სუფთა თხევადი დიეტა / ≥8 სთ მყარი საკვები / 2 სთ წყალი)'
     elif ctx.is_local_evla_fasting:
         dos_fast_lbl = 'ადგილობრივი EVLA: სედაციის გარეშე მსუბუქი საუზმე დაშვებულია (სედაციისას — 6 სთ მყარი საკვები / 2 სთ წყალი)'
@@ -246,7 +250,7 @@ def _build_dos_checks(ctx):
             'label': 'ანტიკოაგულანტის / P2Y12 / SGLT2 / ინსულინის / სტეროიდის რეჟიმი და დილის დაშვებული წამლების მიღება გადამოწმდა',
             'done': bool(s.get('dos_med_hold_verified')),
         })
-    if q_filled and q.get('sglt2'):
+    if q.get('sglt2'):
         dos_checks.append({
             'key': 'dos_ketones_ok',
             'label': 'SGLT2 უსაფრთხოება (ეუგლიკემიური DKA-ს გამორიცხვა): სისხლის/შარდის კეტონები ნორმაშია (β-OHB < 0.6 მმოლ/ლ) და პრეპარატი შეჩერებულია ≥72–96 სთ',
@@ -269,7 +273,7 @@ def _build_dos_checks(ctx):
     needs_bhcg = (
         is_pregnancy_eligible(patient)
         and (
-            (patient.sex == 'F' and ctx.age is not None and (
+            (patient.sex == 'F' and (
                 patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)
                 or ctx.is_pta
                 or ctx.is_venous
@@ -314,6 +318,8 @@ def _build_dos_checks(ctx):
 
 def _eval_dos_and_vqi(ctx):
     patient, q, s = ctx.patient, ctx.q, ctx.s
+    raw_s = getattr(ctx, 'raw_s', None) or {}
+    inv_in = s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {}
     dos_cfg = rule_value('DOS_WHO_SIGNIN_THRESHOLDS')
     dos_checks = _build_dos_checks(ctx)
 
@@ -329,7 +335,9 @@ def _eval_dos_and_vqi(ctx):
         ('dos_glucose', dos_gl, 'ოპერაციის დილის გლიკემია'),
         ('dos_inr', dos_inr, 'ოპერაციის დილის INR'),
     ):
-        raw_v = s.get(raw_k)
+        raw_v = raw_s[raw_k] if raw_k in raw_s else s.get(raw_k)
+        if (raw_v is None or str(raw_v).strip() == '') and raw_k in inv_in:
+            raw_v = inv_in[raw_k]
         if raw_v is not None and str(raw_v).strip() != '' and parsed_v is None:
             dos_warnings.append(f'{lbl} კრიტიკულად დაუშვებელია ({raw_v}) — გადაამოწმეთ მაჩვენებელი საოპერაციოში შეყვანამდე!')
 
@@ -364,6 +372,12 @@ def _eval_dos_and_vqi(ctx):
     ctx.dos_checks, ctx.dos_warnings, ctx.dos_gl = dos_checks, dos_warnings, dos_gl
     ctx.has_hard_contraindication = bool(ctx.hard_contraindications)
     ctx.dos_hold_danger = bool(dos_warnings)
+    if ctx.dos_hold_danger or ctx.has_hard_contraindication or ctx.solo_neuraxial_anatomic_mismatch:
+        if ctx.has_glp1_any:
+            ctx.fasting_instruction = 'STOP — ოპერაცია დაბლოკილია! 24-საათიანი თხევადი დიეტა და GLP-1 რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!'
+        elif ctx.is_local_evla_fasting:
+            ctx.is_local_evla_fasting = False
+            ctx.fasting_instruction = 'STOP — ოპერაცია შეჩერებულია საოპერაციო დილის / უკუჩვენების დაზუსტებამდე (კვების რეჟიმი შეათანხმეთ ექიმთან)!'
     ctx.dos_done_count = sum(1 for c in dos_checks if c['done'])
     ctx.dos_total_count = len(dos_checks)
     ctx.vqi_bundle_applicable = not ctx.is_venous

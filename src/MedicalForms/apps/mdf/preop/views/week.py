@@ -71,7 +71,10 @@ def _compute_week_counts(all_non_archived, today, pathway_filter, outcome_mode, 
 def _build_calendar_days(monday, today, visible_patients):
     days = []
     for offset in range(7):
-        d = monday + datetime.timedelta(days=offset)
+        try:
+            d = monday + datetime.timedelta(days=offset)
+        except OverflowError:
+            d = datetime.date.max
         items = [p for p in visible_patients if p.visit_date == d and not p.someday_list]
         days.append({
             'date': d,
@@ -108,6 +111,23 @@ def _find_overdue_patients(all_non_archived, ev_by_id, pathway_filter, monday, s
     return overdue_patients
 
 
+def _week_nav_bounds(monday):
+    """Return (sunday, prev_week_iso, next_week_iso) safely clamped at Python date bounds."""
+    try:
+        sunday = monday + datetime.timedelta(days=6)
+    except OverflowError:
+        sunday = datetime.date.max
+    try:
+        prev_week = (monday - datetime.timedelta(days=7)).isoformat()
+    except OverflowError:
+        prev_week = datetime.date.min.isoformat()
+    try:
+        next_week = (monday + datetime.timedelta(days=7)).isoformat()
+    except OverflowError:
+        next_week = datetime.date.max.isoformat()
+    return sunday, prev_week, next_week
+
+
 class PreopWeekView(LoginRequiredMixin, generic.TemplateView):
     """Tweek.so-style weekly calendar + Someday lists (or Track B Nurse Workspace when toggled)."""
     template_name = 'mdf/preop/week.html'
@@ -124,7 +144,7 @@ class PreopWeekView(LoginRequiredMixin, generic.TemplateView):
         today = timezone.localdate()
         req_day = _date(self.request.GET.get('week')) or today
         monday = _monday_of(req_day)
-        sunday = monday + datetime.timedelta(days=6)
+        sunday, prev_week, next_week = _week_nav_bounds(monday)
 
         status_filter = self.request.GET.get('status', 'all')
         if status_filter not in ('all', STATUS_NO_Q, STATUS_PROGRESS, STATUS_ALERT, STATUS_READY):
@@ -179,8 +199,8 @@ class PreopWeekView(LoginRequiredMixin, generic.TemplateView):
         ctx.update({
             'preop_ui_mode': ui_mode,
             'today': today, 'monday': monday,
-            'prev_week': (monday - datetime.timedelta(days=7)).isoformat(),
-            'next_week': (monday + datetime.timedelta(days=7)).isoformat(),
+            'prev_week': prev_week,
+            'next_week': next_week,
             'week_title': _week_title(monday),
             'days_mon_fri': days[:5], 'day_sat': days[5], 'day_sun': days[6],
             'someday_cols': someday_cols,

@@ -99,7 +99,8 @@ def _result_flags_and_needs_part(ctx):
         'status': ctx.status,
         'status_label': STATUS_LABELS[ctx.status],
         'workup_ready': bool(
-            (ctx.patient.approved_at or ctx.all_tasks_done)
+            ctx.q_filled
+            and (ctx.patient.approved_at or ctx.all_tasks_done)
             and not ctx.has_hard_contraindication
             and not ctx.dos_hold_danger
             and not ctx.neuraxial_hard_blocked
@@ -121,6 +122,11 @@ def _result_flags_and_needs_part(ctx):
         'reflex_orders': ctx.reflex_orders,
         'all_reflex_done': ctx.all_reflex_done,
         'med_schedule': ctx.med_schedule,
+        'has_any_date_plan': bool(
+            ctx.planned_surgery_ka
+            or (ctx.clearance_seal and ctx.clearance_seal.get('code') == 'stop')
+            or any(r.get('date_plan') for r in (ctx.med_schedule or ()))
+        ),
         'abx_prophylaxis_note': ctx.abx_prophylaxis_note,
         'caprini_score': ctx.caprini_score,
         'caprini_tier': ctx.caprini_tier,
@@ -139,6 +145,8 @@ def _result_flags_and_needs_part(ctx):
         'creat_unit_ambiguous': ctx.creat_unit_ambiguous,
         'bmi': ctx.bmi,
         'hb_gl': ctx.hb_gl,
+        'wbc': ctx.wbc,
+        'plt': ctx.plt,
         'gl_mmol': ctx.gl_mmol,
         'alb_gl': ctx.alb_gl,
         'aaa_mm': ctx.aaa_mm,

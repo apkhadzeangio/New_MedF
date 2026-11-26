@@ -177,19 +177,35 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
         h = _num(post_data.get('height_cm'), lo=100, hi=230)
         if h is not None:
             s['height_cm'] = h
+    inv = dict(s.get('_invalid_inputs')) if isinstance(s.get('_invalid_inputs'), dict) else {}
     if 'aaa_mm' in post_data:
-        s['aaa_mm'] = _num(post_data.get('aaa_mm'), lo=10, hi=200)
+        raw_aaa = (post_data.get('aaa_mm') or '').strip()
+        s['aaa_mm'] = _num(raw_aaa, lo=10, hi=200)
+        if raw_aaa and s['aaa_mm'] is None:
+            inv['aaa_mm'] = raw_aaa[:24]
+        else:
+            inv.pop('aaa_mm', None)
     if 'cta_date' in post_data:
-        cta_dt = _date(post_data.get('cta_date'))
+        raw_cd = (post_data.get('cta_date') or '').strip()
+        cta_dt = _date(raw_cd)
         if cta_dt and cta_dt <= today:
             s['cta_date'] = cta_dt.isoformat()
             s['cta_months'] = cta_live_months_age({'cta_date': s['cta_date']}, today=today)
+            inv.pop('cta_date', None)
         else:
             s['cta_date'] = ''
+            if raw_cd:
+                inv['cta_date'] = raw_cd[:24]
+            else:
+                inv.pop('cta_date', None)
             if 'cta_months' in post_data:
-                s['cta_months'] = _int(post_data.get('cta_months'), lo=0, hi=120)
+                s['cta_months'] = _int(post_data.get('cta_months'), lo=0, hi=240)
     elif 'cta_months' in post_data:
-        s['cta_months'] = _int(post_data.get('cta_months'), lo=0, hi=120)
+        s['cta_months'] = _int(post_data.get('cta_months'), lo=0, hi=240)
+    if inv:
+        s['_invalid_inputs'] = inv
+    else:
+        s.pop('_invalid_inputs', None)
     if 'cta_disc' in post_data or patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
         s['cta_disc'] = post_data.get('cta_disc') in ('1', 'on', 'true')
 

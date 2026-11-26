@@ -121,6 +121,7 @@ def eval_vitals_bp(ctx):
 
 def _eval_early_neuraxial_gate(ctx):
     patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
+    raw_s = getattr(ctx, 'raw_s', None) or {}
     asra_cfg = rule_value('ASRA_NEURAXIAL_COAG_GATE')
     open_aortic = (
         pathway == PreopPatient.Pathway.ABF
@@ -131,7 +132,8 @@ def _eval_early_neuraxial_gate(ctx):
     plt = _parse_plt(s.get('plt'))
     inr = _num(s.get('inr'), lo=0.4, hi=20.0)
     dos_inr_early = _num(s.get('dos_inr'), lo=0.5, hi=15)
-    dos_inr_present = s.get('dos_inr') is not None and str(s.get('dos_inr')).strip() != ''
+    raw_dos_inr = raw_s['dos_inr'] if 'dos_inr' in raw_s else s.get('dos_inr')
+    dos_inr_present = raw_dos_inr is not None and str(raw_dos_inr).strip() != ''
     eff_inr_nx = dos_inr_early if dos_inr_present else inr
     fib = normalize_fibrinogen_gl(s.get('fibrinogen'))
     on_oral_anticoag = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
@@ -139,22 +141,27 @@ def _eval_early_neuraxial_gate(ctx):
 
     has_acs_stent_early = ('stent_6_12m' in ctx.cad_chips) and ('mi' in ctx.cad_chips)
     p2y12_cnt_early = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
+    asa_allergy_solo_p2y12 = (
+        'nsaid' in ctx.allergy_chips and not q.get('med_aspirin') and p2y12_cnt_early >= 1
+        and (not ctx.is_venous or bool(q.get('cad')) or bool(q.get('neuro')))
+    )
     uninterrupted_p2y12_early = (p2y12_cnt_early >= 1) and (
-        bool(q.get('recent_stent'))
-        or has_acs_stent_early
-        or (ctx.is_pta and not q.get('med_prasugrel'))
-        or (ctx.is_symp_cea and not q.get('med_prasugrel'))
+        bool(q.get('recent_stent')) or has_acs_stent_early or asa_allergy_solo_p2y12
+        or (ctx.is_pta and not q.get('med_prasugrel')) or (ctx.is_symp_cea and not q.get('med_prasugrel'))
     )
     prewashout_vka = bool(q.get('med_warfarin') and not dos_inr_present)
     hard_nx_reasons = []
     inv_in = s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {}
-    if (dos_inr_present and dos_inr_early is None) or ('dos_inr' in inv_in and dos_inr_early is None):
+    def _has_bad(k, parsed):
+        rv = raw_s[k] if k in raw_s else s.get(k)
+        return parsed is None and ((rv is not None and str(rv).strip() != '') or k in inv_in)
+    if _has_bad('dos_inr', dos_inr_early):
         hard_nx_reasons.append('ოპერაციის დილის INR დაუშვებელია')
-    elif not dos_inr_present and ((s.get('inr') is not None and str(s.get('inr')).strip() != '') or 'inr' in inv_in) and inr is None:
+    elif not dos_inr_present and _has_bad('inr', inr):
         hard_nx_reasons.append('INR დაუშვებელია')
-    if ((s.get('plt') is not None and str(s.get('plt')).strip() != '') or 'plt' in inv_in) and plt is None:
+    if _has_bad('plt', plt):
         hard_nx_reasons.append('PLT დაუშვებელია')
-    if ((s.get('fibrinogen') is not None and str(s.get('fibrinogen')).strip() != '') or 'fibrinogen' in inv_in) and fib is None:
+    if _has_bad('fibrinogen', fib):
         hard_nx_reasons.append('ფიბრინოგენი დაუშვებელია')
     if plt is not None and plt < asra_cfg['plt_min']:
         hard_nx_reasons.append(f'PLT {plt} < 100')
@@ -176,7 +183,12 @@ def _eval_early_neuraxial_gate(ctx):
         hard_nx_reasons.append('CrCl/eGFR < 30 ანტიკოაგულანტზე — ნეირაქსიული ბლოკადა მოერიდეთ!')
     if bool(s.get('echo_valve_issue')):
         hard_nx_reasons.append('მძიმე სარქვლოვანი მანკი / AS — სპინალური ბლოკადა საშიშია!')
-    if (ctx.eff_sys is not None and ctx.eff_sys < asra_cfg['sbp_min']) or (ctx.shock_index is not None and ctx.shock_index >= 1.0):
+    raw_sbp_low = any(
+        (v := _num(raw_s.get(k, s.get(k, inv_in.get(k))), lo=0, hi=95)) is not None and v < asra_cfg['sbp_min']
+        for k in ('bp_sys', 'bp_sys_l')
+    )
+    raw_hr_v = _num(raw_s.get('hr', s.get('hr', inv_in.get('hr'))), lo=0, hi=600)
+    if (ctx.eff_sys is not None and ctx.eff_sys < asra_cfg['sbp_min']) or raw_sbp_low or (ctx.shock_index is not None and ctx.shock_index >= 1.0) or (raw_hr_v is not None and (raw_hr_v > 260 or raw_hr_v < 15)):
         hard_nx_reasons.append('ჰიპოტენზია / შოკი (SBP <95 ან SI ≥1.0) — სიმპათექტომია საშიშია!')
 
     solo_neuraxial_anatomic_mismatch = (ctx.anesth_plan_raw == 'neuraxial') and (
@@ -245,6 +257,7 @@ def eval_hematology_coag(ctx):
             ctx.amber_flags.append(f'მსუბუქი ანემია (Hb {hb_gl} გ/ლ) — ღია ოპერაციაზე სავალდებულოა ერითრომასის რეზერვი.')
 
     wbc = _parse_wbc(s.get('wbc'))
+    ctx.wbc = wbc
     if wbc is not None and (wbc > coag_cfg['wbc_hi'] or wbc < coag_cfg['wbc_lo']):
         ctx.red_flags.append(f'ლეიკოციტების ცვლილება (WBC {wbc} x10^9/L) — გამოირიცხოს მწვავე ინფექცია ჩარევამდე!')
 
@@ -277,7 +290,7 @@ def eval_hematology_coag(ctx):
 
 
 def eval_renal_electrolytes(ctx):
-    patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    patient, q, s = ctx.patient, ctx.q, ctx.s
     egfr, crcl, eff_renal, on_dialysis = ctx.egfr, ctx.crcl, ctx.eff_renal, ctx.on_dialysis
     ren_cfg = rule_value('REN_CKD_NEPHRO_HYDRATION')
     el_cfg = rule_value('REN_ELECTROLYTES_K_NA')
@@ -303,10 +316,16 @@ def eval_renal_electrolytes(ctx):
         if not s.get('nephro_panel_done'):
             ctx.red_flags.append('პაციენტი იმყოფება დიალიზზე — სავალდებულოა დიალიზის სესიისა და კალიუმის შეთანხმება ნეფროლოგთან და ქირურგთან!')
     elif ctx.creat_unit_ambiguous:
-        ctx.red_flags.append(
-            f'კრეატინინის ერთეული საეჭვოა ({s.get("creat")} — 15–35 შუალედი)! '
-            'მიუთითეთ ზუსტი ერთეული (µmol/L თუ mg/dL) eGFR / CrCl უსაფრთხო გამოთვლისთვის.'
-        )
+        if ctx.creat_unit in ('umol', 'mgdl'):
+            ctx.red_flags.append(
+                f'კრეატინინის მნიშვნელობა და არჩეული ერთეული არ ემთხვევა ({s.get("creat")} {ctx.creat_unit})! '
+                'გადაამოწმეთ ზუსტი ერთეული (µmol/L თუ mg/dL) eGFR / CrCl უსაფრთხო გამოთვლისთვის.'
+            )
+        else:
+            ctx.red_flags.append(
+                f'კრეატინინის ერთეული საეჭვოა ({s.get("creat")} — 15–35 შუალედი)! '
+                'მიუთითეთ ზუსტი ერთეული (µmol/L თუ mg/dL) eGFR / CrCl უსაფრთხო გამოთვლისთვის.'
+            )
     elif s.get('creat') is not None and egfr is None:
         ctx.amber_flags.append('კრეატინინის კლირენსის / eGFR გამოსათვლელად მიუთითეთ პაციენტის ასაკი (12–120 წ.) და სქესი.')
     elif eff_renal is not None:
@@ -325,7 +344,7 @@ def eval_renal_electrolytes(ctx):
             })
         if needs_hydration:
             c_lim = f', მაქს. კონტრასტი ≤ {max_contrast_ml} მლ' if max_contrast_ml else ''
-            metf_sfx = ' + მეტფორმინის შეჩერება' if (q_filled and q.get('metformin')) else ''
+            metf_sfx = ' + მეტფორმინის შეჩერება' if q.get('metformin') else ''
             if na_val is not None and na_val >= el_cfg['na_hi']:
                 hyd_fluid = f'ჰიპერნატრიემია (Na+ {na_val} ≥150) — მოერიდეთ 0.9% NaCl-ით დატვირთვას! ნელი ჰიპოტონური კორექცია (ΔNa+ ≤ 8 მმოლ/ლ/24 სთ){c_lim}{metf_sfx}'
             elif chf_hyd_flag:
@@ -651,8 +670,7 @@ def eval_carotid_gastro(ctx):
     has_oac_ap_ppi = q_filled and ctx.on_oral_anticoag and (ctx.has_antiplatelet or ('cilostazol' in ctx.med_chips))
     has_elder_steroid_ppi = q_filled and ((ctx.age or 0) >= gi_cfg['ppi_age']) and ('steroid' in ctx.med_chips) and ctx.has_any_antithrombotic
     needs_ppi = bool(
-        q_filled
-        and (bool(q.get('ulcer')) or bool(q.get('ulcer_active_symp')) or has_dapt_high_gi or has_oac_ap_ppi or has_elder_steroid_ppi)
+        (bool(q.get('ulcer_active_symp')) or (q_filled and (bool(q.get('ulcer')) or has_dapt_high_gi or has_oac_ap_ppi or has_elder_steroid_ppi)))
         and (not needs_gastro or bool(q.get('ulcer_active_symp')))
         and 'ppi' not in ctx.med_chips
     )

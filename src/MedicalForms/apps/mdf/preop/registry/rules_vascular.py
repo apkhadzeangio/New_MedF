@@ -123,7 +123,7 @@ VASCULAR_RULES = (
         value=(6, 3, 65),
         value_label='> 6 თვე (> 3 თვე თუ >= 65 მმ)',
         status=STATUS_LOCAL,
-        match_patterns=('კტ-ანგიოგრაფია ხანდაზმულია', 'DICOM დისკი ჯერ არ არის', 'ვიწრო (<7 მმ)', 'თეძოს არტერიის ანევრიზმა', 'რეტროაორტული მარცხენა'),
+        match_patterns=('კტ-ანგიოგრაფია ხანდაზმულია', 'აორტის კტ-ანგიოგრაფიის DICOM დისკი', 'ვიწრო (<7 მმ)', 'თეძოს არტერიის ანევრიზმა', 'რეტროაორტული მარცხენა'),
     ),
     RuleEntry(
         id='AAA_WAIT_TARGET_DAYS',
@@ -154,7 +154,7 @@ VASCULAR_RULES = (
         source_wording='Patients with recent (<6 months) symptomatic 50-99% carotid stenosis should undergo CEA as soon as possible, ideally within 14 days of symptom onset.',
         value=(14, 10, 180),
         value_label='<= 14 დღე (გაფრთხილება >=10 დღე; სიმპტ. <=180 დღე)',
-        match_patterns=('14-დღიანი ოპტიმალური ფანჯარა', 'ESVS 14-დღიანი ფანჯრიდან', 'სიმპტომიდან გასულია', 'სიმპტომიდან 14-დღიან ფანჯარას', 'ნევროლოგიური ეპიზოდიდან გასულია', 'ნევროლოგიური სიმპტომი ბოლო 6 თვეში'),
+        match_patterns=('14-დღიანი ოპტიმალური ფანჯარა', 'ESVS 14-დღიანი ფანჯრიდან', 'სიმპტომიდან გასულია', 'სიმპტომიდან 14-დღიან ფანჯარას', 'ნევროლოგიური ეპიზოდიდან გასულია', 'ნევროლოგიური სიმპტომი ბოლო 6 თვეში', 'კისრის/თავის ტვინის CTA/MRI DICOM დისკი'),
     ),
     RuleEntry(
         id='CEA_BILATERAL_STOP',
@@ -230,7 +230,10 @@ VASCULAR_RULES = (
         source_wording='Urgent intervention for crescendo TIA; delay CEA for 6 days after IV thrombolysis unless selected after haemorrhage excluded; avoid CEA in severe disabling stroke (mRS >=3).',
         value=6,
         value_label='თრომბოლიზისი <= 6 დღე · mRS >= 3',
-        match_patterns=('Crescendo TIA', 'ინტრავენური თრომბოლიზისი', 'მძიმე ნარჩენი ნევროლოგიური დეფიციტი'),
+        match_patterns=(
+            'Crescendo TIA', 'ინტრავენური თრომბოლიზისი', 'მძიმე ნარჩენი ნევროლოგიური დეფიციტი',
+            'თრომბოლიზიდან (rt-PA) <24 სთ', 'თრომბოლიზისი (rt-PA,', 'საკონტროლო თავის ტვინის CT-ით სისხლჩაქცევის',
+        ),
     ),
     RuleEntry(
         id='CEA_ANTIPLATELET_STATIN_MANDATORY',
@@ -245,7 +248,7 @@ VASCULAR_RULES = (
         source_wording='Antiplatelet therapy and high-intensity statin (LDL-C target <1.4 mmol/L) are mandatory prior to and following CEA unless contraindicated by intracranial haemorrhage.',
         value=1.4,
         value_label='ანტიაგრეგანტი სავალდებულო · LDL < 1.4 მმოლ/ლ',
-        match_patterns=('არ იღებს ანტიაგრეგანტს', 'CEA-ს წინ პაციენტი არ იღებს', 'მხოლოდ ანტიკოაგულანტს', 'სტატინის მიღება', 'LDL ქოლესტერინი'),
+        match_patterns=('პაციენტი არ იღებს ანტიაგრეგანტს', 'არ იღებს ანტიაგრეგანტს', 'CEA-ს წინ პაციენტი არ იღებს', 'მხოლოდ ანტიკოაგულანტს', 'სტატინის მიღება', 'LDL ქოლესტერინი'),
     ),
     RuleEntry(
         id='CEA_HIGH_SURG_RISK_LARYNGOSCOPY',
@@ -323,7 +326,7 @@ VASCULAR_RULES = (
         value={'gsv_min_mm': 3.0, 'donor_abi_red': 0.50, 'donor_tp_red': 40, 'donor_abi_amb': 0.70, 'donor_tp_amb': 60},
         value_label='GSV >= 3.0 მმ · დონორი ABI >= 0.50 / TP >= 40',
         status=STATUS_LOCAL,
-        match_patterns=('იფსილატერალური GSV უვარგისია', 'კონტრალატერალურ კიდურზე მძიმე', 'დონორ (კონტრალატერალურ)', 'დონორ კიდურზე', 'კონტრალატერალური GSV', 'მხოლოდ წვივის ერთი არტერიაა'),
+        match_patterns=('იფსილატერალური GSV უვარგისია', 'კონტრალატერალურ კიდურზე მძიმე', 'დონორ კიდურზე არაკომპრესირებადი ABI', 'დონორ (კონტრალატერალურ)', 'დონორ კიდურზე', 'კონტრალატერალური GSV', 'მხოლოდ წვივის ერთი არტერიაა'),
     ),
     RuleEntry(
         id='ABF_ANATOMY_AND_INFECTION',
@@ -338,7 +341,7 @@ VASCULAR_RULES = (
         source_wording='Wet foot sepsis and groin intertrigo carry high synthetic graft infection risk; juxtarenal clamp, poor profunda outflow, and SMA stenosis require specific surgical planning.',
         value=True,
         value_label='სანაცია / ანატომიური გეგმა',
-        match_patterns=('ტერფის სველი', 'საზარდულის არეში', 'იუქსტარენალური აორტის', 'არადამაკმაყოფილებელი დისტალური Outflow', 'ზემო ჯორჯლის არტერიის', 'დომინანტური IMA', 'თირკმლის არტერიის სტენოზი', 'CFA / Profunda', 'ერთდროული ორმხრივი ინფრაინგვინალური'),
+        match_patterns=('ტერფის სველი', 'საზარდულის არეში', 'იუქსტარენალური აორტის', 'არადამაკმაყოფილებელი დისტალური Outflow', 'ზემო ჯორჯლის არტერიის', 'დომინანტური IMA', 'თირკმლის არტერიის სტენოზი', 'CFA / Profunda', 'ერთდროული ორმხრივი ინფრაინგვინალური', 'ქვემო კიდურების CTA DICOM დისკი', 'ანგიოგრაფიის / CTA DICOM დისკი'),
     ),
     RuleEntry(
         id='PAD_CLTI_WAIT_DAYS',
@@ -448,7 +451,7 @@ VASCULAR_RULES = (
         value={'mg_per_kg': 7.0, 'max_std': 500, 'reduced_factor': 0.65, 'max_reduced': 300},
         value_label='7 მგ/კგ (მაქს. 500 მგ; რისკზე 300 მგ)',
         status=STATUS_LOCAL,
-        match_patterns=('ალერგია ლიდოკაინზე', 'საჩინო ვენის დიდი დიამეტრი', 'ეპიფასციური', 'დაკლაკნილი ღერო', 'აქტიური ვენური წყლული', 'კანის ინფექცია', 'სისხლდენა ვარიკოზული'),
+        match_patterns=('ალერგია ლიდოკაინზე', 'ლიდოკაინზე ალერგია', 'საჩინო ვენის დიდი დიამეტრი', 'ეპიფასციური', 'დაკლაკნილი ღერო', 'აქტიური ვენური წყლული', 'კანის ინფექცია', 'სისხლდენა ვარიკოზული'),
     ),
     RuleEntry(
         id='VEN_VTE_CAPRINI_PROPHYLAXIS',
@@ -463,6 +466,6 @@ VASCULAR_RULES = (
         source_wording='Individualised risk assessment (e.g. Caprini >=5 or prior VTE/thrombophilia/cancer) should guide pharmacological thromboprophylaxis after superficial venous intervention.',
         value=5,
         value_label='Caprini >= 5 ან მაღალი VTE ფაქტორი',
-        match_patterns=('მაღალი თრომბოემბოლიური რისკი',),
+        match_patterns=('მაღალი თრომბოემბოლიური რისკი (Caprini',),
     ),
 )

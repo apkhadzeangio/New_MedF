@@ -38,15 +38,15 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
         else:
             ctx.amber_flags.append(f'საბაზისო hs-cTn {hs_ctn} ნგ/ლ (>ULN) — დაფიქსირებულია პოსტოპერაციული MINS შედარებისთვის; შეაფასოს კარდიოლოგმა.')
 
+    if ecg == 'afib_controlled' and ctx.hr is not None and ctx.hr > 110:
+        ctx.red_flags.append(f'მოციმციმე არითმია — ტაქისისტოლია (HR {ctx.hr}/წთ > 110) — სავალდებულოა რიტმის/სიხშირის კონტროლი კარდიოლოგთან!')
     if (lvef is not None and lvef < cb['lvef_red']) or s.get('echo_valve_issue') or ecg == 'ischemia_arrhythmia':
         if ctx.cardio_cleared:
             ctx.amber_flags.append('კარდიორისკი (LVEF < 40% / სარქვლოვანი პათოლოგია / ეკგ) შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
         else:
             ctx.red_flags.append('კარდიოლოგიური Red Flag (LVEF < 40% / მძიმე სარქვლოვანი მანკი / მწვავე ეკგ ცვლილება) — აცნობეთ ქირურგსა და კარდიოლოგს!')
-    elif ecg == 'afib_controlled':
-        if ctx.hr is not None and ctx.hr > 110:
-            ctx.red_flags.append(f'მოციმციმე არითმია — ტაქისისტოლია (HR {ctx.hr}/წთ > 110) — სავალდებულოა რიტმის/სიხშირის კონტროლი კარდიოლოგთან!')
-        elif ctx.cardio_cleared:
+    elif ecg == 'afib_controlled' and not (ctx.hr is not None and ctx.hr > 110):
+        if ctx.cardio_cleared:
             ctx.amber_flags.append('ნორმოსისტოლური მოციმციმე არითმია — შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
         else:
             ctx.amber_flags.append('ეკგ-ზე ნორმოსისტოლური მოციმციმე არითმია — საჭიროა კარდიოლოგის შეფასება.')
@@ -114,11 +114,9 @@ def _eval_stage1_completeness(ctx):
         or (s.get('anesthesia_plan') in ('neuraxial', 'general', 'plexus'))
         or (ctx.is_pta and q_filled and bool(q.get('pta_cant_lie_flat')))
         or ctx.needs_cied
-        or (q_filled and (
-            bool(q.get('anesth_issue')) or bool(q.get('glp1'))
-            or bool(q.get('ven_lidocaine_allergy'))
-            or 'lidocaine' in ctx.allergy_chips or ctx.true_low_mets
-        ))
+        or bool(q.get('glp1')) or bool(ctx.ft_meds.get('has_glp1'))
+        or bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in ctx.allergy_chips)
+        or (q_filled and (bool(q.get('anesth_issue')) or ctx.true_low_mets))
         or bool(s.get('anesth_done'))
     )
 
@@ -239,7 +237,12 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
     if ctx.needs_alt_vein:
         tasks.append({'key': 'alt_vein', 'label': 'რეფლექს ექო-კარტირება: კონტრალატერალური GSV / SSV / ხელის ვენები', 'done': (s.get('alt_vein_mapped') or 'pending') != 'pending'})
     if pathway == PreopPatient.Pathway.CEA and ctx.needs_cea_antiplatelet:
-        ap_t_lbl = 'ასპირინი (კლოპიდოგრელზე აუტანლობა!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'ასპირინი ± კლოპიდოგრელი'
+        if 'nsaid' in ctx.allergy_chips:
+            ap_t_lbl = 'ალტერნატიული P2Y12 (ასპირინზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი 75 მგ (ასპირინზე ალერგია!)'
+        elif 'clopidogrel_intol' in ctx.allergy_chips:
+            ap_t_lbl = 'ასპირინი (კლოპიდოგრელზე აუტანლობა!)'
+        else:
+            ap_t_lbl = 'ასპირინი ± კლოპიდოგრელი'
         tasks.append({'key': 'cea_antiplatelet', 'label': f'CEA ანტიაგრეგანტი ({ap_t_lbl}) დაწყებულია', 'done': bool(s.get('cea_antiplatelet_started'))})
     if pathway == PreopPatient.Pathway.CEA and ctx.needs_neuro:
         tasks.append({'key': 'neuro', 'label': 'ნევროლოგის წინასაოპერაციო კონსულტაცია (mRS / სტატუსი)', 'done': bool(s.get('neuro_consult_done'))})

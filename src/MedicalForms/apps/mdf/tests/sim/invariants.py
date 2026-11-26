@@ -132,14 +132,18 @@ def _check_pathway_and_risk_guards(patient, ev, q, s, pw, q_filled, cad_chips, v
     if pw == PreopPatient.Pathway.CEA and q_filled:
         brain_bleed = s.get('brain_imaging') == 'large_or_hemorrhage'
         days_ev = ev.get('days_since_ev')
+        eff_alg = set(ev.get('eff_allergy_chips') or ())
+        rtpa_prohibited = bool(q.get('cea_thrombolysis')) and (
+            days_ev is None or days_ev < 1 or (days_ev <= 6 and s.get('brain_imaging') != 'normal_small')
+        )
         prohibited = brain_bleed or (bool(q.get('cea_thrombolysis')) and (days_ev is None or days_ev < 1))
         if prohibited and ev['needs_cea_antiplatelet']:
             violations.append('INV-08_CEA_AP_ORDERED_ON_BLEED_OR_RTPA')
-        if ev['is_symp_cea'] and not brain_bleed:
+        if ev['is_symp_cea'] and not brain_bleed and not rtpa_prohibited and 'nsaid' not in eff_alg:
             for row in ev['med_schedule']:
                 if row['drug'] == 'ასპირინი (75–100 მგ)' and 'გრძელდება' not in row['rule']:
                     violations.append('INV-08_SYMP_CEA_ASPIRIN_HELD')
-                if row['drug'] == 'კლოპიდოგრელი / P2Y12' and not (q.get('recent_stent') or ('stent_6_12m' in cad_chips and 'mi' in cad_chips)):
+                if row['drug'] == 'კლოპიდოგრელი / P2Y12' and not (q.get('recent_stent') or ('stent_6_12m' in cad_chips and 'mi' in cad_chips)) and 'clopidogrel_intol' not in eff_alg:
                     if 'შეჩერება' in row['rule']:
                         violations.append('INV-08_SYMP_CEA_CLOPIDOGREL_HELD')
 
@@ -225,15 +229,19 @@ def _check_dosing_vitals_and_scores(patient, ev, q, s, pw, q_filled, allergy_chi
             violations.append('INV-14_OBESE_120KG_NOT_GIVEN_CEFAZOLIN_3G')
 
     # INV-15..19: GLP-1, BP asymmetry, ambiguous Cr, score bounds, pre-Q critical visibility
-    if q_filled and q.get('glp1') and '24 სთ' not in ev['fasting_instruction']:
-        violations.append('INV-15_GLP1_FASTING_RULE_MISSED')
+    if q_filled and q.get('glp1'):
+        if ev['clearance_seal']['code'] == 'stop':
+            if 'STOP' not in ev['fasting_instruction']:
+                violations.append('INV-15_GLP1_FASTING_RULE_MISSED')
+        elif '24 სთ' not in ev['fasting_instruction']:
+            violations.append('INV-15_GLP1_FASTING_RULE_MISSED')
     if ev['bp_arm_diff'] is not None and ev['bp_arm_diff'] >= 20:
         if 'მკლავზე' not in ev['anesthetic_brief']['bp_corridor']:
             violations.append('INV-16_BP_ASYMMETRY_NOT_IN_ANESTH_CORRIDOR')
     if ev['creat_unit_ambiguous'] and not q.get('on_dialysis'):
         if ev['egfr'] is not None or ev['crcl'] is not None:
             violations.append('INV-17_AMBIGUOUS_CREAT_COMPUTED_EGFR')
-        if not any('ერთეული საეჭვოა' in rf for rf in ev['red_flags']):
+        if not any(('ერთეული საეჭვოა' in rf or 'ერთეული არ ემთხვევა' in rf) for rf in ev['red_flags']):
             violations.append('INV-17_AMBIGUOUS_CREAT_NO_RED_FLAG')
     if not (0 <= ev['rcri']['score'] <= 6):
         violations.append('INV-18_RCRI_OUT_OF_BOUNDS')
@@ -265,7 +273,12 @@ def _check_dosing_vitals_and_scores(patient, ev, q, s, pw, q_filled, allergy_chi
     has_acs_stent_12m = ('stent_6_12m' in cad_chips) and ('mi' in cad_chips)
     uninterrupted_p2y12 = q_filled and (
         bool(q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel'))
-        and (bool(q.get('recent_stent')) or has_acs_stent_12m or ev['is_pta'] or (ev['is_symp_cea'] and not q.get('med_prasugrel')))
+        and (
+            bool(q.get('recent_stent'))
+            or has_acs_stent_12m
+            or (ev['is_pta'] and not q.get('med_prasugrel'))
+            or (ev['is_symp_cea'] and not q.get('med_prasugrel'))
+        )
     )
     if ev['has_neuraxial_plan'] and uninterrupted_p2y12:
         if 'უკუნაჩვენებია' not in ev['anesthetic_brief']['neuraxial_gate']:

@@ -9,17 +9,16 @@ def _eval_abf_clinical(ctx, is_clti):
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
         )
-    elif patient.op_subtype == PreopPatient.OpSubtype.ABF_CLAUD and q_filled and not is_clti:
-        if q.get('abf_duration') == '< 2 კვირა':
-            ctx.red_flags.append(
-                'სიმპტომების ხანგრძლივობა < 2 კვირა — გამოირიცხოს მწვავე კიდურის იშემია (ALI, ESVS 2020)! '
-                'სასწრაფოდ აცნობეთ ქირურგს (გეგმური 3-თვიანი SET აქ არ მიესადაგება)!'
-            )
-        elif not q.get('ic_bmt_3m') or q.get('abf_duration') == '1–3 თვე':
-            ctx.amber_flags.append(
-                'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
-            )
-    if q_filled and q.get('abf_wet_infection'):
+    if q.get('abf_duration') == '< 2 კვირა':
+        ctx.red_flags.append(
+            'სიმპტომების ხანგრძლივობა < 2 კვირა — გამოირიცხოს მწვავე კიდურის იშემია (ALI, ESVS 2020)! '
+            'სასწრაფოდ აცნობეთ ქირურგს (გეგმური 3-თვიანი SET აქ არ მიესადაგება)!'
+        )
+    elif patient.op_subtype == PreopPatient.OpSubtype.ABF_CLAUD and q_filled and not is_clti and (not q.get('ic_bmt_3m') or q.get('abf_duration') == '1–3 თვე'):
+        ctx.amber_flags.append(
+            'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
+        )
+    if q.get('abf_wet_infection'):
         ctx.red_flags.append(
             'ტერფის სველი ნეკროზი / ჩირქოვანი გამონადენი / ფლეგმონა — სინთეზური ბიფურკაციული პროთეზის სეფსისის უმაღლესი რისკი! '
             'სასწრაფოდ აცნობეთ ქირურგს სანაციისა და ეტაპობრივი ტაქტიკის გადასაწყვეტად.'
@@ -111,7 +110,12 @@ def eval_abf(ctx):
     if q_filled and not s.get('cta_disc'):
         ctx.amber_flags.append('აორტო-ილიაკური / ქვემო კიდურების CTA DICOM დისკი ჯერ არ არის მოტანილი / შემოწმებული.')
     if q_filled and not ctx.has_any_antithrombotic:
-        ap_rec = 'ასპირინი (კლოპიდოგრელზე აუტანლობა!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'ასპირინი ან კლოპიდოგრელი'
+        if 'nsaid' in ctx.allergy_chips:
+            ap_rec = 'ალტერნატიული P2Y12 (ასპირინზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი (ასპირინზე ალერგია!)'
+        elif 'clopidogrel_intol' in ctx.allergy_chips:
+            ap_rec = 'ასპირინი (კლოპიდოგრელზე აუტანლობა!)'
+        else:
+            ap_rec = 'ასპირინი ან კლოპიდოგრელი'
         ctx.amber_flags.append(f'პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I: {ap_rec}).')
     if q_filled and not ctx.has_statin and not ctx.liver_3x:
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I: მაღალი ინტენსივობის სტატინი).')
@@ -193,16 +197,15 @@ def _eval_pad_bypass_side_and_hemo(ctx, is_clti, hemo_cfg, abi_norm_lo, abi_norm
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
         )
-    elif q_filled and not is_clti:
-        if q.get('abf_duration') == '< 2 კვირა':
-            ctx.red_flags.append(
-                'სიმპტომების ხანგრძლივობა < 2 კვირა — გამოირიცხოს მწვავე კიდურის იშემია (ALI, ESVS 2020)! '
-                'სასწრაფოდ აცნობეთ ქირურგს!'
-            )
-        elif not q.get('ic_bmt_3m') or q.get('abf_duration') == '1–3 თვე':
-            ctx.amber_flags.append(
-                'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
-            )
+    if q.get('abf_duration') == '< 2 კვირა':
+        ctx.red_flags.append(
+            'სიმპტომების ხანგრძლივობა < 2 კვირა — გამოირიცხოს მწვავე კიდურის იშემია (ALI, ESVS 2020)! '
+            'სასწრაფოდ აცნობეთ ქირურგს!'
+        )
+    elif q_filled and not is_clti and (not q.get('ic_bmt_3m') or q.get('abf_duration') == '1–3 თვე'):
+        ctx.amber_flags.append(
+            'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
+        )
 
 
 def eval_pad_bypass(ctx):
@@ -221,7 +224,7 @@ def eval_pad_bypass(ctx):
         )
     elif q_filled and patient.side not in ('R', 'L'):
         ctx.amber_flags.append('მიუთითეთ საოპერაციო კიდურის მხარე (მარჯვენა ან მარცხენა).')
-    if q_filled and q.get('abf_wet_infection'):
+    if q.get('abf_wet_infection'):
         ctx.red_flags.append('ტერფის სველი განგრენა / ჩირქოვანი ინფექცია — სასწრაფოდ აცნობეთ ქირურგს დრენირებისა და ანტიბიოტიკოთერაპიისთვის!')
     if q_filled and q.get('abf_groin_issue'):
         ctx.red_flags.append('საზარდულის არეში ინტერტრიგო / ინფექცია — შუნტის ინფიცირების მაღალი რისკი! აცნობეთ ქირურგს.')

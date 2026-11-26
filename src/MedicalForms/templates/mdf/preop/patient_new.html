@@ -125,7 +125,20 @@
         {% endif %}
 
         {% if nw_med_script.has_meds %}
-            {% if nw_med_script.stop_rows %}
+            {% if nw_med_script.stop_locked %}
+                {% if nw_med_script.urgent_rows %}
+                <div class="nw-med-group-lbl">მწვავე / უკუნაჩვენები წამლები (დაუყოვნებლივ დაუკავშირდით ექიმს):</div>
+                <div class="d-flex flex-column gap-2 mb-3">
+                    {% for mr in nw_med_script.urgent_rows %}
+                    <div class="nw-med-script-row tone-{{ mr.tone }}">
+                        <div class="nw-med-drug">{{ mr.drug }}</div>
+                        <div class="nw-med-spoken">{{ mr.spoken }}</div>
+                        <div class="nw-med-rule">{{ mr.rule }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            {% elif nw_med_script.stop_rows %}
             <div class="nw-med-group-lbl">შესაჩერებელი ან შესაცვლელი წამლები (უთხარით ტელეფონზე):</div>
             <div class="d-flex flex-column gap-2 mb-3">
                 {% for mr in nw_med_script.stop_rows %}
@@ -221,6 +234,7 @@
         <form method="post" class="d-flex flex-column gap-3" id="nw-vitals-form" data-nw-draft="vitals">
             {% csrf_token %}
             <input type="hidden" name="section" value="stage1">
+            <input type="hidden" name="s1_partial" value="1">
 
             <div class="nw-field-grid">
                 <div class="nw-field">
@@ -378,7 +392,7 @@
             <form method="post" class="d-flex flex-column gap-3" id="nw-dos-form" data-nw-draft="dos">
                 {% csrf_token %}
                 <input type="hidden" name="section" value="dos_vqi">
-                <input type="hidden" name="dos_form_present" value="1">
+                <input type="hidden" name="dos_partial" value="1">
 
                 {% if ev.dos_hold_danger %}
                 <div class="nw-banner danger m-0" role="alert">საოპერაციო შეჩერება (STOP) — საშიში დილის მაჩვენებელი!</div>
@@ -432,7 +446,7 @@
     <details class="nw-section" id="nw-sec-doc" {% if tab == 'doc' %}open{% endif %}>
         <summary class="nw-section-head">
             <h2 class="nw-section-title">ქირურგის დასტური და ანამნეზი</h2>
-            <span class="nw-count-pill {% if p.approved_at %}green{% endif %}">{% if p.approved_at %}დადასტურებულია ✓{% else %}მოლოდინში{% endif %}</span>
+            <span class="nw-count-pill {% if p.approved_at and ev.workup_ready %}green{% elif p.approved_at %}red{% endif %}">{% if p.approved_at and ev.workup_ready %}დადასტურებულია ✓{% elif p.approved_at %}განახლება საჭიროა{% else %}მოლოდინში{% endif %}</span>
         </summary>
         <div class="p-3">{% include "mdf/preop/_tab_doc.html" with tab="doc" %}</div>
     </details>

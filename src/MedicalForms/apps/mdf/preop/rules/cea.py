@@ -189,11 +189,15 @@ def eval_cea(ctx):
             'პაციენტი იღებს მხოლოდ ანტიკოაგულანტს (რომელიც ოპერაციამდე ჩერდება) ანტიაგრეგანტის გარეშე!'
             if has_oac_only else 'CEA-ს წინ პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2023 Class I)'
         )
-        ap_opt = (
-            'ასპირინი 75–100 მგ (კლოპიდოგრელზე აუტანლობა!)'
-            if 'clopidogrel_intol' in ctx.allergy_chips
-            else 'ასპირინი (± კლოპიდოგრელი სიმპტომურ CEA-ზე)'
-        )
+        if 'nsaid' in ctx.allergy_chips:
+            ap_opt = 'ალტერნატიული P2Y12 კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი 75 მგ (ასპირინზე/აასს-ზე ალერგია!)'
+            ap_name = 'ალტერნატიული P2Y12 (ასპირინზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი (ასპირინზე ალერგია!)'
+        elif 'clopidogrel_intol' in ctx.allergy_chips:
+            ap_opt = 'ასპირინი 75–100 მგ (კლოპიდოგრელზე აუტანლობა!)'
+            ap_name = 'ასპირინი (კლოპიდოგრელის აუტანლობა!)'
+        else:
+            ap_opt = 'ასპირინი (± კლოპიდოგრელი სიმპტომურ CEA-ზე)'
+            ap_name = 'ასპირინი / კლოპიდოგრელი'
         ctx.reflex_orders.append({
             'key': 'cea_antiplatelet',
             'trigger': ap_trigger,
@@ -201,7 +205,6 @@ def eval_cea(ctx):
             'done': bool(s.get('cea_antiplatelet_started')),
         })
         if not s.get('cea_antiplatelet_started'):
-            ap_name = 'ასპირინი (კლოპიდოგრელის აუტანლობა!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'ასპირინი / კლოპიდოგრელი'
             ctx.red_flags.append(
                 f'პაციენტი არ იღებს ანტიაგრეგანტს ({ap_name})! ESVS 2023 Class I-ით CEA-ს წინ '
                 'ანტიაგრეგანტული თერაპია სავალდებულოა ინსულტის პრევენციისთვის — აცნობეთ ქირურგს.'

@@ -76,7 +76,7 @@
                             {% if q.on_dialysis %}
                             <strong>დიალიზის პერიოპერაციული გეგმა:</strong> უჰეპარინო დიალიზი ოპერაციის წინა დღეს + სისხლის K⁺ კონტროლი ნეფროლოგთან
                             {% else %}
-                            <strong>რეფლექს-პაკეტი (CrCl/eGFR {{ ev.eff_renal|default:ev.egfr }} &lt; 45):</strong> შარდოვანა, Ca/P, თირკმელების ექო + ნეფროლოგის კონსულტაცია
+                            <strong>რეფლექს-პაკეტი (CrCl/eGFR {{ ev.eff_renal|default_if_none:ev.egfr }} &lt; 45):</strong> {% if ev.is_venous or ev.is_pta or s.cta_disc or ev.eff_renal is not None and ev.eff_renal >= 30 %}შარდოვანა, ელექტროლიტები (K⁺/HCO₃⁻) + ნეფროლოგის კონსულტაცია{% else %}შარდოვანა, Ca/P, თირკმელების ექო + ნეფროლოგის კონსულტაცია{% endif %}
                             {% endif %}
                         </span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="nephro_panel_done" value="1" {% if s.nephro_panel_done %}checked{% endif %}>შესრულდა ✓</label>
@@ -85,7 +85,7 @@
 
                     {% if ev.needs_hydration %}
                     <div class="po-task-row reflex-row {% if s.hydration_planned %}done{% endif %}">
-                        <span><strong>კონტრასტ-ნეფროპროტექცია (CrCl/eGFR {{ ev.eff_renal|default:ev.egfr }} &lt; 60):</strong> {% if s.na is not None and s.na >= 150 %}<span class="text-danger fw-bold">ჰიპერნატრიემია (Na⁺ {{ s.na }}) — 0.9% NaCl აკრძალულია; ჰიპოტონური ხსნარი ინტენსივისტთან (ΔNa⁺ &le;8/24სთ)</span>{% elif ev.chf_hyd_flag %}<span class="text-danger fw-bold">შეზღუდული ჰიდრატაცია (0.5 მლ/კგ/სთ — HFrEF სითხით გადატვირთვის რისკი!)</span>{% else %}იზოტონური ჰიდრატაცია (0.9% NaCl) ჩარევის წინ და შემდეგ{% endif %}{% if ev.max_contrast_ml is not None %} · მაქს. კონტრასტი &le; {{ ev.max_contrast_ml }} მლ{% endif %}</span>
+                        <span><strong>კონტრასტ-ნეფროპროტექცია (CrCl/eGFR {{ ev.eff_renal|default_if_none:ev.egfr }} &lt; 60):</strong> {% if s.na is not None and s.na >= 150 %}<span class="text-danger fw-bold">ჰიპერნატრიემია (Na⁺ {{ s.na }}) — 0.9% NaCl აკრძალულია; ჰიპოტონური ხსნარი ინტენსივისტთან (ΔNa⁺ &le;8/24სთ)</span>{% elif ev.chf_hyd_flag %}<span class="text-danger fw-bold">შეზღუდული ჰიდრატაცია (0.5 მლ/კგ/სთ — HFrEF სითხით გადატვირთვის რისკი!)</span>{% else %}იზოტონური ჰიდრატაცია (0.9% NaCl) ჩარევის წინ და შემდეგ{% endif %}{% if ev.max_contrast_ml is not None %} · მაქს. კონტრასტი &le; {{ ev.max_contrast_ml }} მლ{% endif %}</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="hydration_planned" value="1" {% if s.hydration_planned %}checked{% endif %}>დაგეგმილია ✓</label>
                     </div>
                     {% endif %}
@@ -151,7 +151,7 @@
 
                     {% if ev.pathway == 'cea' and ev.needs_cea_antiplatelet %}
                     <div class="po-task-row reflex-row {% if s.cea_antiplatelet_started %}done{% endif %}">
-                        <span><strong>ESVS 2023 Class I — CEA ანტიაგრეგანტი:</strong> თავის ტვინის CT-ით სისხლჩაქცევის გამორიცხვის შემდეგ დაწყებულია {% if 'clopidogrel_intol' in ev.eff_allergy_chips %}ასპირინი (კლოპიდოგრელზე აუტანლობა!){% else %}ასპირინი (± კლოპიდოგრელი){% endif %}</span>
+                        <span><strong>ESVS 2023 Class I — CEA ანტიაგრეგანტი:</strong> თავის ტვინის CT-ით სისხლჩაქცევის გამორიცხვის შემდეგ დაწყებულია {% if 'nsaid' in ev.eff_allergy_chips and 'clopidogrel_intol' in ev.eff_allergy_chips %}ალტერნატიული ანტიაგრეგანტი (ასპირინზე ალერგია + კლოპიდოგრელზე აუტანლობა — კარდიოლოგი/ნევროლოგი!){% elif 'nsaid' in ev.eff_allergy_chips %}კლოპიდოგრელი (ასპირინზე/აასს-ზე ალერგია!){% elif 'clopidogrel_intol' in ev.eff_allergy_chips %}ასპირინი (კლოპიდოგრელზე აუტანლობა!){% else %}ასპირინი (± კლოპიდოგრელი){% endif %}</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="cea_antiplatelet_started" value="1" {% if s.cea_antiplatelet_started %}checked{% endif %}>დაწყებულია ✓</label>
                     </div>
                     {% endif %}
@@ -186,9 +186,9 @@
                     <div class="po-task-row {% if s.dapt_ready %}done{% endif %}">
                         <span>
                             {% if ev.has_full_oac %}
-                            <strong>ანტითრომბოზული გეგმა OAC ფონზე: {% if 'clopidogrel_intol' in ev.eff_allergy_chips %}OAC + ასპირინი (კლოპიდოგრელზე აუტანლობა — OAC + ტიკაგრელორი არა!){% else %}OAC + კლოპიდოგრელი (სამმაგი თერაპიის — OAC+ASA+P2Y12 — გარეშე!){% endif %}</strong>
+                            <strong>ანტითრომბოზული გეგმა OAC ფონზე: {% if 'clopidogrel_intol' in ev.eff_allergy_chips and 'nsaid' in ev.eff_allergy_chips %}OAC მონოთერაპია ან კონსილიუმი (ასპირინზე ალერგია + კლოპიდოგრელზე აუტანლობა!){% elif 'clopidogrel_intol' in ev.eff_allergy_chips %}OAC + ასპირინი (კლოპიდოგრელზე აუტანლობა — OAC + ტიკაგრელორი არა!){% else %}OAC + კლოპიდოგრელი (სამმაგი თერაპიის — OAC+ASA+P2Y12 — გარეშე!){% endif %}</strong>
                             {% else %}
-                            <strong>ორმაგი ანტიაგრეგანტული თერაპია — DAPT ({% if 'clopidogrel_intol' in ev.eff_allergy_chips %}ასპირინი + ტიკაგრელორი — კლოპიდოგრელზე აუტანლობა!{% else %}ასპირინი + კლოპიდოგრელი / დატვირთვის დოზა{% endif %})</strong>
+                            <strong>{% if 'nsaid' in ev.eff_allergy_chips and 'clopidogrel_intol' in ev.eff_allergy_chips %}ალტერნატიული ანტიაგრეგანტული გეგმა (ასპირინზე ალერგია + კლოპიდოგრელზე აუტანლობა — კარდიოლოგთან შეთანხმებით!){% elif 'nsaid' in ev.eff_allergy_chips %}ანტიაგრეგანტული თერაპია — კლოპიდოგრელი (ასპირინზე/აასს-ზე ალერგია!){% elif 'clopidogrel_intol' in ev.eff_allergy_chips %}ორმაგი ანტიაგრეგანტული თერაპია — DAPT (ასპირინი + ტიკაგრელორი — კლოპიდოგრელზე აუტანლობა!){% else %}ორმაგი ანტიაგრეგანტული თერაპია — DAPT (ასპირინი + კლოპიდოგრელი / დატვირთვის დოზა){% endif %}</strong>
                             {% endif %}
                         </span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="dapt_ready" value="1" {% if s.dapt_ready %}checked{% endif %}>დადასტურებულია / მზადაა ✓</label>
@@ -305,7 +305,7 @@
                             </select>
                         </div>
                     </div>
-                    <div class="po-alert {% if q.glp1 %}amber{% else %}reflex{% endif %}" style="padding:8px 12px;font-size:13px">
+                    <div class="po-alert {% if q.glp1 and ev.clearance_seal.code != 'stop' %}amber{% else %}reflex{% endif %}" style="padding:8px 12px;font-size:13px">
                         <span><strong>{{ ev.fasting_instruction }}</strong></span>
                     </div>
                     {% endif %}
@@ -321,7 +321,7 @@
                             <thead>
                                 <tr>
                                     <th>მედიკამენტი</th>
-                                    {% if ev.planned_surgery_ka or ev.clearance_seal.code == 'stop' %}<th>კალენდარული გეგმა{% if ev.planned_surgery_ka %} (ოპ: {{ ev.planned_surgery_ka }}){% endif %}</th>{% endif %}
+                                    {% if ev.has_any_date_plan %}<th>კალენდარული გეგმა{% if ev.planned_surgery_ka %} (ოპ: {{ ev.planned_surgery_ka }}){% endif %}</th>{% endif %}
                                     <th>პროტოკოლური რეჟიმი</th>
                                 </tr>
                             </thead>
@@ -329,7 +329,7 @@
                                 {% for m in med_schedule_items %}
                                 <tr>
                                     <td><strong>{{ m.drug }}</strong></td>
-                                    {% if ev.planned_surgery_ka or ev.clearance_seal.code == 'stop' %}<td class="po-med-tone-{{ m.tone }}"><strong>{{ m.date_plan }}</strong></td>{% endif %}
+                                    {% if ev.has_any_date_plan %}<td class="po-med-tone-{{ m.tone }}"><strong>{{ m.date_plan }}</strong></td>{% endif %}
                                     <td class="po-med-tone-{{ m.tone }}">{{ m.rule }}{% if m.rule_meta %} <button type="button" class="po-cite-btn" data-rule-id="{{ m.rule_meta.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ m.rule_meta.source }}">ⓘ</button>{% endif %}</td>
                                 </tr>
                                 {% endfor %}

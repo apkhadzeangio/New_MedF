@@ -23,8 +23,9 @@ from .constants import (
 
 def chip_summary(selected_keys, field_name, fallback_text=''):
     labels = CHIP_LABELS.get(field_name, {})
-    picked = [labels[k] for k in (selected_keys or []) if k in labels]
-    extra = (fallback_text or '').strip()
+    seq = selected_keys if isinstance(selected_keys, (list, tuple, set)) else ()
+    picked = [labels[k] for k in seq if k in labels]
+    extra = fallback_text.strip() if isinstance(fallback_text, str) else ''
     if extra and extra not in picked:
         picked.append(extra)
     return ', '.join(picked)
@@ -60,10 +61,16 @@ def _date(val):
         return val.date()
     if isinstance(val, datetime.date):
         return val
-    try:
-        return datetime.date.fromisoformat(str(val or '').strip())
-    except ValueError:
+    raw = str(val or '').strip()
+    if not raw:
         return None
+    try:
+        return datetime.date.fromisoformat(raw)
+    except ValueError:
+        try:
+            return datetime.datetime.fromisoformat(raw.replace('Z', '+00:00')).date()
+        except ValueError:
+            return None
 
 
 def _resolve_pathway(patient):
@@ -88,7 +95,7 @@ def _fmt_ka_date(val, short=False):
 def _age_from_dob(val, today=None):
     """Compute integer age (1..120) from ISO birth_date."""
     dob = val if isinstance(val, datetime.date) else _date(val)
-    today = today or timezone.localdate()
+    today = _date(today) or timezone.localdate()
     if not dob or dob > today or dob.year < 1900:
         return None
     years = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
@@ -215,11 +222,13 @@ def prep_days_elapsed(patient, today=None):
 
 
 def is_pregnancy_eligible(patient):
-    """Return True if patient is biologically eligible for pregnancy (not male; if age known, 12..55)."""
+    """Return True if patient is biologically eligible for pregnancy (not male; if age known, registry bounds)."""
+    from .registry import rule_value
     if (patient.sex or '') == 'M':
         return False
+    lo_age, hi_age = rule_value('VEN_PREGNANCY_STOP')
     age_v = _int(patient.age, lo=1, hi=120)
-    if age_v is not None and not (12 <= age_v <= 55):
+    if age_v is not None and not (lo_age <= age_v <= hi_age):
         return False
     return True
 
@@ -254,7 +263,7 @@ def cta_live_months_age(s, today=None):
         elif months >= 1 and today.day > cta_dt.day:
             months += 1
         return max(0, months)
-    return _int(s.get('cta_months'), lo=0, hi=120)
+    return _int(s.get('cta_months'), lo=0, hi=240)
 
 
 def consent_url_for_preop(patient):
@@ -324,7 +333,7 @@ def merged_studies(patient):
 
 def _update_hold_pause(s, old_someday, new_someday, today=None, started_on=False):
     """Track paused elapsed days when entering/exiting SomedayList.HOLD (ignoring pre-workup HOLD before started_on)."""
-    today = today or timezone.localdate()
+    today = _date(today) or timezone.localdate()
     hold_val = PreopPatient.SomedayList.HOLD
     if old_someday != hold_val and new_someday == hold_val:
         if not s.get('hold_since'):
@@ -342,11 +351,17 @@ def _update_hold_pause(s, old_someday, new_someday, today=None, started_on=False
 
 
 def _monday_of(day):
-    return day - datetime.timedelta(days=day.weekday())
+    try:
+        return day - datetime.timedelta(days=day.weekday())
+    except OverflowError:
+        return datetime.date.min
 
 
 def _week_title(monday):
-    sunday = monday + datetime.timedelta(days=6)
+    try:
+        sunday = monday + datetime.timedelta(days=6)
+    except OverflowError:
+        sunday = datetime.date.max
     if monday.month == sunday.month:
         return f'{MONTHS[monday.month - 1]} {monday.year} · {monday.day} – {sunday.day} {MONTHS_SHORT[monday.month]}'
     if monday.year != sunday.year:

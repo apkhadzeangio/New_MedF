@@ -14,7 +14,7 @@ def eval_pta(ctx):
     ctx.is_clti_any = is_clti
     if q_filled and patient.side not in ('R', 'L', 'B'):
         ctx.amber_flags.append('მიუთითეთ ჩარევის მხარე (მარჯვენა, მარცხენა ან ორმხრივი).')
-    if q_filled and q.get('abf_wet_infection'):
+    if q.get('abf_wet_infection'):
         ctx.red_flags.append('ტერფის სველი ინფექცია / ფლეგმონა — რევასკულარიზაციასთან ერთად საჭიროა გადაუდებელი ქირურგიული სანაცია!')
     if q_filled and q.get('abf_groin_issue'):
         ctx.red_flags.append('საზარდულის არეში ინტერტრიგო / ინფექცია — პუნქციის ზონის ინფიცირების რისკი! განიხილეთ ალტერნატიული მიდგომა და სანაცია.')
@@ -53,16 +53,15 @@ def eval_pta(ctx):
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
         )
-    elif q_filled and not is_clti:
-        if q.get('abf_duration') == '< 2 კვირა':
-            ctx.red_flags.append(
-                'სიმპტომების ხანგრძლივობა < 2 კვირა — გამოირიცხოს მწვავე კიდურის იშემია (ALI, ESVS 2020)! '
-                'სასწრაფოდ აცნობეთ ქირურგს!'
-            )
-        elif not q.get('ic_bmt_3m') or q.get('abf_duration') == '1–3 თვე':
-            ctx.amber_flags.append(
-                'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
-            )
+    if q.get('abf_duration') == '< 2 კვირა':
+        ctx.red_flags.append(
+            'სიმპტომების ხანგრძლივობა < 2 კვირა — გამოირიცხოს მწვავე კიდურის იშემია (ALI, ESVS 2020)! '
+            'სასწრაფოდ აცნობეთ ქირურგს!'
+        )
+    elif q_filled and not is_clti and (not q.get('ic_bmt_3m') or q.get('abf_duration') == '1–3 თვე'):
+        ctx.amber_flags.append(
+            'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
+        )
 
     if s.get('pta_access_site') == 'cfa_calcified_scar':
         if ctx.on_dialysis:
@@ -76,10 +75,12 @@ def eval_pta(ctx):
         ctx.amber_flags.append('პაციენტს უჭირს ზურგზე გაუნძრევლად წოლა 60–90 წთ — ავტომატურად ჩაირთო ანესთეზიოლოგი (სედაციისთვის).')
     if 'clopidogrel_intol' in ctx.allergy_chips:
         has_oac_pta = bool(q_filled and (q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran') or ('rivaroxaban_2_5' in ctx.med_chips)))
-        alt_pta_txt = (
-            'OAC + ასპირინი 75–100 მგ (OAC + ტიკაგრელორი ESC Class III სისხლდენის რისკის გამო არ ინიშნება!)'
-            if has_oac_pta else 'ალტერნატიული P2Y12 (ტიკაგრელორი)'
-        )
+        if has_oac_pta and 'nsaid' in ctx.allergy_chips:
+            alt_pta_txt = 'ინდივიდუალური რეჟიმი კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია — OAC + ტიკაგრელორი ESC Class III არ ინიშნება!)'
+        elif has_oac_pta:
+            alt_pta_txt = 'OAC + ასპირინი 75–100 მგ (OAC + ტიკაგრელორი ESC Class III სისხლდენის რისკის გამო არ ინიშნება!)'
+        else:
+            alt_pta_txt = 'ალტერნატიული P2Y12 (ტიკაგრელორი)'
         ctx.red_flags.append(f'ანამნეზში კლოპიდოგრელის აუტანლობა — სტენტირებამდე შეათანხმეთ {alt_pta_txt} ქირურგთან!')
     if q_filled and not ctx.has_any_antithrombotic:
         ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს PTA/სტენტირებამდე (ESVS 2024 Class I).')

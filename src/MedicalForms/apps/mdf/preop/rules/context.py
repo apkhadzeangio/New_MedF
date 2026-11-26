@@ -68,7 +68,7 @@ def _fmt_bad_val(lbl, raw):
     return f'{lbl}={txt[:24]}'
 
 
-def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous):
+def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=None):
     src = raw_s if isinstance(raw_s, dict) else {}
     inv = src.get('_invalid_inputs') if isinstance(src.get('_invalid_inputs'), dict) else {}
     bad = []
@@ -85,7 +85,7 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous):
         ('creat', 'კრეატინინი', None),
         ('fibrinogen', 'ფიბრინოგენი', None),
         ('wbc', 'WBC', lambda v: _num(v, lo=0.1, hi=150000) is not None),
-        ('plt', 'PLT', lambda v: _num(v, lo=1, hi=2000000) is not None),
+        ('plt', 'PLT', lambda v: (pv := _num(v, lo=1, hi=2000000)) is not None and not (2500 < pv < 3000)),
     ):
         raw = src[key] if key in src else s.get(key)
         if key == 'creat' and _has_raw(raw):
@@ -107,6 +107,13 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous):
         elif key not in seen and key in inv and _has_raw(inv[key]):
             bad.append(_fmt_bad_val(lbl, inv[key]))
             seen.add(key)
+    raw_cta = src['cta_date'] if 'cta_date' in src else s.get('cta_date')
+    if _has_raw(raw_cta):
+        cta_dt = _date(raw_cta)
+        if cta_dt is None or (today and cta_dt > today):
+            bad.append(_fmt_bad_val('CTA თარიღი', raw_cta))
+    elif 'cta_date' in inv and _has_raw(inv['cta_date']):
+        bad.append(_fmt_bad_val('CTA თარიღი', inv['cta_date']))
     return bad
 
 
@@ -274,7 +281,8 @@ def init_eval_context(patient, today=None):
         creat_unit, on_dialysis=on_dialysis, height_cm=s.get('height_cm'),
     )
     car_r, car_l = _int(s.get('carotid_r'), lo=0, hi=100), _int(s.get('carotid_l'), lo=0, hi=100)
-    implausible_fields = _detect_implausible_fields(patient.studies, s, creat_unit, creat_unit_ambiguous)
+    raw_s = patient.studies if isinstance(patient.studies, dict) else {}
+    implausible_fields = _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=today)
 
     ctx = EvalContext(
         patient=patient,
@@ -288,6 +296,8 @@ def init_eval_context(patient, today=None):
         is_on_hold=(patient.someday_list == PreopPatient.SomedayList.HOLD),
         q=q,
         s=s,
+        raw_s=raw_s,
+        wbc=None,
         q_filled=bool(q.get('filled')),
         case_outcome=case_outcome,
         is_active_case=(case_outcome == 'scheduled') and not patient.archived,
