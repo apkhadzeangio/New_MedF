@@ -30,7 +30,7 @@ class PreopStageP1RationalAndBridgeTests(PrivateMediaTest):
             'med_aspirin': '1', 'med_chips': ['statin'], 'mets_ok': '1',
         })
         self.client.post(reverse('preop-patient', args=[cea.pk]), {
-            'section': 'stage1', 'bp_sys': '134', 'bp_dia': '78', 'hr': '68', 'spo2': '98',
+            'section': 'stage1', 'labs_date': today.isoformat(), 'bp_sys': '134', 'bp_dia': '78', 'hr': '68', 'spo2': '98',
             'hb': '142', 'creat': '82', 'inr': '1.01', 'carotid_r': '84', 'carotid_l': '25',
             'cea_cta_status': 'concordant', 'brain_imaging': 'normal_small', 'ecg': 'normal', 'cta_disc': '1',
         })

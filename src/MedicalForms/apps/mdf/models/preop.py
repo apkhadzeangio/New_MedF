@@ -167,7 +167,8 @@ class PreopPatient(models.Model):
 
     @property
     def diagnosis_text(self):
-        s = self.studies or {}
+        s = self.studies if isinstance(self.studies, dict) else {}
+        q = self.questionnaire if isinstance(self.questionnaire, dict) else {}
         if self.pathway == self.Pathway.CEA:
             side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა '}.get(self.side, '')
             symp_word = 'სიმპტომური ' if self.op_subtype == self.OpSubtype.CEA_SYMP else ''
@@ -186,7 +187,7 @@ class PreopPatient(models.Model):
             return f'{side_word}ქვემო კიდურის არტერიების მაობლიტერირებელი ათეროსკლეროზი, {stage}'
         if self.pathway == self.Pathway.VENOUS:
             side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა ', 'B': 'ორმხრივი '}.get(self.side, '')
-            ceap = (self.questionnaire or {}).get('ven_ceap') or ''
+            ceap = q.get('ven_ceap') or ''
             ceap_str = f' (CEAP {ceap})' if ceap else ''
             return f'{side_word}ქვემო კიდურების ვენების ვარიკოზული დაავადება{ceap_str}'
         mm = s.get('aaa_mm')

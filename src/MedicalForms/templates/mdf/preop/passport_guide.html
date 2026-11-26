@@ -28,13 +28,17 @@
                 <h2 class="nw-card-title m-0">{{ p.patient_name }}</h2>
                 <p class="nw-meta-line m-0">{{ procedure_ka }}{% if side_ka %} · {{ side_ka }}{% endif %}{% if surgeon_name %} · ექიმი: {{ surgeon_name }}{% endif %}</p>
             </div>
-            {% if guide.is_draft %}
+            {% if guide.stop_locked %}
+            <span class="nw-verdict nw-verdict-stop">STOP — ოპერაცია დაბლოკილია</span>
+            {% elif guide.is_draft %}
             <span class="nw-verdict nw-verdict-alert">სამუშაო ასლი — საჭიროა ექიმის დასტური</span>
             {% else %}
             <span class="nw-verdict nw-verdict-ready">დადასტურებულია ექიმთან ✓</span>
             {% endif %}
         </div>
-        {% if guide.is_draft %}
+        {% if guide.stop_locked %}
+        <div class="nw-banner danger m-0">ოპერაციაზე დაშვება შეჩერებულია (STOP) — არცერთი წამალი არ შეწყვიტოთ; აუცილებელია მკურნალი ექიმის გადაწყვეტილება!</div>
+        {% elif guide.is_draft %}
         <div class="nw-banner warn m-0">ყურადღება: წამლების შეცვლისა და ოპერაციის თარიღის საბოლოო დასტური მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!</div>
         {% endif %}
     </section>

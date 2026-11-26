@@ -102,7 +102,7 @@ def _apply_q_booleans_and_chips(post_data, q):
             q[chip_field] = [k for k in post_data.getlist(chip_field) if k in valid_keys]
     if q.get('allergy_chips'):
         q['allergy_other'] = True
-    if q.get('cad_chips'):
+    if q.get('cad_chips') or q.get('recent_stent'):
         q['cad'] = True
     if q.get('pulm_chips'):
         q['pulm'] = True
@@ -112,10 +112,16 @@ def _apply_q_booleans_and_chips(post_data, q):
         q['abf_prior_vasc'] = True
     if q.get('inf_chips'):
         q['active_infection'] = True
-    if q.get('dm_insulin'):
+    if q.get('dm_insulin') or q.get('metformin'):
         q['dm'] = True
     if q.get('ulcer_active_symp'):
         q['ulcer'] = True
+    if q.get('cea_neck_chips'):
+        q['cea_prior_neck'] = True
+    if q.get('cea_event_chips'):
+        q['cea_symp_event'] = True
+    if q.get('ven_dvt_chips'):
+        q['ven_dvt_history'] = True
 
 
 def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
@@ -126,7 +132,7 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
     if post_data.get('ven_ceap') in ('C2', 'C3', 'C4', 'C5', 'C6'):
         q['ven_ceap'] = post_data.get('ven_ceap')
 
-    if q.get('cea_symp_event'):
+    if q.get('cea_symp_event') or patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP:
         ev_dt = _date(post_data.get('cea_event_date'))
         if ev_dt and ev_dt <= today:
             q['cea_event_date'] = ev_dt.isoformat()
@@ -141,6 +147,7 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
         q['cea_event_chips'] = []
         q['cea_crescendo'] = False
         q['cea_thrombolysis'] = False
+        q['cea_disabling_stroke'] = False
 
     if 'abf_claud_m' in post_data:
         q['abf_claud_m'] = _int(post_data.get('abf_claud_m'), lo=0, hi=5000)
@@ -156,6 +163,8 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
     for tf, lim in _NURSE_Q_TEXT_LIMITS:
         if tf in post_data:
             q[tf] = clean_text(post_data.get(tf), lim).replace('\n', ' ')
+    if (q.get('allergy_text') or '').strip():
+        q['allergy_other'] = True
 
     if 'weight_kg' in post_data:
         w = _num(post_data.get('weight_kg'), lo=25, hi=260)
@@ -286,6 +295,12 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today):
         q['dm'] = True
     if q.get('recent_stent'):
         q['cad'] = True
+    if q.get('cea_neck_chips'):
+        q['cea_prior_neck'] = True
+    if q.get('cea_event_chips'):
+        q['cea_symp_event'] = True
+    if q.get('ven_dvt_chips'):
+        q['ven_dvt_history'] = True
 
     # Patient may fill an empty surgical side, NEVER overwrite an already-set surgeon side!
     if not patient.side and 'side' in post_data and post_data.get('side') in ('R', 'L', 'B'):
@@ -294,6 +309,8 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today):
     for tf, lim in (('other_meds', 400), ('allergy_text', 250)):
         if tf in post_data:
             q[tf] = clean_text(post_data.get(tf), lim).replace('\n', ' ')
+    if (q.get('allergy_text') or '').strip():
+        q['allergy_other'] = True
 
     if 'weight_kg' in post_data:
         w = _num(post_data.get('weight_kg'), lo=25, hi=260)

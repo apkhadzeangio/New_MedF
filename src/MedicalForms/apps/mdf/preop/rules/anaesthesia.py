@@ -20,7 +20,7 @@ def _eval_asa_airway_and_modality(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
     sb_cfg = rule_value('ANES_AIRWAY_STOPBANG_ICU')
     ctx.effective_asa = f"ASA {ctx.asa_roman}{'-E' if (s.get('asa_emergency') or ctx.is_acute_emergency) else ''}"
-    if pathway == PreopPatient.Pathway.CEA and not ctx.is_symp_cea and (patient.age or 0) >= 80 and ctx.asa_roman == 'IV':
+    if pathway == PreopPatient.Pathway.CEA and not ctx.is_symp_cea and (ctx.age or 0) >= 80 and ctx.asa_roman == 'IV':
         ctx.red_flags.append(
             'ასიმპტომური CEA ≥80 წლის ASA IV პაციენტთან — ESVS 2023-ით 5-წლიანი სარგებელი საეჭვოა, '
             'გადაამოწმეთ კონსერვატიული მედიკამენტური ტაქტიკა (BMT) ქირურგთან!'
@@ -38,7 +38,7 @@ def _eval_asa_airway_and_modality(ctx):
     has_htn_sb = bool(q_filled and q.get('htn')) or bool((ctx.eff_sys is not None and ctx.eff_sys >= 140) or (ctx.eff_dia is not None and ctx.eff_dia >= 90))
     stop_bang_auto = sum([
         bool(ctx.bmi is not None and ctx.bmi > 35),
-        bool((patient.age or 0) > 50),
+        bool((ctx.age or 0) > 50),
         has_htn_sb,
         bool(patient.sex == 'M'),
     ]) + (3 if 'osa' in pulm_chip_set else 0)
@@ -60,14 +60,19 @@ def _eval_asa_airway_and_modality(ctx):
         or (ctx.bmi is not None and ctx.bmi >= 40)
     )
     anesth_plan_raw = ctx.anesth_plan_raw
-    if anesth_plan_raw == 'general' and needs_ett_airway:
+    if ctx.neuraxial_hard_blocked:
+        eff_lbl = 'ზოგადი ანესთეზია (არჩეული ნეირაქსიული უკუნაჩვენებია — შესაცვლელია!)'
+    elif anesth_plan_raw == 'general' and needs_ett_airway:
         eff_lbl = 'ზოგადი ენდოტრაქეული ანესთეზია' + (' + ეპიდურული ანალგეზია' if 'epidural' in ctx.anesth_lines_set else '')
     elif anesth_plan_raw != 'auto':
         eff_lbl = dict(ANESTH_PLAN_CHOICES).get(anesth_plan_raw, anesth_plan_raw)
     elif patient.op_subtype == PreopPatient.OpSubtype.EVLA:
-        eff_lbl = 'ტუმესცენტური ადგილობრივი ანესთეზია'
+        if q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips:
+            eff_lbl = 'ანესთეზიოლოგთან შესათანხმებელი (ლიდოკაინზე ალერგია!)'
+        else:
+            eff_lbl = 'ტუმესცენტური ადგილობრივი ანესთეზია'
     elif ctx.is_pta:
-        eff_lbl = 'ადგილობრივი ანესთეზია (± სედაცია)'
+        eff_lbl = 'სედაცია / ანესთეზიოლოგიური მხარდაჭერა (ზურგზე წოლის შეზღუდვა)' if (q_filled and q.get('pta_cant_lie_flat')) else 'ადგილობრივი ანესთეზია (± სედაცია)'
     elif pathway == PreopPatient.Pathway.CEA:
         eff_lbl = 'ზოგადი ენდოტრაქეული ან რეგიონული ბლოკადა (ცერებრული მონიტორინგით)'
     elif pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype == 'tbd':
@@ -115,7 +120,7 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
     ctx.case_outcome_label = dict(CASE_OUTCOME_CHOICES).get(ctx.case_outcome, '')
 
     if op_dt and ctx.is_active_case:
-        ref_start = patient.started_on or patient.visit_date or ctx.today
+        ref_start = _date(patient.started_on) or _date(patient.visit_date) or ctx.today
         wait_to_op = (op_dt - ref_start).days
         if pathway == PreopPatient.Pathway.CEA and ctx.is_symp_cea:
             ev_dt = _date(q.get('cea_event_date'))
@@ -165,19 +170,19 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
         allergy_bits.append('β-ლაქტამი (ცეფაზოლინი არა!)')
     elif 'penicillin_mild' in ctx.allergy_chips:
         allergy_bits.append('პენიცილინი (მსუბუქი გამონაყარი — ცეფაზოლინი დასაშვებია)')
-    if q_filled and (q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips):
+    if q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips:
         allergy_bits.append('ლიდოკაინი / ადგილობრივი ანესთეტიკი!')
     if 'latex_chlorhex' in ctx.allergy_chips:
         allergy_bits.append('ლატექსი / ქლორჰექსიდინი!')
-    if q_filled and ctx.eff_allergy_iodine:
+    if ctx.eff_allergy_iodine:
         allergy_bits.append('იოდი / კონტრასტი!')
     if 'nsaid' in ctx.allergy_chips:
         allergy_bits.append('აასს / NSAID ალერგია!')
     if 'clopidogrel_intol' in ctx.allergy_chips:
         allergy_bits.append('კლოპიდოგრელის აუტანლობა')
-    if q_filled and q.get('allergy_text'):
+    if (q.get('allergy_text') or '').strip():
         allergy_bits.append(q['allergy_text'])
-    elif q_filled and (q.get('allergy_other') or ctx.unclarified_allergy_other) and not allergy_bits:
+    elif (q.get('allergy_other') or ctx.unclarified_allergy_other) and not allergy_bits:
         allergy_bits.append('მედიკამენტური ალერგია (დასაზუსტებელია!)')
     ctx.allergy_summary = '; '.join(allergy_bits)
 
@@ -210,10 +215,11 @@ def _build_dos_checks(ctx):
         else 'უზმოდ ყოფნის რეჟიმი დაცულია (6 სთ მყარი საკვები / 2 სთ სუფთა წყალი)'
     )
     dos_checks.append({'key': 'dos_fasting_confirmed', 'label': dos_fast_lbl, 'done': bool(s.get('dos_fasting_confirmed'))})
-    if ctx.needs_med_hold or ctx.has_any_antithrombotic:
+    has_any_hold_row = any(r.get('hold_or_skip') for r in (ctx.med_schedule or ()))
+    if ctx.needs_med_hold or ctx.has_any_antithrombotic or has_any_hold_row or ('steroid' in ctx.med_chips):
         dos_checks.append({
             'key': 'dos_med_hold_verified',
-            'label': 'ანტიკოაგულანტის / P2Y12 / SGLT2 / ინსულინის რეჟიმი და დილის დაშვებული წამლების მიღება გადამოწმდა',
+            'label': 'ანტიკოაგულანტის / P2Y12 / SGLT2 / ინსულინის / სტეროიდის რეჟიმი და დილის დაშვებული წამლების მიღება გადამოწმდა',
             'done': bool(s.get('dos_med_hold_verified')),
         })
     if q_filled and q.get('sglt2'):
@@ -222,28 +228,34 @@ def _build_dos_checks(ctx):
             'label': 'SGLT2 უსაფრთხოება (ეუგლიკემიური DKA-ს გამორიცხვა): სისხლის/შარდის კეტონები ნორმაშია (β-OHB < 0.6 მმოლ/ლ) და პრეპარატი შეჩერებულია ≥72–96 სთ',
             'done': bool(s.get('dos_ketones_ok')),
         })
-    if q_filled and ctx.on_dialysis:
-        dos_checks.append({
-            'key': 'dos_k_verified',
-            'label': 'დიალიზის შემდგომი საკონტროლო კალიუმი (K+ < 5.4 მმოლ/ლ) გადამოწმებულია და AV ფისტულის მკლავი დაცულია (მანჟეტი/კათეტერი აკრძალულია!)',
-            'done': bool(s.get('dos_k_verified')),
-        })
+    if (q_filled and ctx.on_dialysis) or (ctx.k_val is not None and ctx.k_val >= 5.4):
+        k_lbl = (
+            'დიალიზის შემდგომი საკონტროლო კალიუმი (K+ < 5.4 მმოლ/ლ) გადამოწმებულია და AV ფისტულის მკლავი დაცულია (მანჟეტი/კათეტერი აკრძალულია!)'
+            if ctx.on_dialysis else
+            f'საბაზისო ჰიპერკალიემიის (K+ {ctx.k_val}) შემდგომი საკონტროლო კალიუმი (K+ < 5.4 მმოლ/ლ) გადამოწმებულია'
+        )
+        dos_checks.append({'key': 'dos_k_verified', 'label': k_lbl, 'done': bool(s.get('dos_k_verified'))})
     if 'latex_chlorhex' in ctx.allergy_chips:
         dos_checks.append({
             'key': 'dos_latex_free_or',
             'label': 'ულატექსო საოპერაციო გარემო (ხელთათმანები/კათეტერი) და პოვიდონ-იოდის ანტისეპტიკი (ქლორჰექსიდინის გარეშე!) მზადაა',
             'done': bool(s.get('dos_latex_free_or')),
         })
-    needs_fluoro_bhcg = (
+    needs_bhcg = (
         patient.sex == 'F'
-        and patient.age is not None
-        and 12 <= patient.age <= 55
-        and (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD) or ctx.is_pta)
+        and ctx.age is not None
+        and 12 <= ctx.age <= 55
+        and (
+            patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)
+            or ctx.is_pta
+            or ctx.is_venous
+            or bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
+        )
     )
-    if needs_fluoro_bhcg:
+    if needs_bhcg:
         dos_checks.append({
             'key': 'dos_bhcg_negative',
-            'label': 'ორსულობის გამორიცხვა (β-hCG უარყოფითია) — ფლუოროსკოპიის/იოდის კონტრასტის უსაფრთხოება (12–55 წ. ქალი)',
+            'label': 'ორსულობის გამორიცხვა (β-hCG უარყოფითია) — ფლუოროსკოპიის/კონტრასტის/ვენური ჩარევის უსაფრთხოება (12–55 წ. ქალი)',
             'done': bool(s.get('dos_bhcg_negative')),
         })
     ctx.is_uncomplicated_pta_abx = ctx.is_pta and not (q_filled and (q.get('abf_wet_infection') or q.get('abf_groin_issue')))
@@ -276,7 +288,7 @@ def _build_dos_checks(ctx):
 
 
 def _eval_dos_and_vqi(ctx):
-    patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    patient, q, s = ctx.patient, ctx.q, ctx.s
     dos_cfg = rule_value('DOS_WHO_SIGNIN_THRESHOLDS')
     dos_checks = _build_dos_checks(ctx)
 
@@ -284,6 +296,18 @@ def _eval_dos_and_vqi(ctx):
     dos_gl = normalize_glucose_mmol(s.get('dos_glucose'))
     dos_inr = _num(s.get('dos_inr'), lo=0.5, hi=15)
     dos_warnings = list(ctx.hard_contraindications)
+
+    # Extreme out-of-bounds Day-of-Surgery values must trigger a hard DoS STOP rather than silently vanishing
+    for raw_k, parsed_v, lbl in (
+        ('dos_bp_sys', dos_sys, 'ოპერაციის დილის წნევა (SBP)'),
+        ('dos_bp_dia', dos_dia, 'ოპერაციის დილის წნევა (DBP)'),
+        ('dos_glucose', dos_gl, 'ოპერაციის დილის გლიკემია'),
+        ('dos_inr', dos_inr, 'ოპერაციის დილის INR'),
+    ):
+        raw_v = s.get(raw_k)
+        if raw_v is not None and str(raw_v).strip() != '' and parsed_v is None:
+            dos_warnings.append(f'{lbl} კრიტიკულად დაუშვებელია ({raw_v}) — გადაამოწმეთ მაჩვენებელი საოპერაციოში შეყვანამდე!')
+
     if dos_sys is not None and dos_dia is not None and dos_sys <= dos_dia:
         dos_warnings.append(f'ოპერაციის დილის წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი და მაჩვენებელი!')
     elif (dos_sys and dos_sys >= dos_cfg['sbp_hi']) or (dos_dia and dos_dia >= dos_cfg['dbp_hi']):
@@ -295,16 +319,21 @@ def _eval_dos_and_vqi(ctx):
     elif dos_gl is not None and dos_gl > dos_cfg['gl_amb']:
         ctx.amber_flags.append(f'ოპერაციის დილის ჰიპერგლიკემია ({dos_gl} მმოლ/ლ > 10.0) — სასურველია ინსულინით კორექცია პერიოპერაციული ინფექციის შესამცირებლად.')
 
-    is_evla_only = ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.has_neuraxial_plan
-    inr_lim = dos_cfg['inr_evla'] if is_evla_only else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
+    is_evla_warfarin_only = (
+        ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
+        and not ctx.has_neuraxial_plan and bool(q.get('med_warfarin'))
+    )
+    inr_lim = dos_cfg['inr_evla'] if is_evla_warfarin_only else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
     any_dos_ticked = any(c['done'] for c in dos_checks)
     if dos_inr is not None:
         if dos_inr > inr_lim:
             dos_warnings.append(f'ოპერაციის დილის INR ({dos_inr}) აჭარბებს უსაფრთხო ზღვარს (≤ {inr_lim}) — სისხლდენის / სპინალური ჰემატომის რისკი!')
+    elif is_evla_warfarin_only and ctx.inr is None:
+        dos_warnings.append('ვარფარინის ფონზე EVLA-მდე აუცილებელია საკონტროლო INR (≤ 3.0) — ამჟამად INR შეყვანილი არ არის!')
     elif any_dos_ticked:
         if ctx.inr is not None and ctx.inr > inr_lim:
             dos_warnings.append(f'საბაზისო INR ({ctx.inr}) აჭარბებს ზღვარს (≤ {inr_lim}), ხოლო ოპერაციის დილის საკონტროლო INR შეყვანილი არ არის!')
-        elif q_filled and q.get('med_warfarin') and not is_evla_only:
+        elif q.get('med_warfarin') and not is_evla_warfarin_only:
             dos_warnings.append('ვარფარინის ფონზე ოპერაციის დილის საკონტროლო INR სავალდებულოა საოპერაციოში შეყვანამდე!')
 
     ctx.dos_checks, ctx.dos_warnings, ctx.dos_gl = dos_checks, dos_warnings, dos_gl
@@ -324,8 +353,6 @@ def _eval_dos_and_vqi(ctx):
 def _eval_triage_and_passport_cautions(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
 
-    # 2D Triage State Machine: once 100% of preoperative tasks are complete, anatomical/clock urgency
-    # moves from blocking red_flags to priority_tier + amber_flags so the patient reaches STATUS_READY!
     if ctx.all_tasks_done and ctx.priority_flags:
         prio_set = set(ctx.priority_flags)
         ctx.red_flags = [f for f in ctx.red_flags if f not in prio_set]
@@ -333,7 +360,6 @@ def _eval_triage_and_passport_cautions(ctx):
             ctx.amber_flags.insert(0, f'[სასწრაფო პრიორიტეტი] {pf}')
     ctx.amber_flags = list(dict.fromkeys(ctx.amber_flags))
 
-    # C9.4: Concise Page-1 Passport Cautions so priority urgency & cleared severe cardio/pulm risks never vanish from Passport!
     passport_cautions = [af for af in ctx.amber_flags if af.startswith('[სასწრაფო პრიორიტეტი]')]
     if ctx.cardio_cleared and s.get('echo_valve_issue'):
         passport_cautions.append(
@@ -382,8 +408,7 @@ def _eval_triage_and_passport_cautions(ctx):
         and not ctx.dos_hold_danger and not ctx.has_unacked_red and not ctx.neuraxial_hard_blocked
     )
 
-    # Safety: NEW unacknowledged red_flags (even pre-questionnaire or post-approval!) or hard contraindications ALWAYS force STATUS_ALERT!
-    if ctx.has_unacked_red or ctx.has_hard_contraindication:
+    if ctx.has_unacked_red or ctx.has_hard_contraindication or ctx.dos_hold_danger or ctx.neuraxial_hard_blocked:
         ctx.status = STATUS_ALERT
     elif not q_filled:
         ctx.status = STATUS_NO_Q

@@ -150,7 +150,7 @@ def get_nurse_readiness_verdict(patient, ev):
     """Single unmistakable 03:00 night-shift verdict: STOP / მზადაა ✓ / აკლია N პუნქტი."""
     seal_code = ev['clearance_seal']['code']
     open_tasks = [t for t in ev['tasks'] if not t['done']]
-    missing_cnt = len(ev['missing_items']) + len(open_tasks)
+    missing_cnt = max(len(ev['missing_items']), len(open_tasks))
     if seal_code == 'stop' or ev['has_hard_contraindication'] or ev['dos_hold_danger']:
         reason = (
             ev['dos_warnings'][0] if ev['dos_warnings']
@@ -159,6 +159,16 @@ def get_nurse_readiness_verdict(patient, ev):
         return {
             'code': 'stop', 'badge': 'STOP — დაბლოკილია',
             'detail': reason, 'missing_cnt': missing_cnt, 'rank': 0,
+        }
+    if ev.get('has_blocking_unknown_state') or ev.get('neuraxial_hard_blocked') or seal_code == 'pending':
+        blk = [u['label'] for u in (ev.get('unknown_state_flags') or []) if u.get('blocking')]
+        detail = ' · '.join(blk[:2]) if blk else ev['clearance_seal'].get('detail', 'შეფასება არასრულია')
+        return {
+            'code': 'pending',
+            'badge': f'აკლია {max(1, missing_cnt + len(blk))} პუნქტი',
+            'detail': detail,
+            'missing_cnt': max(1, missing_cnt + len(blk)),
+            'rank': 2,
         }
     if ev['status'] == STATUS_READY:
         sub = 'დადასტურებულია ქირურგთან' if patient.approved_at else 'მზადაა ქირურგის დასტურისთვის'
@@ -250,13 +260,13 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
 
     def _sort_key(it):
         d = it['days_to_op'] if it['days_to_op'] is not None else 9999
-        return (it['verdict']['rank'], d, it['p'].pk)
+        return (it['verdict']['rank'], d, it['p'].pk or 0)
 
     or_urgent.sort(key=_sort_key)
     med_calls.sort(key=_sort_key)
     self_returned.sort(key=_sort_key)
     missing_overdue.sort(key=_sort_key)
-    directory.sort(key=lambda it: (it['days_to_op'] if it['days_to_op'] is not None else 9999, it['verdict']['rank'], it['p'].pk))
+    directory.sort(key=lambda it: (it['days_to_op'] if it['days_to_op'] is not None else 9999, it['verdict']['rank'], it['p'].pk or 0))
 
     return {
         'or_urgent': or_urgent,

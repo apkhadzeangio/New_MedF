@@ -10,7 +10,12 @@ def _eval_abf_clinical(ctx, is_clti):
             'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
         )
     elif patient.op_subtype == PreopPatient.OpSubtype.ABF_CLAUD and q_filled and not is_clti:
-        if not q.get('ic_bmt_3m') or q.get('abf_duration') in ('< 2 კვირა', '1–3 თვე'):
+        if q.get('abf_duration') == '< 2 კვირა':
+            ctx.red_flags.append(
+                'სიმპტომების ხანგრძლივობა < 2 კვირა — გამოირიცხოს მწვავე კიდურის იშემია (ALI, ESVS 2020)! '
+                'სასწრაფოდ აცნობეთ ქირურგს (გეგმური 3-თვიანი SET აქ არ მიესადაგება)!'
+            )
+        elif not q.get('ic_bmt_3m') or q.get('abf_duration') == '1–3 თვე':
             ctx.amber_flags.append(
                 'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
             )
@@ -39,6 +44,7 @@ def _eval_abf_clinical(ctx, is_clti):
 def eval_abf(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
     hemo_cfg = rule_value('PAD_CLTI_HEMO_THRESHOLDS')
+    abi_norm_lo, abi_norm_hi = rule_value('PAD_IC_BMT_3M')
     ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
     is_clti = (patient.op_subtype == PreopPatient.OpSubtype.ABF_CLTI) or (
         q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')))
@@ -80,6 +86,16 @@ def eval_abf(ctx):
         ctx.key_badge_urgent = bool(is_clti or ctx.min_comp_abi < hemo_cfg['abi_severe'])
         if ctx.min_comp_abi < hemo_cfg['abi_severe'] and not is_clti:
             ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < 0.40) — შეესაბამება მძიმე იშემიას.')
+        elif (
+            not is_clti and abi_norm_lo < ctx.min_comp_abi <= abi_norm_hi
+            and not ctx.abi_non_compressible
+            and not (ctx.min_tp is not None and ctx.min_tp < 60)
+            and not (ctx.min_tbi is not None and ctx.min_tbi < 0.70)
+        ):
+            ctx.red_flags.append(
+                f'ფიქსირდება ნორმალური ABI ({ctx.min_comp_abi} — 0.91–1.40) ორივე კიდურზე კოჭლობის ფონზე — '
+                'გადაამოწმეთ დატვირთვის შემდგომი ABI ან აორტო-ილიაკური ჩვენება ქირურგთან!'
+            )
     elif ctx.min_tp is not None:
         ctx.key_badge = f'TP {ctx.min_tp}'
         ctx.key_badge_urgent = bool(is_clti or ctx.min_tp < hemo_cfg['tp_severe'])
@@ -95,10 +111,11 @@ def eval_abf(ctx):
     if q_filled and not s.get('cta_disc'):
         ctx.amber_flags.append('აორტო-ილიაკური / ქვემო კიდურების CTA DICOM დისკი ჯერ არ არის მოტანილი / შემოწმებული.')
     if q_filled and not ctx.has_any_antithrombotic:
-        ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I: ასპირინი ან კლოპიდოგრელი).')
+        ap_rec = 'ასპირინი (კლოპიდოგრელზე აუტანლობა!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'ასპირინი ან კლოპიდოგრელი'
+        ctx.amber_flags.append(f'პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I: {ap_rec}).')
     if q_filled and not ctx.has_statin and not ctx.liver_3x:
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I: მაღალი ინტენსივობის სტატინი).')
-    elif ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
+    if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
         ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — განიხილეთ ლიპიდდამწევი თერაპიის გაძლიერება (ESVS 2024).')
 
     ctx.needs_wound_care = q_filled and (bool(q.get('abf_ulcer')) or bool(q.get('abf_wet_infection')) or bool(q.get('abf_groin_issue')))
@@ -113,15 +130,14 @@ def _eval_bypass_conduit(ctx, is_clti):
         or (ctx.pad_gsv_mm is not None and ctx.pad_gsv_mm < gsv_cfg['gsv_min_mm'])
         or ('vein_strip' in ctx.vasc_chips)
     )
-    if not gsv_inadequate:
-        return
-    ctx.needs_alt_vein = True
-    ctx.reflex_orders.append({
-        'key': 'alt_vein',
-        'trigger': 'იფსილატერალური GSV უვარგისია (< 3.0 მმ ან ამოღებულია)',
-        'action': 'ალტერნატიული აუტოვენის რეფლექს-კარტირება (კონტრალატერალური GSV, SSV და ხელის ვენები — Cephalic/Basilic)',
-        'done': (s.get('alt_vein_mapped') or 'pending') != 'pending',
-    })
+    if gsv_inadequate:
+        ctx.needs_alt_vein = True
+        ctx.reflex_orders.append({
+            'key': 'alt_vein',
+            'trigger': 'იფსილატერალური GSV უვარგისია (< 3.0 მმ ან ამოღებულია)',
+            'action': 'ალტერნატიული აუტოვენის რეფლექს-კარტირება (კონტრალატერალური GSV, SSV და ხელის ვენები — Cephalic/Basilic)',
+            'done': (s.get('alt_vein_mapped') or 'pending') != 'pending',
+        })
     contra_abi, contra_tp = ctx.contra_abi, ctx.contra_tp
     if s.get('alt_vein_mapped') == 'contra_gsv_ok':
         if patient.side == 'B':
@@ -143,15 +159,50 @@ def _eval_bypass_conduit(ctx, is_clti):
         elif contra_abi is None and contra_tp is None:
             ctx.amber_flags.append('კონტრალატერალური GSV-ის აღებამდე გადაამოწმეთ დონორი კიდურის ABI / პულსაცია!')
     if s.get('alt_vein_mapped') == 'no_autovein_prosthetic':
-        if not is_clti:
+        if not is_clti and rule_value('PAD_PROSTHETIC_IC_STOP'):
             pros_ic_msg = (
                 'ხანგამოშვებითი კოჭლობის (IC) დროს აუტოვენის არარსებობისას სინთეზური ინფრაინგვინალური შუნტირება '
                 'უკუნაჩვენებია (ESVS 2024 / ACC-AHA Class III — Harm)! გადაამოწმეთ ჩვენება ქირურგთან!'
             )
             ctx.red_flags.append(pros_ic_msg)
             ctx.hard_contraindications.append(pros_ic_msg)
-        else:
+        elif is_clti:
             ctx.red_flags.append('ვარგისი აუტოვენა ვერცერთ კიდურზე ვერ მოიძებნა — შეათანხმეთ სინთეზური/კომპოზიტური პროთეზის ან ენდოვასკულური ტაქტიკა ქირურგთან!')
+
+
+def _eval_pad_bypass_side_and_hemo(ctx, is_clti, hemo_cfg, abi_norm_lo, abi_norm_hi):
+    patient, q, q_filled = ctx.patient, ctx.q, ctx.q_filled
+    if patient.side in ('R', 'L'):
+        t_abi_byp = ctx.abi_r if patient.side == 'R' else ctx.abi_l
+        t_tp_byp = ctx.tp_r if patient.side == 'R' else ctx.tp_l
+        t_tbi_byp = ctx.tbi_r if patient.side == 'R' else ctx.tbi_l
+        t_normal_hemo = (
+            t_abi_byp is not None and abi_norm_lo < t_abi_byp <= abi_norm_hi
+            and not (t_tp_byp is not None and t_tp_byp < 60)
+            and not (t_tbi_byp is not None and t_tbi_byp < 0.70)
+        )
+        if t_normal_hemo and (not is_clti or (ctx.contra_abi is not None and ctx.contra_abi < 0.60)):
+            ctx.red_flags.append(
+                f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_byp} — 0.91–1.40)'
+                + (f', ხოლო კონტრალატერალურზე ABI {ctx.contra_abi}!' if ctx.contra_abi is not None and ctx.contra_abi < 0.60 else ' კოჭლობის ფონზე')
+                + ' — გადაამოწმეთ არჩეული მხარე (R/L) ან დატვირთვის შემდგომი პერფუზია ქირურგთან!'
+            )
+    if ctx.min_comp_abi is not None and ctx.min_comp_abi < hemo_cfg['abi_severe'] and not is_clti:
+        ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < 0.40) — შეესაბამება მძიმე იშემიას.')
+    if patient.op_subtype == PreopPatient.OpSubtype.BYPASS_CLAUD and q_filled and (q.get('abf_rest_pain') or q.get('abf_ulcer')):
+        ctx.amber_flags.append(
+            'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
+        )
+    elif q_filled and not is_clti:
+        if q.get('abf_duration') == '< 2 კვირა':
+            ctx.red_flags.append(
+                'სიმპტომების ხანგრძლივობა < 2 კვირა — გამოირიცხოს მწვავე კიდურის იშემია (ALI, ESVS 2020)! '
+                'სასწრაფოდ აცნობეთ ქირურგს!'
+            )
+        elif not q.get('ic_bmt_3m') or q.get('abf_duration') == '1–3 თვე':
+            ctx.amber_flags.append(
+                'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
+            )
 
 
 def eval_pad_bypass(ctx):
@@ -194,20 +245,7 @@ def eval_pad_bypass(ctx):
         ctx.amber_flags.append('დისტალური მიმღები მხოლოდ წვივის ერთი არტერიაა — აუცილებელია ხარისხიანი აუტოვენა (GSV ≥ 3.0 მმ).')
 
     _eval_bypass_conduit(ctx, is_clti)
-
-    if not is_clti and patient.side in ('R', 'L'):
-        t_abi_byp = ctx.abi_r if patient.side == 'R' else ctx.abi_l
-        t_tp_byp = ctx.tp_r if patient.side == 'R' else ctx.tp_l
-        if t_abi_byp is not None and abi_norm_lo <= t_abi_byp <= abi_norm_hi and not (t_tp_byp is not None and t_tp_byp < 60):
-            ctx.red_flags.append(
-                f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_byp} — 0.90–1.40) კოჭლობის ფონზე — '
-                'გადაამოწმეთ არჩეული მხარე (R/L) ან დატვირთვის შემდგომი პერფუზია ქირურგთან!'
-            )
-    if q_filled and not is_clti:
-        if not q.get('ic_bmt_3m') or q.get('abf_duration') in ('< 2 კვირა', '1–3 თვე'):
-            ctx.amber_flags.append(
-                'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
-            )
+    _eval_pad_bypass_side_and_hemo(ctx, is_clti, hemo_cfg, abi_norm_lo, abi_norm_hi)
 
     if ctx.pad_gsv_mm is not None:
         ctx.key_badge = f'GSV {ctx.pad_gsv_mm}მმ'
@@ -228,6 +266,6 @@ def eval_pad_bypass(ctx):
         ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I).')
     if q_filled and not ctx.has_statin and not ctx.liver_3x:
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I).')
-    elif ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
+    if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
         ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — განიხილეთ სტატინის ინტენსიფიკაცია ± ეზეტიმიბი.')
     ctx.needs_wound_care = q_filled and (bool(q.get('abf_ulcer')) or bool(q.get('abf_wet_infection')) or bool(q.get('abf_groin_issue')))

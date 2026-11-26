@@ -51,8 +51,11 @@ def build_plain_georgian_missing_items(patient, ev, today):
             'target_section': 'nw-sec-q', 'target_input': '', 'action_label': 'გადამოწმება',
         })
 
+    seen_s2 = set()
     for m in ev['missing_items']:
         fld = m.get('field') or ''
+        if m.get('tab') == 's2':
+            seen_s2.add(fld or m.get('label'))
         inp_id = _FIELD_TO_INPUT_ID.get(fld, '')
         sec = 'nw-vitals-card' if inp_id else ('nw-sec-s2' if m.get('tab') == 's2' else 'nw-vitals-card')
         items.append({
@@ -61,7 +64,7 @@ def build_plain_georgian_missing_items(patient, ev, today):
         })
 
     for t in ev['tasks']:
-        if not t['done']:
+        if not t['done'] and t.get('key') not in ('q', 's1') and not seen_s2:
             items.append({
                 'kind': 'task', 'label': t['label'],
                 'target_section': 'nw-sec-s2', 'target_input': '', 'action_label': 'მონიშვნა',
@@ -103,16 +106,25 @@ def build_phone_med_script(patient, ev, today):
     stop_rows, keep_rows = [], []
     for row in ev['med_schedule']:
         plain_drug = _DRUG_PLAIN_PREFIX.get(row['drug'], row['drug'])
+        is_hold = bool(row.get('hold_or_skip'))
+        preserve_stop = bool(row.get('acute_hold') or row.get('contraindicated') or row.get('glp1_diet'))
+        spoken_txt = (
+            'არ შეწყვიტოთ თვითნებურად — ოპერაცია შეჩერებულია (STOP)!'
+            if (stop_locked and is_hold and not preserve_stop)
+            else _spoken_med_phrase(row, op_ka)
+        )
         entry = {
             'drug': plain_drug,
             'raw_drug': row['drug'],
-            'spoken': 'არ შეწყვიტოთ თვითნებურად — ოპერაცია შეჩერებულია (STOP)!' if stop_locked and row.get('hold_or_skip') else _spoken_med_phrase(row, op_ka),
+            'spoken': spoken_txt,
             'rule': row['rule'],
             'tone': row['tone'],
             'date_plan': row.get('date_plan') or '',
-            'hold_or_skip': bool(row.get('hold_or_skip')),
+            'hold_or_skip': is_hold,
         }
-        if entry['hold_or_skip'] or entry['tone'] == 'red':
+        # Only rows that actually hold/skip/change (or contraindicated/unstructured) belong in stop_rows;
+        # red "DO NOT STOP!" rows (e.g. recent stent P2Y12) stay in keep_rows!
+        if is_hold or row.get('contraindicated') or row.get('unstructured'):
             stop_rows.append(entry)
         else:
             keep_rows.append(entry)
@@ -145,7 +157,6 @@ def detect_postponement_impacts(patient, ev, today):
     shift_days = (cur_dt - prev_dt).days
     impacts = []
 
-    # 1. Lab 14-day validity against NEW surgery date
     labs_dt = _date(s.get('labs_date'))
     if labs_dt and (cur_dt - labs_dt).days > 14:
         age_at_op = (cur_dt - labs_dt).days
@@ -159,7 +170,6 @@ def detect_postponement_impacts(patient, ev, today):
             'text': 'შეამოწმეთ ანალიზების თარიღი — ახალ ოპერაციის დღემდე არ უნდა იყოს 14 დღეზე ძველი.',
         })
 
-    # 2. Medication stop dates shifted -> must re-call patient
     med_call = _med_call_status(ev, today)
     hold_drugs = [r['drug'] for r in ev['med_schedule'] if r.get('hold_or_skip')]
     if hold_drugs:
@@ -174,7 +184,6 @@ def detect_postponement_impacts(patient, ev, today):
                 'text': f'გადაამოწმეთ და აუხსენით წამლების შეჩერების ახალი თარიღები ({", ".join(hold_drugs[:3])}).',
             })
 
-    # 3. CEA 14-day symptomatic window or CLTI 7-day target window
     cea_ev_dt = _date(ev['q'].get('cea_event_date'))
     if ev.get('is_symp_cea') and cea_ev_dt and (cur_dt - cea_ev_dt).days > 14:
         impacts.append({
@@ -187,7 +196,6 @@ def detect_postponement_impacts(patient, ev, today):
             'text': f'ოპერაციის ახალი თარიღი ცდება {ev["target_days"]}-დღიან სამიზნე მომზადების ვადას — გადაამოწმეთ ქირურგთან.',
         })
 
-    # 4. CTA 6-month freshness
     cta_dt = _date(s.get('cta_date'))
     if cta_dt and (cur_dt - cta_dt).days > 183:
         impacts.append({
@@ -230,7 +238,8 @@ def summarize_stage1_clinical_delta(ev_before, ev_after):
             notes.append(f'შეიცვალა წამლის შეჩერების სქემა ({", ".join(changed_drugs[:3])}) — გადაამოწმეთ დარეკვის ბარათი!')
 
     if ev_before['clearance_seal']['code'] != ev_after['clearance_seal']['code']:
-        notes.append(f"ოპერაციაზე დაშვების სტატუსი შეიცვალა: {ev_after['clearance_seal']['label']}")
+        seal_txt = ev_after['clearance_seal'].get('badge') or ev_after['clearance_seal']['code']
+        notes.append(f'ოპერაციაზე დაშვების სტატუსი შეიცვალა: {seal_txt}')
     return notes
 
 
@@ -256,17 +265,23 @@ def build_patient_plain_explanation(patient, ev, today):
     ]
     if pw in ('aaa_infra', 'cea', 'abf', 'pad_bypass'):
         arrival_items.append('აუცილებლად წამოიღეთ კტ-ანგიოგრაფიის (CTA) დისკი და დასკვნა.')
-    if pw == 'venous':
+    if pw == 'venous' and not ev.get('compression_contra'):
         arrival_items.append('თან იქონიეთ ექიმის შერჩეული კომპრესიული წინდა (თუ დანიშნულია).')
     if q.get('pulm') or 'osa' in (q.get('pulm_chips') or []):
         arrival_items.append('წამოიღეთ თქვენი ყოველდღიური ინჰალატორი ან ძილის აპარატი (CPAP).')
 
+    anesth_plan = s.get('anesthesia_plan') or 'auto'
+    is_local_evla = (
+        patient.op_subtype == 'evla'
+        and not ev.get('has_neuraxial_plan')
+        and anesth_plan in ('auto', 'local')
+    )
     if q.get('glp1'):
         fasting_plain = (
             'ოპერაციამდე 24 საათით ადრე გადადით მხოლოდ სუფთა თხევად დიეტაზე (წყალი, ჩაი რძის გარეშე, გამჭვირვალე ბულიონი). '
-            'ოპერაციამდე 6 საათით ადრე არანაირი საკვები, 2 საათით ადრე — სუფთა წყალიც შეწყვიტეთ.'
+            'მყარი საკვები შეწყვიტეთ მინიმუმ 8 საათით ადრე, 2 საათით ადრე — სუფთა წყალიც შეწყვიტეთ.'
         )
-    elif patient.op_subtype == 'evla' and not ev.get('has_neuraxial_plan'):
+    elif is_local_evla:
         fasting_plain = 'ადგილობრივი გაუტკივარებით ლაზერული პროცედურის დილას მსუბუქი საუზმე დაშვებულია (თუ ექიმმა უზმოზე მოსვლა არ გთხოვათ).'
     else:
         fasting_plain = (
@@ -274,8 +289,14 @@ def build_patient_plain_explanation(patient, ev, today):
             'სუფთა წყლის დალევა შეგიძლიათ ოპერაციამდე 2 საათით ადრე; დილის დაშვებულ წამლებს დააყოლეთ მხოლოდ ერთი ყლუპი წყალი.'
         )
 
+    seal_code = ev['clearance_seal']['code']
+    is_draft = (
+        not bool(patient.approved_at)
+        or seal_code in ('stop', 'pending')
+        or bool(ev.get('has_blocking_unknown_state'))
+    )
     return {
-        'is_draft': not bool(patient.approved_at),
+        'is_draft': is_draft,
         'arrival_items': arrival_items,
         'fasting_plain': fasting_plain,
         'stop_meds': med_script['stop_rows'],

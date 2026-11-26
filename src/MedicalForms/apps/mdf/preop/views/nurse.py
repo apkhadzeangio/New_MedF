@@ -215,9 +215,14 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                 messages.error(request, 'აირჩიეთ ოპერაციის ახალი თარიღი.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
 
+            uf = ['studies', 'updated_at', 'updated_by']
             if old_dt and old_dt != new_dt:
                 s['prev_planned_surgery_date'] = old_dt.isoformat()
                 s['postpone_ack_sig'] = ''
+                if patient.approved_at is not None:
+                    patient.approved_at = None
+                    patient.approved_by = None
+                    uf.extend(['approved_at', 'approved_by'])
             s['planned_surgery_date'] = new_dt.isoformat()
             patient.studies = s
             ev_new = evaluate(patient)
@@ -225,7 +230,7 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                 s['med_hold_agreed'] = False
             patient.studies = s
             patient.updated_by = request.user
-            patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
+            patient.save(update_fields=uf)
 
         messages.success(request, f'ოპერაციის თარიღი განახლდა ({new_dt.strftime("%d.%m.%Y")}) — შეამოწმეთ რა უნდა გაკეთდეს თავიდან.')
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-postpone-banner')

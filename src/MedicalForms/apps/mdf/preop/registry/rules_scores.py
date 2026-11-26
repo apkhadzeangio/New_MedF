@@ -168,7 +168,7 @@ SCORES_AND_WORKFLOW_RULES = (
         source_wording='Verify patient identity, consent, site marking, fasting, antithrombotic holds, safe morning BP (<180/110, >=90), glucose (3.9-13.9 mmol/L), INR within limit, and pregnancy exclusion before fluoroscopy.',
         value={'sbp_hi': 180, 'dbp_hi': 110, 'sbp_lo': 90, 'gl_hi': 14.0, 'gl_lo': 3.9, 'gl_amb': 10.0, 'inr_std': 1.5, 'inr_nx': 1.4, 'inr_evla': 3.0},
         value_label='BP <180/110 & >=90 · გლუკ. 3.9–14.0 · INR <= 1.5/1.4',
-        match_patterns=('ოპერაციის დილის', 'საბაზისო INR ('),
+        match_patterns=('ოპერაციის დილის', 'საბაზისო INR (', 'კრიტიკულად დაუშვებელია', 'სავალდებულოა ოპერაციამდე INR'),
     ),
     # --- Clinic Workflow & Unknown-State Fail-Safe ---
     RuleEntry(
@@ -192,15 +192,19 @@ SCORES_AND_WORKFLOW_RULES = (
         domain='workflow',
         kind='alert',
         title_ka='უსაფრთხო რეჟიმი უცნობი ან არასრული მონაცემებისას (Fail-Safe)',
-        description_ka='არასდროს მიენიჭება მწვანე დაშვება, თუ კითხვარი არ გადამოწმებულა, DOAC/დაბიგატრანზე აკლია კრეატინინი/წონა, ანალიზებს არ აქვს თარიღი, ალერგია დაუზუსტებელია ან რისკ-ქულას აკლია საკვანძო ველი.',
+        description_ka='არასდროს მიენიჭება მწვანე დაშვება, თუ კითხვარი არ გადამოწმებულა, DOAC/დაბიგატრანზე აკლია კრეატინინი/წონა, ანალიზებს არ აქვს თარიღი, ალერგია დაუზუსტებელია, შეყვანილია დაუშვებელი მნიშვნელობა ან აკლია საოპერაციო მხარე.',
         source='ადგილობრივი კლინიკური უსაფრთხოების არქიტექტურა (Fail-Safe Design)',
         year=2026,
-        section='ტრეკი A5 — უცნობი მდგომარეობის ბანერი',
+        section='ტრეკი A5 & სტრეს-ტესტი — უცნობი/შეუსაბამო მდგომარეობის ბარიერი',
         class_level='ადგილობრივი პროტოკოლი',
-        source_wording='Missing or unverified safety-critical data must explicitly surface an incomplete-assessment banner rather than defaulting to normal/green.',
+        source_wording='Missing, implausible, or unverified safety-critical data must explicitly block GO clearance rather than defaulting to normal/green.',
         value=True,
-        value_label='უცნობი მონაცემი != ნორმა',
+        value_label='უცნობი/შეუსაბამო მონაცემი != ნორმა',
         status=STATUS_LOCAL,
-        match_patterns=('შეფასება არასრულია', 'პაციენტის კითხვარის გადამოწმება'),
+        match_patterns=(
+            'შეფასება არასრულია', 'პაციენტის კითხვარის გადამოწმება',
+            'შეყვანილია დაუშვებელი', 'კითხვარში მონიშნულია „ორსულობა“',
+            'საოპერაციო კიდური', 'ჩარევის მხარე', 'მიუთითეთ საოპერაციო კიდურის მხარე',
+        ),
     ),
 )

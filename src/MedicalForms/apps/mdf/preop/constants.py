@@ -365,28 +365,29 @@ PRIORITY_LABELS = {
 
 _FREETEXT_ALLERGY_STEMS = (
     ('beta_lactam', (
-        'პენიცილ', 'ამოქსი', 'აუგმენტ', 'ამპიცილ', 'ცეფაზოლ', 'ცეფტრიაქს',
-        'ცეფალოსპ', 'ბეტა-ლაქტ', 'ბეტალაქტ',
-        'penicil', 'amoxi', 'augment', 'ampicil', 'cefazol', 'ceftriax', 'cephalosp', 'beta-lact',
+        'პენიცილ', 'ამოქსი', 'აუგმენტ', 'ამპიცილ', 'ცეფაზოლ', 'კეფაზოლ', 'კეფზოლ',
+        'ცეფტრიაქს', 'ცეფეპიმ', 'ცეფუროქს', 'მეროპენემ', 'ცეფალოსპ', 'ბეტა-ლაქტ', 'ბეტალაქტ',
+        'penicil', 'amoxi', 'augment', 'ampicil', 'cefazol', 'kefzol', 'ceftriax',
+        'cefepim', 'meropenem', 'cephalosp', 'beta-lact',
     )),
     ('hit_heparin', (
-        'ჰეპარინ', 'კლექსან', 'ფრაქსიპარ', 'ენოქსაპარ', 'ნადროპარ',
-        'heparin', 'clexane', 'fraxipar', 'enoxapar',
+        'ჰეპარინ', 'კლექსან', 'ფრაქსიპარ', 'ენოქსაპარ', 'ნადროპარ', 'ციბორ', 'ფრაგმინ',
+        'heparin', 'clexane', 'fraxipar', 'enoxapar', 'nadropar', 'daltepar', 'bemipar', 'lovenox',
     )),
     ('lidocaine', (
         'ლიდოკაინ', 'ნოვოკაინ', 'ბუპივაკაინ', 'როპივაკაინ', 'არტიკაინ',
-        'lidocain', 'novocain', 'bupivacain', 'ropivacain',
+        'lidocain', 'novocain', 'bupivacain', 'ropivacain', 'articain',
     )),
     ('latex_chlorhex', (
         'ლატექს', 'ქლორჰექს', 'latex', 'chlorhex',
     )),
     ('iodine', (
         'იოდ', 'კონტრასტ', 'ომნიპაკ', 'ულტრავისტ', 'ვიზიპაკ',
-        'iodin', 'contrast', 'omnipaque', 'ultravist',
+        'iodin', 'contrast', 'omnipaque', 'ultravist', 'visipaque',
     )),
     ('nsaid', (
-        'ანალგინ', 'კეტოროლ', 'დიკლოფენ', 'იბუპროფ', 'აასს',
-        'nsaid', 'ketorol', 'diclofen', 'ibuprof', 'analgin',
+        'ანალგინ', 'კეტოროლ', 'კეტონალ', 'დექსკეტო', 'დიკლოფენ', 'იბუპროფ', 'აასს', 'ასპირინ',
+        'nsaid', 'ketorol', 'ketonal', 'dexketo', 'diclofen', 'ibuprof', 'analgin', 'aspirin',
     )),
     ('clopidogrel_intol', (
         'კლოპიდოგ', 'პლავიქს', 'clopidog', 'plavix',
@@ -396,33 +397,57 @@ _HIT_WORD_RE = re.compile(r'(?<![a-zA-Zა-ჰ])hit(?![a-zA-Zა-ჰ])', re.IGNO
 
 
 _FREETEXT_HIGH_RISK_MED_RULES = (
-    ('warfarin', 'ვარფარინი (VKA)', True, ('ვარფარინ', 'warfarin', 'კუმადინ', 'coumadin')),
+    ('warfarin', 'ვარფარინი / აცენოკუმაროლი (VKA)', True, (
+        'ვარფარინ', 'warfarin', 'კუმადინ', 'coumadin',
+        'სინკუმარ', 'სინტრომ', 'აცენოკუმარ', 'sintrom', 'acenocoumar', 'syncumar',
+    )),
     ('doac', 'Xa-DOAC (ქსარელტო / ელიქვისი / ედიქსანი)', True, (
         'ქსარელტ', 'xarelto', 'რივაროქს', 'rivarox', 'ელიქვის', 'eliquis',
         'აპიქსაბ', 'apixab', 'ედიქსან', 'ედოქსაბ', 'edoxab', 'ლიქსიან', 'lixiana',
     )),
     ('dabigatran', 'დაბიგატრანი (პრადაქსა)', True, ('პრადაქს', 'pradaxa', 'დაბიგატრ', 'dabigatr')),
-    ('parenteral_oac', 'პარენტერული ანტიკოაგულანტი (LMWH / ფონდაპარინუქსი / არგატრობანი)', True, (
-        'კლექსან', 'clexane', 'ფრაქსიპარ', 'fraxipar', 'ენოქსაპარ', 'enoxapar',
-        'ფონდაპარინუქს', 'fondaparinux', 'არგატრობან', 'argatroban', 'ბივალირუდინ', 'bivalirudin',
+    ('parenteral_oac', 'პარენტერული ანტიკოაგულანტი (LMWH / ჰეპარინი / ფონდაპარინუქსი)', True, (
+        'კლექსან', 'clexane', 'ლოვენოქს', 'lovenox', 'ფრაქსიპარ', 'fraxipar',
+        'ენოქსაპარ', 'enoxapar', 'ნადროპარ', 'nadropar', 'ფრაგმინ', 'fragmin',
+        'დალტეპარ', 'daltepar', 'ციბორ', 'zibor', 'ბემიპარ', 'bemipar',
+        'ჰეპარინ', 'heparin', 'არიქსტრ', 'arixtra', 'ფონდაპარინუქს', 'fondaparinux',
+        'არგატრობან', 'argatroban', 'ბივალირუდინ', 'bivalirudin',
     )),
     ('clopidogrel', 'კლოპიდოგრელი (პლავიქსი)', True, (
-        'პლავიქს', 'plavix', 'კლოპიდოგ', 'clopidog', 'ზილტ', 'ტრომბექს',
+        'პლავიქს', 'plavix', 'კლოპიდოგ', 'clopidog', 'ზილტ', 'zylt', 'ტრომბექს', 'trombex',
     )),
-    ('ticagrelor', 'ტიკაგრელორი (ბრილინტა)', True, ('ბრილინტ', 'brilinta', 'ტიკაგრელ', 'ticagrel')),
-    ('prasugrel', 'პრასუგრელი (ეფიენტი)', True, ('ეფიენტ', 'effient', 'პრასუგრელ', 'prasugrel')),
+    ('ticagrelor', 'ტიკაგრელორი (ბრილინტა / ბრილიქი)', True, (
+        'ბრილინტ', 'brilinta', 'ბრილიქ', 'brilique', 'ტიკაგრელ', 'ticagrel',
+    )),
+    ('prasugrel', 'პრასუგრელი (ეფიენტი)', True, ('ეფიენტ', 'effient', 'efient', 'პრასუგრელ', 'prasugrel')),
     ('cilostazol', 'ცილოსტაზოლი (პლეტალი)', True, ('ცილოსტაზოლ', 'cilostazol', 'პლეტალ', 'pletal')),
     ('sglt2', 'SGLT2 ინჰიბიტორი (ჯარდიანსი / ფორსიგა / სტეგლატრო)', False, (
-        'ჯარდიანს', 'jardiance', 'ფორსიგ', 'forxiga', 'ემპაგლიფ', 'empaglif',
+        'ჯარდიანს', 'jardiance', 'ფორსიგ', 'forxiga', 'farxiga', 'სინჯარდ', 'synjardy',
+        'ქსიგდუო', 'xigduo', 'ინვოკან', 'invokana', 'ემპაგლიფ', 'empaglif',
         'დაპაგლიფ', 'dapaglif', 'ერტუგლიფ', 'ertuglif', 'სტეგლატრ', 'steglatro', 'კანაგლიფ', 'canaglif',
     )),
     ('glp1', 'GLP-1 აგონისტი (ოზემპიკი / მუნჯარო / საქსენდა)', False, (
-        'ოზემპიკ', 'ozempic', 'მუნჯარ', 'mounjaro', 'საქსენდ', 'saxenda', 'ვიქტოზ', 'victoza',
-        'სემაგლუტ', 'semaglut', 'ლირაგლუტ', 'liraglut', 'ტირზეპატ', 'tirzepat', 'დულაგლუტ', 'trulicity',
+        'ოზემპიკ', 'ozempic', 'ვეგოვ', 'wegovy', 'რიბელსუს', 'rybelsus',
+        'მუნჯარ', 'mounjaro', 'ზეპბაუნდ', 'zepbound', 'საქსენდ', 'saxenda', 'ვიქტოზ', 'victoza',
+        'სემაგლუტ', 'semaglut', 'ლირაგლუტ', 'liraglut', 'ტირზეპატ', 'tirzepat',
+        'დულაგლუტ', 'dulaglut', 'ტრულიციტ', 'ტრულისიტ', 'trulicity',
     )),
     ('insulin', 'ინსულინი', False, (
         'ინსულინ', 'insulin', 'ლანტუს', 'lantus', 'ტუჯეო', 'toujeo', 'ტრესიბ', 'tresiba',
-        'ნოვორაპიდ', 'novorapid', 'ჰუმალოგ', 'humalog', 'აპიდრ', 'apidra', 'ლევამირ', 'levemir', 'აქტრაპიდ', 'actrapid',
+        'ნოვორაპიდ', 'novorapid', 'ნოვომიქს', 'novomix', 'ჰუმალოგ', 'humalog', 'ჰუმულინ', 'humulin',
+        'აპიდრ', 'apidra', 'ლევამირ', 'ლევემირ', 'levemir', 'აქტრაპიდ', 'actrapid',
+    )),
+    ('metformin', 'მეტფორმინი (გლუკოფაჟი / სიოფორი)', False, (
+        'მეტფორმინ', 'metformin', 'გლუკოფაჟ', 'glucophage', 'სიოფორ', 'siofor',
+    )),
+    ('steroid', 'სტეროიდი (პრედნიზოლონი / მედროლი)', False, (
+        'პრედნიზოლ', 'prednisol', 'მედროლ', 'medrol', 'მეთილპრედ', 'methylpred', 'დექსამეტაზ', 'dexamethas',
+    )),
+    ('amiodarone', 'ამიოდარონი (კორდარონი)', False, (
+        'ამიოდარონ', 'amiodaron', 'კორდარონ', 'cordarone',
+    )),
+    ('omeprazole', 'ომეპრაზოლი / ეზომეპრაზოლი (CYP2C19)', False, (
+        'ომეპრაზოლ', 'omeprazol', 'omez', 'ომეზ', 'ნექსიუმ', 'nexium', 'ეზომეპრაზ', 'esomepraz',
     )),
 )
 

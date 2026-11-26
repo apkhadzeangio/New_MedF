@@ -23,8 +23,8 @@ def build_self_fill_highlights(q):
         items.append(('warn', 'ტერფის წყლული/ნეკროზი'))
     if q.get('ven_acute_svt'):
         items.append(('urgent', 'მწვავე თრომბოფლებიტი!'))
-    if q.get('ven_pregnant'):
-        items.append(('urgent', 'ორსულობა / ლაქტაცია!'))
+    if q.get('ven_pregnant') or q.get('pregnant_possible'):
+        items.append(('urgent', 'ორსულობა / შესაძლო ორსულობა / ლაქტაცია!'))
     if q.get('ven_dvt_history'):
         items.append(('warn', 'გადატანილი DVT / PE'))
     if q.get('active_infection'):
@@ -79,11 +79,14 @@ def build_self_fill_highlights(q):
         meds.append('მეტფორმინი')
     if meds:
         items.append(('warn', 'მედიკამენტები: ' + ', '.join(meds)))
-    if q.get('other_meds'):
-        items.append(('info', f"სხვა წამალი: {q['other_meds']}"))
+    if (q.get('other_meds') or '').strip():
+        from .meds import _detect_freetext_high_risk_meds
+        ft = _detect_freetext_high_risk_meds(q.get('other_meds') or '', q=q)
+        lvl = 'urgent' if ft.get('unstructured_labels') else 'info'
+        items.append((lvl, f"სხვა წამალი: {q['other_meds']}"))
     if q.get('allergy_iodine'):
         items.append(('urgent', 'ალერგია იოდზე / კონტრასტზე!'))
-    if q.get('allergy_other') or q.get('allergy_chips'):
+    if q.get('allergy_other') or q.get('allergy_chips') or (q.get('allergy_text') or '').strip():
         alg_txt = chip_summary(q.get('allergy_chips'), 'allergy_chips', q.get('allergy_text')) or 'მედიკამენტური ალერგია'
         items.append(('urgent', f'ალერგია: {alg_txt}'))
     if q.get('smoker'):
@@ -94,10 +97,11 @@ def build_self_fill_highlights(q):
 def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
     lines = []
     side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა '}.get(patient.side, '')
-    kind_word = 'სიმპტომური სტენოზის გამო' if patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP else 'ასიმპტომური სტენოზის გამო'
+    is_symp = bool(ev.get('is_symp_cea'))
+    kind_word = 'სიმპტომური სტენოზის გამო' if is_symp else 'ასიმპტომური სტენოზის გამო'
     lines.append(f'{head_prefix}, დაგეგმილია {side_word}კაროტიდული ენდარტერექტომია ({kind_word}){surgeon_str}.')
 
-    if patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP or q.get('cea_symp_event'):
+    if is_symp:
         ev_txt = chip_summary(q.get('cea_event_chips'), 'cea_event_chips', q.get('cea_event_text')) or 'TIA / ამავროზი / მცირე იშემიური ინსულტი'
         live_ev_d = ev.get('days_since_ev')
         d_ago = f', ბოლო ეპიზოდი {live_ev_d} დღის წინ' if live_ev_d is not None else ''
@@ -203,11 +207,13 @@ def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
     if pathway == PreopPatient.Pathway.PAD_BYPASS:
         run_map = {'popliteal_patent': 'მუხლქვეშა არტერია გამავალია', 'tibial_single': 'წვივის არტერიაზე დისტალური მიმღები', 'desert_foot': 'არადამაკმაყოფილებელი კალაპოტი (!)', 'pending': 'ზუსტდება'}
         gsv_map = {'adequate': 'ვარგისია (≥3.0 მმ)', 'inadequate': 'უვარგისია (<3.0 მმ / ამოღებულია!)', 'pending': 'ზუსტდება'}
-        gsv_d = f" ({s['pad_gsv_mm']} მმ)" if s.get('pad_gsv_mm') is not None else ''
+        gsv_val = s.get('pad_gsv_mm')
+        gsv_eff_st = 'inadequate' if (isinstance(gsv_val, (int, float)) and gsv_val < 3.0) else (s.get('pad_gsv_status') or 'pending')
+        gsv_d = f" ({gsv_val} მმ)" if gsv_val is not None else ''
         lines.append(
             f"ანატომია და აუტოვენა: ABI R {abi_r_s} / L {abi_l_s}; "
             f"Runoff — {run_map.get(s.get('pad_runoff_status') or 'pending', 'ზუსტდება')}; "
-            f"იფსილატერალური GSV — {gsv_map.get(s.get('pad_gsv_status') or 'pending', 'ზუსტდება')}{gsv_d}."
+            f"იფსილატერალური GSV — {gsv_map.get(gsv_eff_st, 'ზუსტდება')}{gsv_d}."
         )
     else:
         acc_map = {'cfa_clean': 'საერთო ბარძაყის არტერია სუფთაა', 'cfa_calcified_scar': 'CFA ნაწიბური/კალციფიკაცია (ალტერნატიული მიდგომა)', 'pending': 'ზუსტდება'}
@@ -221,10 +227,13 @@ def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
 def _anam_venous(patient, ev, q, s, head_prefix, surgeon_str):
     lines = []
     side_word = {'R': 'მარჯვენა ქვემო კიდურზე ', 'L': 'მარცხენა ქვემო კიდურზე ', 'B': 'ორივე ქვემო კიდურზე '}.get(patient.side, '')
+    anesth_tag = ev.get('effective_anesth_label') or (
+        'ტუმესცენტური ანესთეზია' if patient.op_subtype == PreopPatient.OpSubtype.EVLA else 'სპინალური / ზოგადი ანესთეზია'
+    )
     op_lbl = (
-        'ენდოვენური ლაზერული აბლაცია (EVLA ± მინიფლებექტომია, ტუმესცენტური ანესთეზია)'
+        f'ენდოვენური ლაზერული აბლაცია (EVLA ± მინიფლებექტომია, {anesth_tag})'
         if patient.op_subtype == PreopPatient.OpSubtype.EVLA
-        else 'კომბინირებული ფლებექტომია / კროსექტომია (სპინალური / ზოგადი ანესთეზია)'
+        else f'კომბინირებული ფლებექტომია / კროსექტომია ({anesth_tag})'
     )
     lines.append(f'{head_prefix}, დაგეგმილია {side_word}{op_lbl}{surgeon_str}.')
 
@@ -271,7 +280,7 @@ def _anam_venous(patient, ev, q, s, head_prefix, surgeon_str):
         ven_notes.append(f'რეციდივული ვარიკოზი ({rec_txt})')
     if q.get('ven_hormones'):
         ven_notes.append('ჰორმონული პრეპარატები/კონტრაცეპტივი')
-    if q.get('ven_pregnant') or q.get('pregnant_possible'):
+    if (q.get('ven_pregnant') or q.get('pregnant_possible')) and patient.sex != 'M':
         ven_notes.append('ორსულობა / ლაქტაცია (!)')
     if ven_notes:
         lines.append('ვენური და თრომბოემბოლიური ფაქტორები: ' + '; '.join(ven_notes) + '.')
@@ -336,10 +345,12 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
     comorb = []
     if q.get('htn'):
         comorb.append('არტერიული ჰიპერტენზია')
-    if q.get('cad'):
-        cad_ch_set = set(_str_list(q.get('cad_chips')))
+    cad_ch_set = set(_str_list(q.get('cad_chips')))
+    if q.get('cad') or q.get('recent_stent') or cad_ch_set:
         has_ihd_chip = bool((cad_ch_set & {'mi', 'angina', 'cabg', 'stent_old', 'stent_6_12m'}) or q.get('recent_stent') or not cad_ch_set)
         c_det = chip_summary(q.get('cad_chips'), 'cad_chips', q.get('cad_detail'))
+        if q.get('recent_stent') and 'სტენტ' not in c_det:
+            c_det = '; '.join([x for x in ('კორონარული სტენტი <6 თვ.', c_det) if x])
         cad_head = 'გულის იშემიური დაავადება' if has_ihd_chip else 'კარდიოლოგიური პათოლოგია'
         comorb.append(f"{cad_head}{f' ({c_det})' if c_det else ''}")
     if q.get('dm'):
@@ -375,11 +386,12 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
     lines.append(f"მუდმივი მედიკამენტები: {', '.join(meds) if meds else 'არ იღებს'}.")
 
     allergies = []
-    if q.get('ven_lidocaine_allergy'):
+    raw_alg_chips = list(q.get('allergy_chips') or [])
+    if q.get('ven_lidocaine_allergy') and 'lidocaine' not in raw_alg_chips:
         allergies.append('ლიდოკაინი / ადგილობრივი ანესთეტიკი!')
     if q.get('allergy_iodine'):
         allergies.append('იოდი / კონტრასტი!')
-    alg_extra = chip_summary(q.get('allergy_chips'), 'allergy_chips', q.get('allergy_text'))
+    alg_extra = chip_summary(raw_alg_chips, 'allergy_chips', q.get('allergy_text'))
     if alg_extra:
         allergies.append(alg_extra)
     elif q.get('allergy_other'):

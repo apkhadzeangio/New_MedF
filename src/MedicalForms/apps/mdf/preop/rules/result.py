@@ -95,7 +95,15 @@ def _result_flags_and_needs_part(ctx):
     return {
         'status': ctx.status,
         'status_label': STATUS_LABELS[ctx.status],
-        'workup_ready': bool((ctx.patient.approved_at or ctx.all_tasks_done) and not ctx.has_hard_contraindication and not ctx.solo_neuraxial_anatomic_mismatch),
+        'workup_ready': bool(
+            (ctx.patient.approved_at or ctx.all_tasks_done)
+            and not ctx.has_hard_contraindication
+            and not ctx.dos_hold_danger
+            and not ctx.neuraxial_hard_blocked
+            and not ctx.solo_neuraxial_anatomic_mismatch
+            and not ctx.has_unacked_red
+            and not ctx.has_blocking_unknown_state
+        ),
         'priority_tier': ctx.priority_tier,
         'priority_label': PRIORITY_LABELS[ctx.priority_tier],
         'days_elapsed': ctx.days,
@@ -120,6 +128,9 @@ def _result_flags_and_needs_part(ctx):
         'has_unacked_red': ctx.has_unacked_red,
         'egfr': ctx.egfr,
         'crcl': ctx.crcl,
+        'eff_renal': ctx.eff_renal,
+        'eff_allergy_chips': sorted(ctx.allergy_chips),
+        'compression_contra': ctx.compression_contra,
         'creat_unit_ambiguous': ctx.creat_unit_ambiguous,
         'bmi': ctx.bmi,
         'hb_gl': ctx.hb_gl,
@@ -138,6 +149,21 @@ def _result_flags_and_needs_part(ctx):
         'tbi_measured': ctx.tbi_measured,
         'tbi_comp_safe': ctx.tbi_comp_safe,
         'pad_gsv_mm': ctx.pad_gsv_mm,
+        'guideline_justifies_extra_cardio': ctx.guideline_justifies_extra_cardio,
+        'cardio_non_compliant': ctx.cardio_non_compliant,
+        's1_core_done': ctx.s1_core_done,
+        'tasks': ctx.tasks,
+        'done_count': ctx.done_count,
+        'total_count': len(ctx.tasks),
+        'ecg_label': ecg_display_label,
+        'cxr_label': CXR_LABELS.get(ctx.cxr, ctx.cxr),
+        'q': ctx.q,
+        's': ctx.s,
+    }
+
+
+def _result_needs_part(ctx):
+    return {
         'needs_anemia_panel': ctx.needs_anemia_panel,
         'needs_hba1c_reflex': ctx.needs_hba1c_reflex,
         'needs_endo_reflex': ctx.needs_endo_reflex,
@@ -169,16 +195,6 @@ def _result_flags_and_needs_part(ctx):
         'needs_cardio': ctx.needs_cardio,
         'needs_anesth': ctx.needs_anesth,
         'needs_blood': ctx.open_major,
-        'guideline_justifies_extra_cardio': ctx.guideline_justifies_extra_cardio,
-        'cardio_non_compliant': ctx.cardio_non_compliant,
-        's1_core_done': ctx.s1_core_done,
-        'tasks': ctx.tasks,
-        'done_count': ctx.done_count,
-        'total_count': len(ctx.tasks),
-        'ecg_label': ecg_display_label,
-        'cxr_label': CXR_LABELS.get(ctx.cxr, ctx.cxr),
-        'q': ctx.q,
-        's': ctx.s,
     }
 
 
@@ -186,4 +202,5 @@ def assemble_eval_result(ctx):
     """Combine clinical briefings/scores and flags/needs into the canonical evaluate() dict."""
     res = _result_clinical_part(ctx)
     res.update(_result_flags_and_needs_part(ctx))
+    res.update(_result_needs_part(ctx))
     return res

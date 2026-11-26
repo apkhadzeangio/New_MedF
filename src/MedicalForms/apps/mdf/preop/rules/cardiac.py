@@ -11,7 +11,7 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
     cb = rule_value('CARDIO_BIOMARKERS_ECHO')
     carp = rule_value('CARDIO_CARP_AUDIT_GATE')
     lvef = _int(s.get('lvef'), lo=5, hi=95)
-    nt_probnp = _int(s.get('nt_probnp'), lo=1, hi=50000)
+    nt_probnp = _int(s.get('nt_probnp'), lo=1, hi=100000)
     hs_ctn = _num(s.get('hs_ctn'), lo=0.1, hi=50000)
     ecg = s.get('ecg') or 'pending'
     ctx.lvef, ctx.nt_probnp, ctx.hs_ctn, ctx.ecg = lvef, nt_probnp, hs_ctn, ecg
@@ -27,7 +27,8 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
         elif lvef is not None:
             ctx.amber_flags.append(f'მომატებული NT-proBNP ({nt_probnp} პგ/მლ >= {cb["bnp_amb"]}; LVEF {lvef}% შეფასებულია) — ESC 2022-ით საჭიროა კარდიოლოგის კონსულტაცია.')
         else:
-            ctx.amber_flags.append(f'მომატებული NT-proBNP ({nt_probnp} პგ/მლ >= {cb["bnp_amb"]}) — ESC 2022 Class I-ით ნაჩვენებია ექოკარდიოგრაფია და კარდიოლოგი.')
+            tte_cls = 'Class I' if (ctx.open_aortic or ctx.true_low_mets) else 'Class IIb'
+            ctx.amber_flags.append(f'მომატებული NT-proBNP ({nt_probnp} პგ/მლ >= {cb["bnp_amb"]}) — ESC 2022 {tte_cls}-ით განიხილეთ ექოკარდიოგრაფია და კარდიოლოგი.')
 
     if hs_ctn is not None and hs_ctn >= cb['ctn_amb']:
         if ctx.cardio_cleared:
@@ -58,10 +59,11 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
         and (s.get('anesthesia_plan') in (None, '', 'auto', 'local'))
     )
     ckd_cardio_thresh = carp['ckd_pta'] if is_pure_local_pta else carp['ckd_std']
+    # ESC 2022 Class III / CARP: stable asymptomatic CAD alone does NOT justify routine preoperative CAG/PCI!
     guideline_justifies_cag = (
         ctx.true_low_mets
-        or (q_filled and bool(q.get('cad')))
-        or (lvef is not None and lvef < cb['lvef_amb'])
+        or (q_filled and (bool(q.get('recent_stent')) or 'angina' in ctx.cad_chips))
+        or (lvef is not None and lvef < cb['lvef_red'])
         or (nt_probnp is not None and nt_probnp >= cb['bnp_red'])
         or (hs_ctn is not None and hs_ctn >= cb['ctn_amb'])
         or bool(s.get('echo_valve_issue'))
@@ -69,6 +71,9 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
     )
     guideline_justifies_extra_cardio = (
         guideline_justifies_cag
+        or ctx.true_low_mets
+        or (q_filled and bool(q.get('cad')))
+        or (lvef is not None and lvef < cb['lvef_amb'])
         or ctx.needs_cied
         or (nt_probnp is not None and nt_probnp >= cb['bnp_amb'])
         or ecg == 'afib_controlled'
@@ -125,16 +130,25 @@ def _eval_stage1_completeness(ctx):
         or bool(s.get('anesth_done'))
     )
 
-    # Stage 1 baseline completeness (Rational Testing — NICE NG45 / ESC 2022 / IDSA 2019 / ESVS 2023–2024)
-    renal_lab_present = ctx.on_dialysis or (s.get('creat') is not None and not ctx.creat_unit_ambiguous)
+    renal_lab_present = ctx.on_dialysis or (ctx.egfr is not None and not ctx.creat_unit_ambiguous)
     target_limb_hemo_present = bool(ctx.scoped_abis or ctx.scoped_tps or ctx.scoped_tbis)
     ctx.renal_lab_present, ctx.target_limb_hemo_present = renal_lab_present, target_limb_hemo_present
 
     if ctx.is_venous:
         is_lean_evla = (not ctx.is_phleb) and (not ctx.has_neuraxial_plan) and (ctx.anesth_plan_raw != 'general')
-        ven_needs_creat = ctx.is_phleb or ctx.has_neuraxial_plan or bool(q.get('med_doac') or q.get('med_dabigatran'))
+        ven_needs_creat = (
+            ctx.is_phleb or ctx.has_neuraxial_plan
+            or bool(q.get('med_doac') or q.get('med_dabigatran') or q.get('metformin'))
+            or ('rivaroxaban_2_5' in ctx.med_chips)
+        )
         ven_needs_inr = (not is_lean_evla) or ctx.on_oral_anticoag or (s.get('liver_status') in ('2x', '3x'))
-        ven_needs_gl = (not is_lean_evla) or bool(q.get('dm')) or (ctx.bmi is not None and ctx.bmi >= 30) or ((patient.age or 0) >= 45)
+        ven_needs_gl = (
+            (not is_lean_evla)
+            or bool(q.get('dm') or q.get('dm_insulin'))
+            or (ctx.hba1c is not None and ctx.hba1c >= 6.5)
+            or (ctx.bmi is not None and ctx.bmi >= 30)
+            or ((ctx.age or 0) >= 45)
+        )
         ven_labs_ok = (
             ctx.hb_gl is not None and ctx.plt is not None
             and (not ven_needs_inr or ctx.inr is not None)
@@ -187,11 +201,11 @@ def _eval_stage1_completeness(ctx):
 
 def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
     pathway, s = ctx.pathway, ctx.s
-    if ctx.needs_stale_labs and not bypass_sep:
+    if ctx.needs_stale_labs:
         tasks.append({'key': 'stale_labs', 'label': 'რეფლექს-განახლება: ხანდაზმული ანალიზების (>14 დღე) გადაბარება', 'done': bool(s.get('stale_labs_refreshed'))})
     if ctx.needs_anemia_panel and not bypass_em:
         tasks.append({'key': 'anemia', 'label': 'რეფლექს-პაკეტი (Hb < 115): ფერიტინი, შრატის რკინა/TSAT, რეტიკულოციტები', 'done': ctx.anemia_panel_satisfied})
-    if ctx.pbm_iv_iron_indicated and not ctx.is_urgent_case:
+    if ctx.pbm_iron_required:
         tasks.append({'key': 'pbm_iron', 'label': 'PBM პროტოკოლი (რკინადეფიციტი): ინტრავენური რკინის ინფუზია / შეთანხმება', 'done': bool(s.get('pbm_iv_iron_done'))})
     if ctx.needs_hba1c_reflex and not bypass_em:
         tasks.append({'key': 'hba1c', 'label': 'რეფლექს-ანალიზი (გლუკოზა >= 7.0): HbA1c (%)', 'done': ctx.hba1c is not None})
@@ -202,13 +216,14 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
         n_lbl = (
             'დიალიზის გრაფიკი (უჰეპარინო სესია) და K+ შეთანხმება ნეფროლოგთან'
             if ctx.on_dialysis else
-            ('რეფლექს-პაკეტი (CKD < 45): შარდოვანა, ელექტროლიტები და ნეფროლოგი' if nephro_lean_t
-             else 'რეფლექს-პაკეტი (eGFR < 30): შარდოვანა, Ca/P, თირკმლის ექო და ნეფროლოგი')
+            ('რეფლექს-პაკეტი (CrCl/eGFR < 45): შარდოვანა, ელექტროლიტები და ნეფროლოგი' if nephro_lean_t
+             else 'რეფლექს-პაკეტი (CrCl/eGFR < 30): შარდოვანა, Ca/P, თირკმლის ექო და ნეფროლოგი')
         )
         tasks.append({'key': 'nephro', 'label': n_lbl, 'done': bool(s.get('nephro_panel_done'))})
     if ctx.needs_hydration and not ctx.is_rupture_suspect:
         c_tag = f' (მაქს. კონტრასტი ≤ {ctx.max_contrast_ml} მლ)' if ctx.max_contrast_ml else ''
-        tasks.append({'key': 'hydration', 'label': f'კონტრასტ-ნეფროპროტექცია (eGFR < 60): იზოტონური ჰიდრატაცია{c_tag}', 'done': bool(s.get('hydration_planned'))})
+        hyd_mode = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე!' if (ctx.na_val is not None and ctx.na_val >= 150) else 'იზოტონური ჰიდრატაცია'
+        tasks.append({'key': 'hydration', 'label': f'კონტრასტ-ნეფროპროტექცია (CrCl/eGFR < 60): {hyd_mode}{c_tag}', 'done': bool(s.get('hydration_planned'))})
     if ctx.needs_tsh and not bypass_em:
         tasks.append({'key': 'tsh', 'label': 'რეფლექს-ანალიზი იოდის კონტრასტამდე: TSH და FT4', 'done': ctx.tsh_res != 'pending'})
     if ctx.needs_dental and not bypass_sep:
@@ -227,7 +242,8 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
     if ctx.needs_alt_vein:
         tasks.append({'key': 'alt_vein', 'label': 'რეფლექს ექო-კარტირება: კონტრალატერალური GSV / SSV / ხელის ვენები', 'done': (s.get('alt_vein_mapped') or 'pending') != 'pending'})
     if pathway == PreopPatient.Pathway.CEA and ctx.needs_cea_antiplatelet:
-        tasks.append({'key': 'cea_antiplatelet', 'label': 'CEA ანტიაგრეგანტი (ასპირინი ± კლოპიდოგრელი) დაწყებულია', 'done': bool(s.get('cea_antiplatelet_started'))})
+        ap_t_lbl = 'ასპირინი (კლოპიდოგრელზე აუტანლობა!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'ასპირინი ± კლოპიდოგრელი'
+        tasks.append({'key': 'cea_antiplatelet', 'label': f'CEA ანტიაგრეგანტი ({ap_t_lbl}) დაწყებულია', 'done': bool(s.get('cea_antiplatelet_started'))})
     if pathway == PreopPatient.Pathway.CEA and ctx.needs_neuro:
         tasks.append({'key': 'neuro', 'label': 'ნევროლოგის წინასაოპერაციო კონსულტაცია (mRS / სტატუსი)', 'done': bool(s.get('neuro_consult_done'))})
     if pathway == PreopPatient.Pathway.CEA and ctx.needs_laryngoscopy:
@@ -240,9 +256,10 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         tasks.append({'key': 'abi', 'label': 'გოჯ-მხრის ინდექსი (ABI)', 'done': ctx.min_abi is not None})
     if ctx.is_venous and ctx.needs_vte_prophylaxis:
         ven_severe_renal_t = ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 30)
+        has_hit = 'hit_heparin' in ctx.allergy_chips
         if 'mech_valve' in ctx.cad_chips:
-            vte_lbl = 'ვარფარინი (VKA) — DOAC აკრძალულია!'
-        elif 'hit_heparin' in ctx.allergy_chips:
+            vte_lbl = 'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT!)' if has_hit else 'ვარფარინი (VKA) — DOAC აკრძალულია!'
+        elif has_hit:
             vte_lbl = 'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!)' if ven_severe_renal_t else ('ფონდაპარინუქსი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
         elif ven_severe_renal_t or ctx.liver_3x:
             vte_lbl = 'კანქვეშა UFH / დოზა-კორექტირებული LMWH (DOAC არა!)'
@@ -255,9 +272,9 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         tasks.append({'key': 'gastro', 'label': 'გასტროსკოპია (ეგდს)', 'done': ctx.gastro_res != 'pending'})
     if ctx.needs_ppi:
         ppi_t_lbl = (
-            'გასტროპროტექცია (პანტოპრაზოლი 40 მგ — CYP2C19 უსაფრთხო, ეგდს-ის გარეშე)'
+            'გასტროპროტექცია (პანტოპრაზოლი 40 მგ — CYP2C19 უსაფრთხო)'
             if (q.get('med_clopidogrel') or 'cilostazol' in ctx.med_chips)
-            else 'გასტროპროტექცია (PPI: ომეპრაზოლი / პანტოპრაზოლი 40 მგ — ეგდს-ის გარეშე)'
+            else 'გასტროპროტექცია (PPI: ომეპრაზოლი / პანტოპრაზოლი 40 მგ)'
         )
         tasks.append({'key': 'ppi', 'label': ppi_t_lbl, 'done': bool(s.get('ppi_started')) or ('ppi' in ctx.med_chips)})
     if ctx.uti_suspected and not bypass_em:

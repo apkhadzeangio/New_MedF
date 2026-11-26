@@ -75,7 +75,8 @@ class PreopNurseWorkspaceB1Tests(TestCase):
             pathway='venous', op_subtype='evla', visit_date=today,
             questionnaire={'filled': True, 'nurse_verified': True, 'ven_ceap': 'C2', 'mets_ok': True},
             studies={
-                'planned_surgery_date': tomorrow, 'hb': 134, 'plt': 230, 'glucose': 5.2,
+                'planned_surgery_date': tomorrow, 'labs_date': today.isoformat(),
+                'hb': 134, 'plt': 230, 'glucose': 5.2,
                 'ven_duplex_status': 'deep_patent_reflux', 'compression_ready': True,
             },
         )
@@ -380,7 +381,7 @@ class PreopNurseWorkspaceB5Tests(TestCase):
             pathway='venous', op_subtype='evla', visit_date=today,
             approved_at=timezone.now(), approved_by=self.nurse,
             questionnaire={'filled': True, 'ven_ceap': 'C2', 'mets_ok': True},
-            studies={'hb': 134, 'plt': 230, 'ven_duplex_status': 'deep_patent_reflux'},
+            studies={'labs_date': today.isoformat(), 'hb': 134, 'plt': 230, 'ven_duplex_status': 'deep_patent_reflux'},
         )
         r_ok = self.client.get(reverse('preop-patient-guide', args=[p_ok.pk]))
         self.assertContains(r_ok, 'დადასტურებულია ექიმთან ✓')

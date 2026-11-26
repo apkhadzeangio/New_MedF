@@ -37,30 +37,33 @@ class _Confusion:
 
 
 def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is_pta):
-    vasc_chips = set(_safe_list(q.get('vasc_chips')))
     is_clti_or = (
         patient.op_subtype in (PreopPatient.OpSubtype.ABF_CLTI, PreopPatient.OpSubtype.BYPASS_CLTI, PreopPatient.OpSubtype.PTA_CLTI)
         or bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))
     )
-    gsv_inadeq_or = (
-        (s.get('pad_gsv_status') == 'inadequate')
-        or (ev.get('pad_gsv_mm') is not None and ev['pad_gsv_mm'] < 3.0)
-        or ('vein_strip' in vasc_chips)
+    preg_bio_or = (patient.sex != 'M') and not (patient.sex == 'F' and patient.age is not None and patient.age > 55)
+    eff_preg_or = preg_bio_or and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
+    uses_contrast_or = (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)) or is_pta
+    evla_lido_stop_or = (
+        is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
+        and (bool(q.get('ven_lidocaine_allergy')) or 'lidocaine' in (ev.get('eff_allergy_chips') or ()))
+        and (s.get('anesthesia_plan') in (None, '', 'auto', 'local'))
     )
-    eff_preg_or = bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible'))
     exp_hard_contra = bool(
-        (pw == PreopPatient.Pathway.CEA and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)
+        (pw == PreopPatient.Pathway.CEA and patient.side in ('R', 'L') and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)
         or (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
         or (pw == PreopPatient.Pathway.CEA and patient.side == 'B')
         or (is_pta and not is_clti_or and s.get('pta_lesion_site') == 'infrapopliteal')
         or (pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti_or and (
             s.get('pad_runoff_status') == 'desert_foot'
-            or (gsv_inadeq_or and s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
+            or (s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
         ))
         or (pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and not is_clti_or and eff_preg_or)
+        or (uses_contrast_or and s.get('tsh_status') == 'hyperthyroid')
         or (is_venous and s.get('ven_duplex_status') in ('acute_dvt', 'deep_obstruction'))
         or (is_venous and eff_preg_or)
-        or (is_venous and ((ev.get('min_abi') is not None and ev['min_abi'] < 0.50) or (ev.get('min_tp') is not None and ev['min_tp'] < 30)))
+        or evla_lido_stop_or
+        or (is_venous and ((ev.get('min_abi') is not None and ev['min_abi'] < 0.60) or (ev.get('min_tp') is not None and ev['min_tp'] < 30)))
     )
     oracles['hard_contraindication'].record(exp_hard_contra, ev['has_hard_contraindication'])
 
@@ -169,8 +172,8 @@ def _oracle_gi_anemia_ppi(oracles, patient, ev, q, s, is_venous, is_pta, med_chi
     has_any_at_sim = has_oac_sim or has_ap_sim or ('rivaroxaban_2_5' in med_chips)
     has_elder_steroid_sim = ((patient.age or 0) >= 65) and ('steroid' in med_chips) and has_any_at_sim
     exp_ppi = bool(
-        (bool(q.get('ulcer')) or has_dapt_sim or (has_oac_sim and has_ap_sim) or has_elder_steroid_sim)
-        and not ev['needs_gastro']
+        (bool(q.get('ulcer')) or bool(q.get('ulcer_active_symp')) or has_dapt_sim or (has_oac_sim and has_ap_sim) or has_elder_steroid_sim)
+        and (not ev['needs_gastro'] or bool(q.get('ulcer_active_symp')))
         and 'ppi' not in med_chips
     )
     oracles['esc2022_ppi_gate'].record(exp_ppi, ev['needs_ppi'])

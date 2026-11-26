@@ -197,9 +197,9 @@ class PublishedPharmacologyReferenceTests(SimpleTestCase):
         self.assertIn('5 დღით ადრე', r_afib['rule'])
         self.assertIn('ESC 2022 Class III', r_afib['rule'])
 
-        # Mechanical valve CrCl >= 30 -> LMWH bridge (CHEST 2022: 50% D-1 morning, skip evening)
+        # Mechanical valve CrCl >= 30 -> LMWH bridge (CHEST 2022 / ESC 2022: 50% D-1 morning, skip evening)
         r_mv = _drug_row(build_med_schedule(p_open, {'filled': True, 'med_warfarin': True, 'cad_chips': ['mech_valve']}, p_open.studies, 75, crcl=75), 'ვარფარინი')
-        self.assertIn('LMWH ხიდი (CHEST 2022 / PAUSE)', r_mv['rule'])
+        self.assertIn('LMWH ხიდი (CHEST 2022 / ESC 2022)', r_mv['rule'])
         self.assertIn('50%', r_mv['rule'])
 
         # Mechanical valve CrCl < 30 -> IV UFH bridge (NOT therapeutic LMWH!)
@@ -255,7 +255,7 @@ class PublishedPharmacologyReferenceTests(SimpleTestCase):
         r_cea_clop = _drug_row(build_med_schedule(p_cea, {'filled': True, 'med_clopidogrel': True, 'cea_symp_event': True}, p_cea.studies, 70, crcl=70), 'კლოპიდოგრელი')
         self.assertIn('გრძელდება უწყვეტად', r_cea_clop['rule'])
         r_tica_nx = _drug_row(build_med_schedule(p_open, {'filled': True, 'med_ticagrelor': True, 'med_aspirin': True}, p_open.studies, 70, crcl=70, has_neuraxial_override=True), 'ტიკაგრელორი')
-        self.assertIn('5–7 დღით', r_tica_nx['rule'])
+        self.assertIn('5 დღით ადრე (ASRA 5th Ed: 5 დღე)', r_tica_nx['rule'])
         r_pras = _drug_row(build_med_schedule(p_open, {'filled': True, 'med_prasugrel': True, 'med_aspirin': True}, p_open.studies, 70, crcl=70), 'პრასუგრელი')
         self.assertIn('7–10 დღით', r_pras['rule'])
 

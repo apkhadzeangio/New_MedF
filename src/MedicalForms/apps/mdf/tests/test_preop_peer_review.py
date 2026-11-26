@@ -148,9 +148,12 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         self.assertEqual(evaluate(p_vsg)['vsg_cri']['risk_pct'], '14.3%')
 
     def test_review_4_asra_inr_1_4_pharmacology_citations_and_passport_physician_confirmation_gate(self):
+        from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate
 
+        today = timezone.localdate()
         p = PreopPatient.objects.create(
             patient_name='ფარმაკო პასპორტაძე', age=70, sex='M', side='R',
             pathway='venous', op_subtype='phlebectomy', surgeon=self.user,
@@ -159,6 +162,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
                 'med_warfarin': True, 'glp1': True, 'mets_ok': True,
             },
             studies={
+                'labs_date': today.isoformat(), 'spo2': 98,
                 'weight_kg': 62, 'height_cm': 170, 'creat': 135, 'creat_unit': 'umol',
                 'hb': 135, 'plt': 210, 'inr': 1.35, 'dos_inr': 1.35,
                 'anesthesia_plan': 'neuraxial', 'planned_surgery_date': '2026-12-15',
@@ -170,7 +174,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         self.assertNotIn('INR 1.35 >', ev['anesthetic_brief']['neuraxial_gate'])
 
         sched = {m['drug']: m for m in ev['med_schedule']}
-        self.assertIn('5–7 დღით', sched['ტიკაგრელორი (ბრილინტა)']['rule'])
+        self.assertIn('5 დღით ადრე (ASRA 5th Ed: 5 დღე)', sched['ტიკაგრელორი (ბრილინტა)']['rule'])
         self.assertIn('INR ≤ 1.4', sched['ვარფარინი']['rule'])
         self.assertIn('Multi-Society 2024', sched['GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)']['rule'])
         self.assertIn('უმეტეს პაციენტთან გრძელდება', sched['GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)']['rule'])
@@ -187,6 +191,14 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         self.assertContains(pp_draft, 'მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!')
         self.assertContains(pp_draft, 'ექიმთან ჯერ არ არის დადასტურებული')
 
+        # Resolve lethal dual-OAC/ESC-III conflict & complete venous workup before surgeon sign-off
+        p.questionnaire.update({'med_doac': False, 'med_ticagrelor': False})
+        p.studies.update({
+            'ven_duplex_status': 'deep_patent_reflux', 'ecg': 'normal',
+            'compression_ready': True, 'vte_prophylaxis_planned': True,
+            'med_hold_agreed': True, 'anesth_done': True,
+        })
+        p.save()
         # Surgeon approval clears draft banner & marks med schedule confirmed while keeping physician-only rule
         self.client.post(reverse('preop-patient', args=[p.pk]), {'section': 'signoff', 'action': 'approve'})
         pp_ok = self.client.get(reverse('preop-passport', args=[p.pk]))
@@ -244,7 +256,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         self.assertIn('სუბთერაპიულია', mv_reds)
         self.assertIn('მექანიკური სარქველი + HIT', mv_reds)
         self.assertIn('2 ან მეტი პერორალური ანტიკოაგულანტი', mv_reds)
-        self.assertIn('OAC) ტიკაგრელორთან', mv_reds)
+        self.assertIn('ტიკაგრელორთან ან პრასუგრელთან', mv_reds)
         self.assertIn('უვადო ვარფარინი (VKA)', mv_reds)
         mv_sched = {m['drug']: m for m in ev_mv['med_schedule']}
         self.assertIn('დაბიგატრანი (პრადაქსა)', mv_sched)
@@ -481,7 +493,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         )
         ev_unset = evaluate(p_cea_unset, today=today)
         self.assertEqual(ev_unset['contra_car'], 84)
-        self.assertEqual(ev_unset['target_days'], 10)  # >180d -> asymptomatic target clock!
+        self.assertEqual(ev_unset['target_days'], 14)  # >180d -> asymptomatic target clock!
         self.assertEqual(ev_unset['auto_asa'], 'III')
 
         # C10.2 + C10.3 + L1-F1: Venous compression deadlock resolved on TP 42 (<50 hides comp) and TP 55 (50..59 Class I comp);
@@ -535,7 +547,8 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
                 'dental_infection': True, 'mets_ok': False,
             },
             studies={
-                'aaa_mm': 68, 'hb': 108, 'creat': 130, 'creat_unit': 'umol', 'glucose': 12.6, 'inr': 1.1,
+                'aaa_mm': 68, 'bp_sys': 84, 'bp_dia': 52, 'hr': 118,
+                'hb': 108, 'creat': 130, 'creat_unit': 'umol', 'glucose': 12.6, 'inr': 1.1,
                 'ecg': 'normal', 'lvef': 50, 'labs_date': (today - datetime.timedelta(days=20)).isoformat(),
             },
         )
@@ -656,7 +669,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
             patient_name='თვითშევსება ექთანაძე', age=36, sex='F', side='R',
             pathway='venous', op_subtype='evla', surgeon=self.user,
             questionnaire={'filled': True, 'filled_by': 'პაციენტი (ბმულით)', 'nurse_verified': False, 'mets_ok': True},
-            studies={'hb': 132, 'plt': 240, 'ven_duplex_status': 'deep_patent_reflux', 'compression_ready': True},
+            studies={'hb': 132, 'plt': 240, 'labs_date': today.isoformat(), 'ven_duplex_status': 'deep_patent_reflux', 'compression_ready': True},
         )
         ev_sf_unver = evaluate(p_sf, today=today)
         self.assertEqual(ev_sf_unver['clearance_seal']['code'], 'pending')

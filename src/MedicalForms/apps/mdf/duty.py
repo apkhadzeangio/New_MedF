@@ -97,7 +97,10 @@ _CTRL_AND_BIDI = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u202a-\u202e\u2066-
 
 
 def strip_astral(text):
-    return _CTRL_AND_BIDI.sub('', _ASTRAL.sub('', text or ''))
+    if text is None:
+        return ''
+    s = text if isinstance(text, str) else str(text)
+    return _CTRL_AND_BIDI.sub('', _ASTRAL.sub('', s))
 
 
 def clean_html(html):

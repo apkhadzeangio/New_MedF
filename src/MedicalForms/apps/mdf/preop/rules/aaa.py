@@ -31,26 +31,26 @@ def _eval_aaa_anatomy(ctx, aaa_morph, aaa_neck, pop_scr):
             ctx.red_flags.append(msg)
             ctx.priority_flags.append(msg)
         elif aaa_mm < min_thresh:
-            if aaa_morph in ('saccular', 'rapid_growth', 'inflammatory'):
-                morph_reason = {
-                    'saccular': 'საკულარული მორფოლოგია',
-                    'rapid_growth': 'სწრაფი ზრდის დინამიკა (≥10 მმ/წ)',
-                    'inflammatory': 'ანთებითი მორფოლოგია / პერიაორტიტი',
-                }[aaa_morph]
+            if aaa_morph == 'saccular':
                 ctx.amber_flags.append(
-                    f'ESVS 2024: {morph_reason} ({aaa_mm} მმ) — '
+                    f'ESVS 2024: საკულარული მორფოლოგია ({aaa_mm} მმ) — '
                     f'ოპერაციული ჩვენება დასაბუთებულია სტანდარტულ დიამეტრამდეც ({min_thresh} მმ).'
+                )
+            elif aaa_morph == 'rapid_growth':
+                ctx.amber_flags.append(
+                    f'ESVS 2024: სწრაფი ზრდის დინამიკა (≥10 მმ/წ, {aaa_mm} მმ) — '
+                    f'სტანდარტულ ზღვრამდე ({min_thresh} მმ) ჩარევამდე გადაამოწმეთ გაზომვა ჭეშმარიტი ზრდის დასადასტურებლად (Class IIa/C).'
                 )
             elif aaa_morph != 'inflammatory_mycotic' and not (q_filled and q.get('aaa_pain')):
                 ctx.red_flags.append(
                     f'ფუზიფორმული ანევრიზმის დიამეტრი ({aaa_mm} მმ) სტანდარტულ ზღვარზე (< {min_thresh} მმ) ნაკლებია '
                     '(ESVS 2024 Class III) — გეგმური ოპერაციული ჩვენება გადაამოწმეთ ქირურგთან!'
                 )
-        if patient.age is not None and patient.age < young_age:
-            ctx.amber_flags.append(
-                f'ახალგაზრდა ასაკში გამოვლენილი აორტის ანევრიზმა ({patient.age} წ. < {young_age} წ.) — ESVS 2024: '
-                'გამოირიცხოს შემაერთებელი ქსოვილის გენეტიკური არტერიოპათია (Marfan / Loeys-Dietz / ვასკულიტი) და მთელი აორტის პათოლოგია.'
-            )
+    if ctx.age is not None and ctx.age < young_age:
+        ctx.amber_flags.append(
+            f'ახალგაზრდა ასაკში გამოვლენილი აორტის ანევრიზმა ({ctx.age} წ. < {young_age} წ.) — ESVS 2024: '
+            'გამოირიცხოს შემაერთებელი ქსოვილის გენეტიკური არტერიოპათია (Marfan / Loeys-Dietz / ვასკულიტი) და მთელი აორტის პათოლოგია.'
+        )
 
     if aaa_neck == 'hostile_neck':
         if patient.op_subtype == 'evar':
@@ -61,7 +61,7 @@ def _eval_aaa_anatomy(ctx, aaa_morph, aaa_neck, pop_scr):
         elif patient.op_subtype == 'open':
             ctx.amber_flags.append(
                 'CTA-ზე რთული პროქსიმალური ყელი (Hostile / იუქსტარენალური ყელი) ღია რეზექციაზე — '
-                'დაიგეგმოს იუქსტა-/სუპრარენალური კლამპირების მზადყოფნა და თირკმლის ცივი პერფუზია / მანიტოლი!'
+                'დაიგეგმოს იუქსტა-/სუპრარენალური კლამპირების მზადყოფნა და თირკმლის ცივი პერფუზია (>25 წთ იშემიისას — ESVS 2024)!'
             )
         elif patient.op_subtype == 'tbd':
             ctx.amber_flags.append(
@@ -103,7 +103,7 @@ def eval_aaa(ctx):
 
     if q_filled and q.get('cfs_level') == '5_plus' and patient.op_subtype == 'open':
         ctx.amber_flags.append('დაუძლურების მაღალი ინდექსი (CFS ≥ 5) — ESVS 2024-ით ღია რეზექციასთან შედარებით განიხილეთ EVAR ან რისკის გადაფასება.')
-    if s.get('aaa_iliac_access') == 'narrow_calcified':
+    if s.get('aaa_iliac_access') == 'narrow_calcified' and patient.op_subtype in ('evar', 'tbd'):
         ctx.amber_flags.append('CTA-ზე ვიწრო (<7 მმ) ან მძიმედ კალციფიცირებული თეძო-ბარძაყის მიდგომა — EVAR-ისას საჭიროა Iliac Conduit / მიდგომის დაგეგმვა.')
     elif s.get('aaa_iliac_access') == 'iliac_aneurysm':
         ctx.amber_flags.append('თანმხლები თეძოს არტერიის ანევრიზმა CTA-ზე — დასაგეგმია შიგნითა თეძოს არტერიის (IIA) შენარჩუნება.')

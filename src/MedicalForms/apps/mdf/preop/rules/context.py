@@ -17,6 +17,7 @@ from ..calculators import (
 )
 from ..constants import CASE_OUTCOME_CHOICES
 from ..meds import _detect_freetext_high_risk_meds, _effective_allergy_state
+from ..registry import rule_value
 from ..utils import (
     _int,
     _num,
@@ -27,6 +28,53 @@ from ..utils import (
     prep_days_elapsed,
     target_prep_days,
 )
+
+_IMPLAUSIBLE_SPEC = (
+    ('bp_sys', 'SBP', 30, 320), ('bp_dia', 'DBP', 20, 220),
+    ('bp_sys_l', 'SBP (L)', 30, 320), ('bp_dia_l', 'DBP (L)', 20, 220),
+    ('hr', 'HR', 15, 260), ('spo2', 'SpO2', 30, 100),
+    ('weight_kg', 'წონა', 25, 260), ('height_cm', 'სიმაღლე', 100, 230),
+    ('hb', 'Hb', 1, 260), ('inr', 'INR', 0.4, 20.0),
+    ('k', 'K+', 1.0, 12.0), ('na', 'Na+', 95, 190),
+    ('glucose', 'გლუკოზა', 0.5, 1000), ('hba1c', 'HbA1c', 3.0, 25.0),
+    ('albumin', 'ალბუმინი', 0.5, 80), ('ferritin', 'ფერიტინი', 1, 5000),
+    ('tsat', 'TSAT', 1, 100), ('lvef', 'LVEF', 5, 95),
+    ('nt_probnp', 'NT-proBNP', 1, 100000), ('hs_ctn', 'hs-cTn', 0.1, 50000),
+    ('aaa_mm', 'AAA მმ', 10, 200), ('carotid_r', 'ICA R', 0, 100),
+    ('carotid_l', 'ICA L', 0, 100), ('abi_r', 'ABI R', 0.0, 3.0),
+    ('abi_l', 'ABI L', 0.0, 3.0), ('tp_r', 'TP R', 0, 400),
+    ('tp_l', 'TP L', 0, 400), ('tbi_r', 'TBI R', 0.0, 3.0),
+    ('tbi_l', 'TBI L', 0.0, 3.0), ('urine_wbc', 'შარდის WBC', 0, 2000),
+    ('spiro_fev1', 'FEV1', 10, 160), ('ven_gsv_mm', 'GSV მმ', 1, 50),
+    ('pad_gsv_mm', 'PAD GSV მმ', 0.5, 30), ('dos_bp_sys', 'DoS SBP', 40, 300),
+    ('dos_bp_dia', 'DoS DBP', 20, 200), ('dos_glucose', 'DoS გლუკოზა', 0.5, 1000),
+    ('dos_inr', 'DoS INR', 0.5, 15.0),
+)
+
+
+def _has_raw(val):
+    return val is not None and str(val).strip() != ''
+
+
+def _detect_implausible_fields(s, creat_unit, creat_unit_ambiguous):
+    bad = []
+    for key, lbl, lo, hi in _IMPLAUSIBLE_SPEC:
+        raw = s.get(key)
+        if _has_raw(raw) and _num(raw, lo=lo, hi=hi) is None:
+            bad.append(f'{lbl}={raw}')
+    if _has_raw(s.get('creat')) and not creat_unit_ambiguous:
+        scr_mg, _ = _parse_scr_mgdl(s.get('creat'), creat_unit)
+        if scr_mg is None:
+            bad.append(f"კრეატინინი={s.get('creat')}")
+    if _has_raw(s.get('fibrinogen')):
+        from ..calculators import normalize_fibrinogen_gl
+        if normalize_fibrinogen_gl(s.get('fibrinogen')) is None:
+            bad.append(f"ფიბრინოგენი={s.get('fibrinogen')}")
+    if _has_raw(s.get('wbc')) and _num(s.get('wbc'), lo=0.1, hi=150000) is None:
+        bad.append(f"WBC={s.get('wbc')}")
+    if _has_raw(s.get('plt')) and _num(s.get('plt'), lo=1, hi=2000000) is None:
+        bad.append(f"PLT={s.get('plt')}")
+    return bad
 
 
 class EvalContext(SimpleNamespace):
@@ -42,17 +90,14 @@ def _init_limb_hemodynamics(ctx):
     tbi_r = _num(s.get('tbi_r'), lo=0.0, hi=3.0)
     tbi_l = _num(s.get('tbi_l'), lo=0.0, hi=3.0)
 
-    # Side-aware limb hemodynamics: unilateral limbs never let contralateral TP/ABI mask ipsilateral ischemia/calcinosis
     unilateral_limb_pw = pathway in (PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA, PreopPatient.Pathway.VENOUS)
+    unilateral_specified = unilateral_limb_pw and patient.side in ('R', 'L')
     if unilateral_limb_pw and patient.side == 'R':
-        scope_legs = ('R',)
-        contra_abi, contra_tp = abi_l, tp_l
+        scope_legs, contra_abi, contra_tp = ('R',), abi_l, tp_l
     elif unilateral_limb_pw and patient.side == 'L':
-        scope_legs = ('L',)
-        contra_abi, contra_tp = abi_r, tp_r
+        scope_legs, contra_abi, contra_tp = ('L',), abi_r, tp_r
     else:
-        scope_legs = ('R', 'L')
-        contra_abi, contra_tp = None, None
+        scope_legs, contra_abi, contra_tp = ('R', 'L'), None, None
 
     leg_vals = {
         'R': {'abi': abi_r, 'tp': tp_r, 'tbi': tbi_r},
@@ -65,9 +110,10 @@ def _init_limb_hemodynamics(ctx):
     all_tps = [v for v in (tp_r, tp_l) if v is not None]
     all_tbis = [v for v in (tbi_r, tbi_l) if v is not None]
 
-    eff_abis = scoped_abis if scoped_abis else all_abis
-    eff_tps = scoped_tps if scoped_tps else all_tps
-    eff_tbis = scoped_tbis if scoped_tbis else all_tbis
+    # Never leak contralateral limb ABI/TP into target-limb hemodynamics when side R/L is specified
+    eff_abis = scoped_abis if unilateral_specified else all_abis
+    eff_tps = scoped_tps if unilateral_specified else all_tps
+    eff_tbis = scoped_tbis if unilateral_specified else all_tbis
 
     min_abi = min(eff_abis, default=None)
     max_abi = max(eff_abis, default=None)
@@ -76,7 +122,7 @@ def _init_limb_hemodynamics(ctx):
     min_tbi = min(eff_tbis, default=None)
 
     nc_legs = [lg for lg in scope_legs if leg_vals[lg]['abi'] is not None and leg_vals[lg]['abi'] > 1.40]
-    if not nc_legs and not scoped_abis:
+    if not nc_legs and not unilateral_specified and not scoped_abis:
         nc_legs = [lg for lg in ('R', 'L') if leg_vals[lg]['abi'] is not None and leg_vals[lg]['abi'] > 1.40]
     abi_non_compressible = bool(nc_legs)
     if nc_legs:
@@ -87,12 +133,13 @@ def _init_limb_hemodynamics(ctx):
             for lg in nc_legs
         )
     else:
-        tbi_measured = bool(scoped_tps or scoped_tbis) if unilateral_limb_pw and patient.side in ('R', 'L') else bool(all_tps or all_tbis)
+        tbi_measured = bool(scoped_tps or scoped_tbis) if unilateral_specified else bool(all_tps or all_tbis)
         tbi_comp_safe = True
 
     compression_contra = bool(
         (min_comp_abi is not None and min_comp_abi < 0.80)
-        or (abi_non_compressible and ((min_tp is not None and min_tp < 50) or (min_tbi is not None and min_tbi < 0.50)))
+        or (min_tp is not None and min_tp < 50)
+        or (min_tbi is not None and min_tbi < 0.50)
     )
     tbi_reduced_comp = bool(abi_non_compressible and tbi_measured and not compression_contra and not tbi_comp_safe)
     caprini_score, caprini_tier, caprini_advice = calc_caprini(
@@ -101,9 +148,7 @@ def _init_limb_hemodynamics(ctx):
         compression_contra=compression_contra,
     )
 
-    ctx.abi_r, ctx.abi_l = abi_r, abi_l
-    ctx.tp_r, ctx.tp_l = tp_r, tp_l
-    ctx.tbi_r, ctx.tbi_l = tbi_r, tbi_l
+    ctx.abi_r, ctx.abi_l, ctx.tp_r, ctx.tp_l, ctx.tbi_r, ctx.tbi_l = abi_r, abi_l, tp_r, tp_l, tbi_r, tbi_l
     ctx.contra_abi, ctx.contra_tp = contra_abi, contra_tp
     ctx.scoped_abis, ctx.scoped_tps, ctx.scoped_tbis = scoped_abis, scoped_tps, scoped_tbis
     ctx.min_abi, ctx.max_abi, ctx.min_comp_abi = min_abi, max_abi, min_comp_abi
@@ -115,47 +160,44 @@ def _init_limb_hemodynamics(ctx):
 
 
 def _init_base_flags_and_pre_reflex(ctx):
-    q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
+    q, s = ctx.q, ctx.s
     ctx.pad_gsv_mm = _num(s.get('pad_gsv_mm'), lo=0.5, hi=30)
     ctx.ldl_val = normalize_ldl_mmol(s.get('ldl'))
     ctx.weight_num = _num(s.get('weight_kg'), lo=25, hi=260)
 
-    ctx.ipsi_car = None
-    ctx.contra_car = None
-    ctx.is_symp_cea = False
-    ctx.is_clti_any = False
+    ctx.ipsi_car, ctx.contra_car, ctx.is_symp_cea, ctx.is_clti_any = None, None, False, False
     ctx.days_since_ev = None
-    ctx.needs_brain_ct = False
-    ctx.needs_neuro = False
-    ctx.needs_laryngoscopy = False
-    ctx.needs_cea_antiplatelet = False
-    ctx.needs_wound_care = False
-    ctx.needs_abi_check = False
-    ctx.needs_tbi_check = False
-    ctx.needs_vte_prophylaxis = False
-    ctx.needs_ecg_venous = False
-    ctx.needs_alt_vein = False
-    ctx.cea_high_surg_risk = False
-    ctx.lidocaine_max_mg = None
-    ctx.key_badge = ''
-    ctx.key_badge_urgent = False
+    ctx.needs_brain_ct = ctx.needs_neuro = ctx.needs_laryngoscopy = ctx.needs_cea_antiplatelet = False
+    ctx.needs_wound_care = ctx.needs_abi_check = ctx.needs_tbi_check = False
+    ctx.needs_vte_prophylaxis = ctx.needs_ecg_venous = ctx.needs_alt_vein = False
+    ctx.cea_high_surg_risk = ctx.key_badge_urgent = False
+    ctx.lidocaine_max_mg, ctx.key_badge = None, ''
 
     ctx.med_chips = set(q.get('med_chips') or [])
     ctx.cad_chips = set(q.get('cad_chips') or [])
     ctx.allergy_chips, ctx.eff_allergy_iodine, ctx.ft_allergy_matched = _effective_allergy_state(q)
     ctx.ft_meds = _detect_freetext_high_risk_meds(q.get('other_meds') or '', q=q)
-    ctx.unclarified_allergy_other = bool(q_filled and q.get('allergy_other') and not ctx.allergy_chips and not ctx.eff_allergy_iodine)
+    has_unmatched_allergy_text = (
+        bool((q.get('allergy_text') or '').strip())
+        and not ctx.ft_allergy_matched and not ctx.allergy_chips and not ctx.eff_allergy_iodine
+    )
+    ctx.unclarified_allergy_other = bool(
+        (q.get('allergy_other') and not ctx.allergy_chips and not ctx.eff_allergy_iodine)
+        or has_unmatched_allergy_text
+    )
     ctx.vasc_chips = set(q.get('vasc_chips') or [])
     ctx.anesth_lines_set = set(s.get('anesth_lines_chips') or [])
     ctx.has_statin = ('statin' in ctx.med_chips) or any(
-        w in (q.get('other_meds') or '').lower() for w in ('სტატინ', 'ატორვ', 'როზუვ', 'კრესტორ', 'ლიპრიმ')
+        w in (q.get('other_meds') or '').lower()
+        for w in ('სტატინ', 'ატორვ', 'როზუვ', 'კრესტორ', 'ლიპრიმ', 'statin', 'atorvast', 'rosuvast', 'simvast', 'ezetimib')
     )
     ctx.has_antiplatelet = bool(
         q.get('med_aspirin') or q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel')
     )
+    # Cilostazol is a vasodilator/PDE3 inhibitor, NOT an ESC/ESVS guideline substitute for antiplatelet therapy
     ctx.has_any_antithrombotic = bool(
         ctx.has_antiplatelet or q.get('med_doac') or q.get('med_dabigatran')
-        or q.get('med_warfarin') or ('rivaroxaban_2_5' in ctx.med_chips) or ('cilostazol' in ctx.med_chips)
+        or q.get('med_warfarin') or ('rivaroxaban_2_5' in ctx.med_chips)
     )
 
     if s.get('case_wifi_unsalvageable'):
@@ -173,11 +215,15 @@ def _init_base_flags_and_pre_reflex(ctx):
             'action': 'სამიზნე კიდურზე თითის წნევის (Toe Pressure, mmHg) ან თით-მხრის ინდექსის (TBI) განსაზღვრა რეალური პერფუზიის შესაფასებლად',
             'done': ctx.tbi_measured,
         })
-        if not ctx.is_venous and ((ctx.min_tp is not None and ctx.min_tp < 30) or (ctx.min_tbi is not None and ctx.min_tbi < 0.30)):
-            ctx.amber_flags.append(
-                f'კრიტიკულად დაბალი Toe Pressure / TBI (TP {ctx.min_tp if ctx.min_tp is not None else "—"} mmHg / '
-                f'TBI {ctx.min_tbi if ctx.min_tbi is not None else "—"}) — ადასტურებს მძიმე იშემიას (CLTI).'
-            )
+    hemo_cfg = rule_value('PAD_CLTI_HEMO_THRESHOLDS')
+    if not ctx.is_venous and (
+        (ctx.min_tp is not None and ctx.min_tp < hemo_cfg['tp_severe'])
+        or (ctx.min_tbi is not None and ctx.min_tbi < hemo_cfg['tbi_severe'])
+    ):
+        ctx.amber_flags.append(
+            f'კრიტიკულად დაბალი Toe Pressure / TBI (TP {ctx.min_tp if ctx.min_tp is not None else "—"} mmHg / '
+            f'TBI {ctx.min_tbi if ctx.min_tbi is not None else "—"}) — ადასტურებს მძიმე იშემიას (CLTI).'
+        )
 
 
 def init_eval_context(patient, today=None):
@@ -195,9 +241,11 @@ def init_eval_context(patient, today=None):
         creat_unit, on_dialysis=on_dialysis, height_cm=s.get('height_cm'),
     )
     car_r, car_l = _int(s.get('carotid_r'), lo=0, hi=100), _int(s.get('carotid_l'), lo=0, hi=100)
+    implausible_fields = _detect_implausible_fields(s, creat_unit, creat_unit_ambiguous)
 
     ctx = EvalContext(
         patient=patient,
+        age=_int(patient.age, lo=1, hi=120),
         today=today,
         pathway=pathway,
         is_venous=(pathway == PreopPatient.Pathway.VENOUS),
@@ -217,6 +265,7 @@ def init_eval_context(patient, today=None):
         reflex_orders=[],
         priority_flags=[],
         hard_contraindications=[],
+        implausible_fields=implausible_fields,
         hb_gl=normalize_hb_gl(s.get('hb')),
         gl_mmol=normalize_glucose_mmol(s.get('glucose')),
         alb_gl=normalize_albumin_gl(s.get('albumin')),
@@ -234,6 +283,11 @@ def init_eval_context(patient, today=None):
         car_l=car_l,
         max_car=max([v for v in (car_r, car_l) if v is not None], default=None),
     )
+    if implausible_fields:
+        ctx.red_flags.append(
+            f'შეყვანილია დაუშვებელი / დიაპაზონს გარეთა მნიშვნელობა ({", ".join(implausible_fields[:4])}) — '
+            'გადაამოწმეთ ლაბორატორიული ერთეული და მაჩვენებლები!'
+        )
     _init_limb_hemodynamics(ctx)
     _init_base_flags_and_pre_reflex(ctx)
     return ctx

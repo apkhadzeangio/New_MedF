@@ -139,7 +139,7 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
             'weight_kg': '112', 'height_cm': '174',
         })
         self.client.post(reverse('preop-patient', args=[cea.pk]), {
-            'section': 'stage1',
+            'section': 'stage1', 'labs_date': today.isoformat(), 'spo2': '97',
             'weight_kg': '112', 'height_cm': '174',
             'hb': '142', 'plt': '230', 'inr': '1.02', 'creat': '88', 'urine_wbc': '2',
             'carotid_r': '85', 'carotid_l': '30',

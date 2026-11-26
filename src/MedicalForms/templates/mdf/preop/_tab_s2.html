@@ -76,7 +76,7 @@
                             {% if q.on_dialysis %}
                             <strong>დიალიზის პერიოპერაციული გეგმა:</strong> უჰეპარინო დიალიზი ოპერაციის წინა დღეს + სისხლის K⁺ კონტროლი ნეფროლოგთან
                             {% else %}
-                            <strong>რეფლექს-პაკეტი (eGFR {{ ev.egfr }} &lt; 45):</strong> შარდოვანა, Ca/P, თირკმელების ექო + ნეფროლოგის კონსულტაცია
+                            <strong>რეფლექს-პაკეტი (CrCl/eGFR {{ ev.eff_renal|default:ev.egfr }} &lt; 45):</strong> შარდოვანა, Ca/P, თირკმელების ექო + ნეფროლოგის კონსულტაცია
                             {% endif %}
                         </span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="nephro_panel_done" value="1" {% if s.nephro_panel_done %}checked{% endif %}>შესრულდა ✓</label>
@@ -85,7 +85,7 @@
 
                     {% if ev.needs_hydration %}
                     <div class="po-task-row reflex-row {% if s.hydration_planned %}done{% endif %}">
-                        <span><strong>კონტრასტ-ნეფროპროტექცია (eGFR {{ ev.egfr }} &lt; 60):</strong> იზოტონური ჰიდრატაცია (0.9% NaCl) ჩარევის წინ და შემდეგ{% if ev.max_contrast_ml is not None %} · მაქს. კონტრასტი &le; {{ ev.max_contrast_ml }} მლ{% endif %}</span>
+                        <span><strong>კონტრასტ-ნეფროპროტექცია (CrCl/eGFR {{ ev.eff_renal|default:ev.egfr }} &lt; 60):</strong> {% if s.na is not None and s.na >= 150 %}<span class="text-danger fw-bold">ჰიპერნატრიემია (Na⁺ {{ s.na }}) — 0.9% NaCl აკრძალულია; ჰიპოტონური ხსნარი ინტენსივისტთან (ΔNa⁺ &le;8/24სთ)</span>{% else %}იზოტონური ჰიდრატაცია (0.9% NaCl) ჩარევის წინ და შემდეგ{% endif %}{% if ev.max_contrast_ml is not None %} · მაქს. კონტრასტი &le; {{ ev.max_contrast_ml }} მლ{% endif %}</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="hydration_planned" value="1" {% if s.hydration_planned %}checked{% endif %}>დაგეგმილია ✓</label>
                     </div>
                     {% endif %}
@@ -104,7 +104,7 @@
 
                     {% if ev.needs_dental %}
                     <div class="po-task-row reflex-row {% if s.dental_sanitation_done %}done{% endif %}">
-                        <span><strong>რეფლექს-სანაცია პროთეზირებამდე:</strong> სტომატოლოგის სანაცია (წერილობითი ცნობა) + {% if 'latex_chlorhex' in q.allergy_chips %}პოვიდონ-იოდი (ქლორჰექსიდინზე ალერგიის გამო!){% else %}ქლორჰექსიდინი{% endif %}</span>
+                        <span><strong>რეფლექს-სანაცია პროთეზირებამდე:</strong> სტომატოლოგის სანაცია (წერილობითი ცნობა) + {% if 'latex_chlorhex' in ev.eff_allergy_chips %}პოვიდონ-იოდი (ქლორჰექსიდინზე ალერგიის გამო!){% else %}ქლორჰექსიდინი{% endif %}</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="dental_sanitation_done" value="1" {% if s.dental_sanitation_done %}checked{% endif %}>სანირებულია ✓</label>
                     </div>
                     {% endif %}

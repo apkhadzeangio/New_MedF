@@ -62,7 +62,8 @@ class PreopStageP3ReferenceHardeningTests(PrivateMediaTest):
         self.assertIn('ამლოდიპინი / CCB', sched_open)
         self.assertIn('SBP ≥ 110', sched_open['ამლოდიპინი / CCB']['rule'])
         self.assertIn('ამიოდარონი', sched_open)
-        self.assertEqual(sched_open['ამიოდარონი']['tone'], 'ok')
+        self.assertEqual(sched_open['ამიოდარონი']['tone'], 'amber')
+        self.assertFalse(sched_open['ამიოდარონი']['hold_or_skip'])
         # HFrEF ('hf' chip) keeps ACEi/ARB instead of blind 24h hold!
         self.assertIn('HFrEF', sched_open['ACEi / ARB (პრილი/სარტანი)']['rule'])
 
@@ -489,7 +490,15 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
             studies={'carotid_r': 35, 'carotid_l': 85, 'cea_cta_status': 'concordant', 'brain_imaging': 'normal_small'},
         )
         ev_cea = evaluate(p_cea, today=today)
-        self.assertFalse(ev_cea['needs_cea_antiplatelet'])
+        # ESVS 2023 Rec 47 (CEA-04): after >=24h with ICH excluded, aspirin is required; within <24h (day 0) it is withheld
+        self.assertTrue(ev_cea['needs_cea_antiplatelet'])
+        p_cea_d0 = PreopPatient(
+            patient_name='თრომბოლიზ დღე0', age=69, sex='F', side='L',
+            pathway='cea', op_subtype='cea_symp',
+            questionnaire={'filled': True, 'cea_symp_event': True, 'cea_event_date': today.isoformat(), 'cea_thrombolysis': True, 'mets_ok': True},
+            studies={'carotid_r': 35, 'carotid_l': 85, 'cea_cta_status': 'concordant', 'brain_imaging': 'normal_small'},
+        )
+        self.assertFalse(evaluate(p_cea_d0, today=today)['needs_cea_antiplatelet'])
         self.assertIn('ჰემორაგიული ტრანსფორმაციის', ev_cea['surgical_brief']['heparin_plan'])
         self.assertIn('SBP < 140–150 mmHg', ev_cea['anesthetic_brief']['bp_corridor'])
 
@@ -539,7 +548,8 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
             'cea_event_chips': ['tia'], 'med_aspirin': '1', 'med_chips': ['statin'], 'mets_ok': '1',
         })
         self.client.post(reverse('preop-patient', args=[p.pk]), {
-            'section': 'stage1', 'bp_sys': '136', 'bp_dia': '80', 'hr': '72', 'spo2': '98',
+            'section': 'stage1', 'labs_date': today.isoformat(),
+            'bp_sys': '136', 'bp_dia': '80', 'hr': '72', 'spo2': '98',
             'hb': '142', 'plt': '230', 'inr': '1.02', 'creat': '84', 'creat_unit': 'umol',
             'glucose': '5.4', 'carotid_r': '85', 'carotid_l': '30',
             'cea_cta_status': 'concordant', 'brain_imaging': 'normal_small',

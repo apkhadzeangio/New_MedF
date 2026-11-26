@@ -131,39 +131,55 @@ def make_self_fill_token(patient):
     return TimestampSigner(salt=SELF_FILL_SALT).sign(payload)
 
 
+def is_symp_cea_patient(patient, q=None, today=None, s=None, require_filled=True):
+    """Canonical 6-month symptomatic CEA determination shared across engine, meds, utils, and calculators."""
+    if _resolve_pathway(patient) != PreopPatient.Pathway.CEA:
+        return False
+    from .registry import rule_value
+    _, _, symp_max_days = rule_value('CEA_SYMP_WINDOW_DAYS')
+    q_d = q if isinstance(q, dict) else (patient.questionnaire if isinstance(patient.questionnaire, dict) else {})
+    s_d = s if isinstance(s, dict) else (patient.studies if isinstance(patient.studies, dict) else {})
+    q_ok = bool(q_d.get('filled')) if require_filled else True
+    days_ev = cea_live_days_since_event(q_d, today=today, s=s_d)
+    symp_within_6m = (days_ev is None) or (days_ev <= symp_max_days)
+    return bool(
+        (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP and symp_within_6m)
+        or (q_ok and bool(q_d.get('cea_symp_event')) and symp_within_6m)
+    )
+
+
 def target_prep_days(patient, today=None):
-    """Pathway-specific preoperative workup target limit (days), honoring 6-month CEA symptom & CLTI flags."""
+    """Pathway-specific preoperative workup target limit (days), reading canonical WF_PREP_TARGET_DAYS registry."""
+    from .registry import rule_value
+    cfg = rule_value('WF_PREP_TARGET_DAYS')
     pw = _resolve_pathway(patient)
     q = patient.questionnaire if isinstance(patient.questionnaire, dict) else {}
     s = patient.studies if isinstance(patient.studies, dict) else {}
     q_filled = bool(q.get('filled'))
     if pw == PreopPatient.Pathway.CEA:
-        days_ev = cea_live_days_since_event(q, today=today, s=s)
-        symp_within_6m = (days_ev is None) or (days_ev <= 180)
-        is_symp = (
-            (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP and symp_within_6m)
-            or (q_filled and bool(q.get('cea_symp_event')) and symp_within_6m)
-        )
-        return 5 if is_symp else 10
+        is_symp = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=True)
+        return cfg['cea_symp'] if is_symp else cfg['elective_art']
     has_clti_q = q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')))
     if pw == PreopPatient.Pathway.ABF:
-        return 7 if (patient.op_subtype == PreopPatient.OpSubtype.ABF_CLTI or has_clti_q) else 14
+        return cfg['aaa_clti'] if (patient.op_subtype == PreopPatient.OpSubtype.ABF_CLTI or has_clti_q) else cfg['elective_art']
     if pw == PreopPatient.Pathway.PAD_BYPASS:
-        return 7 if (patient.op_subtype == PreopPatient.OpSubtype.BYPASS_CLTI or has_clti_q) else 14
+        return cfg['aaa_clti'] if (patient.op_subtype == PreopPatient.OpSubtype.BYPASS_CLTI or has_clti_q) else cfg['elective_art']
     if pw == PreopPatient.Pathway.PAD_PTA:
-        return 7 if (patient.op_subtype == PreopPatient.OpSubtype.PTA_CLTI or has_clti_q) else 14
+        return cfg['aaa_clti'] if (patient.op_subtype == PreopPatient.OpSubtype.PTA_CLTI or has_clti_q) else cfg['elective_art']
     if pw == PreopPatient.Pathway.VENOUS:
-        return 14
+        return cfg['venous']
+    if pw == PreopPatient.Pathway.AAA_INFRA:
+        return cfg['aaa_clti']
     return TARGET_PREP_DAYS
 
 
 def prep_days_elapsed(patient, today=None):
     """Days elapsed since preoperative workup began (pauses on HOLD, freezes on approve/operated/cancelled)."""
-    today = today or timezone.localdate()
+    today = _date(today) or timezone.localdate()
     q = patient.questionnaire if isinstance(patient.questionnaire, dict) else {}
     s = patient.studies if isinstance(patient.studies, dict) else {}
     q_filled = bool(q.get('filled'))
-    candidates = [d for d in (patient.started_on, patient.visit_date) if isinstance(d, datetime.date)]
+    candidates = [d for d in (_date(patient.started_on), _date(patient.visit_date)) if d is not None]
     if not candidates:
         return 0
     start = min(candidates)
@@ -173,7 +189,10 @@ def prep_days_elapsed(patient, today=None):
     out_rec_dt = _date(s.get('outcome_recorded_on'))
 
     if patient.approved_at:
-        end_day = timezone.localtime(patient.approved_at).date()
+        if isinstance(patient.approved_at, datetime.datetime):
+            end_day = timezone.localtime(patient.approved_at).date() if timezone.is_aware(patient.approved_at) else patient.approved_at.date()
+        else:
+            end_day = _date(patient.approved_at) or today
     elif outcome == 'operated' and op_done_dt:
         end_day = op_done_dt
     elif outcome.startswith('cancelled_') and (out_rec_dt or op_done_dt):

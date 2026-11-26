@@ -46,7 +46,7 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
             'med_chips': ['statin'], 'mets_ok': '1',
         })
         self.client.post(reverse('preop-patient', args=[cea.pk]), {
-            'section': 'stage1',
+            'section': 'stage1', 'labs_date': today.isoformat(), 'spo2': '98',
             'hb': '142', 'creat': '84', 'inr': '1.0', 'urine_wbc': '1',
             'carotid_r': '85', 'carotid_l': '30',
             'cea_cta_status': 'concordant', 'brain_imaging': 'normal_small',
@@ -218,7 +218,7 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
             'med_aspirin': '1', 'med_chips': ['statin', 'beta_blocker'], 'mets_ok': '1',
         })
         self.client.post(reverse('preop-patient', args=[p.pk]), {
-            'section': 'stage1',
+            'section': 'stage1', 'labs_date': today.isoformat(),
             'bp_sys': '134', 'bp_dia': '78', 'hr': '78', 'irregular_hr': '1', 'spo2': '96',
             'hb': '136', 'creat': '88', 'inr': '1.04', 'urine_wbc': '2',
             'carotid_r': '25', 'carotid_l': '20', 'lvef': '36', 'aaa_mm': '72',
@@ -353,7 +353,8 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
             'section': 'questionnaire', 'side': 'R', 'ven_ceap': 'C5', 'dm': '1', 'mets_ok': '1',
         })
         self.client.post(reverse('preop-patient', args=[ven.pk]), {
-            'section': 'stage1', 'hb': '130', 'plt': '230', 'inr': '1.0', 'glucose': '6.1',
+            'section': 'stage1', 'labs_date': today.isoformat(),
+            'hb': '130', 'plt': '230', 'inr': '1.0', 'glucose': '6.1',
             'ven_duplex_status': 'deep_patent_reflux', 'ecg': 'normal',
         })
         self.client.post(reverse('preop-patient', args=[ven.pk]), {

@@ -38,7 +38,7 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
         #    Creatinine 168 (eGFR < 45 & < 60), stale labs (>14 days ago)
         stale_dt = (today - timedelta(days=18)).isoformat()
         self.client.post(reverse('preop-patient', args=[p.pk]), {
-            'section': 'stage1',
+            'section': 'stage1', 'weight_kg': '78', 'height_cm': '174',
             'bp_sys': '136', 'bp_dia': '82', 'hr': '68', 'spo2': '97',
             'hb': '108', 'wbc': '7.1', 'plt': '215', 'inr': '1.08', 'fibrinogen': '3.4',
             'creat': '168', 'k': '4.4', 'na': '139', 'glucose': '8.4', 'albumin': '39', 'ldl': '1.9',
@@ -199,9 +199,10 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
             'side': 'R', 'abf_rest_pain': '1',
             'med_aspirin': '1', 'med_chips': ['statin'], 'mets_ok': '1',
         })
+        from django.utils import timezone
         # Ipsilateral GSV is 2.3 mm (< 3.0 mm) -> automatically triggers contralateral/arm vein mapping!
         self.client.post(reverse('preop-patient', args=[byp.pk]), {
-            'section': 'stage1',
+            'section': 'stage1', 'labs_date': timezone.localdate().isoformat(), 'spo2': '98',
             'hb': '136', 'creat': '86', 'inr': '1.02', 'urine_wbc': '2',
             'abi_r': '0.34', 'abi_l': '0.88',
             'pad_runoff_status': 'tibial_single',
@@ -242,14 +243,14 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
             'med_aspirin': '1', 'med_clopidogrel': '1', 'mets_ok': '1',
         })
         # Normal eGFR (creat 82) + pta_cant_lie_flat -> lean endovascular workup: no cardiology needed, sedation anesthesia triggered
-        self.client.post(reverse('preop-patient', args=[pta.pk]), {
-            'section': 'stage1',
+        today_iso = timezone.localdate().isoformat()
+        pta_s1 = {
+            'section': 'stage1', 'labs_date': today_iso, 'spo2': '98',
             'hb': '138', 'plt': '230', 'inr': '1.01', 'glucose': '5.6', 'creat': '82',
-            'abi_r': '0.96', 'abi_l': '0.54',
-            'pta_lesion_site': 'femoropopliteal',
-            'pta_access_site': 'cfa_clean',
-            'ecg': 'normal',
-        })
+            'abi_r': '0.96', 'abi_l': '0.54', 'pta_lesion_site': 'femoropopliteal',
+            'pta_access_site': 'cfa_clean', 'ecg': 'normal',
+        }
+        self.client.post(reverse('preop-patient', args=[pta.pk]), pta_s1)
         pta.refresh_from_db()
         ev_pta = evaluate(pta)
         self.assertTrue(ev_pta['s1_core_done'])
@@ -258,25 +259,14 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
         self.assertFalse(ev_pta['needs_cardio'])
 
         # CKD3 (creat 128 -> eGFR 52 < 60) -> activates contrast hydration reflex + RCRI cardiology
-        self.client.post(reverse('preop-patient', args=[pta.pk]), {
-            'section': 'stage1',
-            'hb': '138', 'plt': '230', 'inr': '1.01', 'glucose': '5.6', 'creat': '128',
-            'abi_r': '0.96', 'abi_l': '0.54',
-            'pta_lesion_site': 'femoropopliteal',
-            'pta_access_site': 'cfa_clean',
-            'ecg': 'normal',
-        })
+        self.client.post(reverse('preop-patient', args=[pta.pk]), {**pta_s1, 'creat': '128'})
         pta.refresh_from_db()
         self.assertTrue(evaluate(pta)['needs_hydration'])
         self.assertTrue(evaluate(pta)['needs_cardio'])
 
         self.client.post(reverse('preop-patient', args=[pta.pk]), {
-            'section': 'stage2',
-            'hydration_planned': '1',
-            'dapt_ready': '1',
-            'cardiologist': 'ლიკა ინჯია',
-            'cardio_decision': 'cleared',
-            'anesth_done': '1',
+            'section': 'stage2', 'hydration_planned': '1', 'dapt_ready': '1',
+            'cardiologist': 'ლიკა ინჯია', 'cardio_decision': 'cleared', 'anesth_done': '1',
         })
         pta.refresh_from_db()
         self.assertEqual(evaluate(pta)['status'], STATUS_READY)

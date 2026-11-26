@@ -1,7 +1,7 @@
 """Clinical calculators, lab unit normalizers, risk indices (RCRI, VSG-CRI, ARISCAT, Caprini, ASA), and surveillance."""
 from ..models import PreopPatient
 from .meds import _effective_allergy_state
-from .utils import _int, _num, _resolve_pathway, _str_list, cea_live_days_since_event
+from .utils import _int, _num, _resolve_pathway, _str_list, cea_live_days_since_event, is_symp_cea_patient
 
 
 def _parse_scr_mgdl(creat, creat_unit=''):
@@ -15,7 +15,7 @@ def _parse_scr_mgdl(creat, creat_unit=''):
         return c, False
     if creat_unit == 'umol':
         return c / ren_u['umol_factor'], False
-    if 0.2 <= c <= ren_u['ambig_lo']:
+    if 0.1 <= c <= ren_u['ambig_lo']:
         return c, False
     if c >= ren_u['ambig_hi']:
         return c / ren_u['umol_factor'], False
@@ -27,14 +27,15 @@ def calc_egfr(creat, age, sex='M', creat_unit='', on_dialysis=False):
     if on_dialysis:
         return None
     scr_mgdl, _ = _parse_scr_mgdl(creat, creat_unit)
-    if scr_mgdl is None or not age or not (12 <= age <= 120) or sex not in ('M', 'F'):
+    age_v = _int(age, lo=12, hi=120)
+    if scr_mgdl is None or age_v is None or sex not in ('M', 'F'):
         return None
     female = (sex == 'F')
     kappa = 0.7 if female else 0.9
     alpha = -0.241 if female else -0.302
     mult = 1.012 if female else 1.0
     ratio = scr_mgdl / kappa
-    egfr = 142.0 * (min(ratio, 1.0) ** alpha) * (max(ratio, 1.0) ** -1.200) * (0.9938 ** age) * mult
+    egfr = 142.0 * (min(ratio, 1.0) ** alpha) * (max(ratio, 1.0) ** -1.200) * (0.9938 ** age_v) * mult
     return int(round(egfr))
 
 
@@ -44,7 +45,8 @@ def calc_crcl(creat, age, sex='M', weight_kg=None, creat_unit='', on_dialysis=Fa
         return None
     scr_mgdl, _ = _parse_scr_mgdl(creat, creat_unit)
     w = _num(weight_kg, lo=25, hi=260)
-    if scr_mgdl is None or w is None or not age or not (12 <= age <= 120) or sex not in ('M', 'F'):
+    age_v = _int(age, lo=12, hi=120)
+    if scr_mgdl is None or w is None or age_v is None or sex not in ('M', 'F'):
         return None
     h = _num(height_cm, lo=100, hi=230)
     eff_w = float(w)
@@ -53,7 +55,7 @@ def calc_crcl(creat, age, sex='M', weight_kg=None, creat_unit='', on_dialysis=Fa
         ibw = (50.0 if sex == 'M' else 45.5) + 0.9 * max(0.0, h - 152.4)
         if bmi_v >= 30.0 and w > ibw:
             eff_w = ibw + 0.4 * (w - ibw)
-    crcl = ((140.0 - age) * eff_w) / (72.0 * scr_mgdl)
+    crcl = ((140.0 - age_v) * eff_w) / (72.0 * scr_mgdl)
     if sex == 'F':
         crcl *= 0.85
     return int(round(crcl))
@@ -123,9 +125,19 @@ def calc_max_contrast_ml(egfr, on_dialysis=False):
     return min(250, int(round(egfr * 3.0)))
 
 
+def _valid_bilateral_sbp(s):
+    """Return max valid systolic BP across R/L arms, rejecting inverted readings (SBP <= DBP)."""
+    bp_sys, bp_dia = _int(s.get('bp_sys'), lo=30, hi=320), _int(s.get('bp_dia'), lo=20, hi=220)
+    bp_sys_l, bp_dia_l = _int(s.get('bp_sys_l'), lo=30, hi=320), _int(s.get('bp_dia_l'), lo=20, hi=220)
+    r_inv = (bp_sys is not None and bp_dia is not None and bp_sys <= bp_dia)
+    l_inv = (bp_sys_l is not None and bp_dia_l is not None and bp_sys_l <= bp_dia_l)
+    valid = [v for v, inv in ((bp_sys, r_inv), (bp_sys_l, l_inv)) if v is not None and not inv]
+    return max(valid, default=None)
+
+
 def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
     pts = 0
-    age = patient.age or 0
+    age = _int(patient.age, lo=1, hi=120) or 0
     if age >= 75:
         pts += 3
     elif age >= 61:
@@ -144,11 +156,13 @@ def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
     else:
         pts += 2  # major vascular surgery >45 min
 
-    if bmi is not None and bmi > 25:
+    bmi_v = _num(bmi, lo=8, hi=90)
+    if bmi_v is not None and bmi_v > 25:
         pts += 1
-    if q.get('ven_hormones'):
+    is_female = (patient.sex == 'F')
+    if is_female and q.get('ven_hormones'):
         pts += 1
-    if q.get('ven_pregnant'):
+    if is_female and (age == 0 or age <= 55) and (q.get('ven_pregnant') or q.get('pregnant_possible')):
         pts += 1
     if q.get('pulm'):
         pts += 1
@@ -160,9 +174,7 @@ def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
         and ('minor_stroke' in _str_list(q.get('cea_event_chips')) or bool(q.get('cea_disabling_stroke')))
     )
     if has_acute_stroke:
-        pts += 5  # acute stroke <1 month
-    elif q.get('neuro'):
-        pts += 1
+        pts += 5  # acute stroke <1 month (remote stroke >1m = 0 pts per Caprini 2005)
 
     if 'hf' in cad_set:
         pts += 1
@@ -182,20 +194,24 @@ def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
 def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_liver, compression_contra):
     comp_sfx = '' if compression_contra else ' + კომპრესია'
     comp_low = ' (კომპრესია უკუნაჩვენებია არტერიული უკმარისობის გამო!)' if compression_contra else ' + ელასტიური კომპრესია'
+    hit_dtis = (
+        'IV ბივალირუდინი (არგატრობანი ღვიძლის ≥3x-ზე ერიდეთ/დოზა -75%!)'
+        if severe_liver else 'IV ბივალირუდინი/არგატრობანი'
+    )
     if pts >= 5:
         tier = 'მაღალი (≥5)'
         if has_mech_valve:
             if has_hit:
-                advice = f'მექანიკური სარქველი + HIT: სტაციონარული IV ბივალირუდინი/არგატრობანი და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}'
+                advice = f'მექანიკური სარქველი + HIT: სტაციონარული {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}'
             elif severe_renal:
                 advice = f'მექანიკური სარქველი + CrCl/eGFR <30: IV UFH ხიდი aPTT კონტროლით და უვადო VKA (DOAC აკრძალულია!){comp_sfx}'
             else:
                 advice = f'მექანიკური სარქველი: ვარფარინის (VKA) აღდგენა ± LMWH ხიდი კარდიოლოგის სქემით (DOAC აკრძალულია!){comp_sfx}'
         elif has_hit:
             if severe_renal:
-                advice = f'მექანიკური თრომბოპროფილაქტიკა (IPC) / სტაციონარული ბივალირუდინი-არგატრობანი (HIT + CrCl/eGFR <30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!){comp_sfx}'
+                advice = f'მექანიკური თრომბოპროფილაქტიკა (IPC) / სტაციონარული {hit_dtis} (HIT + CrCl/eGFR <30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!){comp_sfx}'
             elif severe_liver:
-                advice = f'არაჰეპარინული პროფილაქტიკა: ფონდაპარინუქსი ან ბივალირუდინი (HIT: ჰეპარინი აკრძალულია; ღვიძლის ≥3x-ზე DOAC აკრძალულია!){comp_sfx}'
+                advice = f'არაჰეპარინული პროფილაქტიკა: IPC / IV ბივალირუდინი (HIT: ჰეპარინი აკრძალულია; ღვიძლის ≥3x-ზე DOAC და ფონდაპარინუქსი არარეკომენდებულია!){comp_sfx}'
             else:
                 advice = f'არაჰეპარინული პროფილაქტიკა: ფონდაპარინუქსი ან DOAC 7–10 დღე (HIT: LMWH/ჰეპარინი აკრძალულია!){comp_sfx}'
         elif severe_renal:
@@ -206,13 +222,15 @@ def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_
             advice = f'ფარმაკოლოგიური პროფილაქტიკა (LMWH / DOAC 7–10 დღე){comp_sfx}'
     elif pts >= 3:
         tier = 'საშუალო (3–4)'
-        if has_mech_valve:
+        if has_mech_valve and has_hit:
+            advice = f'მექანიკური სარქველი + HIT: {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}'
+        elif has_mech_valve:
             advice = f'ადრეული მობილიზაცია{comp_sfx} + უვადო ვარფარინის (VKA) რეჟიმი (DOAC აკრძალულია!)'
         elif has_hit:
             if severe_renal:
                 advice = f'ადრეული მობილიზაცია{comp_sfx} + IPC (HIT + CrCl/eGFR <30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!)'
             elif severe_liver:
-                advice = f'ადრეული მობილიზაცია{comp_sfx} ± ფონდაპარინუქსი (HIT: ჰეპარინი აკრძალულია; ღვიძლის ≥3x-ზე DOAC არა!)'
+                advice = f'ადრეული მობილიზაცია{comp_sfx} + IPC / ბივალირუდინი (HIT + ღვიძლის ≥3x: ჰეპარინი, DOAC და ფონდაპარინუქსი არა!)'
             else:
                 advice = f'ადრეული მობილიზაცია{comp_sfx} ± ფონდაპარინუქსი/DOAC (HIT: ჰეპარინი აკრძალულია!)'
         elif severe_renal:
@@ -229,12 +247,14 @@ def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_
 
 def calc_caprini(patient, q, bmi=None, today=None, eff_renal=None, liver_status='normal', compression_contra=False):
     """Auto-calculate numeric Caprini VTE score (with HIT +3 & acute stroke <1m +5) and safe VTE advice."""
+    q_d = q if isinstance(q, dict) else {}
     s_cur = patient.studies if isinstance(patient.studies, dict) else {}
-    cad_set = set(_str_list(q.get('cad_chips')))
-    eff_alg, _, _ = _effective_allergy_state(q)
+    cad_set = set(_str_list(q_d.get('cad_chips')))
+    eff_alg, _, _ = _effective_allergy_state(q_d)
     has_hit = 'hit_heparin' in eff_alg
-    pts = _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit)
-    severe_renal = bool(q.get('on_dialysis')) or (eff_renal is not None and eff_renal < 30)
+    pts = _caprini_points(patient, q_d, bmi, today, s_cur, cad_set, has_hit)
+    eff_ren_v = _num(eff_renal, lo=0, hi=300)
+    severe_renal = bool(q_d.get('on_dialysis')) or (eff_ren_v is not None and eff_ren_v < 30)
     severe_liver = (liver_status or s_cur.get('liver_status') or 'normal') == '3x'
     tier, advice = _caprini_tier_and_advice(
         pts, 'mech_valve' in cad_set, has_hit, severe_renal, severe_liver, compression_contra,
@@ -244,35 +264,37 @@ def calc_caprini(patient, q, bmi=None, today=None, eff_renal=None, liver_status=
 
 def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     """Estimate ASA Physical Status ('I'..'IV') deterministically from vascular pathway, comorbidities & acute vitals/labs."""
+    q = q if isinstance(q, dict) else {}
+    s = s if isinstance(s, dict) else {}
+    egfr_v = _num(egfr, lo=0, hi=300)
+    bmi_v = _num(bmi, lo=8, hi=90)
     pw = _resolve_pathway(patient)
     cad_chips = set(_str_list(q.get('cad_chips')))
     allergy_chips, _, _ = _effective_allergy_state(q)
-    aaa_mm = _num(s.get('aaa_mm'), lo=10, hi=200)
+    from .registry import rule_value
+    aaa_mm = _num(s.get('aaa_mm'), lo=10, hi=250)
     lvef = _int(s.get('lvef'), lo=5, hi=95)
     fev1 = _int(s.get('spiro_fev1'), lo=10, hi=160)
     hb_gl = normalize_hb_gl(s.get('hb'))
+    gl_mmol = normalize_glucose_mmol(s.get('glucose'))
     hba1c = _num(s.get('hba1c'), lo=3.0, hi=25.0)
     spo2 = _int(s.get('spo2'), lo=30, hi=100)
-    bp_sys = _int(s.get('bp_sys'), lo=30, hi=320)
-    bp_sys_l = _int(s.get('bp_sys_l'), lo=30, hi=320)
-    eff_sbp = max([v for v in (bp_sys, bp_sys_l) if v is not None], default=None)
+    eff_sbp = _valid_bilateral_sbp(s)
+    raw_sbp_low = min([v for v in (_int(s.get('bp_sys'), lo=30, hi=320), _int(s.get('bp_sys_l'), lo=30, hi=320)) if v is not None], default=None)
     hr_val = _int(s.get('hr'), lo=15, hi=260)
     k_val = _num(s.get('k'), lo=1.0, hi=12.0)
-    plt_val = _int(s.get('plt'), lo=5, hi=2000)
+    plt_val = _int(s.get('plt'), lo=1, hi=2500)
     fib_val = normalize_fibrinogen_gl(s.get('fibrinogen'))
-    inr_val = _num(s.get('inr'), lo=0.5, hi=15.0)
-    nt_probnp = _int(s.get('nt_probnp'), lo=1, hi=50000)
+    inr_val = _num(s.get('inr'), lo=0.4, hi=20.0)
+    nt_probnp = _int(s.get('nt_probnp'), lo=1, hi=100000)
     hs_ctn = _num(s.get('hs_ctn'), lo=0.1, hi=50000)
     cea_d = cea_live_days_since_event(q, today=today, s=s)
-    symp_within_6m = (cea_d is None) or (cea_d <= 180)
-    is_symp_cea = (pw == PreopPatient.Pathway.CEA) and (
-        (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP and symp_within_6m)
-        or (bool(q.get('cea_symp_event')) and symp_within_6m)
-    )
+    is_symp_cea = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=False)
+    repro_female = (patient.sex == 'F') and ((_int(patient.age, lo=1, hi=120) or 30) <= 55)
 
     if (
         bool(q.get('aaa_pain'))
-        or (aaa_mm is not None and aaa_mm >= 70)
+        or (aaa_mm is not None and aaa_mm >= rule_value('AAA_GIANT_MM'))
         or (s.get('aaa_morphology') == 'inflammatory_mycotic')
         or bool(q.get('cea_crescendo'))
         or (is_symp_cea and (cea_d is None or cea_d <= 90))
@@ -286,15 +308,16 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or (spo2 is not None and spo2 < 90)
         or (eff_sbp is not None and eff_sbp < 90)
         or (eff_sbp is not None and eff_sbp <= 100 and hr_val is not None and hr_val >= eff_sbp)
+        or (eff_sbp is None and raw_sbp_low is not None and raw_sbp_low <= 100 and hr_val is not None and hr_val >= raw_sbp_low)
         or (hr_val is not None and (hr_val >= 135 or hr_val < 40))
         or (k_val is not None and (k_val >= 6.0 or k_val < 3.0))
         or (hb_gl is not None and hb_gl < 70)
         or (plt_val is not None and plt_val < 50)
         or (fib_val is not None and fib_val < 1.2)
-        or (egfr is not None and egfr < 15 and not q.get('on_dialysis'))
+        or (egfr_v is not None and egfr_v < 15 and not q.get('on_dialysis'))
         or (s.get('tsh_status') == 'hypothyroid_severe')
         or (s.get('liver_status') == '3x' and inr_val is not None and inr_val > 1.5)
-        or (bmi is not None and bmi < 16.0)
+        or (bmi_v is not None and bmi_v < 16.0)
         or (nt_probnp is not None and nt_probnp >= 900)
         or (hs_ctn is not None and hs_ctn >= 52)
     ):
@@ -303,22 +326,25 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     if (
         pw != PreopPatient.Pathway.VENOUS
         or bool(q.get('on_dialysis'))
-        or (egfr is not None and egfr < 60)
+        or (egfr_v is not None and egfr_v < 60)
         or bool(q.get('cad'))
         or bool(q.get('neuro'))
         or (s.get('ecg') == 'afib_controlled')
+        or ('afib' in cad_chips)
         or bool(q.get('ven_dvt_history'))
         or bool(q.get('ven_cancer_immob'))
         or (s.get('liver_status') == '3x')
         or (hb_gl is not None and hb_gl < 100)
         or (hba1c is not None and hba1c >= 8.5)
+        or (gl_mmol is not None and gl_mmol >= 16.7)
         or bool(q.get('dm_insulin'))
-        or (bmi is not None and bmi >= 40)
+        or (bmi_v is not None and bmi_v >= 40)
         or bool(q.get('pacemaker'))
         or ('copd' in _str_list(q.get('pulm_chips')))
         or (spo2 is not None and spo2 < 94)
         or (eff_sbp is not None and eff_sbp >= 180)
         or (k_val is not None and (k_val >= 5.4 or k_val < 3.3))
+        or (q.get('cfs_level') == '5_plus')
     ):
         return 'III'
 
@@ -328,9 +354,8 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or bool(q.get('smoker'))
         or bool(q.get('pulm'))
         or bool(q.get('thyroid_disease'))
-        or bool(q.get('ven_pregnant'))
-        or bool(q.get('pregnant_possible'))
-        or (bmi is not None and bmi >= 30)
+        or (repro_female and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible'))))
+        or (bmi_v is not None and bmi_v >= 30)
     ):
         return 'II'
     return 'I'
@@ -341,7 +366,7 @@ def build_surveillance_plan(patient):
     pw = _resolve_pathway(patient)
     if pw == PreopPatient.Pathway.AAA_INFRA:
         if patient.op_subtype == 'evar':
-            return 'ESVS 2024 EVAR მეთვალყურეობა: კტ-ანგიოგრაფია (CTA) + დუპლექსი 30 დღეში (ენდოლიკის გამორიცხვა), შემდეგ 1 წელიწადში და ყოველწლიურად.'
+            return 'ESVS 2024 EVAR მეთვალყურეობა (რისკ-სტრატიფიცირებული): კტ-ანგიოგრაფია (CTA) 30 დღეში; დაბალი რისკისას (ენდოლიკის გარეშე, IFU-ში) — კონტროლი 5 წელიწადში, მაღალი რისკისას — ყოველწლიური CTA/დუპლექსი.'
         return 'ESVS 2024 ღია AAA მეთვალყურეობა: კლინიკური და დუპლექს-შეფასება 6–12 თვეში, შემდეგ აორტა-თეძოს CTA/დუპლექსი ყოველ 5 წელიწადში.'
     if pw == PreopPatient.Pathway.CEA:
         return 'ESVS 2023 CEA მეთვალყურეობა: საძილე არტერიების დუპლექს-სკანირება 1–3 თვეში, 6–12 თვეში და შემდეგ წელიწადში ერთხელ + BP და LDL (<1.4 მმოლ/ლ) კონტროლი.'
@@ -357,14 +382,15 @@ def build_surveillance_plan(patient):
 
 
 def _ihd_and_chf_flags(q, s):
-    """Distinguish true ischemic heart disease (IHD) and heart failure (CHF) from lone AFib/valvular disease."""
+    """Distinguish true ischemic heart disease (IHD) and clinical heart failure (CHF) for Lee RCRI & Bertges VSG-CRI."""
+    q = q if isinstance(q, dict) else {}
+    s = s if isinstance(s, dict) else {}
     q_filled = bool(q.get('filled'))
     cad_chips = set(_str_list(q.get('cad_chips')))
     ecg = s.get('ecg') or 'pending'
     lvef = _int(s.get('lvef'), lo=5, hi=95)
-    nt_probnp = _int(s.get('nt_probnp'), lo=1, hi=50000)
     ihd = bool(
-        (q_filled and q.get('recent_stent'))
+        q.get('recent_stent')
         or bool(cad_chips & {'mi', 'angina', 'cabg', 'stent_old', 'stent_6_12m'})
         or ecg == 'ischemia_arrhythmia'
         or (q_filled and bool(q.get('cad')) and not cad_chips)
@@ -372,7 +398,6 @@ def _ihd_and_chf_flags(q, s):
     chf = bool(
         ('hf' in cad_chips)
         or (lvef is not None and lvef < 40)
-        or (nt_probnp is not None and nt_probnp >= 300)
     )
     return ihd, chf
 
@@ -380,6 +405,8 @@ def _ihd_and_chf_flags(q, s):
 def calc_rcri(patient, q, s, is_symp_cea=False):
     """Validated 6-factor Revised Cardiac Risk Index (Lee et al., Circulation 1999 / ESC 2022)."""
     from .registry import rule_value
+    q = q if isinstance(q, dict) else {}
+    s = s if isinstance(s, dict) else {}
     rcri_cfg = rule_value('SCORE_RCRI_LEE_1999')
     pathway = _resolve_pathway(patient)
     q_filled = bool(q.get('filled'))
@@ -398,7 +425,7 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
     if ihd:
         factors.append('გულის იშემიური დაავადება (IHD)')
     if chf:
-        factors.append('გულის უკმარისობა (CHF / LVEF <40% / BNP ≥300)')
+        factors.append('გულის უკმარისობა (CHF / LVEF <40%)')
     has_prior_cvd = (
         (q_filled and (bool(q.get('neuro')) or bool(q.get('cea_symp_event'))))
         or is_symp_cea
@@ -410,7 +437,7 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
         factors.append('ინსულტი / TIA ანამნეზში')
     if q_filled and bool(q.get('dm_insulin')):
         factors.append('ინსულინოთერაპია')
-    if (q_filled and bool(q.get('on_dialysis'))) or (scr_mgdl is not None and scr_mgdl > rcri_cfg['scr_mgdl']):
+    if bool(q.get('on_dialysis')) or (scr_mgdl is not None and scr_mgdl > rcri_cfg['scr_mgdl']):
         factors.append('კრეატინინი >2.0 მგ/დლ (>177 მკმოლ/ლ) / დიალიზი')
 
     score = len(factors)
@@ -434,6 +461,8 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
 def calc_vsg_cri(patient, q, s):
     """Vascular Study Group of New England Cardiac Risk Index (Bertges et al., J Vasc Surg 2010 — exact published MACE table)."""
     from .registry import rule_value
+    q = q if isinstance(q, dict) else {}
+    s = s if isinstance(s, dict) else {}
     vsg_cfg = rule_value('SCORE_VSG_CRI_BERTGES_2010')
     pathway = _resolve_pathway(patient)
     if pathway == PreopPatient.Pathway.VENOUS:
@@ -448,7 +477,7 @@ def calc_vsg_cri(patient, q, s):
 
     pts = 0
     factors = []
-    age = patient.age or 0
+    age = _int(patient.age, lo=1, hi=120) or 0
     if age >= 80:
         pts += 4
         factors.append('ასაკი ≥80 (+4)')
@@ -480,7 +509,7 @@ def calc_vsg_cri(patient, q, s):
     if has_copd:
         pts += 2
         factors.append('ფქოდ / COPD (+2)')
-    if (q_filled and bool(q.get('on_dialysis'))) or (scr_mgdl is not None and scr_mgdl >= vsg_cfg['scr_mgdl']):
+    if bool(q.get('on_dialysis')) or (scr_mgdl is not None and scr_mgdl >= vsg_cfg['scr_mgdl']):
         pts += 2
         factors.append('კრეატინინი ≥1.8 მგ/დლ / დიალიზი (+2)')
     if 'beta_blocker' in med_chips:
@@ -528,7 +557,7 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
 
     pts = 0
     factors = []
-    age = patient.age or 0
+    age = _int(patient.age, lo=1, hi=120) or 0
     if age > 80:
         pts += 16
         factors.append('ასაკი >80 (+16)')

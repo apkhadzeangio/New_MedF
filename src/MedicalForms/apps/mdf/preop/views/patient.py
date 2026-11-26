@@ -64,18 +64,18 @@ _S1_NUM_FIELDS = (
     ('abi_r', 0.0, 3.0), ('abi_l', 0.0, 3.0),
     ('tp_r', 0, 400), ('tp_l', 0, 400),
     ('tbi_r', 0.0, 3.0), ('tbi_l', 0.0, 3.0),
-    ('bp_sys', 40, 300), ('bp_dia', 20, 200),
-    ('bp_sys_l', 40, 300), ('bp_dia_l', 20, 200),
-    ('hr', 20, 250), ('spo2', 50, 100),
+    ('bp_sys', 20, 350), ('bp_dia', 15, 220),
+    ('bp_sys_l', 20, 350), ('bp_dia_l', 15, 220),
+    ('hr', 15, 260), ('spo2', 10, 100),
     ('weight_kg', 25, 260), ('height_cm', 100, 230),
-    ('hb', 1, 260), ('inr', 0.5, 15),
-    ('creat', 0.1, 3000), ('k', 1.5, 10), ('na', 100, 180),
+    ('hb', 1, 260), ('inr', 0.4, 20),
+    ('creat', 0.1, 3000), ('k', 0.5, 20), ('na', 95, 190),
     ('glucose', 0.5, 1000), ('hba1c', 3, 25),
     ('ferritin', 1, 5000), ('tsat', 1, 100),
-    ('nt_probnp', 1, 50000), ('hs_ctn', 0.1, 50000),
+    ('nt_probnp', 1, 100000), ('hs_ctn', 0.1, 50000),
     ('albumin', 0.5, 80),
-    ('urine_wbc', 0, 1000),
-    ('carotid_r', 0, 100), ('carotid_l', 0, 100), ('lvef', 5, 90),
+    ('urine_wbc', 0, 2000),
+    ('carotid_r', 0, 100), ('carotid_l', 0, 100), ('lvef', 5, 95),
 )
 
 _S1_BOOL_FIELDS = (
@@ -135,14 +135,14 @@ _S2_BOOL_FIELDS = (
 def _parse_s1_numbers_and_dates(post, s, today):
     if 'wbc' in post:
         raw_wbc = _num(post.get('wbc'), lo=0.1, hi=150000)
-        if raw_wbc is not None and raw_wbc >= 500:
+        if raw_wbc is not None and raw_wbc >= 200:
             raw_wbc = round(raw_wbc / 1000.0, 2)
-        s['wbc'] = _num(raw_wbc, lo=0.1, hi=150) if raw_wbc is not None else None
+        s['wbc'] = _num(raw_wbc, lo=0.1, hi=200) if raw_wbc is not None else None
     if 'plt' in post:
         raw_plt = _num(post.get('plt'), lo=1, hi=2000000)
-        if raw_plt is not None and raw_plt >= 10000:
+        if raw_plt is not None and raw_plt >= 1000:
             raw_plt = int(round(raw_plt / 1000.0))
-        s['plt'] = _num(raw_plt, lo=1, hi=2000) if raw_plt is not None else None
+        s['plt'] = _num(raw_plt, lo=1, hi=2500) if raw_plt is not None else None
 
     for key, lo, hi in _S1_NUM_FIELDS:
         if key in post:
@@ -209,7 +209,7 @@ def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
         'anesth_done': True,
         'stale_labs_refreshed': bool(ev_before['needs_stale_labs']),
         'anemia_panel_done': bool(ev_before['needs_anemia_panel']),
-        'pbm_iv_iron_done': bool(ev_before['pbm_iv_iron_indicated'] and not ev_before['is_urgent_case']),
+        'pbm_iv_iron_done': bool(ev_before['pbm_iv_iron_indicated']),
         'endo_consult_done': bool(ev_before['needs_endo_reflex']),
         'nephro_panel_done': bool(ev_before['needs_nephro_panel']),
         'hydration_planned': bool(ev_before['needs_hydration']),
@@ -218,7 +218,7 @@ def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
         'cied_checked': bool(ev_before['needs_cied']),
         'cea_antiplatelet_started': bool(ev_before['pathway'] == 'cea' and ev_before['needs_cea_antiplatelet']),
         'vte_prophylaxis_planned': bool(ev_before['is_venous'] and ev_before['needs_vte_prophylaxis']),
-        'compression_ready': bool(ev_before['is_venous'] and (ev_before['min_abi'] is None or ev_before['min_abi'] >= 0.8)),
+        'compression_ready': bool(ev_before['is_venous'] and not ev_before.get('compression_contra')),
         'dapt_ready': bool(ev_before['is_pta'] and ev_before['q'].get('filled')),
         'neuro_consult_done': bool(ev_before['pathway'] == 'cea' and ev_before['needs_neuro']),
         'ppi_started': bool(ev_before['needs_ppi']),
@@ -301,6 +301,16 @@ def _parse_s2_notes_and_cardio(post, patient, s, cab_present, old_nurse_chips, o
     return uf
 
 
+def _invalidate_approval_if_needed(patient, uf):
+    if patient.approved_at is not None:
+        patient.approved_at = None
+        patient.approved_by = None
+        uf.extend(['approved_at', 'approved_by'])
+        if patient.someday_list == PreopPatient.SomedayList.READY:
+            patient.someday_list = PreopPatient.SomedayList.CONF
+            uf.append('someday_list')
+
+
 class PreopPatientView(LoginRequiredMixin, generic.View):
     """Individual Preoperative Assessment Workspace for one patient (5 fast tabs)."""
     template_name = 'mdf/preop/patient.html'
@@ -325,7 +335,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 messages.success(request, 'პაციენტის მონაცემები განახლდა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + f"?tab={request.POST.get('tab', 'q')}")
 
-            if section == 'questionnaire':
+            if section in ('questionnaire', 'q'):
                 self._save_questionnaire(request, patient)
                 messages.success(request, 'კითხვარები შეინახა — განახლდა ანამნეზი და მომზადების გეგმა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1')
@@ -448,13 +458,12 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         patient.save(update_fields=uf)
 
     def _save_questionnaire(self, request, patient):
-        old_side = patient.side
         apply_questionnaire_post(request.POST, patient, person_name(request.user))
         patient.updated_by = request.user
-        uf = ['questionnaire', 'studies', 'side', 'started_on', 'updated_at', 'updated_by']
-        if patient.side != old_side:
-            uf.extend(['approved_at', 'approved_by', 'anamnesis'])
-        patient.save(update_fields=uf)
+        patient.anamnesis = ''
+        uf = ['questionnaire', 'studies', 'side', 'started_on', 'anamnesis', 'updated_at', 'updated_by']
+        _invalidate_approval_if_needed(patient, uf)
+        patient.save(update_fields=list(dict.fromkeys(uf)))
 
     def _save_stage1(self, request, patient):
         s = merged_studies(patient)
@@ -465,7 +474,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             patient.started_on = patient.visit_date or today
         patient.studies = s
         patient.updated_by = request.user
-        patient.save(update_fields=['studies', 'started_on', 'updated_at', 'updated_by'])
+        uf = ['studies', 'started_on', 'updated_at', 'updated_by']
+        _invalidate_approval_if_needed(patient, uf)
+        patient.save(update_fields=list(dict.fromkeys(uf)))
 
     def _save_stage2(self, request, patient):
         from .. import evaluate
@@ -484,6 +495,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         )
         patient.studies = s
         patient.updated_by = request.user
+        _invalidate_approval_if_needed(patient, uf)
         patient.save(update_fields=list(dict.fromkeys(uf)))
 
     def _save_dos_vqi(self, request, patient):
@@ -500,10 +512,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['operated_date'] = done_d.isoformat() if (done_d and done_d <= today) else ''
 
         for key, lo, hi in (
-            ('dos_bp_sys', 40, 300),
-            ('dos_bp_dia', 20, 200),
+            ('dos_bp_sys', 20, 350),
+            ('dos_bp_dia', 15, 220),
             ('dos_glucose', 0.5, 1000),
-            ('dos_inr', 0.5, 15),
+            ('dos_inr', 0.4, 20),
         ):
             if key in request.POST:
                 s[key] = _num(request.POST.get(key), lo=lo, hi=hi)
@@ -587,7 +599,6 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
 
         uf = ['updated_at', 'updated_by']
-        # Only persist anamnesis on explicit save_anamnesis / approve (NEVER freeze auto-anamnesis on Day-1 ack_alerts or unapprove!)
         if 'anamnesis' in request.POST:
             if action == 'regenerate':
                 patient.anamnesis = ''
@@ -607,8 +618,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             uf.extend(['studies', 'alerts_ack_at', 'alerts_ack_by'])
             messages.success(request, 'გაფრთხილებები მონიშნულია როგორც გაცნობილი.')
         elif action == 'approve':
-            if ev.get('has_hard_contraindication'):
-                messages.error(request, 'აბსოლუტური კლინიკური უკუჩვენების გამო ოპერაციაზე დადასტურება დაბლოკილია!')
+            if ev.get('has_hard_contraindication') or ev.get('dos_hold_danger') or ev.get('neuraxial_hard_blocked'):
+                messages.error(request, 'აბსოლუტური უკუჩვენების, STOP-სიგნალის ან ნეირაქსიული ბლოკირების გამო ოპერაციაზე დადასტურება დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
             s['alerts_ack_sig'] = ev['alerts_sig']
             if request.POST.get('move_ready') == '1':

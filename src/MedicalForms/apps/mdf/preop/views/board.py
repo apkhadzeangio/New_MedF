@@ -171,6 +171,8 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
         safety_bits.append('აასს / NSAID ალერგია (კეტოროლაკი/დექსკეტოპროფენი არა!)')
     if q.get('ven_lidocaine_allergy') or 'lidocaine' in allergy_chips:
         safety_bits.append('ლიდოკაინზე ალერგია!')
+    if (q.get('allergy_text') or '').strip():
+        safety_bits.append(f"ალერგიის ჩანაწერი: {q['allergy_text']}")
     if ev.get('bp_arm_diff') is not None and ev['bp_arm_diff'] >= 20:
         higher_arm = 'მარჯვენა' if (s.get('bp_sys') or 0) >= (s.get('bp_sys_l') or 0) else 'მარცხენა'
         safety_bits.append(f"წნევის მონიტორინგი {higher_arm} მკლავზე (ΔBP {ev['bp_arm_diff']} mmHg)")
@@ -210,17 +212,26 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
             f"პოსტოპ. ჰემოდინამიკის, დიურეზის და ქვემო კიდურების პულსაციის მონიტორინგი + {ev['surgical_brief']['postop_antithrombotic']} (ESVS 2024)",
         ))
     else:
+        comp_txt = 'ელასტიური კომპრესია უკუნაჩვენებია (არტერიული იშემია!)' if ev.get('compression_contra') else 'ელასტიური კომპრესია პროტოკოლით'
         task_candidates.append((
             'ვენური პოსტოპ. რეჟიმი:',
-            'ვენური პოსტოპ. რეჟიმი: ადრეული აქტიური სიარული და ელასტიური კომპრესია პროტოკოლით',
+            f'ვენური პოსტოპ. რეჟიმი: ადრეული აქტიური სიარული · {comp_txt}',
         ))
 
     if 'hit_heparin' in allergy_chips:
-        hit_board_agents = (
-            'ბივალირუდინი / არგატრობანი (ფონდაპარინუქსი CrCl<30/დიალიზზე აკრძალულია!)'
-            if (q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30))
-            else 'ფონდაპარინუქსი / არგატრობანი / ბივალირუდინი'
-        )
+        has_mv = 'mech_valve' in (q.get('cad_chips') or [])
+        liver_3x = s.get('liver_status') == '3x'
+        if has_mv:
+            hit_board_agents = (
+                'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე!) → ვარფარინი (VKA)'
+                if liver_3x else 'ბივალირუდინი / არგატრობანი → ვარფარინი (VKA) — ფონდაპარინუქსი/DOAC არა!'
+            )
+        elif q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30):
+            hit_board_agents = 'ბივალირუდინი / არგატრობანი (ფონდაპარინუქსი CrCl<30/დიალიზზე აკრძალულია!)'
+        elif liver_3x:
+            hit_board_agents = 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე!) / ფონდაპარინუქსი (CrCl ≥30)'
+        else:
+            hit_board_agents = 'ფონდაპარინუქსი / არგატრობანი / ბივალირუდინი'
         task_candidates.append((
             'HIT ანამნეზში!',
             f'HIT ანამნეზში! არაფრაქციული ჰეპარინი და LMWH აკრძალულია — არაჰეპარინული ანტიკოაგულაცია ({hit_board_agents})',
@@ -240,7 +251,11 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
             'VTE პროფილაქტიკა',
             f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): ადრეული მობილიზაცია + {vte_board_drug} ჰემოსტაზის შემდეგ",
         ))
+    _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board)
+    return task_candidates
 
+
+def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board):
     if 'beta_lactam' in allergy_chips:
         groin_abx_sfx = ''
         if pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
@@ -266,15 +281,18 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
         ))
     elif ev.get('max_contrast_ml') is not None or (eff_renal_board is not None and eff_renal_board < 60):
         contrast_sfx = f" (მაქს. კონტრასტი ≤ {ev['max_contrast_ml']} მლ)" if ev.get('max_contrast_ml') is not None else ''
+        na_b = s.get('na')
+        hyd_b = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე, ნელი ჰიპოტონური კორექცია' if (isinstance(na_b, (int, float)) and na_b >= 150) else 'იზოტონური ჰიდრატაცია'
         task_candidates.append((
             'ნეფროპროტექცია:',
-            f'ნეფროპროტექცია: იზოტონური ჰიდრატაცია + საკონტროლო კრეატინინი და K+ 24–48 სთ-ში{contrast_sfx}',
+            f'ნეფროპროტექცია: {hyd_b} + საკონტროლო კრეატინინი და K+ 24–48 სთ-ში{contrast_sfx}',
         ))
 
     if ev.get('needs_ppi') or q.get('ulcer'):
+        ppi_b = 'პანტოპრაზოლი 40 მგ (CYP2C19 უსაფრთხო)' if (q.get('med_clopidogrel') or 'cilostazol' in (q.get('med_chips') or [])) else 'ომეპრაზოლი / პანტოპრაზოლი (PPI)'
         task_candidates.append((
             'გასტროპროტექცია:',
-            'გასტროპროტექცია: ომეპრაზოლი / პანტოპრაზოლი (PPI) ანტითრომბოზული თერაპიის ფონზე (ESC 2022 Class I)',
+            f'გასტროპროტექცია: {ppi_b} ანტითრომბოზული თერაპიის ფონზე (ESC 2022 Class I)',
         ))
     if q.get('pacemaker'):
         task_candidates.append((
@@ -285,7 +303,6 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
         'გაწერისას VQI / მეთვალყურეობის გრაფიკი:',
         f"გაწერისას VQI / მეთვალყურეობის გრაფიკი: {ev['surveillance_plan']}",
     ))
-    return task_candidates
 
 
 def _admit_preop_to_board_locked(patient, user, unit='', bed=''):

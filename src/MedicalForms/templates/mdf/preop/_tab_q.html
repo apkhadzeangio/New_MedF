@@ -295,19 +295,21 @@
                     <div class="po-q-item">
                         <div class="po-q-main">
                             <span class="po-q-text">2. ანამნეზში ღრმა ვენების თრომბოზი (DVT), ფილტვის ემბოლია ან თრომბოფილია?</span>
-                            <div class="yn-switch" data-toggle-sub="sub-ven-dvt">
-                                <label><input type="radio" name="ven_dvt_history" value="0" {% if not q.ven_dvt_history %}checked{% endif %}>არა</label>
-                                <label><input type="radio" name="ven_dvt_history" value="1" {% if q.ven_dvt_history %}checked{% endif %}>კი</label>
+                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                <div class="yn-switch" data-toggle-sub="sub-ven-dvt">
+                                    <label><input type="radio" name="ven_dvt_history" value="0" {% if not q.ven_dvt_history %}checked{% endif %}>არა</label>
+                                    <label><input type="radio" name="ven_dvt_history" value="1" {% if q.ven_dvt_history %}checked{% endif %}>კი</label>
+                                </div>
+                                <label class="chip-check" style="border-color:#FECDCA">
+                                    <input type="checkbox" name="ven_thrombophilia" value="1" {% if q.ven_thrombophilia %}checked{% endif %}>თრომბოფილია / ოჯახური VTE
+                                </label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-ven-dvt" {% if not q.ven_dvt_history and not q.ven_thrombophilia %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-ven-dvt" {% if not q.ven_dvt_history %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.ven_dvt_chips %}
                                 <label class="chip-check"><input type="checkbox" name="ven_dvt_chips" value="{{ ck }}" {% if ck in q.ven_dvt_chips %}checked{% endif %}>{{ cl }}</label>
                                 {% endfor %}
-                                <label class="chip-check" style="border-color:#FECDCA">
-                                    <input type="checkbox" name="ven_thrombophilia" value="1" {% if q.ven_thrombophilia %}checked{% endif %}>თრომბოფილია / ოჯახური VTE
-                                </label>
                             </div>
                         </div>
                     </div>

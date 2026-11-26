@@ -59,7 +59,7 @@ class PreopTests(PrivateMediaTest):
         from django.utils import timezone
 
         from ..models import PreopPatient
-        from ..preop import STATUS_NO_Q, STATUS_PROGRESS, evaluate
+        from ..preop import STATUS_ALERT, STATUS_NO_Q, evaluate
 
         today = timezone.localdate().isoformat()
         self.client.post(reverse('preop-new'), {
@@ -91,13 +91,15 @@ class PreopTests(PrivateMediaTest):
         })
         p.refresh_from_db()
         ev = evaluate(p)
-        self.assertEqual(ev['status'], STATUS_PROGRESS)
+        self.assertEqual(ev['status'], STATUS_ALERT)
         self.assertTrue(ev['needs_gastro'])
         self.assertTrue(ev['needs_spirometry'])
         self.assertTrue(ev['needs_med_hold'])
         return p
 
     def test_aaa_thresholds_two_stage_flow_anamnesis_and_cardiology_audit(self):
+        from django.utils import timezone
+
         from ..preop import STATUS_ALERT, STATUS_READY, evaluate
         from ..views import BACKUP_MODELS
 
@@ -108,6 +110,7 @@ class PreopTests(PrivateMediaTest):
         # Step 2: Stage 1 labs with pyuria + bacteriuria (urine WBC 18 + nitrite+) -> triggers UTI prosthetic-graft Red Flag
         s1_base = {
             'section': 'stage1',
+            'labs_date': timezone.localdate().isoformat(),
             'aaa_mm': '60', 'cta_months': '1', 'cta_disc': '1',
             'bp_sys': '135', 'bp_dia': '82', 'hr': '70', 'spo2': '97',
             'hb': '13.6',           # g/dL auto-normalized to 136 g/L
@@ -133,7 +136,7 @@ class PreopTests(PrivateMediaTest):
         self.client.post(reverse('preop-patient', args=[p.pk]), clean_s1)
         s2_base = {
             'section': 'stage2',
-            'spiro_fev1': '78', 'gastro_result': 'remission',
+            'spiro_fev1': '78', 'gastro_result': 'remission', 'ppi_started': '1',
             'blood_reserved': '1', 'med_hold_agreed': '1', 'anesth_done': '1',
         }
         self.client.post(reverse('preop-patient', args=[p.pk]), {
@@ -254,6 +257,8 @@ class PreopCeaAndAbfTests(PrivateMediaTest):
         return p
 
     def test_cea_esvs_2023_symptomatic_flow_laryngoscopy_antiplatelet_and_14day_window(self):
+        from django.utils import timezone
+
         from ..preop import STATUS_READY, evaluate, generate_anamnesis
 
         p = self._setup_symptomatic_cea()
@@ -266,6 +271,7 @@ class PreopCeaAndAbfTests(PrivateMediaTest):
         })
         s1_cea = {
             'section': 'stage1',
+            'labs_date': timezone.localdate().isoformat(),
             'bp_sys': '186', 'bp_dia': '112', 'hr': '68', 'spo2': '98',
             'hb': '142', 'wbc': '6.8', 'plt': '230', 'inr': '1.02',
             'creat': '84', 'k': '4.3', 'na': '140', 'glucose': '5.4', 'urine_wbc': '1',
@@ -348,6 +354,8 @@ class PreopCeaAndAbfTests(PrivateMediaTest):
         return p, q_base
 
     def test_abf_esvs_2024_clti_wet_gangrene_groin_outflow_spirometry_and_pathway_filters(self):
+        from django.utils import timezone
+
         from ..preop import STATUS_READY, evaluate, generate_anamnesis
 
         p, q_base = self._setup_abf_clti_patient()
@@ -357,7 +365,8 @@ class PreopCeaAndAbfTests(PrivateMediaTest):
         q_dry.pop('abf_groin_issue')
         self.client.post(reverse('preop-patient', args=[p.pk]), q_dry)
         s1_abf = {
-            'section': 'stage1', 'abi_r': '0.32', 'abi_l': '0.41',
+            'section': 'stage1', 'labs_date': timezone.localdate().isoformat(),
+            'abi_r': '0.32', 'abi_l': '0.41',
             'abf_clamp_zone': 'juxtarenal_calcified', 'abf_outflow': 'poor_outflow',
             'bp_sys': '140', 'bp_dia': '84', 'hr': '76', 'spo2': '96',
             'hb': '132', 'wbc': '7.9', 'plt': '245', 'inr': '1.04',
@@ -467,9 +476,9 @@ class PreopCeaAndAbfTests(PrivateMediaTest):
         page = self.client.get(reverse('preop-patient', args=[p.pk]), {'tab': 's2'})
         self.assertContains(page, '14-დღიანი თერაპიული ფანჯრის')
 
-        # Elective Claudication ABF uses 14-day prep target; Asymptomatic CEA uses 10-day prep target
+        # Elective Claudication ABF and Asymptomatic CEA use 14-day prep target
         p_asymp = PreopPatient.objects.create(patient_name='ასიმპტომური ტესტი', op_subtype='cea_asymp', side='L')
-        self.assertEqual((p_asymp.pathway, evaluate(p_asymp)['target_days']), ('cea', 10))
+        self.assertEqual((p_asymp.pathway, evaluate(p_asymp)['target_days']), ('cea', 14))
         p_claud = PreopPatient.objects.create(patient_name='ლერიშის ტესტი', op_subtype='abf_claud')
         self.assertEqual((p_claud.pathway, evaluate(p_claud)['target_days']), ('abf', 14))
 
@@ -527,6 +536,7 @@ class PreopVenousTests(PrivateMediaTest):
         self.client.force_login(self.user)
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage1',
+            'labs_date': timezone.localdate().isoformat(),
             'hb': '132', 'wbc': '6.4', 'plt': '245', 'inr': '1.01', 'glucose': '4.9',
             'ven_duplex_status': 'deep_patent_reflux',
             'ven_target_vein': 'gsv',
@@ -535,6 +545,12 @@ class PreopVenousTests(PrivateMediaTest):
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage2',
             'compression_ready': '1',
+        })
+        p.refresh_from_db()
+        # Unverified patient self-fill cannot reach STATUS_READY until nurse confirms questionnaire
+        self.assertEqual(evaluate(p)['clearance_seal']['code'], 'pending')
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'questionnaire', 'side': 'L', 'ven_ceap': 'C2', 'mets_ok': '1',
         })
         p.refresh_from_db()
         ev = evaluate(p)
@@ -554,12 +570,14 @@ class PreopVenousTests(PrivateMediaTest):
         self.assertTrue(any('ESVS 2022' in m for m in ev_w['amber_flags']))
 
     def test_phlebectomy_contraindications_dvt_lidocaine_pregnancy_abi_and_vte_prophylaxis(self):
+        from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import STATUS_ALERT, STATUS_READY, evaluate
 
         # Case transfer auto-detects Phlebectomy
         case = self.make_case(
-            patient_name='კიკნაძე ნანა', age=62, sex='F', side='R',
+            patient_name='კიკნაძე ნანა', age=38, sex='F', side='R',
             diagnosis='მარჯვენა ქვემო კიდურის ვენების ვარიკოზული დაავადება',
             decision='კომბინირებული ფლებექტომია',
         )
@@ -582,6 +600,7 @@ class PreopVenousTests(PrivateMediaTest):
         })
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage1',
+            'labs_date': timezone.localdate().isoformat(),
             'weight_kg': '94', 'height_cm': '165',
             'hb': '128', 'plt': '220', 'inr': '1.05', 'glucose': '5.3', 'creat': '74',
             'ven_duplex_status': 'acute_dvt',
@@ -623,6 +642,7 @@ class PreopVenousTests(PrivateMediaTest):
         })
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage1',
+            'labs_date': timezone.localdate().isoformat(),
             'weight_kg': '94', 'height_cm': '165',
             'hb': '128', 'plt': '220', 'inr': '1.05', 'glucose': '5.3', 'creat': '74',
             'ven_duplex_status': 'deep_patent_reflux',

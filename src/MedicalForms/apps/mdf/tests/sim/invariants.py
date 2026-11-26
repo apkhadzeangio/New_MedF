@@ -40,8 +40,9 @@ def _check_passport_and_hard_contra(patient, ev, q, s, pw, q_filled, rendered_pa
         or (ev.get('pad_gsv_mm') is not None and ev['pad_gsv_mm'] < 3.0)
         or ('vein_strip' in vasc_chips_sim)
     )
-    eff_preg_sim = q_filled and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
-    ipsi_100 = (pw == PreopPatient.Pathway.CEA and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)
+    preg_bio_ok = (patient.sex != 'M') and not (patient.sex == 'F' and patient.age is not None and patient.age > 55)
+    eff_preg_sim = q_filled and preg_bio_ok and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
+    ipsi_100 = (pw == PreopPatient.Pathway.CEA and patient.side in ('R', 'L') and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)
     brain_bleed = (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
     bilat_cea = (pw == PreopPatient.Pathway.CEA and patient.side == 'B')
     claud_btk = (pw == PreopPatient.Pathway.PAD_PTA and not is_clti_sim and s.get('pta_lesion_site') == 'infrapopliteal')
@@ -59,7 +60,7 @@ def _check_passport_and_hard_contra(patient, ev, q, s, pw, q_filled, rendered_pa
         pw == PreopPatient.Pathway.VENOUS and (
             s.get('ven_duplex_status') in ('acute_dvt', 'deep_obstruction')
             or eff_preg_sim
-            or (ev.get('min_abi') is not None and ev['min_abi'] < 0.50)
+            or (ev.get('min_abi') is not None and ev['min_abi'] < 0.60)
             or (ev.get('min_tp') is not None and ev['min_tp'] < 30)
         )
     )
@@ -129,10 +130,12 @@ def _check_allergy_neuraxial_and_renal_meds(patient, ev, q, pw, q_filled, allerg
 def _check_pathway_and_risk_guards(patient, ev, q, s, pw, q_filled, cad_chips, violations):
     # INV-08: CEA Antiplatelet Non-Contradiction
     if pw == PreopPatient.Pathway.CEA and q_filled:
-        prohibited = (s.get('brain_imaging') == 'large_or_hemorrhage') or bool(q.get('cea_thrombolysis'))
+        brain_bleed = s.get('brain_imaging') == 'large_or_hemorrhage'
+        days_ev = ev.get('days_since_ev')
+        prohibited = brain_bleed or (bool(q.get('cea_thrombolysis')) and (days_ev is None or days_ev < 1))
         if prohibited and ev['needs_cea_antiplatelet']:
             violations.append('INV-08_CEA_AP_ORDERED_ON_BLEED_OR_RTPA')
-        if ev['is_symp_cea']:
+        if ev['is_symp_cea'] and not brain_bleed:
             for row in ev['med_schedule']:
                 if row['drug'] == 'ასპირინი (75–100 მგ)' and 'გრძელდება' not in row['rule']:
                     violations.append('INV-08_SYMP_CEA_ASPIRIN_HELD')
@@ -179,7 +182,7 @@ def _check_pathway_and_risk_guards(patient, ev, q, s, pw, q_filled, cad_chips, v
         except (TypeError, ValueError):
             t_abi_f = None
         if t_abi_f is not None and 0.0 <= t_abi_f < 0.80:
-            if not any('ABI' in rf and '< 0.80' in rf for rf in ev['red_flags']):
+            if not any('ABI' in rf and ('< 0.80' in rf or '< 0.60' in rf) for rf in ev['red_flags']):
                 violations.append('INV-11_UNILATERAL_VENOUS_LOW_ABI_MASKED')
 
     # INV-12: Lone Controlled AFib Non-Inflation of RCRI & VSG-CRI
@@ -250,8 +253,9 @@ def _check_dosing_vitals_and_scores(patient, ev, q, s, pw, q_filled, allergy_chi
         elif q.get('on_dialysis') or (eff_renal_sim is not None and eff_renal_sim < 45) or ev.get('open_aortic'):
             if 'გენტამიცინს მოერიდეთ' not in ev['surgical_brief']['abx_regimen']:
                 violations.append('INV-20_SEVERE_CKD_GENTAMICIN_NOT_GUARDED')
+    active_rtpa = q_filled and bool(q.get('cea_thrombolysis')) and (ev.get('days_since_ev') is None or ev['days_since_ev'] <= 6)
     if pw == PreopPatient.Pathway.CEA and 'hit_heparin' not in allergy_chips and (
-        s.get('brain_imaging') == 'large_or_hemorrhage' or (q_filled and bool(q.get('cea_thrombolysis')))
+        s.get('brain_imaging') == 'large_or_hemorrhage' or active_rtpa
     ):
         if 'ჰემორაგიული ტრანსფორმაციის' not in ev['surgical_brief']['heparin_plan']:
             violations.append('INV-20_CEA_BLEED_RTPA_HEPARIN_NOT_GUARDED')
