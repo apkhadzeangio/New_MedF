@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.views import generic
 
 from ...board import clean_text
-from ...preop_models import PreopRuleSignoff
+from ...models import PreopRuleSignoff
 from ..registry import REGISTRY_VERSION, registry_summary
 from ..vignettes import (
     CATEGORY_LABELS,

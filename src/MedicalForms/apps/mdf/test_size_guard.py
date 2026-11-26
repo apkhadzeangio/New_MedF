@@ -19,7 +19,6 @@ MAX_FUNC_LINES = 100
 OVERSIZED_FILES_BASELINE = {
     'artery_map.py': 825,
     'cases.py': 811,
-    'models.py': 990,
     'staging.py': 2031,
     'test_preop_sim.py': 1492,
     'tests.py': 7061,
