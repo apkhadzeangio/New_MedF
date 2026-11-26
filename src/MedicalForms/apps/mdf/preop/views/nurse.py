@@ -230,3 +230,31 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
         messages.success(request, f'ოპერაციის თარიღი განახლდა ({new_dt.strftime("%d.%m.%Y")}) — შეამოწმეთ რა უნდა გაკეთდეს თავიდან.')
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-postpone-banner')
 
+
+class PreopNursePassportGuideView(LoginRequiredMixin, generic.View):
+    """Plain-Georgian patient explanation card next to the 2-page printable A4 passport."""
+    template_name = 'mdf/preop/passport_guide.html'
+
+    def get(self, request, pk):
+        from .. import evaluate
+        from ..nurse_plan import build_patient_plain_explanation
+        from ..nurse_ui import PLAIN_PATHWAY_KA, PLAIN_SIDE_KA, PLAIN_SUBTYPE_KA
+
+        patient = get_object_or_404(
+            PreopPatient.objects.select_related('surgeon', 'surgeon__profile', 'approved_by'),
+            pk=pk,
+        )
+        today = timezone.localdate()
+        ev = evaluate(patient, today=today)
+        guide = build_patient_plain_explanation(patient, ev, today)
+        return render(request, self.template_name, {
+            'p': patient,
+            'ev': ev,
+            'guide': guide,
+            'procedure_ka': PLAIN_SUBTYPE_KA.get(patient.op_subtype, PLAIN_PATHWAY_KA.get(ev['pathway'], patient.planned_operation_label)),
+            'side_ka': PLAIN_SIDE_KA.get(patient.side or '', ''),
+            'surgeon_name': person_name(patient.surgeon),
+            'today': today,
+        })
+
+

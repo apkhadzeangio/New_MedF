@@ -119,6 +119,7 @@ PREOP_URLS = [
     path('preop/<int:pk>/self-link-sent/', preop.PreopNurseSelfFillSentView.as_view(), name='preop-self-link-sent'),
     path('preop/<int:pk>/med-call/', preop.PreopNurseMedCallView.as_view(), name='preop-med-call'),
     path('preop/<int:pk>/reschedule/', preop.PreopNurseRescheduleView.as_view(), name='preop-reschedule'),
+    path('preop/<int:pk>/patient-guide/', preop.PreopNursePassportGuideView.as_view(), name='preop-patient-guide'),
     path('preop/<int:pk>/passport/', preop.PreopPassportView.as_view(), name='preop-passport'),
     path('preop/<int:pk>/admit-board/', preop.PreopBoardHandoffView.as_view(), name='preop-admit-board'),
     path('preop/fill/<str:token>/', preop.PreopSelfFillView.as_view(), name='preop-self-fill'),

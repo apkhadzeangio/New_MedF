@@ -330,3 +330,58 @@ class PreopNurseWorkspaceB4Tests(TestCase):
         self.assertEqual(p.studies['dos_inr'], 1.04)
         self.assertTrue(p.studies['dos_identity_consent'])
         self.assertTrue(p.studies['dos_site_marked'])
+
+
+class PreopNurseWorkspaceB5Tests(TestCase):
+    """Verify B5 plain-Georgian patient explanation & passport guide card."""
+
+    def setUp(self):
+        self.nurse = User.objects.create_user('nurse_b5', password='pw')
+        StaffProfile.objects.create(user=self.nurse, display_name='ნათია ექთანი', preop_ui_mode=PREOP_UI_NEW)
+        self.client.force_login(self.nurse)
+
+    def test_plain_georgian_patient_guide_covers_arrival_fasting_meds_and_warnings(self):
+        today = timezone.localdate()
+        op_dt = (today + datetime.timedelta(days=7)).isoformat()
+        p = PreopPatient.objects.create(
+            patient_name='ახსნა პასპორტაძე', age=67, sex='M', side='R',
+            pathway='cea', op_subtype='cea_asymp', visit_date=today,
+            questionnaire={
+                'filled': True, 'glp1': True, 'sglt2': True, 'med_aspirin': True,
+                'med_warfarin': True, 'mets_ok': True,
+            },
+            studies={'planned_surgery_date': op_dt, 'carotid_r': 82, 'carotid_l': 25, 'creat': 85},
+        )
+        r = self.client.get(reverse('preop-patient-guide', args=[p.pk]))
+        self.assertEqual(r.status_code, 200)
+        self.assertTemplateUsed(r, 'mdf/preop/passport_guide.html')
+        self.assertContains(r, 'სამუშაო ასლი — საჭიროა ექიმის დასტური')
+        self.assertContains(r, 'კტ-ანგიოგრაფიის (CTA) დისკი')
+        self.assertContains(r, '24 საათით ადრე')
+        self.assertContains(r, 'ვარფარინი')
+        self.assertContains(r, 'ჯარდიანსი / ფორსიგა')
+        self.assertContains(r, 'ასპირინი')
+        self.assertContains(r, 'მეტყველების არევა')
+        self.assertContains(r, reverse('preop-passport', args=[p.pk]))
+
+    def test_plain_guide_respects_stop_lock_and_approved_status(self):
+        today = timezone.localdate()
+        p_stop = PreopPatient.objects.create(
+            patient_name='ბლოკ პასპორტაძე', age=72, sex='M', side='B',
+            pathway='cea', op_subtype='cea_asymp', visit_date=today,
+            questionnaire={'filled': True, 'med_warfarin': True, 'mets_ok': True},
+            studies={'carotid_r': 84, 'carotid_l': 82},
+        )
+        r_stop = self.client.get(reverse('preop-patient-guide', args=[p_stop.pk]))
+        self.assertContains(r_stop, 'არცერთი წამალი არ შეწყვიტოთ თვითნებურად!')
+
+        p_ok = PreopPatient.objects.create(
+            patient_name='დადასტურებულ პასპორტაძე', age=38, sex='F', side='L',
+            pathway='venous', op_subtype='evla', visit_date=today,
+            approved_at=timezone.now(), approved_by=self.nurse,
+            questionnaire={'filled': True, 'ven_ceap': 'C2', 'mets_ok': True},
+            studies={'hb': 134, 'plt': 230, 'ven_duplex_status': 'deep_patent_reflux'},
+        )
+        r_ok = self.client.get(reverse('preop-patient-guide', args=[p_ok.pk]))
+        self.assertContains(r_ok, 'დადასტურებულია ექიმთან ✓')
+        self.assertContains(r_ok, 'მსუბუქი საუზმე დაშვებულია')

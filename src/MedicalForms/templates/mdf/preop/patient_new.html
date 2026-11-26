@@ -44,6 +44,7 @@
             <span class="nw-verdict nw-verdict-{{ nw_verdict.code }}">{{ nw_verdict.badge }}</span>
             <div class="d-flex flex-wrap gap-2">
                 {% if p.phone %}<a class="nw-btn soft" href="tel:{{ p.phone }}">დარეკვა: {{ p.phone }}</a>{% endif %}
+                <a class="nw-btn ok" href="{% url 'preop-patient-guide' p.pk %}" id="btn-open-patient-guide">პაციენტისთვის ახსნა</a>
                 <a class="nw-btn primary" href="{% url 'preop-passport' p.pk %}" target="_blank" rel="noopener">პასპორტი (A4)</a>
             </div>
         </div>

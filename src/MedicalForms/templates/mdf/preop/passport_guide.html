@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% load static_version %}
+
+{% block title %}{{ p.patient_name }} — პაციენტის ახსნის ბარათი{% endblock %}
+{% block extra_styles %}
+<link rel="stylesheet" href="{% static_v 'css/preop-nurse.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="nw-wrap" id="nw-guide-root">
+    <header class="nw-header d-print-none">
+        <div>
+            <a href="{% url 'preop-patient' p.pk %}" class="nw-back-link">← უკან პაციენტის ბარათზე</a>
+            <h1>პაციენტისთვის ასახსნელი ბარათი</h1>
+            <p class="nw-header-sub">მარტივი ქართული ტექსტი პაციენტთან ერთად გადასაკითხად და პასპორტის ამოსაბეჭდად</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="nw-btn primary" href="{% url 'preop-passport' p.pk %}" target="_blank" rel="noopener" id="btn-guide-print-passport">
+                2-გვერდიანი პასპორტი (A4 ბეჭდვა)
+            </a>
+            <button type="button" class="nw-btn soft" onclick="window.print()" id="btn-guide-print-card">ამ ბარათის ბეჭდვა</button>
+        </div>
+    </header>
+
+    <section class="nw-card">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <div>
+                <h2 class="nw-card-title m-0">{{ p.patient_name }}</h2>
+                <p class="nw-meta-line m-0">{{ procedure_ka }}{% if side_ka %} · {{ side_ka }}{% endif %}{% if surgeon_name %} · ექიმი: {{ surgeon_name }}{% endif %}</p>
+            </div>
+            {% if guide.is_draft %}
+            <span class="nw-verdict nw-verdict-alert">სამუშაო ასლი — საჭიროა ექიმის დასტური</span>
+            {% else %}
+            <span class="nw-verdict nw-verdict-ready">დადასტურებულია ექიმთან ✓</span>
+            {% endif %}
+        </div>
+        {% if guide.is_draft %}
+        <div class="nw-banner warn m-0">ყურადღება: წამლების შეცვლისა და ოპერაციის თარიღის საბოლოო დასტური მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!</div>
+        {% endif %}
+    </section>
+
+    <section class="nw-card">
+        <h2 class="nw-card-title">1. როდის მოხვიდეთ და რა წამოიღოთ</h2>
+        <ul class="nw-plain-ul">
+            {% for line in guide.arrival_items %}
+            <li>{{ line }}</li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    <section class="nw-card">
+        <h2 class="nw-card-title">2. ჭამა და სუფთა წყალი ოპერაციამდე</h2>
+        <p class="m-0 fw-semibold">{{ guide.fasting_plain }}</p>
+    </section>
+
+    <section class="nw-card">
+        <h2 class="nw-card-title">3. რომელი წამალი უნდა შეწყვიტოთ</h2>
+        {% if guide.stop_locked %}
+        <div class="nw-banner danger m-0">არცერთი წამალი არ შეწყვიტოთ თვითნებურად! ოპერაციაზე დაშვება შეჩერებულია — ჯერ მკურნალ ექიმს დაუკავშირდით.</div>
+        {% elif guide.stop_meds %}
+        <div class="d-flex flex-column gap-2">
+            {% for m in guide.stop_meds %}
+            <div class="nw-med-script-row tone-{{ m.tone }}">
+                <div class="nw-med-drug">{{ m.drug }}</div>
+                <div class="nw-med-spoken">{{ m.spoken }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="m-0">წინასწარ შესაჩერებელი წამალი არ არის მითითებული.</p>
+        {% endif %}
+    </section>
+
+    <section class="nw-card">
+        <h2 class="nw-card-title">4. რომელი წამალი აუცილებლად დალიოთ დილას (ყლუპი წყლით)</h2>
+        {% if guide.keep_meds %}
+        <div class="d-flex flex-column gap-2">
+            {% for m in guide.keep_meds %}
+            <div class="nw-med-script-row tone-ok">
+                <div class="nw-med-drug">{{ m.drug }}</div>
+                <div class="nw-med-spoken">{{ m.spoken }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="m-0">თუ იღებთ წნევის ან გულის ყოველდღიურ წამალს, დილის მიღება დააზუსტეთ მკურნალ ექიმთან.</p>
+        {% endif %}
+    </section>
+
+    <section class="nw-card nw-postpone-card">
+        <h2 class="nw-card-title">5. როდის დარეკოთ სასწრაფოდ კლინიკაში</h2>
+        <p class="m-0 fw-semibold">{{ guide.emergency_sign }}</p>
+    </section>
+</div>
+{% endblock %}

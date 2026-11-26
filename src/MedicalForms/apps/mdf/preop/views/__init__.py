@@ -10,6 +10,7 @@ from .board import (
 from .files import PreopFileDeleteView, PreopFileUploadView, PreopFileView
 from .nurse import (
     PreopNurseMedCallView,
+    PreopNursePassportGuideView,
     PreopNurseRegisterView,
     PreopNurseRescheduleView,
     PreopNurseSelfFillSentView,
@@ -32,6 +33,7 @@ __all__ = [
     'PreopFileView',
     'PreopMoveView',
     'PreopNurseMedCallView',
+    'PreopNursePassportGuideView',
     'PreopNurseRegisterView',
     'PreopNurseRescheduleView',
     'PreopNurseSelfFillSentView',

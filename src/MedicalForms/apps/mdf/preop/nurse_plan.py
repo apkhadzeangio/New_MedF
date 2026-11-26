@@ -233,3 +233,55 @@ def summarize_stage1_clinical_delta(ev_before, ev_after):
         notes.append(f"ოპერაციაზე დაშვების სტატუსი შეიცვალა: {ev_after['clearance_seal']['label']}")
     return notes
 
+
+_PATHWAY_EMERGENCY_SIGNS_KA = {
+    'aaa_infra': 'მუცლის ან წელის უეცარი ძლიერი ტკივილი, თავბრუსხვევა ან გონების დაკარგვა.',
+    'cea': 'ხელის/ფეხის ან სახის უეცარი დაბუჟება ან სისუსტე, მეტყველების არევა ან ცალი თვალით მხედველობის დაკარგვა.',
+    'abf': 'ფეხის უეცარი გაციება, გაფერმკრთალება, დაბუჟება, ძლიერი ტკივილი ან სიცხე >38°C.',
+    'pad_bypass': 'ფეხის უეცარი გაციება, ძლიერი ტკივილი, ფერის შეცვლა ან ჭრილობის გაწითლება/სიცხე.',
+    'pad_pta': 'ფეხის უეცარი გაციება, ძლიერი ტკივილი ან ჭრილობის გაუარესება/სიცხე.',
+    'venous': 'ფეხის უეცარი ძლიერი შეშუპება, გაწითლება/ტკივილი, სუნთქვის გაძნელება ან სისხლდენა ვენიდან.',
+}
+
+
+def build_patient_plain_explanation(patient, ev, today):
+    """Build plain-Georgian explanation card for the nurse to walk through with the patient."""
+    q, s, pw = ev['q'], ev['s'], ev['pathway']
+    op_dt = _date(s.get('planned_surgery_date'))
+    med_script = build_phone_med_script(patient, ev, today)
+
+    arrival_items = [
+        f'დაგეგმილი ოპერაციის თარიღი: {_fmt_ka_date(op_dt)}' if op_dt else 'ოპერაციის ზუსტ თარიღს მკურნალი ექიმი შეგატყობინებთ.',
+        'თან იქონიეთ პირადობის მოწმობა და ბოლო ანალიზების ფურცლები.',
+    ]
+    if pw in ('aaa_infra', 'cea', 'abf', 'pad_bypass'):
+        arrival_items.append('აუცილებლად წამოიღეთ კტ-ანგიოგრაფიის (CTA) დისკი და დასკვნა.')
+    if pw == 'venous':
+        arrival_items.append('თან იქონიეთ ექიმის შერჩეული კომპრესიული წინდა (თუ დანიშნულია).')
+    if q.get('pulm') or 'osa' in (q.get('pulm_chips') or []):
+        arrival_items.append('წამოიღეთ თქვენი ყოველდღიური ინჰალატორი ან ძილის აპარატი (CPAP).')
+
+    if q.get('glp1'):
+        fasting_plain = (
+            'ოპერაციამდე 24 საათით ადრე გადადით მხოლოდ სუფთა თხევად დიეტაზე (წყალი, ჩაი რძის გარეშე, გამჭვირვალე ბულიონი). '
+            'ოპერაციამდე 6 საათით ადრე არანაირი საკვები, 2 საათით ადრე — სუფთა წყალიც შეწყვიტეთ.'
+        )
+    elif patient.op_subtype == 'evla' and not ev.get('has_neuraxial_plan'):
+        fasting_plain = 'ადგილობრივი გაუტკივარებით ლაზერული პროცედურის დილას მსუბუქი საუზმე დაშვებულია (თუ ექიმმა უზმოზე მოსვლა არ გთხოვათ).'
+    else:
+        fasting_plain = (
+            'ოპერაციამდე 6 საათით ადრე შეწყვიტეთ ნებისმიერი საკვები და რძიანი სასმელი. '
+            'სუფთა წყლის დალევა შეგიძლიათ ოპერაციამდე 2 საათით ადრე; დილის დაშვებულ წამლებს დააყოლეთ მხოლოდ ერთი ყლუპი წყალი.'
+        )
+
+    return {
+        'is_draft': not bool(patient.approved_at),
+        'arrival_items': arrival_items,
+        'fasting_plain': fasting_plain,
+        'stop_meds': med_script['stop_rows'],
+        'keep_meds': med_script['keep_rows'],
+        'stop_locked': med_script['stop_locked'],
+        'emergency_sign': _PATHWAY_EMERGENCY_SIGNS_KA.get(pw, 'უეცარი ძლიერი ტკივილი, სიცხე ან სუნთქვის გაძნელება — დაუყოვნებლივ დარეკეთ კლინიკაში.'),
+    }
+
+
