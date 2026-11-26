@@ -17,9 +17,9 @@
                     {% endif %}
                 </div>
 
-                {% for dw in ev.dos_warnings %}
+                {% for item in dos_warning_items %}
                 <div class="po-alert red">
-                    <span><strong>ოპერაციის დილის STOP-სიგნალი:</strong> {{ dw }}</span>
+                    <span><strong>ოპერაციის დილის STOP-სიგნალი:</strong> {{ item.text }}{% if item.rule %} <button type="button" class="po-cite-btn" data-rule-id="{{ item.rule.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ item.rule.source }}">ⓘ</button>{% endif %}</span>
                 </div>
                 {% endfor %}
 

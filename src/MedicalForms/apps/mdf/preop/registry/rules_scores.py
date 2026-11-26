@@ -4,6 +4,21 @@ from .schema import RuleEntry, STATUS_LOCAL, STATUS_VERIFIED
 SCORES_AND_WORKFLOW_RULES = (
     # --- Quantitative Risk Indices & Calculators ---
     RuleEntry(
+        id='SCORE_ASA_PHYSICAL_STATUS',
+        domain='scores',
+        kind='score',
+        title_ka='ASA ფიზიკური სტატუსის კლასიფიკაცია (ASA I–IV)',
+        description_ka='ანესთეზიოლოგიური ფიზიკური სტატუსის ავტომატური შეფასება (ASA I–IV, დანართით E გადაუდებელ ოპერაციაზე) კომორბიდობების, ორგანოთა ფუნქციისა და სისუსტის (CFS) მიხედვით.',
+        source='American Society of Anesthesiologists (ASA) Physical Status Classification System',
+        year=2020,
+        section='ASA House of Delegates Approved Definitions (Oct 2020)',
+        class_level='International anesthesia standard',
+        source_wording='ASA I (healthy) to ASA IV (severe systemic disease that is a constant threat to life); append "E" for emergency surgery.',
+        value={'classes': ('I', 'II', 'III', 'IV')},
+        value_label='ASA I–IV (+ E გადაუდებელზე)',
+        match_patterns=('ASA ',),
+    ),
+    RuleEntry(
         id='SCORE_RCRI_LEE_1999',
         domain='scores',
         kind='score',

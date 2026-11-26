@@ -312,10 +312,10 @@
 
                     {% if ev.clearance_seal.code == 'stop' %}
                     <div class="po-alert red" style="padding:8px 12px;font-size:13px">
-                        <span><strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — არცერთი სასიცოცხლო მედიკამენტი (განსაკუთრებით ანტიკოაგულანტი/ანტიაგრეგანტი) არ შეწყვიტოთ!</strong></span>
+                        <span><strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — არცერთი სასიცოცხლო მედიკამენტი (განსაკუთრებით ანტიკოაგულანტი/ანტიაგრეგანტი) არ შეწყვიტოთ!</strong> <button type="button" class="po-cite-btn" data-rule-id="MED_STOP_LOCK_SAFETY" aria-label="კლინიკური წყარო" title="კლინიკური წყარო">ⓘ</button></span>
                     </div>
                     {% endif %}
-                    {% if ev.med_schedule %}
+                    {% if med_schedule_items %}
                     <div>
                         <table class="po-med-table">
                             <thead>
@@ -326,11 +326,11 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for m in ev.med_schedule %}
+                                {% for m in med_schedule_items %}
                                 <tr>
                                     <td><strong>{{ m.drug }}</strong></td>
                                     {% if ev.planned_surgery_ka or ev.clearance_seal.code == 'stop' %}<td class="po-med-tone-{{ m.tone }}"><strong>{{ m.date_plan }}</strong></td>{% endif %}
-                                    <td class="po-med-tone-{{ m.tone }}">{{ m.rule }}</td>
+                                    <td class="po-med-tone-{{ m.tone }}">{{ m.rule }}{% if m.rule_meta %} <button type="button" class="po-cite-btn" data-rule-id="{{ m.rule_meta.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ m.rule_meta.source }}">ⓘ</button>{% endif %}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

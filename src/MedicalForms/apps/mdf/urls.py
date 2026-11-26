@@ -94,6 +94,7 @@ urlpatterns = [
     # Preoperative assessment (Tweek-style weekly calendar + nurse POA + cardiology audit)
     path('preop/', preop.PreopWeekView.as_view(), name='preop'),
     path('preop/audit/', preop.PreopAuditView.as_view(), name='preop-audit'),
+    path('preop/rules/', preop.PreopRulesView.as_view(), name='preop-rules'),
     path('preop/new/', preop.PreopCreateView.as_view(), name='preop-new'),
     path('preop/<int:pk>/', preop.PreopPatientView.as_view(), name='preop-patient'),
     path('preop/<int:pk>/passport/', preop.PreopPassportView.as_view(), name='preop-passport'),

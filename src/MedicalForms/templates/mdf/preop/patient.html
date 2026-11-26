@@ -212,44 +212,44 @@
     <!-- Autonomous Standing Reflex Orders + True Urgent Alerts -->
     {% if ev.red_flags or ev.reflex_orders or ev.amber_flags %}
     <div class="po-alerts" role="region" aria-label="კლინიკური გაფრთხილებები და რეფლექს-პროტოკოლები">
-        {% if ev.red_flags %}
+        {% if red_flag_items %}
             {% if ev.alerts_acked and not ev.has_hard_contraindication %}
             <details class="po-alert red" style="display:block">
                 <summary style="cursor:pointer;font-weight:600">
-                    ✓ ქირურგმა გაეცნო ({{ ev.red_flags|length }} გაფრთხილება) — დააწკაპეთ სრულად სანახავად
+                    ✓ ქირურგმა გაეცნო ({{ red_flag_items|length }} გაფრთხილება) — დააწკაპეთ სრულად სანახავად
                 </summary>
                 <div class="d-flex flex-column gap-1 pt-2">
-                    {% for msg in ev.red_flags %}
-                    <div><strong>სასწრაფოდ აცნობეთ ქირურგს:</strong> {{ msg }}</div>
+                    {% for item in red_flag_items %}
+                    <div><strong>სასწრაფოდ აცნობეთ ქირურგს:</strong> {{ item.text }}{% if item.rule %} <button type="button" class="po-cite-btn" data-rule-id="{{ item.rule.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ item.rule.source }}">ⓘ</button>{% endif %}</div>
                     {% endfor %}
                 </div>
             </details>
             {% else %}
-                {% for msg in ev.red_flags %}
+                {% for item in red_flag_items %}
                 <div class="po-alert red">
-                    <span><strong>სასწრაფოდ აცნობეთ ქირურგს:</strong> {{ msg }}</span>
+                    <span><strong>სასწრაფოდ აცნობეთ ქირურგს:</strong> {{ item.text }}{% if item.rule %} <button type="button" class="po-cite-btn" data-rule-id="{{ item.rule.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ item.rule.source }}">ⓘ</button>{% endif %}</span>
                 </div>
                 {% endfor %}
             {% endif %}
         {% endif %}
 
-        {% if ev.reflex_orders %}
+        {% if reflex_order_items %}
         <details class="po-reflex-box" {% if not ev.all_reflex_done %}open{% endif %}>
             <summary class="po-reflex-head" style="cursor:pointer">
-                {% if ev.all_reflex_done %}✓ ავტომატური საექთნო რეფლექს-პროტოკოლი სრულად შესრულებულია ({{ ev.reflex_orders|length }}/{{ ev.reflex_orders|length }}){% else %}ავტომატური საექთნო რეფლექს-პროტოკოლი (სრულდება ექიმის წინასწარი ჩართვის გარეშე — მონიშნეთ საფეხურ 2-ში):{% endif %}
+                {% if ev.all_reflex_done %}✓ ავტომატური საექთნო რეფლექს-პროტოკოლი სრულად შესრულებულია ({{ reflex_order_items|length }}/{{ reflex_order_items|length }}){% else %}ავტომატური საექთნო რეფლექს-პროტოკოლი (სრულდება ექიმის წინასწარი ჩართვის გარეშე — მონიშნეთ საფეხურ 2-ში):{% endif %}
             </summary>
-            {% for ro in ev.reflex_orders %}
+            {% for ro in reflex_order_items %}
             <div class="po-reflex-item {% if ro.done %}done{% endif %}">
-                <span><strong>{{ ro.trigger }}</strong> → {{ ro.action }}</span>
+                <span><strong>{{ ro.trigger }}</strong> → {{ ro.action }}{% if ro.rule %} <button type="button" class="po-cite-btn" data-rule-id="{{ ro.rule.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ ro.rule.source }}">ⓘ</button>{% endif %}</span>
                 <span>{% if ro.done %}✓ შესრულდა{% else %}ჩართულია გეგმაში{% endif %}</span>
             </div>
             {% endfor %}
         </details>
         {% endif %}
 
-        {% for msg in ev.amber_flags %}
+        {% for item in amber_flag_items %}
         <div class="po-alert amber">
-            <span>{{ msg }}</span>
+            <span>{{ item.text }}{% if item.rule %} <button type="button" class="po-cite-btn" data-rule-id="{{ item.rule.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ item.rule.source }}">ⓘ</button>{% endif %}</span>
         </div>
         {% endfor %}
     </div>
@@ -327,8 +327,38 @@
         <span>შეუნახავი ცვლილებები ამ ტაბში</span>
         <button type="button" class="x-btn sm" id="btn-sticky-save">შენახვა (Ctrl+S)</button>
     </div>
+
+    <!-- Clinical Rule Source Citation Modal -->
+    <dialog id="po-rule-modal" class="po-rule-dialog d-print-none" data-catalog-url="{{ rules_catalog_url }}" aria-labelledby="po-rm-title">
+        <div class="po-rm-head">
+            <div>
+                <div class="d-flex flex-wrap align-items-center gap-1 mb-1">
+                    <code class="po-rule-id" id="po-rm-id"></code>
+                    <span class="po-badge st-in_progress" id="po-rm-domain"></span>
+                    <span class="po-badge" id="po-rm-status"></span>
+                </div>
+                <h3 class="m-0" id="po-rm-title" style="font-size:16px"></h3>
+            </div>
+            <button type="button" class="x-btn sm" id="po-rm-close" aria-label="დახურვა">✕</button>
+        </div>
+        <div class="po-rm-body">
+            <p id="po-rm-desc" class="mb-2" style="font-size:14px"></p>
+            <div class="po-rule-meta">
+                <div><b>პირველწყარო:</b> <span id="po-rm-source"></span></div>
+                <div><b>კლასი / დონე:</b> <strong id="po-rm-class"></strong></div>
+                <div><b>წყაროს ფორმულირება:</b> <em id="po-rm-wording"></em></div>
+                <div><b>სისტემის ზღვარი / მნიშვნელობა:</b> <span id="po-rm-val"></span></div>
+                <div class="small text-muted">გადამოწმების თარიღი: <span id="po-rm-verified"></span></div>
+            </div>
+        </div>
+        <div class="po-rm-foot">
+            <a href="{{ rules_catalog_url }}" id="po-rm-link" target="_blank" rel="noopener" class="x-btn sm">სრული ჩანაწერი რეესტრში ↗</a>
+            <button type="button" class="x-btn sm primary" id="po-rm-ok">დახურვა</button>
+        </div>
+    </dialog>
 </div>
 {{ ev.s1_required_fields|json_script:"po-s1-req-data" }}
+{{ page_rules_map|json_script:"po-rules-data" }}
 {% endblock %}
 
 {% block extra_scripts %}

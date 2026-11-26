@@ -1,6 +1,12 @@
-"""Track A1/A3 Clinical Rule Registry integrity and 100% emission coverage tests."""
-from django.test import SimpleTestCase
+"""Track A1/A2 Clinical Rule Registry integrity, catalog view, sign-off, and ⓘ citation tests."""
+import json
+import re
 
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
+
+from .models import PreopPatient, PreopRuleSignoff
 from .preop import build_med_schedule, evaluate
 from .preop.registry import (
     CHANGELOG,
@@ -74,3 +80,84 @@ class PreopRuleRegistryTests(SimpleTestCase):
         self.assertEqual(rule_value('ASRA_NEURAXIAL_COAG_GATE')['inr_max'], 1.4)
         self.assertEqual(rule_value('MED_WARFARIN_HOLD_DAYS')['hold_days'], 5)
         self.assertEqual(rule_value('INF_STALE_LABS_DAYS'), 14)
+
+
+class PreopRulesCatalogAndCitationUITests(TestCase):
+    """Verify '/preop/rules/' catalog, clinician sign-off persistence, and patient ⓘ citations."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.doc = User.objects.create_user(
+            username='rules_doc', password='RulesDocPassword!1',
+            first_name='ნინო', last_name='ექიმი', is_staff=True,
+        )
+
+    def test_rules_catalog_auth_filters_and_doctor_signoff(self):
+        url = reverse('preop-rules')
+        self.assertEqual(self.client.get(url).status_code, 302)
+
+        self.client.force_login(self.doc)
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'კლინიკური წესების რეესტრი')
+        self.assertContains(resp, 'AAA_MALE_MIN_MM')
+
+        resp_local = self.client.get(url + f'?status={STATUS_LOCAL}')
+        self.assertEqual(resp_local.status_code, 200)
+        self.assertContains(resp_local, 'INF_STALE_LABS_DAYS')
+        self.assertNotContains(resp_local, 'id="rule-AAA_MALE_MIN_MM"')
+
+        resp_q = self.client.get(url + '?domain=meds&q=ASRA')
+        self.assertEqual(resp_q.status_code, 200)
+        self.assertContains(resp_q, 'ASRA_NEURAXIAL_COAG_GATE')
+
+        post_resp = self.client.post(url, {
+            'rule_id': 'INF_STALE_LABS_DAYS',
+            'verdict': 'approved',
+            'note': 'განყოფილების პროტოკოლით დადასტურებულია 14 დღე',
+            'ret_status': 'unsigned-local',
+        })
+        self.assertEqual(post_resp.status_code, 302)
+        self.assertIn('#rule-INF_STALE_LABS_DAYS', post_resp['Location'])
+        so = PreopRuleSignoff.objects.get(item_kind='rule', item_id='INF_STALE_LABS_DAYS')
+        self.assertEqual(so.verdict, PreopRuleSignoff.Verdict.APPROVED)
+        self.assertEqual(so.signed_by, self.doc)
+        self.assertEqual(so.registry_version, REGISTRY_VERSION)
+
+        resp_unsigned = self.client.get(url + '?status=unsigned-local')
+        self.assertNotContains(resp_unsigned, 'id="rule-INF_STALE_LABS_DAYS"')
+
+        bad_resp = self.client.post(url, {'rule_id': 'NON_EXISTENT_RULE', 'verdict': 'approved'})
+        self.assertEqual(bad_resp.status_code, 302)
+        self.assertFalse(PreopRuleSignoff.objects.filter(item_id='NON_EXISTENT_RULE').exists())
+
+    def test_patient_page_renders_inline_rule_citations_and_modal_payload(self):
+        self.client.force_login(self.doc)
+        patient = PreopPatient.objects.create(
+            patient_name='სატესტო პაციენტი',
+            age=72, sex='M',
+            pathway=PreopPatient.Pathway.AAA_INFRA,
+            op_subtype=PreopPatient.OpSubtype.OPEN,
+            questionnaire={'filled': True, 'med_doac': True, 'dm': True, 'sglt2': True, 'mets_ok': True},
+            studies={'aaa_mm': 62, 'hb': 98, 'creat': 160, 'weight_kg': 80, 'dos_bp_sys': 192},
+        )
+        resp = self.client.get(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode('utf-8')
+        self.assertIn('id="po-rule-modal"', html)
+        m = re.search(r'<script id="po-rules-data" type="application/json">(.*?)</script>', html, re.DOTALL)
+        self.assertIsNotNone(m, 'Missing #po-rules-data JSON payload')
+        rules_map = json.loads(m.group(1))
+        cite_ids = set(re.findall(r'class="po-cite-btn" data-rule-id="([^"]+)"', html))
+        self.assertGreaterEqual(len(cite_ids), 8)
+        for rid in cite_ids:
+            self.assertIn(rid, rules_map, f'Button references {rid} missing from #po-rules-data')
+            self.assertIn(rid, RULES_BY_ID, f'Button references unknown rule {rid}')
+        for required_score in (
+            'SCORE_ASA_PHYSICAL_STATUS', 'SCORE_RCRI_LEE_1999',
+            'SCORE_VSG_CRI_BERTGES_2010', 'SCORE_ARISCAT_CANET_2010',
+            'SCORE_CAPRINI_VTE', 'SCORE_RENAL_CKDEPI_CG',
+        ):
+            self.assertIn(required_score, cite_ids)
+

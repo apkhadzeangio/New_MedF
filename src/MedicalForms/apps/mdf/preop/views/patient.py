@@ -39,6 +39,7 @@ from ..constants import (
     _sqlite_acquire_write_lock,
 )
 from ..forms import apply_questionnaire_post
+from ..registry import annotate_med_rows, annotate_reflex_orders, annotate_texts, rule_meta
 from ..utils import (
     _age_from_dob,
     _cardiologist_choices,
@@ -637,6 +638,45 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             tab_ret = 'q'
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + f'?tab={tab_ret}')
 
+    @staticmethod
+    def _build_rule_citations(ev):
+        red_items = annotate_texts(ev['red_flags'])
+        amber_items = annotate_texts(ev['amber_flags'])
+        reflex_items = annotate_reflex_orders(ev['reflex_orders'])
+        med_items = annotate_med_rows(ev['med_schedule'])
+        dos_items = annotate_texts(ev['dos_warnings'], domain_hint='anaesthesia')
+        score_rules = {
+            'asa': 'SCORE_ASA_PHYSICAL_STATUS',
+            'rcri': 'SCORE_RCRI_LEE_1999',
+            'vsg_cri': 'SCORE_VSG_CRI_BERTGES_2010',
+            'ariscat': 'SCORE_ARISCAT_CANET_2010',
+            'caprini': 'SCORE_CAPRINI_VTE',
+            'renal': 'SCORE_RENAL_CKDEPI_CG',
+        }
+        rules_map = {rid: rule_meta(rid) for rid in score_rules.values()}
+        if ev['clearance_seal'].get('code') == 'stop':
+            rules_map['MED_STOP_LOCK_SAFETY'] = rule_meta('MED_STOP_LOCK_SAFETY')
+        for group in (red_items, amber_items, reflex_items, dos_items):
+            for item in group:
+                meta = item.get('rule')
+                if meta:
+                    rules_map[meta['id']] = meta
+        for item in med_items:
+            meta = item.get('rule_meta')
+            if meta:
+                rules_map[meta['id']] = meta
+        ordered_map = {k: rules_map[k] for k in sorted(rules_map)}
+        return {
+            'red_flag_items': red_items,
+            'amber_flag_items': amber_items,
+            'reflex_order_items': reflex_items,
+            'med_schedule_items': med_items,
+            'dos_warning_items': dos_items,
+            'score_rules': score_rules,
+            'page_rules_map': ordered_map,
+            'rules_catalog_url': reverse('preop-rules'),
+        }
+
     def _render(self, request, patient):
         from .. import evaluate
         from ...blood import BLOOD_GROUPS as BG_LIST
@@ -656,7 +696,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         self_token = make_self_fill_token(patient)
         board_patient = resolve_board_patient(patient)
         default_board_unit = board_patient.unit if board_patient else (BoardPatient.ICU if ev['needs_icu_bed'] else BoardPatient.WARD)
-        return render(request, self.template_name, {
+        ctx = {
             'p': patient, 'ev': ev, 'q': ev['q'], 's': ev['s'], 'tab': tab,
             'auto_anamnesis': auto_anamnesis,
             'shown_anamnesis': patient.anamnesis or auto_anamnesis,
@@ -682,4 +722,6 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             'cardiologists': _cardiologist_choices(),
             'file_categories': PreopFile.Category.choices, 'files_by_cat': files_by_cat,
             'total_files': len(files), 'blood_groups': BG_LIST, 'today': timezone.localdate(),
-        })
+        }
+        ctx.update(self._build_rule_citations(ev))
+        return render(request, self.template_name, ctx)

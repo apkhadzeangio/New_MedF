@@ -17,17 +17,17 @@
 
                 <div class="po-risk-strip">
                     <div class="po-risk-tile {% if ev.asa_roman == 'IV' %}tier-high{% elif ev.asa_roman == 'III' %}tier-intermediate{% endif %}">
-                        <small>ASA სტატუსი</small>
+                        <small>ASA სტატუსი <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.asa }}" aria-label="კლინიკური წყარო" title="ASA წყარო">ⓘ</button></small>
                         <b>{{ ev.effective_asa }}</b>
                         <span>ავტო: ASA {{ ev.auto_asa }}</span>
                     </div>
                     <div class="po-risk-tile {% if ev.rcri.tier == 'high' %}tier-high{% elif ev.rcri.tier == 'intermediate' %}tier-intermediate{% endif %}">
-                        <small>RCRI (Lee / ESC)</small>
+                        <small>RCRI (Lee / ESC) <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.rcri }}" aria-label="კლინიკური წყარო" title="RCRI წყარო">ⓘ</button></small>
                         <b>{{ ev.rcri.score }} / 6 ქ.</b>
                         <span>{{ ev.rcri.tier_label }}</span>
                     </div>
                     <div class="po-risk-tile {% if ev.vsg_cri and ev.vsg_cri.tier == 'high' %}tier-high{% elif ev.vsg_cri and ev.vsg_cri.tier == 'intermediate' %}tier-intermediate{% endif %}">
-                        <small>VSG-CRI (SVS VQI)</small>
+                        <small>VSG-CRI (SVS VQI) <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.vsg_cri }}" aria-label="კლინიკური წყარო" title="VSG-CRI წყარო">ⓘ</button></small>
                         {% if ev.vsg_cri %}
                         <b>{{ ev.vsg_cri.score }} ქ.</b>
                         <span>{{ ev.vsg_cri.tier_label }}</span>
@@ -37,17 +37,17 @@
                         {% endif %}
                     </div>
                     <div class="po-risk-tile {% if ev.ariscat.tier == 'high' %}tier-high{% elif ev.ariscat.tier == 'intermediate' %}tier-intermediate{% endif %}">
-                        <small>ARISCAT (ფილტვი)</small>
+                        <small>ARISCAT (ფილტვი) <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.ariscat }}" aria-label="კლინიკური წყარო" title="ARISCAT წყარო">ⓘ</button></small>
                         <b>{{ ev.ariscat.score }} ქ.</b>
                         <span>{{ ev.ariscat.tier_label }}</span>
                     </div>
                     <div class="po-risk-tile {% if ev.caprini_score >= 5 or ev.effective_stop_bang == 'high' %}tier-intermediate{% endif %}">
-                        <small>Caprini / OSA</small>
+                        <small>Caprini / OSA <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.caprini }}" aria-label="კლინიკური წყარო" title="Caprini წყარო">ⓘ</button></small>
                         <b>VTE {{ ev.caprini_score }} ქ.</b>
                         <span>{{ ev.caprini_tier }} · {{ ev.stop_bang_label }}</span>
                     </div>
                     <div class="po-risk-tile {% if q.on_dialysis or ev.egfr is not None and ev.egfr < 30 %}tier-high{% elif ev.egfr is not None and ev.egfr < 60 or ev.frailty_notes %}tier-intermediate{% endif %}">
-                        <small>თირკმელი &amp; Frailty</small>
+                        <small>თირკმელი &amp; Frailty <button type="button" class="po-cite-btn" data-rule-id="{{ score_rules.renal }}" aria-label="კლინიკური წყარო" title="CKD-EPI / Cockcroft-Gault წყარო">ⓘ</button></small>
                         <b>{% if q.on_dialysis %}დიალიზი{% else %}eGFR {{ ev.egfr|default_if_none:"—" }}{% endif %}</b>
                         <span>{% if ev.crcl is not None %}CrCl {{ ev.crcl }} მლ/წთ{% elif ev.frailty_notes %}{{ ev.frailty_notes.0 }}{% else %}კვებითი ფონი სტაბ.{% endif %}</span>
                     </div>
