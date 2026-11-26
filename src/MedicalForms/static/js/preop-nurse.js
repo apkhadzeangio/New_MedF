@@ -131,3 +131,24 @@
         });
     });
 })();
+
+/* B3: 1-tap Jump from Missing Checklist to exact section / input */
+(function () {
+    document.querySelectorAll('.js-nw-jump').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var secId = btn.dataset.targetSection;
+            var inpId = btn.dataset.targetInput;
+            var sec = secId ? document.getElementById(secId) : null;
+            if (sec) {
+                if (sec.tagName === 'DETAILS') sec.open = true;
+                sec.scrollIntoView({behavior: 'smooth', block: 'start'});
+            }
+            if (inpId) {
+                setTimeout(function () {
+                    var inp = document.getElementById(inpId);
+                    if (inp) inp.focus();
+                }, 220);
+            }
+        });
+    });
+})();

@@ -192,3 +192,75 @@ class PreopNurseWorkspaceB2Tests(TestCase):
         self.assertEqual(p.studies['inr'], 1.05)
         self.assertEqual(p.studies['k'], 4.3)
         self.assertEqual(p.studies['glucose'], 5.8)
+
+
+class PreopNurseWorkspaceB3Tests(TestCase):
+    """Verify B3 missing checklist, phone med-call script + stamp, STOP lock, and +3d postponement recheck."""
+
+    def setUp(self):
+        self.nurse = User.objects.create_user('nurse_b3', password='pw')
+        StaffProfile.objects.create(user=self.nurse, display_name='თამარ ექთანი', preop_ui_mode=PREOP_UI_NEW)
+        self.client.force_login(self.nurse)
+
+    def test_phone_med_call_stamp_and_postponement_3d_auto_recheck(self):
+        today = timezone.localdate()
+        op_dt = today + datetime.timedelta(days=7)
+        labs_dt = today - datetime.timedelta(days=6)  # 13 days old at op_dt, 16 days old (>14d!) after +3d shift!
+
+        p = PreopPatient.objects.create(
+            patient_name='წამალ გადადებაძე', age=68, sex='M', side='R', phone='599223344',
+            pathway='pad_bypass', op_subtype='bypass_clti', visit_date=today, started_on=today,
+            questionnaire={
+                'filled': True, 'med_warfarin': True, 'med_clopidogrel': True, 'sglt2': True,
+                'med_aspirin': True, 'mets_ok': True,
+            },
+            studies={
+                'planned_surgery_date': op_dt.isoformat(),
+                'labs_date': labs_dt.isoformat(),
+                'abi_r': 0.42, 'creat': 85, 'hb': 134, 'plt': 220, 'inr': 2.2,
+            },
+        )
+
+        # 1. Phone med-call card shows warfarin, clopidogrel, SGLT2 with spoken Georgian dates
+        r1 = self.client.get(reverse('preop-patient', args=[p.pk]))
+        self.assertEqual(r1.status_code, 200)
+        self.assertContains(r1, 'რა აკლია ქირურგის დასტურამდე')
+        self.assertContains(r1, 'ვარფარინი')
+        self.assertContains(r1, 'კლოპიდოგრელი')
+        self.assertContains(r1, 'ჯარდიანსი / ფორსიგა')
+        self.assertContains(r1, 'დავურეკე და წამლების გეგმა ავუხსენი ✓')
+
+        # 2. Nurse marks "დავურეკე ✓" -> persists stamp & syncs med_hold_agreed=True
+        self.client.post(reverse('preop-med-call', args=[p.pk]), {'action': 'called'})
+        p.refresh_from_db()
+        self.assertTrue(p.studies['med_hold_agreed'])
+        self.assertEqual(p.studies['nurse_med_called_by'], 'თამარ ექთანი')
+
+        r_called = self.client.get(reverse('preop-patient', args=[p.pk]))
+        self.assertContains(r_called, 'დარეკილია ✓')
+
+        # 3. Operation is postponed by +3 days -> auto-recheck flags stale labs (>14d) & invalidates previous call!
+        self.client.post(reverse('preop-reschedule', args=[p.pk]), {'action': 'shift_3d'})
+        p.refresh_from_db()
+        self.assertEqual(p.studies['planned_surgery_date'], (op_dt + datetime.timedelta(days=3)).isoformat())
+        self.assertFalse(p.studies['med_hold_agreed'])
+
+        r_post = self.client.get(reverse('preop-patient', args=[p.pk]))
+        self.assertContains(r_post, 'ოპერაცია გადაიდო')
+        self.assertContains(r_post, '14-დღიანი ვადა')
+        self.assertContains(r_post, 'დაურეკეთ პაციენტს თავიდან')
+
+    def test_stop_sealed_patient_blocks_med_call_stamp(self):
+        today = timezone.localdate()
+        p_stop = PreopPatient.objects.create(
+            patient_name='სტოპ წამლაძე', age=72, sex='M', side='B',
+            pathway='cea', op_subtype='cea_asymp', visit_date=today,
+            questionnaire={'filled': True, 'med_warfarin': True, 'mets_ok': True},
+            studies={'carotid_r': 84, 'carotid_l': 82, 'planned_surgery_date': (today + datetime.timedelta(days=6)).isoformat()},
+        )
+        self.client.post(reverse('preop-med-call', args=[p_stop.pk]), {'action': 'called'})
+        p_stop.refresh_from_db()
+        self.assertFalse(p_stop.studies.get('nurse_med_called_at'))
+        self.assertFalse(p_stop.studies.get('med_hold_agreed'))
+        r_stop = self.client.get(reverse('preop-patient', args=[p_stop.pk]))
+        self.assertContains(r_stop, 'STOP — წამლები არ შეწყვიტოთ!')

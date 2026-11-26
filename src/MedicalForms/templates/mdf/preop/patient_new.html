@@ -48,6 +48,134 @@
         </div>
     </section>
 
+    <!-- B3: Automatic Postponement Recheck Banner -->
+    {% if nw_postponement %}
+    <section class="nw-card nw-postpone-card" id="nw-postpone-banner" role="alert">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <h2 class="nw-card-title m-0">ოპერაცია გადაიდო ({{ nw_postponement.prev_ka }} → {{ nw_postponement.cur_ka }}) — რა უნდა გაკეთდეს თავიდან</h2>
+            <form method="post" action="{% url 'preop-reschedule' p.pk %}" class="m-0">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="ack_postpone">
+                <input type="hidden" name="sig" value="{{ nw_postponement.sig }}">
+                <button type="submit" class="nw-btn soft" style="min-height:44px">გავეცანი ✓</button>
+            </form>
+        </div>
+        <div class="d-flex flex-column gap-2">
+            {% for imp in nw_postponement.impacts %}
+            <div class="nw-banner {{ imp.tone }} m-0">{{ imp.text }}</div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- B3: Plain-Georgian Numbered Missing Checklist ("რა აკლია ქირურგის დასტურამდე") -->
+    <section class="nw-card" id="nw-missing-card">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <h2 class="nw-card-title m-0">რა აკლია ქირურგის დასტურამდე</h2>
+            <span class="nw-count-pill {% if nw_missing_list %}amber{% else %}green{% endif %}">{{ nw_missing_list|length }}</span>
+        </div>
+        {% if nw_missing_list %}
+        <ol class="nw-check-ol">
+            {% for it in nw_missing_list %}
+            <li class="nw-check-li kind-{{ it.kind }}">
+                <span class="nw-check-txt">{{ it.label }}</span>
+                <button type="button" class="nw-btn soft js-nw-jump"
+                        data-target-section="{{ it.target_section }}"
+                        data-target-input="{{ it.target_input }}">
+                    {{ it.action_label }} →
+                </button>
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <div class="nw-banner ok m-0">ყველა სავალდებულო პუნქტი შევსებულია — პაციენტი მზადაა ქირურგის დასტურისთვის ✓</div>
+        {% endif %}
+    </section>
+
+    <!-- B3: Phone-Call Medication-Hold Script Card ("დავურეკე ✓") -->
+    <section class="nw-card" id="nw-med-call-card">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <h2 class="nw-card-title m-0">პაციენტთან დარეკვა — წამლების შეჩერების გეგმა</h2>
+            {% if nw_med_script.stop_locked %}
+            <span class="nw-verdict nw-verdict-stop">STOP — წამლები არ შეწყვიტოთ!</span>
+            {% elif nw_med_script.called_valid %}
+            <span class="nw-verdict nw-verdict-ready">დარეკილია ✓ ({{ nw_med_script.called_at }})</span>
+            {% elif nw_med_script.outdated_call %}
+            <span class="nw-verdict nw-verdict-stop">თარიღი შეიცვალა — დაურეკეთ თავიდან!</span>
+            {% endif %}
+        </div>
+
+        {% if nw_med_script.stop_locked %}
+        <div class="nw-banner danger">ოპერაცია დაბლოკილია (STOP) — არცერთი წამალი არ შეწყვიტოთ ქირურგთან შეთანხმების გარეშე!</div>
+        {% endif %}
+
+        {% if nw_med_script.needs_op_date %}
+        <div class="nw-banner warn">ზუსტი კალენდარული თარიღების გამოსათვლელად მიუთითეთ ოპერაციის თარიღი ქვემოთ.</div>
+        {% endif %}
+
+        {% if nw_med_script.has_meds %}
+            {% if nw_med_script.stop_rows %}
+            <div class="nw-med-group-lbl">შესაჩერებელი ან შესაცვლელი წამლები (უთხარით ტელეფონზე):</div>
+            <div class="d-flex flex-column gap-2 mb-3">
+                {% for mr in nw_med_script.stop_rows %}
+                <div class="nw-med-script-row tone-{{ mr.tone }}">
+                    <div class="nw-med-drug">{{ mr.drug }}</div>
+                    <div class="nw-med-spoken">{{ mr.spoken }}</div>
+                    <div class="nw-med-rule">{{ mr.rule }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if nw_med_script.keep_rows %}
+            <div class="nw-med-group-lbl">წამლები, რომლებიც უნდა გააგრძელოს:</div>
+            <div class="d-flex flex-column gap-2 mb-3">
+                {% for mr in nw_med_script.keep_rows %}
+                <div class="nw-med-script-row tone-ok">
+                    <div class="nw-med-drug">{{ mr.drug }}</div>
+                    <div class="nw-med-spoken">{{ mr.spoken }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="nw-row-actions">
+                {% if p.phone %}<a class="nw-btn soft" href="tel:{{ p.phone }}">დარეკვა: {{ p.phone }}</a>{% endif %}
+                {% if not nw_med_script.stop_locked %}
+                <form method="post" action="{% url 'preop-med-call' p.pk %}" class="m-0 flex-grow-1">
+                    {% csrf_token %}
+                    {% if nw_med_script.called_valid %}
+                    <button type="submit" name="action" value="clear" class="nw-btn soft" id="btn-med-call-clear">მონიშვნის მოხსნა</button>
+                    {% else %}
+                    <button type="submit" name="action" value="called" class="nw-btn ok" id="btn-med-call-done" style="width:100%">
+                        დავურეკე და წამლების გეგმა ავუხსენი ✓
+                    </button>
+                    {% endif %}
+                </form>
+                {% endif %}
+            </div>
+            {% if nw_med_script.called_valid and nw_med_script.called_by %}
+            <p class="nw-meta-line mt-2 mb-0">მონიშნა: {{ nw_med_script.called_by }} · {{ nw_med_script.called_at }}</p>
+            {% endif %}
+        {% else %}
+            <p class="nw-meta-line m-0">პაციენტის წამლები ჯერ არ არის მონიშნული კითხვარში, ან შესაჩერებელი წამალი არ აქვს.</p>
+        {% endif %}
+    </section>
+
+    <!-- B3: Fast Surgery Date / Postponement Control -->
+    <section class="nw-card" id="nw-reschedule-card">
+        <h2 class="nw-card-title">ოპერაციის თარიღი / გადადება</h2>
+        <form method="post" action="{% url 'preop-reschedule' p.pk %}" class="d-flex flex-wrap align-items-end gap-2">
+            {% csrf_token %}
+            <div class="nw-field" style="flex:1 1 180px">
+                <label for="nw-op-date-inp">დაგეგმილი ოპერაციის თარიღი</label>
+                <input type="date" id="nw-op-date-inp" name="planned_surgery_date" value="{{ s.planned_surgery_date }}">
+            </div>
+            <button type="submit" name="action" value="set_date" class="nw-btn primary" id="btn-save-op-date">თარიღის შენახვა</button>
+            <button type="submit" name="action" value="shift_3d" class="nw-btn soft" id="btn-postpone-3d">გადადება +3 დღით</button>
+        </form>
+    </section>
+
     <!-- 4-State Self-Fill Link Tracker & 1-Tap Send -->
     <section class="nw-card" id="nw-selffill-card">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">

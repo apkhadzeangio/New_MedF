@@ -139,3 +139,94 @@ class PreopNurseSelfFillSentView(LoginRequiredMixin, generic.View):
             return JsonResponse({'ok': True, 'self_fill': self_fill_status_info(ev), 'sent_at': s['self_link_sent_at']})
         messages.success(request, 'მონიშნულია, რომ კითხვარის ბმული გაგზავნილია პაციენტთან.')
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
+
+
+class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
+    """Stamp or clear 'დავურეკე და წამლების გეგმა ავუხსენი ✓' bound to current surgery date + drug signature."""
+
+    def post(self, request, pk):
+        from .. import evaluate
+        from ..nurse_ui import med_schedule_signature
+
+        patient = get_object_or_404(PreopPatient, pk=pk)
+        action = request.POST.get('action') or 'called'
+
+        with _PREOP_MUTATION_LOCK, transaction.atomic():
+            _sqlite_acquire_write_lock(patient.pk)
+            patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
+            ev = evaluate(patient)
+            s = merged_studies(patient)
+
+            if action == 'clear':
+                s['nurse_med_called_at'] = ''
+                s['nurse_med_called_by'] = ''
+                s['nurse_med_called_sig'] = ''
+                s['med_hold_agreed'] = False
+                messages.info(request, 'დარეკვის მონიშვნა მოიხსნა.')
+            elif ev['clearance_seal']['code'] == 'stop' or ev['has_hard_contraindication']:
+                messages.error(request, 'STOP-სიგნალის დროს წამლების შეწყვეტა დაბლოკილია — ჯერ ქირურგს დაუკავშირდით!')
+            else:
+                s['nurse_med_called_at'] = timezone.localtime().strftime('%d.%m.%Y %H:%M')
+                s['nurse_med_called_by'] = person_name(request.user)
+                s['nurse_med_called_sig'] = med_schedule_signature(ev)
+                s['nurse_med_called_op_date'] = s.get('planned_surgery_date') or ''
+                s['med_hold_agreed'] = True
+                messages.success(request, 'დაფიქსირდა: პაციენტს დაურეკეთ და წამლების შეჩერების გეგმა აუხსენით ✓')
+
+            patient.studies = s
+            patient.updated_by = request.user
+            patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
+
+        return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-med-call-card')
+
+
+class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
+    """Change or postpone planned surgery date (+3d quick button or exact date) and auto-invalidate old med calls."""
+
+    def post(self, request, pk):
+        import datetime
+
+        from .. import evaluate
+        from ..nurse_ui import med_schedule_signature
+
+        patient = get_object_or_404(PreopPatient, pk=pk)
+        action = request.POST.get('action') or 'set_date'
+
+        with _PREOP_MUTATION_LOCK, transaction.atomic():
+            _sqlite_acquire_write_lock(patient.pk)
+            patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
+            s = merged_studies(patient)
+
+            if action == 'ack_postpone':
+                s['postpone_ack_sig'] = (request.POST.get('sig') or '').strip()[:40]
+                patient.studies = s
+                patient.updated_by = request.user
+                patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
+
+            old_dt = _date(s.get('planned_surgery_date'))
+            if action == 'shift_3d':
+                base = old_dt or timezone.localdate()
+                new_dt = base + datetime.timedelta(days=3)
+            else:
+                new_dt = _date(request.POST.get('planned_surgery_date'))
+
+            if not new_dt:
+                messages.error(request, 'აირჩიეთ ოპერაციის ახალი თარიღი.')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
+
+            if old_dt and old_dt != new_dt:
+                s['prev_planned_surgery_date'] = old_dt.isoformat()
+                s['postpone_ack_sig'] = ''
+            s['planned_surgery_date'] = new_dt.isoformat()
+            patient.studies = s
+            ev_new = evaluate(patient)
+            if s.get('nurse_med_called_sig') and s.get('nurse_med_called_sig') != med_schedule_signature(ev_new):
+                s['med_hold_agreed'] = False
+            patient.studies = s
+            patient.updated_by = request.user
+            patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
+
+        messages.success(request, f'ოპერაციის თარიღი განახლდა ({new_dt.strftime("%d.%m.%Y")}) — შეამოწმეთ რა უნდა გაკეთდეს თავიდან.')
+        return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-postpone-banner')
+

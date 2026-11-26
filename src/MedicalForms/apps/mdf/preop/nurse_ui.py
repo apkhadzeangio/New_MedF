@@ -349,6 +349,12 @@ def build_nurse_patient_context(request, patient, ev):
     wa_url = f'https://wa.me/{wa_phone}?text={quote(share_text)}' if (wa_phone and self_path) else f'https://wa.me/?text={quote(share_text)}'
     sms_url = f'sms:{patient.phone}?body={quote(share_text)}' if (patient.phone and self_path) else f'sms:?body={quote(share_text)}'
 
+    from .nurse_plan import (
+        build_phone_med_script,
+        build_plain_georgian_missing_items,
+        detect_postponement_impacts,
+    )
+
     return {
         'nw_verdict': verdict,
         'nw_procedure_ka': PLAIN_SUBTYPE_KA.get(patient.op_subtype, PLAIN_PATHWAY_KA.get(ev['pathway'], patient.planned_operation_label)),
@@ -360,5 +366,8 @@ def build_nurse_patient_context(request, patient, ev):
         'nw_wa_url': wa_url,
         'nw_sms_url': sms_url,
         'nw_med_call': _med_call_status(ev, today),
+        'nw_missing_list': build_plain_georgian_missing_items(patient, ev, today),
+        'nw_med_script': build_phone_med_script(patient, ev, today),
+        'nw_postponement': detect_postponement_impacts(patient, ev, today),
     }
 

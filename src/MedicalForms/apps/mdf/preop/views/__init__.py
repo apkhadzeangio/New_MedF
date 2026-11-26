@@ -8,7 +8,13 @@ from .board import (
     resolve_preop_for_board,
 )
 from .files import PreopFileDeleteView, PreopFileUploadView, PreopFileView
-from .nurse import PreopNurseRegisterView, PreopNurseSelfFillSentView, PreopUiModeView
+from .nurse import (
+    PreopNurseMedCallView,
+    PreopNurseRegisterView,
+    PreopNurseRescheduleView,
+    PreopNurseSelfFillSentView,
+    PreopUiModeView,
+)
 from .passport import PreopPassportView
 from .patient import PreopPatientView
 from .rules_catalog import PreopChangelogView, PreopRulesView
@@ -25,7 +31,9 @@ __all__ = [
     'PreopFileUploadView',
     'PreopFileView',
     'PreopMoveView',
+    'PreopNurseMedCallView',
     'PreopNurseRegisterView',
+    'PreopNurseRescheduleView',
     'PreopNurseSelfFillSentView',
     'PreopPassportView',
     'PreopPatientView',
