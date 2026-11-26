@@ -508,6 +508,10 @@
             <div class="pp-sig-line-wrap" style="margin-top:8px">ხელმოწერა: <span class="pp-line"></span></div>
         </div>
     </footer>
+    <div style="display:flex;justify-content:space-between;gap:8px;padding-top:3px;border-top:1px solid #EAECF0;font-size:8.5px;color:#667085">
+        <span>კლინიკური პროტოკოლი v{{ registry_info.version }} · განახლებულია: {{ registry_info.updated_on }} ({{ registry_info.total }} წესი: {{ registry_info.verified_count }} პირველწყარო / {{ registry_info.local_count }} ადგილობრივი)</span>
+        <span>ამობეჭდვა: {{ printed_on }}</span>
+    </div>
 </article>
 </body>
 </html>

@@ -7,6 +7,7 @@ from django.views import generic
 from ...board import person_name
 from ...models import PreopPatient
 from ..anamnesis import generate_anamnesis
+from ..registry import registry_summary
 
 
 class PreopPassportView(LoginRequiredMixin, generic.TemplateView):
@@ -32,5 +33,6 @@ class PreopPassportView(LoginRequiredMixin, generic.TemplateView):
             'surgeon_name': person_name(patient.surgeon),
             'approved_by_name': person_name(patient.approved_by) if patient.approved_by else '',
             'printed_on': timezone.localtime().strftime('%d.%m.%Y %H:%M'),
+            'registry_info': registry_summary(),
         })
         return ctx

@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% load static_version %}
+
+{% block title %}ცვლილებების ჟურნალი — კლინიკური პროტოკოლი{% endblock %}
+{% block extra_styles %}<link rel="stylesheet" href="{% static_v 'css/preop.css' %}">{% endblock %}
+
+{% block content %}
+<div class="app-main">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <a href="{% url 'preop' %}" class="small">← წინასაოპერაციო კალენდარი</a>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <a href="{% url 'preop-rules' %}" class="x-btn sm">კლინიკური წესები</a>
+            <a href="{% url 'preop-vignettes' %}" class="x-btn sm">40 ვინიეტა</a>
+            <a href="{% url 'preop-audit' %}" class="x-btn sm">კარდიო &amp; VQI აუდიტი</a>
+            <span class="po-badge st-ready">აქტიური: v{{ summary.version }} · {{ summary.updated_on }}</span>
+        </div>
+    </div>
+
+    <div class="page-head">
+        <h1>ცვლილებების ჟურნალი <span class="count">კლინიკური წესების რეესტრის ვერსიების ისტორია</span></h1>
+    </div>
+
+    <section class="x-card">
+        <p class="lead-muted m-0" style="font-size:14px">
+            აქ აღრიცხულია წინასაოპერაციო პროტოკოლის ყველა კლინიკური განახლება — რომელი ზღვარი, მედიკამენტის წესი ან უსაფრთხოების ბარიერი შეიცვალა,
+            რა პირველწყაროზე დაყრდნობით და როდის. მიმდინარე ვერსია (<strong>v{{ summary.version }}</strong>) ავტომატურად იბეჭდება ყოველი A4 პასპორტის კოლონტიტულში.
+        </p>
+    </section>
+
+    <div class="d-flex flex-column gap-2">
+        {% for rel in changelog %}
+        <article class="x-card po-rule-card">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                    <span class="po-rule-val">v{{ rel.version }}</span>
+                    <h2 class="m-0" style="font-size:16px">{{ rel.title_ka }}</h2>
+                </div>
+                <span class="small text-muted fw-semibold">{{ rel.date }}</span>
+            </div>
+            <ul class="mb-0 ps-3" style="font-size:14px;line-height:1.55">
+                {% for line in rel.changes_ka %}
+                <li>{{ line }}</li>
+                {% endfor %}
+            </ul>
+            <div class="po-rule-meta">
+                <div><b>პირველწყაროები:</b> {{ rel.sources }}</div>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

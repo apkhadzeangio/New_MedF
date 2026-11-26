@@ -10,7 +10,7 @@ from .board import (
 from .files import PreopFileDeleteView, PreopFileUploadView, PreopFileView
 from .passport import PreopPassportView
 from .patient import PreopPatientView
-from .rules_catalog import PreopRulesView
+from .rules_catalog import PreopChangelogView, PreopRulesView
 from .self_fill import PreopSelfFillView
 from .vignettes import PreopVignettesView
 from .week import PreopCreateView, PreopMoveView, PreopWeekView
@@ -18,6 +18,7 @@ from .week import PreopCreateView, PreopMoveView, PreopWeekView
 __all__ = [
     'PreopAuditView',
     'PreopBoardHandoffView',
+    'PreopChangelogView',
     'PreopCreateView',
     'PreopFileDeleteView',
     'PreopFileUploadView',

@@ -10,6 +10,7 @@
         <a href="{% url 'preop' %}" class="small">← წინასაოპერაციო კალენდარი</a>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <a href="{% url 'preop-rules' %}" class="x-btn sm">კლინიკური წესები</a>
+            <a href="{% url 'preop-changelog' %}" class="x-btn sm">ცვლილებების ჟურნალი</a>
             <a href="{% url 'preop-audit' %}" class="x-btn sm">კარდიო &amp; VQI აუდიტი</a>
             <span class="po-badge st-in_progress">პროტოკოლი v{{ summary.version }} · {{ summary.updated_on }}</span>
         </div>

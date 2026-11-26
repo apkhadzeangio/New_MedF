@@ -148,3 +148,16 @@ class PreopRulesView(LoginRequiredMixin, generic.View):
         if params:
             url = f'{url}?{urlencode(params)}'
         return HttpResponseRedirect(f'{url}#rule-{rule_id}')
+
+
+class PreopChangelogView(LoginRequiredMixin, generic.View):
+    """Clinician protocol version changelog ('ცვლილებების ჟურნალი')."""
+
+    template_name = 'mdf/preop/changelog.html'
+
+    def get(self, request):
+        from ..registry import CHANGELOG
+        return render(request, self.template_name, {
+            'summary': registry_summary(),
+            'changelog': CHANGELOG,
+        })

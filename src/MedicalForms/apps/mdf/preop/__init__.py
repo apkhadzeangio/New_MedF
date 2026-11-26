@@ -7,6 +7,7 @@ from .engine import evaluate
 from .views import (
     PreopAuditView,
     PreopBoardHandoffView,
+    PreopChangelogView,
     PreopCreateView,
     PreopFileDeleteView,
     PreopFileUploadView,
@@ -140,7 +141,7 @@ __all__ = [
     'CIED_PLAN_CHOICES', 'CXR_LABELS', 'DEFAULT_CARDIOLOGISTS', 'DEFAULT_Q', 'DEFAULT_STUDIES',
     'DURATION_CHIPS', 'ECG_LABELS', 'MALLAMPATI_CHOICES', 'METS_LIMIT_CHOICES', 'MONTHS_SHORT',
     'OP_SUBTYPE_GROUPS', 'PATHWAY_SHORT', 'POPLITEAL_SCREEN_CHOICES', 'POST_ANTITHROMBOTIC_CHOICES',
-    'PRIORITY_LABELS', 'PreopAuditView', 'PreopBoardHandoffView', 'PreopCreateView',
+    'PRIORITY_LABELS', 'PreopAuditView', 'PreopBoardHandoffView', 'PreopChangelogView', 'PreopCreateView',
     'PreopFileDeleteView', 'PreopFileUploadView', 'PreopFileView', 'PreopMoveView',
     'PreopPassportView', 'PreopPatientView', 'PreopRulesView', 'PreopSelfFillView', 'PreopVignettesView', 'PreopWeekView',
     'SELF_FILL_MAX_AGE', 'SELF_FILL_MED_HINTS', 'SELF_FILL_SALT',

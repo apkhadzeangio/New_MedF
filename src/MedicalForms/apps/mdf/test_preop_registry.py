@@ -237,3 +237,39 @@ class PreopFailSafeUnknownStateTests(TestCase):
         self.assertEqual(ev_ok['clearance_seal']['code'], 'go')
 
 
+class PreopChangelogAndPassportVersionTests(TestCase):
+    """Track A6: Verify '/preop/changelog/' timeline and Page 2 A4 Passport version colophon."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.doc = User.objects.create_user(
+            username='cl_doc', password='ClDocPassword!1',
+            first_name='დავით', last_name='ექიმი', is_staff=True,
+        )
+
+    def test_changelog_page_and_passport_protocol_version_footer(self):
+        url = reverse('preop-changelog')
+        self.assertEqual(self.client.get(url).status_code, 302)
+
+        self.client.force_login(self.doc)
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'ცვლილებების ჟურნალი')
+        self.assertContains(resp, f'v{REGISTRY_VERSION}')
+        self.assertContains(resp, 'v1.0.0')
+
+        p = PreopPatient.objects.create(
+            patient_name='პასპორტ ვერსიაძე', age=68, sex='M',
+            pathway=PreopPatient.Pathway.AAA_INFRA,
+            op_subtype=PreopPatient.OpSubtype.EVAR,
+            questionnaire={'filled': True, 'mets_ok': True},
+            studies={'aaa_mm': 58, 'hb': 138, 'creat': 86, 'inr': 1.0, 'ecg': 'normal'},
+        )
+        pp = self.client.get(reverse('preop-passport', args=[p.pk]))
+        self.assertEqual(pp.status_code, 200)
+        self.assertContains(pp, f'კლინიკური პროტოკოლი v{REGISTRY_VERSION}')
+        self.assertContains(pp, REGISTRY_UPDATED_ON)
+
+
+
