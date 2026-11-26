@@ -268,3 +268,97 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
         'ready_count': sum(1 for it in directory if it['verdict']['code'] == 'ready'),
         'stop_count': sum(1 for it in directory if it['verdict']['code'] == 'stop'),
     }
+
+
+REGISTER_PROCEDURE_GROUPS = [
+    ('საძილე არტერია (CEA)', [
+        ('cea_symp', 'საძილე არტერია — სიმპტომური', 'ინსულტი ან გარდამავალი ეპიზოდი · 14 დღე'),
+        ('cea_asymp', 'საძილე არტერია — უსიმპტომო', 'გეგმიური შევიწროება'),
+    ]),
+    ('მუცლის აორტა (AAA)', [
+        ('open', 'აორტის ანევრიზმა — ღია ოპერაცია', 'მუცლის აორტის პროთეზირება'),
+        ('evar', 'აორტის ანევრიზმა — სტენტი (EVAR)', 'ენდოვასკულური პროთეზი'),
+        ('tbd', 'აორტის ანევრიზმა — ტიპი ზუსტდება', 'კტ-ანგიოგრაფიის შემდეგ'),
+    ]),
+    ('ფეხის არტერიები (შუნტირება / ბალონირება)', [
+        ('bypass_clti', 'ფეხის შუნტირება — ტკივილი/წყლული', 'კრიტიკული იშემია (7 დღე)'),
+        ('bypass_claud', 'ფეხის შუნტირება — სიარულის ტკივილი', 'გეგმიური (14 დღე)'),
+        ('pta_clti', 'ბალონირება / სტენტი — ტკივილი/წყლული', 'ენდოვასკულური (7 დღე)'),
+        ('pta_claud', 'ბალონირება / სტენტი — სიარულის ტკივილი', 'ენდოვასკულური (14 დღე)'),
+        ('abf_clti', 'აორტო-ბიფემორალური შუნტი — ტკივილი/წყლული', 'კრიტიკული იშემია (7 დღე)'),
+        ('abf_claud', 'აორტო-ბიფემორალური შუნტი — სიარულის ტკივილი', 'გეგმიური (14 დღე)'),
+    ]),
+    ('ვენების ოპერაცია', [
+        ('evla', 'ვენების ლაზერული ოპერაცია (EVLA)', 'ადგილობრივი გაუტკივარება'),
+        ('phlebectomy', 'ვარიკოზული ვენების ამოკვეთა', 'სპინალური ან ადგილობრივი'),
+    ]),
+]
+
+
+def plain_risk_badges(ev):
+    """Translate technical scores (RCRI, ARISCAT, eGFR/CrCl, ASA) into plain Georgian badges."""
+    badges = []
+    rcri_sc = ev['rcri']['score']
+    cardio_lbl = 'დაბალი' if rcri_sc == 0 else ('საშუალო' if rcri_sc == 1 else 'მაღალი')
+    cardio_tone = 'ok' if rcri_sc == 0 else ('warn' if rcri_sc == 1 else 'danger')
+    badges.append({'label': 'გულის რისკი', 'value': cardio_lbl, 'tone': cardio_tone})
+
+    ari_sc = ev['ariscat']['score']
+    pulm_lbl = 'დაბალი' if ari_sc < 26 else ('საშუალო' if ari_sc < 45 else 'მაღალი')
+    pulm_tone = 'ok' if ari_sc < 26 else ('warn' if ari_sc < 45 else 'danger')
+    badges.append({'label': 'ფილტვების რისკი', 'value': pulm_lbl, 'tone': pulm_tone})
+
+    renal_vals = [v for v in (ev.get('crcl'), ev.get('egfr')) if v is not None]
+    if ev['q'].get('on_dialysis'):
+        badges.append({'label': 'თირკმლის ფუნქცია', 'value': 'დიალიზი', 'tone': 'danger'})
+    elif renal_vals:
+        r_min = min(renal_vals)
+        r_tone = 'danger' if r_min < 30 else ('warn' if r_min < 60 else 'ok')
+        badges.append({'label': 'თირკმლის გაფილტვრა', 'value': f'{r_min} მლ/წთ', 'tone': r_tone})
+    else:
+        badges.append({'label': 'თირკმლის გაფილტვრა', 'value': 'კრეატინინი აკლია', 'tone': 'muted'})
+
+    asa = ev['effective_asa']
+    asa_tone = 'danger' if 'IV' in asa or '-E' in asa else ('warn' if 'III' in asa else 'ok')
+    badges.append({'label': 'ზოგადი სიმძიმე', 'value': asa, 'tone': asa_tone})
+    return badges
+
+
+def build_nurse_patient_context(request, patient, ev):
+    """Build Nurse Workspace context for patient_new.html (plain Georgian, zero jargon)."""
+    from urllib.parse import quote
+
+    from django.utils import timezone
+
+    today = timezone.localdate()
+    verdict = get_nurse_readiness_verdict(patient, ev)
+    sf_info = self_fill_status_info(ev)
+    op_dt = _date(ev['s'].get('planned_surgery_date'))
+    self_path = request.build_absolute_uri(ev.get('self_fill_path') or '') if ev.get('self_fill_path') else ''
+
+    phone_digits = re.sub(r'\D', '', patient.phone or '')
+    if len(phone_digits) == 9 and phone_digits.startswith('5'):
+        wa_phone = '995' + phone_digits
+    else:
+        wa_phone = phone_digits
+
+    share_text = (
+        f'გამარჯობა, {patient.patient_name}. გთხოვთ შეავსოთ წინასაოპერაციო კითხვარი ამ ბმულზე: {self_path}'
+        if self_path else ''
+    )
+    wa_url = f'https://wa.me/{wa_phone}?text={quote(share_text)}' if (wa_phone and self_path) else f'https://wa.me/?text={quote(share_text)}'
+    sms_url = f'sms:{patient.phone}?body={quote(share_text)}' if (patient.phone and self_path) else f'sms:?body={quote(share_text)}'
+
+    return {
+        'nw_verdict': verdict,
+        'nw_procedure_ka': PLAIN_SUBTYPE_KA.get(patient.op_subtype, PLAIN_PATHWAY_KA.get(ev['pathway'], patient.planned_operation_label)),
+        'nw_side_ka': PLAIN_SIDE_KA.get(patient.side or '', ''),
+        'nw_op_label': _relative_op_label(op_dt, today),
+        'nw_risk_badges': plain_risk_badges(ev),
+        'nw_self_fill': sf_info,
+        'nw_self_fill_abs': self_path,
+        'nw_wa_url': wa_url,
+        'nw_sms_url': sms_url,
+        'nw_med_call': _med_call_status(ev, today),
+    }
+

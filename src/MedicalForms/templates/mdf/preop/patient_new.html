@@ -1,0 +1,252 @@
+{% extends 'base.html' %}
+{% load static_version mdf_tags %}
+
+{% block title %}{{ p.patient_name }} — ექთნის სივრცე{% endblock %}
+{% block extra_styles %}
+<link rel="stylesheet" href="{% static_v 'css/preop.css' %}">
+<link rel="stylesheet" href="{% static_v 'css/preop-nurse.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="nw-wrap" id="nw-patient-root" data-patient-pk="{{ p.pk }}">
+    <header class="nw-header">
+        <div>
+            <a href="{% url 'preop' %}" class="nw-back-link">← უკან მორიგეობის სიაში</a>
+            <h1>{{ p.patient_name }}</h1>
+            <p class="nw-header-sub">
+                {{ nw_procedure_ka }}{% if nw_side_ka %} · <strong>{{ nw_side_ka }}</strong>{% endif %}{% if p.age %} · {{ p.age }} წ.{% endif %} · <strong>{{ nw_op_label }}</strong>
+            </p>
+        </div>
+        <div class="nw-switch-group" role="group" aria-label="ხედის არჩევა">
+            <span class="nw-switch-btn active" aria-current="true">ახალი ხედი</span>
+            <form method="post" action="{% url 'preop-ui-mode' %}" class="m-0">
+                {% csrf_token %}
+                <input type="hidden" name="mode" value="old">
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button type="submit" class="nw-switch-btn" id="btn-switch-old-ui">ძველი ხედი</button>
+            </form>
+        </div>
+    </header>
+
+    <!-- 1-Glance Readiness Verdict & Plain-Georgian Risk Strip -->
+    <section class="nw-card nw-verdict-card tone-{{ nw_verdict.code }}" id="nw-verdict-banner">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <span class="nw-verdict nw-verdict-{{ nw_verdict.code }}">{{ nw_verdict.badge }}</span>
+            <div class="d-flex flex-wrap gap-2">
+                {% if p.phone %}<a class="nw-btn soft" href="tel:{{ p.phone }}">დარეკვა: {{ p.phone }}</a>{% endif %}
+                <a class="nw-btn primary" href="{% url 'preop-passport' p.pk %}" target="_blank" rel="noopener">პასპორტი (A4)</a>
+            </div>
+        </div>
+        <p class="mt-2 mb-2 fw-semibold">{{ nw_verdict.detail }}</p>
+        <div class="nw-risk-strip">
+            {% for rb in nw_risk_badges %}
+            <div class="nw-risk-chip tone-{{ rb.tone }}">
+                <span class="nw-risk-lbl">{{ rb.label }}</span>
+                <span class="nw-risk-val">{{ rb.value }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- 4-State Self-Fill Link Tracker & 1-Tap Send -->
+    <section class="nw-card" id="nw-selffill-card">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <h2 class="nw-card-title m-0">პაციენტის თვითშევსების ბმული</h2>
+            <span class="nw-sf-pill tone-{{ nw_self_fill.tone }}" id="nw-sf-status-pill">{{ nw_self_fill.label }}</span>
+        </div>
+        {% if s.self_link_sent_at %}
+        <p class="nw-meta-line mb-2" id="nw-sf-sent-meta">გაგზავნილია: {{ s.self_link_sent_at }}{% if s.self_link_sent_by %} ({{ s.self_link_sent_by }}){% endif %}</p>
+        {% endif %}
+        {% if not self_fill_revoked %}
+        <div class="nw-row-actions">
+            <a class="nw-btn ok js-sf-track" data-via="whatsapp" data-track-url="{% url 'preop-self-link-sent' p.pk %}"
+               href="{{ nw_wa_url }}" target="_blank" rel="noopener" id="btn-sf-whatsapp">WhatsApp-ით გაგზავნა</a>
+            <a class="nw-btn primary js-sf-track" data-via="sms" data-track-url="{% url 'preop-self-link-sent' p.pk %}"
+               href="{{ nw_sms_url }}" id="btn-sf-sms">SMS-ით გაგზავნა</a>
+            <button type="button" class="nw-btn js-sf-copy" data-via="copy" data-track-url="{% url 'preop-self-link-sent' p.pk %}"
+                    data-copy-url="{{ nw_self_fill_abs }}" id="btn-sf-copy">ბმულის კოპირება</button>
+            <a class="nw-btn soft" href="{{ self_fill_path }}" target="_blank" rel="noopener">გახსნა პლანშეტზე ↗</a>
+        </div>
+        {% else %}
+        <form method="post" class="m-0">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="self_link">
+            <button type="submit" name="action" value="rotate" class="nw-btn primary">↻ ბმულის აღდგენა</button>
+        </form>
+        {% endif %}
+    </section>
+
+    <!-- 1-Screen Admission Vitals & Core Labs (Comma-Decimal Safe + Instant Guardrails) -->
+    <section class="nw-card" id="nw-vitals-card">
+        <h2 class="nw-card-title">მიღების ვიტალები და ძირითადი ანალიზები</h2>
+        <form method="post" class="d-flex flex-column gap-3" id="nw-vitals-form" data-nw-draft="vitals">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="stage1">
+
+            <div class="nw-field-grid">
+                <div class="nw-field">
+                    <label for="nw-bp-sys">ზედა წნევა (სისტოლური, mmHg)</label>
+                    <input type="text" id="nw-bp-sys" name="bp_sys" inputmode="numeric" value="{{ s.bp_sys|default_if_none:'' }}" placeholder="მაგ. 130">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-bp-dia">ქვედა წნევა (დიასტოლური, mmHg)</label>
+                    <input type="text" id="nw-bp-dia" name="bp_dia" inputmode="numeric" value="{{ s.bp_dia|default_if_none:'' }}" placeholder="მაგ. 80">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-hr">პულსი (დარტყმა/წთ)</label>
+                    <input type="text" id="nw-hr" name="hr" inputmode="numeric" value="{{ s.hr|default_if_none:'' }}" placeholder="მაგ. 76">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-spo2">ჟანგბადი თითზე (SpO2, %)</label>
+                    <input type="text" id="nw-spo2" name="spo2" inputmode="numeric" value="{{ s.spo2|default_if_none:'' }}" placeholder="მაგ. 98">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-wt">წონა (კგ)</label>
+                    <input type="text" id="nw-wt" name="weight_kg" inputmode="decimal" class="js-comma-num" value="{{ s.weight_kg|default_if_none:'' }}" placeholder="მაგ. 78,5">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-ht">სიმაღლე (სმ)</label>
+                    <input type="text" id="nw-ht" name="height_cm" inputmode="numeric" value="{{ s.height_cm|default_if_none:'' }}" placeholder="მაგ. 172">
+                </div>
+            </div>
+
+            <div class="nw-guard-box" id="nw-live-guard" hidden role="alert"></div>
+
+            <div class="nw-field-grid">
+                <div class="nw-field">
+                    <label for="nw-hb">ჰემოგლობინი (Hb, გ/ლ ან გ/დლ)</label>
+                    <input type="text" id="nw-hb" name="hb" inputmode="decimal" class="js-comma-num" value="{{ s.hb|default_if_none:'' }}" placeholder="მაგ. 132 ან 13,2">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-plt">თრომბოციტები (PLT, ×10^9/ლ)</label>
+                    <input type="text" id="nw-plt" name="plt" inputmode="numeric" value="{{ s.plt|default_if_none:'' }}" placeholder="მაგ. 220">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-creat">კრეატინინი</label>
+                    <input type="text" id="nw-creat" name="creat" inputmode="decimal" class="js-comma-num" value="{{ s.creat|default_if_none:'' }}" placeholder="მაგ. 88 ან 1,2">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-creat-unit">კრეატინინის ერთეული</label>
+                    <select id="nw-creat-unit" name="creat_unit">
+                        <option value="umol" {% if s.creat_unit == 'umol' %}selected{% endif %}>µmol/L (მაგ. 88)</option>
+                        <option value="mgdl" {% if s.creat_unit == 'mgdl' %}selected{% endif %}>mg/dL (მაგ. 1,2)</option>
+                        <option value="" {% if not s.creat_unit %}selected{% endif %}>ავტომატური</option>
+                    </select>
+                </div>
+                <div class="nw-field">
+                    <label for="nw-inr">INR (შედედება)</label>
+                    <input type="text" id="nw-inr" name="inr" inputmode="decimal" class="js-comma-num" value="{{ s.inr|default_if_none:'' }}" placeholder="მაგ. 1,05">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-k">კალიუმი (K+, მმოლ/ლ)</label>
+                    <input type="text" id="nw-k" name="k" inputmode="decimal" class="js-comma-num" value="{{ s.k|default_if_none:'' }}" placeholder="მაგ. 4,2">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-gl">შაქარი (გლუკოზა, მმოლ/ლ)</label>
+                    <input type="text" id="nw-gl" name="glucose" inputmode="decimal" class="js-comma-num" value="{{ s.glucose|default_if_none:'' }}" placeholder="მაგ. 5,6">
+                </div>
+                <div class="nw-field">
+                    <label for="nw-labs-date">ანალიზების თარიღი</label>
+                    <input type="date" id="nw-labs-date" name="labs_date" value="{{ s.labs_date }}">
+                </div>
+            </div>
+
+            <div>
+                <button type="submit" class="nw-btn primary" id="btn-save-vitals" style="width:100%">ვიტალებისა და ანალიზების შენახვა</button>
+            </div>
+        </form>
+    </section>
+
+    <!-- 1-Tap Camera Lab Result Photo / PDF Upload -->
+    <section class="nw-card" id="nw-files-card">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <h2 class="nw-card-title m-0">ანალიზის ფურცლების ფოტოები ({{ total_files }})</h2>
+        </div>
+        <form method="post" action="{% url 'preop-files' p.pk %}" enctype="multipart/form-data" class="d-flex flex-column gap-2" id="nw-photo-upload-form">
+            {% csrf_token %}
+            <input type="hidden" name="tab" value="s1">
+            <div class="nw-field-grid">
+                <div class="nw-field">
+                    <label for="nw-file-cat">დოკუმენტის ტიპი</label>
+                    <select id="nw-file-cat" name="category">
+                        {% for fkey, flbl in file_categories %}
+                        <option value="{{ fkey }}" {% if fkey == 'labs' %}selected{% endif %}>{{ flbl }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="nw-field">
+                    <label for="nw-file-cap">მოკლე შენიშვნა (არასავალდებულო)</label>
+                    <input type="text" id="nw-file-cap" name="caption" placeholder="მაგ. სისხლის საერთო, ეკგ">
+                </div>
+            </div>
+            <label class="nw-btn ok" for="nw-camera-input" id="btn-camera-upload" style="width:100%">
+                ანალიზის ფურცლის ფოტოს გადაღება / ატვირთვა
+            </label>
+            <input type="file" id="nw-camera-input" name="file" accept="image/*,application/pdf" capture="environment" multiple class="visually-hidden js-nw-auto-upload">
+        </form>
+
+        {% if files_by_cat %}
+        <div class="nw-file-grid mt-3">
+            {% for grp in files_by_cat %}
+                {% for f in grp.files %}
+                <div class="nw-file-tile">
+                    <a href="{% url 'preop-file' f.pk %}" target="_blank" rel="noopener" class="nw-file-preview">
+                        {% if f.is_pdf %}
+                        <span class="nw-pdf-badge">PDF</span>
+                        {% else %}
+                        <img src="{% url 'preop-file-thumb' f.pk %}" alt="{{ f.caption|default:grp.label }}">
+                        {% endif %}
+                    </a>
+                    <div class="nw-file-meta">
+                        <strong>{{ grp.label }}</strong>
+                        {% if f.caption %}<span>{{ f.caption }}</span>{% endif %}
+                    </div>
+                    <form method="post" action="{% url 'preop-file-delete' f.pk %}" class="m-0">
+                        {% csrf_token %}
+                        <button type="submit" class="nw-btn soft" style="min-height:44px;width:100%" onclick="return confirm('წავშალოთ ეს ფაილი?');">წაშლა</button>
+                    </form>
+                </div>
+                {% endfor %}
+            {% endfor %}
+        </div>
+        {% endif %}
+    </section>
+
+    <!-- Full Clinical Sections (Expandable without losing any classic feature) -->
+    <details class="nw-section" id="nw-sec-q" {% if tab == 'q' %}open{% endif %}>
+        <summary class="nw-section-head">
+            <h2 class="nw-section-title">კითხვარი და წამლების სია</h2>
+            <span class="nw-count-pill {% if q.filled %}green{% else %}amber{% endif %}">{% if q.filled %}შევსებულია{% else %}შესავსებია{% endif %}</span>
+        </summary>
+        <div class="p-3">{% include "mdf/preop/_tab_q.html" with tab="q" %}</div>
+    </details>
+
+    <details class="nw-section" id="nw-sec-s2" {% if tab == 's2' %}open{% endif %}>
+        <summary class="nw-section-head">
+            <h2 class="nw-section-title">მომზადების გეგმა, კონსულტაციები და წამლების გრაფიკი</h2>
+            <span class="nw-count-pill blue">{{ ev.tasks_done }}/{{ ev.tasks_total }}</span>
+        </summary>
+        <div class="p-3">{% include "mdf/preop/_tab_s2.html" with tab="s2" %}</div>
+    </details>
+
+    <details class="nw-section" id="nw-sec-dos" {% if tab == 'dos' %}open{% endif %}>
+        <summary class="nw-section-head">
+            <h2 class="nw-section-title">ოპერაციის დილის შემოწმება (WHO Sign-In)</h2>
+            <span class="nw-count-pill {% if ev.dos_ready %}green{% else %}blue{% endif %}">{{ ev.dos_done_count }}/{{ ev.dos_total_count }}</span>
+        </summary>
+        <div class="p-3">{% include "mdf/preop/_tab_dos.html" with tab="dos" %}</div>
+    </details>
+
+    <details class="nw-section" id="nw-sec-doc" {% if tab == 'doc' %}open{% endif %}>
+        <summary class="nw-section-head">
+            <h2 class="nw-section-title">ქირურგის დასტური და ანამნეზი</h2>
+            <span class="nw-count-pill {% if p.approved_at %}green{% endif %}">{% if p.approved_at %}დადასტურებულია ✓{% else %}მოლოდინში{% endif %}</span>
+        </summary>
+        <div class="p-3">{% include "mdf/preop/_tab_doc.html" with tab="doc" %}</div>
+    </details>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static_v 'js/preop-nurse.js' %}"></script>
+{% endblock %}

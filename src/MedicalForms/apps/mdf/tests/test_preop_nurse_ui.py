@@ -122,3 +122,73 @@ class PreopNurseWorkspaceB1Tests(TestCase):
         self.assertContains(resp, 'მზადაა ✓')
         self.assertContains(resp, 'STOP — დაბლოკილია')
         self.assertContains(resp, 'ვარფარინი')
+
+
+class PreopNurseWorkspaceB2Tests(TestCase):
+    """Verify B2 fast mobile registration, CEA bilateral lock, 4-state self-fill tracker, and comma vitals."""
+
+    def setUp(self):
+        self.nurse = User.objects.create_user('nurse_b2', password='pw')
+        StaffProfile.objects.create(user=self.nurse, display_name='ნინო ექთანი', preop_ui_mode=PREOP_UI_NEW)
+        self.client.force_login(self.nurse)
+
+    def test_mobile_registration_blocks_bilateral_cea_and_creates_patient(self):
+        r_get = self.client.get(reverse('preop-nurse-register'))
+        self.assertEqual(r_get.status_code, 200)
+        self.assertTemplateUsed(r_get, 'mdf/preop/register_new.html')
+
+        # Bilateral CEA rejected server-side with plain Georgian error
+        r_bad = self.client.post(reverse('preop-nurse-register'), {
+            'patient_name': 'კაროტიდ შეცდომაძე', 'op_subtype': 'cea_symp', 'side': 'B', 'sex': 'M', 'age': '70',
+        })
+        self.assertEqual(r_bad.status_code, 400)
+        self.assertContains(r_bad, 'ორმხრივი ერთდროული ოპერაცია დაუშვებელია', status_code=400)
+        self.assertFalse(PreopPatient.objects.filter(patient_name='კაროტიდ შეცდომაძე').exists())
+
+        # Valid unilateral CEA registers and redirects to patient_new.html
+        op_dt = (timezone.localdate() + datetime.timedelta(days=5)).isoformat()
+        r_ok = self.client.post(reverse('preop-nurse-register'), {
+            'patient_name': 'კაროტიდ მარჯვენაძე', 'phone': '599112233',
+            'op_subtype': 'cea_symp', 'side': 'R', 'sex': 'M', 'age': '69',
+            'planned_surgery_date': op_dt,
+        })
+        p = PreopPatient.objects.get(patient_name='კაროტიდ მარჯვენაძე')
+        self.assertRedirects(r_ok, reverse('preop-patient', args=[p.pk]))
+        self.assertEqual(p.studies.get('planned_surgery_date'), op_dt)
+
+        r_card = self.client.get(reverse('preop-patient', args=[p.pk]))
+        self.assertTemplateUsed(r_card, 'mdf/preop/patient_new.html')
+        self.assertContains(r_card, 'ბმული არ გაგზავნილა')
+        self.assertContains(r_card, 'გულის რისკი')
+
+    def test_self_fill_4_state_tracker_and_comma_decimal_vitals_save(self):
+        p = PreopPatient.objects.create(
+            patient_name='ბმულ ვიტალაძე', age=66, sex='F', side='R', phone='577001122',
+            pathway='cea', op_subtype='cea_asymp', visit_date=timezone.localdate(),
+        )
+        # 1. Unsent -> Sent via WhatsApp AJAX
+        r_sent = self.client.post(
+            reverse('preop-self-link-sent', args=[p.pk]),
+            {'via': 'whatsapp'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(r_sent.status_code, 200)
+        self.assertEqual(r_sent.json()['self_fill']['code'], 'sent')
+
+        r_card_sent = self.client.get(reverse('preop-patient', args=[p.pk]))
+        self.assertContains(r_card_sent, 'გაგზავნილია — ელოდება პაციენტს')
+
+        # 2. Comma-decimal admission vitals & labs save accurately (Georgian keyboard '1,2' & '78,5')
+        self.client.post(reverse('preop-patient', args=[p.pk]), {
+            'section': 'stage1',
+            'bp_sys': '138', 'bp_dia': '82', 'hr': '74', 'spo2': '98',
+            'weight_kg': '78,5', 'height_cm': '165',
+            'hb': '13,2', 'plt': '235', 'creat': '1,2', 'creat_unit': 'mgdl',
+            'inr': '1,05', 'k': '4,3', 'glucose': '5,8',
+        })
+        p.refresh_from_db()
+        self.assertEqual(p.studies['weight_kg'], 78.5)
+        self.assertEqual(p.studies['creat'], 1.2)
+        self.assertEqual(p.studies['inr'], 1.05)
+        self.assertEqual(p.studies['k'], 4.3)
+        self.assertEqual(p.studies['glucose'], 5.8)

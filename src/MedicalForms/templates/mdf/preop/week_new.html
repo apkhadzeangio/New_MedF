@@ -35,8 +35,7 @@
                    placeholder="სწრაფი ძებნა (გვარი ან ტელეფონი) — მზადაა თუ არა?" autocomplete="off">
             <button type="button" id="nw-search-clear" class="nw-search-clear" aria-label="ძებნის გასუფთავება" hidden>✕</button>
         </div>
-        <a href="#nw-quick-add-box" class="nw-btn primary" id="btn-open-quick-add"
-           onclick="var d=document.getElementById('nw-quick-add-box'); if(d){d.open=true; d.scrollIntoView({behavior:'smooth'});}">
+        <a href="{% url 'preop-nurse-register' %}" class="nw-btn primary" id="btn-open-quick-add">
             + ახალი პაციენტი
         </a>
     </div>

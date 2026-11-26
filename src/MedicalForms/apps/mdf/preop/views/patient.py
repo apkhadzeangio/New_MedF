@@ -726,4 +726,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             'total_files': len(files), 'blood_groups': BG_LIST, 'today': timezone.localdate(),
         }
         ctx.update(self._build_rule_citations(ev))
+        from ..nurse_ui import PREOP_UI_NEW, build_nurse_patient_context, get_preop_ui_mode
+        if get_preop_ui_mode(request) == PREOP_UI_NEW:
+            ev_with_path = dict(ev, self_fill_path=ctx['self_fill_path'])
+            ctx.update(build_nurse_patient_context(request, patient, ev_with_path))
+            return render(request, 'mdf/preop/patient_new.html', ctx)
         return render(request, self.template_name, ctx)

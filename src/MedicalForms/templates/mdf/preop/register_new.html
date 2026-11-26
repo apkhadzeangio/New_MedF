@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% load static_version %}
+
+{% block title %}ახალი პაციენტის რეგისტრაცია — წინასაოპერაციო{% endblock %}
+{% block extra_styles %}
+<link rel="stylesheet" href="{% static_v 'css/preop-nurse.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="nw-wrap" id="nw-register-root">
+    <header class="nw-header">
+        <div>
+            <a href="{% url 'preop' %}" class="nw-back-link">← უკან მორიგეობის სიაში</a>
+            <h1>ახალი პაციენტის რეგისტრაცია</h1>
+            <p class="nw-header-sub">1 მოკლე ეკრანი — შენახვისთანავე გაიხსნება ბარათი და ბმული</p>
+        </div>
+        <div class="nw-switch-group" role="group" aria-label="ხედის არჩევა">
+            <span class="nw-switch-btn active" aria-current="true">ახალი ხედი</span>
+            <form method="post" action="{% url 'preop-ui-mode' %}" class="m-0">
+                {% csrf_token %}
+                <input type="hidden" name="mode" value="old">
+                <input type="hidden" name="next" value="{% url 'preop' %}">
+                <button type="submit" class="nw-switch-btn">ძველი ხედი</button>
+            </form>
+        </div>
+    </header>
+
+    {% if error_msg %}
+    <div class="nw-banner danger" role="alert" id="nw-reg-error">{{ error_msg }}</div>
+    {% endif %}
+
+    <form method="post" class="d-flex flex-column gap-3" id="nw-register-form">
+        {% csrf_token %}
+
+        <section class="nw-card">
+            <h2 class="nw-card-title">1. პაციენტის მონაცემები</h2>
+            <div class="nw-field-grid">
+                <div class="nw-field">
+                    <label for="reg-name">სახელი და გვარი *</label>
+                    <input type="text" id="reg-name" name="patient_name" value="{{ form_data.patient_name }}" required placeholder="მაგ. ბერიძე ნინო" autocomplete="off">
+                </div>
+                <div class="nw-field">
+                    <label for="reg-phone">ტელეფონის ნომერი</label>
+                    <input type="tel" id="reg-phone" name="phone" inputmode="tel" value="{{ form_data.phone }}" placeholder="5XX XX XX XX" autocomplete="off">
+                </div>
+                <div class="nw-field">
+                    <label for="reg-age">ასაკი (წელი)</label>
+                    <input type="text" id="reg-age" name="age" inputmode="numeric" value="{{ form_data.age }}" placeholder="მაგ. 68">
+                </div>
+                <div class="nw-field">
+                    <label>სქესი</label>
+                    <div class="nw-seg-row" role="radiogroup" aria-label="სქესი">
+                        <label class="nw-tile-sm">
+                            <input type="radio" name="sex" value="M" {% if form_data.sex != 'F' %}checked{% endif %}>
+                            <span>კაცი</span>
+                        </label>
+                        <label class="nw-tile-sm">
+                            <input type="radio" name="sex" value="F" {% if form_data.sex == 'F' %}checked{% endif %}>
+                            <span>ქალი</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="nw-card">
+            <h2 class="nw-card-title">2. დაგეგმილი ოპერაცია *</h2>
+            {% for grp_title, items in procedure_groups %}
+            <div class="nw-proc-group">
+                <div class="nw-proc-group-lbl">{{ grp_title }}</div>
+                <div class="nw-proc-grid">
+                    {% for val, title, hint in items %}
+                    <label class="nw-proc-tile">
+                        <input type="radio" name="op_subtype" value="{{ val }}" class="js-reg-op"
+                               {% if form_data.op_subtype == val or not form_data.op_subtype and val == 'cea_symp' %}checked{% endif %}>
+                        <span class="nw-proc-main">{{ title }}</span>
+                        <span class="nw-proc-hint">{{ hint }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </section>
+
+        <section class="nw-card" id="nw-reg-side-card">
+            <h2 class="nw-card-title">3. საოპერაციო მხარე</h2>
+            <div class="nw-seg-row" role="radiogroup" aria-label="საოპერაციო მხარე">
+                <label class="nw-tile-sm">
+                    <input type="radio" name="side" value="R" {% if form_data.side == 'R' %}checked{% endif %}>
+                    <span>მარჯვენა</span>
+                </label>
+                <label class="nw-tile-sm">
+                    <input type="radio" name="side" value="L" {% if form_data.side == 'L' %}checked{% endif %}>
+                    <span>მარცხენა</span>
+                </label>
+                <label class="nw-tile-sm" id="nw-side-b-wrap">
+                    <input type="radio" name="side" value="B" id="nw-side-b" {% if form_data.side == 'B' %}checked{% endif %}>
+                    <span>ორივე მხარე</span>
+                </label>
+            </div>
+            <p class="nw-inline-note" id="nw-cea-side-note" hidden>
+                საძილე არტერიის (CEA) ორმხრივი ერთდროული ოპერაცია აკრძალულია — აირჩიეთ მარჯვენა ან მარცხენა მხარე.
+            </p>
+        </section>
+
+        <section class="nw-card">
+            <h2 class="nw-card-title">4. ქირურგი და ოპერაციის თარიღი</h2>
+            <div class="nw-field-grid">
+                <div class="nw-field">
+                    <label for="reg-surgeon">მკურნალი ქირურგი</label>
+                    <select id="reg-surgeon" name="surgeon">
+                        <option value="">აირჩიეთ ქირურგი...</option>
+                        {% for uid, uname in doctors %}
+                        <option value="{{ uid }}" {% if form_data.surgeon == uid|stringformat:"s" %}selected{% endif %}>{{ uname }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="nw-field">
+                    <label for="reg-op-date">დაგეგმილი ოპერაციის თარიღი</label>
+                    <input type="date" id="reg-op-date" name="planned_surgery_date" value="{{ form_data.planned_surgery_date }}">
+                </div>
+            </div>
+        </section>
+
+        <div class="d-flex flex-wrap gap-2">
+            <button type="submit" class="nw-btn primary" id="btn-reg-submit" style="flex:1 1 220px">შენახვა და პაციენტის ბარათზე გადასვლა</button>
+            <a href="{% url 'preop' %}" class="nw-btn soft">გაუქმება</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static_v 'js/preop-nurse.js' %}"></script>
+{% endblock %}
