@@ -17,7 +17,6 @@ MAX_FUNC_LINES = 100
 
 # Pre-existing oversized files at the start of Track C (may ONLY shrink).
 OVERSIZED_FILES_BASELINE = {
-    'artery_map.py': 825,
     'staging.py': 2031,
     'test_preop_sim.py': 1492,
     'tests.py': 7061,
@@ -25,9 +24,6 @@ OVERSIZED_FILES_BASELINE = {
 
 # Pre-existing oversized functions/methods at the start of Track C (may ONLY shrink).
 OVERSIZED_FUNCTIONS_BASELINE = {
-    ('artery_map.py', '_build_interventions'): 180,
-    ('artery_map.py', 'build_foot_context'): 122,
-    ('artery_map.py', 'build_map_context'): 187,
     ('staging.py', '_limb_body_lines_ka'): 114,
     ('staging.py', 'suggest_from_map'): 269,
     ('test_preop_sim.py', '_archetype_patient'): 143,
