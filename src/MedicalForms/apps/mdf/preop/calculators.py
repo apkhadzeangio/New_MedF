@@ -54,6 +54,9 @@ def _parse_scr_mgdl(creat, creat_unit=''):
     ren_u = rule_value('SCORE_RENAL_CKDEPI_CG')
     c = _num(creat, lo=0.1, hi=3000)
     if c is None:
+        raw_c = _num(creat)
+        if creat_unit == 'mgdl' and raw_c is not None and raw_c > ren_u['ambig_hi']:
+            return None, True
         return None, False
     if creat_unit == 'mgdl':
         if c > ren_u['ambig_hi']:
@@ -179,9 +182,10 @@ def calc_max_contrast_ml(egfr, on_dialysis=False):
     from .registry import rule_value
     if on_dialysis or egfr is None:
         return None
-    eg_v = _num(egfr, lo=0, hi=500)
-    if eg_v is None:
+    eg_raw = _num(egfr)
+    if eg_raw is None:
         return None
+    eg_v = min(500.0, max(0.0, eg_raw))
     ren = rule_value('REN_CKD_NEPHRO_HYDRATION')
     if eg_v < ren['red']:
         return max(15, int(round(eg_v * ren.get('mult_lt30', 1.0))))
@@ -192,32 +196,34 @@ def calc_max_contrast_ml(egfr, on_dialysis=False):
     return min(250, int(round(eg_v * ren['gurm_mult'])))
 
 
+def _raw_bp_pair(s, sk, dk):
+    rsv, rdv = _num(_s_raw(s, sk)), _num(_s_raw(s, dk))
+    sv, dv = _sat_num(rsv, 30, 320), _sat_num(rdv, 20, 220)
+    return sv, dv, (rsv is not None and rdv is not None and rsv <= rdv)
+
+
 def _valid_bilateral_sbp(s):
-    """Return max valid systolic BP across R/L arms, rejecting inverted readings (SBP <= DBP)."""
-    bp_sys, bp_dia = _sat_num(_s_raw(s, 'bp_sys'), 30, 320), _sat_num(_s_raw(s, 'bp_dia'), 20, 220)
-    bp_sys_l, bp_dia_l = _sat_num(_s_raw(s, 'bp_sys_l'), 30, 320), _sat_num(_s_raw(s, 'bp_dia_l'), 20, 220)
-    r_inv = (bp_sys is not None and bp_dia is not None and bp_sys <= bp_dia)
-    l_inv = (bp_sys_l is not None and bp_dia_l is not None and bp_sys_l <= bp_dia_l)
+    """Return max valid systolic BP across R/L arms, rejecting inverted readings (raw SBP <= DBP)."""
+    bp_sys, _, r_inv = _raw_bp_pair(s, 'bp_sys', 'bp_dia')
+    bp_sys_l, _, l_inv = _raw_bp_pair(s, 'bp_sys_l', 'bp_dia_l')
     valid = [v for v, inv in ((bp_sys, r_inv), (bp_sys_l, l_inv)) if v is not None and not inv]
     return max(valid, default=None)
 
 
 def _valid_bilateral_dbp(s):
-    """Return max valid diastolic BP across R/L arms, rejecting inverted readings (SBP <= DBP)."""
-    bp_sys, bp_dia = _sat_num(_s_raw(s, 'bp_sys'), 30, 320), _sat_num(_s_raw(s, 'bp_dia'), 20, 220)
-    bp_sys_l, bp_dia_l = _sat_num(_s_raw(s, 'bp_sys_l'), 30, 320), _sat_num(_s_raw(s, 'bp_dia_l'), 20, 220)
-    r_inv = (bp_sys is not None and bp_dia is not None and bp_sys <= bp_dia)
-    l_inv = (bp_sys_l is not None and bp_dia_l is not None and bp_sys_l <= bp_dia_l)
+    """Return max valid diastolic BP across R/L arms, rejecting inverted readings (raw SBP <= DBP)."""
+    _, bp_dia, r_inv = _raw_bp_pair(s, 'bp_sys', 'bp_dia')
+    _, bp_dia_l, l_inv = _raw_bp_pair(s, 'bp_sys_l', 'bp_dia_l')
     valid = [v for v, inv in ((bp_dia, r_inv), (bp_dia_l, l_inv)) if v is not None and not inv]
     return max(valid, default=None)
 
 
 def _inverted_bp_arms(s):
-    """Return saturated (sys, dia) tuples for entered BP arms where SBP <= DBP."""
+    """Return saturated (sys, dia) tuples for entered BP arms where raw SBP <= DBP."""
     arms = []
     for sk, dk in (('bp_sys', 'bp_dia'), ('bp_sys_l', 'bp_dia_l')):
-        sv, dv = _sat_num(_s_raw(s, sk), 30, 320), _sat_num(_s_raw(s, dk), 20, 220)
-        if sv is not None and dv is not None and sv <= dv:
+        sv, dv, inv = _raw_bp_pair(s, sk, dk)
+        if inv:
             arms.append((sv, dv))
     return arms
 
@@ -288,7 +294,7 @@ def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
     return pts
 
 
-def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_liver, compression_contra):
+def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_liver, compression_contra, cea_bleed_block=False):
     from .registry import rule_value
     cap_cfg = rule_value('SCORE_CAPRINI_VTE')
     comp_sfx = '' if compression_contra else ' + კომპრესია'
@@ -299,7 +305,9 @@ def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_
     )
     if pts >= cap_cfg['high_min']:
         tier = f"მაღალი (≥{cap_cfg['high_min']})"
-        if has_mech_valve:
+        if cea_bleed_block:
+            advice = f'მხოლოდ მექანიკური პროფილაქტიკა (IPC{comp_sfx}) — ტვინის სისხლჩაქცევის / rt-PA ≤6 დღის ფონზე ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია!'
+        elif has_mech_valve:
             if has_hit:
                 advice = f'მექანიკური სარქველი + HIT: სტაციონარული {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}'
             elif severe_renal:
@@ -321,7 +329,9 @@ def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_
             advice = f'ფარმაკოლოგიური პროფილაქტიკა (LMWH / DOAC 7–10 დღე){comp_sfx}'
     elif pts > cap_cfg['low_max']:
         tier = f"საშუალო ({cap_cfg['low_max'] + 1}–{cap_cfg['mod_max']})"
-        if has_mech_valve and has_hit:
+        if cea_bleed_block:
+            advice = f'მხოლოდ ადრეული მობილიზაცია + IPC{comp_sfx} (ტვინის სისხლჩაქცევა / rt-PA ≤6 დღე — ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია!)'
+        elif has_mech_valve and has_hit:
             advice = f'მექანიკური სარქველი + HIT: {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}'
         elif has_mech_valve:
             advice = f'ადრეული მობილიზაცია{comp_sfx} + უვადო ვარფარინის (VKA) რეჟიმი (DOAC აკრძალულია!)'
@@ -352,11 +362,18 @@ def calc_caprini(patient, q, bmi=None, today=None, eff_renal=None, liver_status=
     eff_alg, _, _ = _effective_allergy_state(q_d)
     has_hit = 'hit_heparin' in eff_alg
     pts = _caprini_points(patient, q_d, bmi, today, s_cur, cad_set, has_hit)
-    eff_ren_v = _num(eff_renal, lo=0, hi=300)
+    eff_ren_raw = _num(eff_renal)
+    eff_ren_v = max(0.0, eff_ren_raw) if eff_ren_raw is not None else None
     severe_renal = bool(q_d.get('on_dialysis')) or (eff_ren_v is not None and eff_ren_v < 30)
     severe_liver = (liver_status or s_cur.get('liver_status') or 'normal') == '3x'
+    cea_d = cea_live_days_since_event(q_d, today=today, s=s_cur)
+    cea_bleed_block = _resolve_pathway(patient) == PreopPatient.Pathway.CEA and (
+        s_cur.get('brain_imaging') == 'large_or_hemorrhage'
+        or (bool(q_d.get('cea_thrombolysis')) and (cea_d is None or cea_d <= 6))
+    )
     tier, advice = _caprini_tier_and_advice(
         pts, 'mech_valve' in cad_set, has_hit, severe_renal, severe_liver, compression_contra,
+        cea_bleed_block=cea_bleed_block,
     )
     return pts, tier, advice
 
@@ -392,7 +409,8 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     from .registry import rule_value
     q = q if isinstance(q, dict) else {}
     s = s if isinstance(s, dict) else {}
-    egfr_v = _num(egfr, lo=0, hi=300)
+    egfr_raw = _num(egfr)
+    egfr_v = max(0.0, min(300.0, egfr_raw)) if egfr_raw is not None else None
     if egfr_v is None and not q.get('on_dialysis'):
         sat_cr = _sat_scr_mgdl(_s_raw(s, 'creat'), s.get('creat_unit') or '')
         if sat_cr is not None and sat_cr >= 20.0:
@@ -441,7 +459,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or (eff_sbp is not None and eff_sbp < 90)
         or (eff_sbp is not None and eff_sbp <= 100 and hr_val is not None and hr_val >= eff_sbp)
         or (eff_sbp is None and raw_sbp_low is not None and raw_sbp_low <= 100 and hr_val is not None and hr_val >= 100 and hr_val >= raw_sbp_low)
-        or (inv_max is not None and (inv_max <= 90 or (inv_max < 100 and (inv_max - inv_min) < 15)))
+        or (inv_min is not None and inv_min < 90)
         or (hr_val is not None and (hr_val >= 135 or hr_val < 40))
         or (k_val is not None and (k_val >= 6.0 or k_val < 3.0))
         or (hb_gl is not None and hb_gl < 70)
@@ -467,7 +485,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or bool(q.get('pacemaker')) or ('copd' in _str_list(q.get('pulm_chips')))
         or (spo2 is not None and spo2 < 94) or (eff_sbp is not None and eff_sbp >= 180)
         or (eff_dbp is not None and eff_dbp >= 110)
-        or (inv_max is not None and (inv_max >= 180 or inv_min >= 110 or inv_min < 90))
+        or (inv_max is not None and inv_max >= 110)
         or (k_val is not None and (k_val >= 5.4 or k_val < 3.3)) or (q.get('cfs_level') == '5_plus')
     ):
         return 'III'
@@ -674,7 +692,7 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
     pathway = _resolve_pathway(patient)
     inf_chips = set(_str_list(q.get('inf_chips')))
     spo2 = _sat_num(_s_raw(s, 'spo2'), 30, 100)
-    eff_hb = hb_gl if hb_gl is not None else _sat_hb_gl(_s_raw(s, 'hb'))
+    eff_hb = _sat_hb_gl(hb_gl) if hb_gl is not None else _sat_hb_gl(_s_raw(s, 'hb'))
     open_aortic = (
         (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
         or pathway == PreopPatient.Pathway.ABF

@@ -250,23 +250,30 @@ def _build_surgical_anatomy_brief(ctx):
         out_lbl = {'patent': 'CFA და Profunda ორმხრივ გამავალია', 'profunda_stenosis': 'Profunda სტენოზი — დაგეგმეთ პროფუნდოპლასტიკა!', 'poor_outflow': 'მძიმე დისტალური კალაპოტი (GSV კარტირება / კომბინირებული შუნტი!)', 'pending': 'Outflow შესატანია'}.get(s.get('abf_outflow') or 'pending', 'ზუსტდება')
         mes_lbl = {'normal': 'SMA გამავალია', 'ima_dominant_iia_occ': 'დომინანტური IMA / ორმხრივი IIA ოკლუზია — IMA რეიმპლანტაციის საკითხი!', 'sma_stenosis': 'SMA სტენოზი/ოკლუზია — ნაწლავის იშემიის უმაღლესი რისკი! განიხილეთ წინასწარი/თანმხლები SMA სტენტირება ან შუნტირება (ESVS)!'}.get(s.get('abf_mesenteric') or 'normal', 'SMA გამავალია')
         tactical_note = f"ვისცერული/მენჯის კოლატერალები: {mes_lbl} · ABI R {ctx.abi_r if ctx.abi_r is not None else '—'} / L {ctx.abi_l if ctx.abi_l is not None else '—'}"
-        if q_filled and q.get('abf_wet_infection'):
+        if q.get('abf_wet_infection'):
             tactical_note += ' · სასწრაფო ტერფის დრენირება/სანაცია + ემპირიული ფართო სპექტრის IV ანტიბიოტიკი!'
         return f"საკლამპე ზონა: {clamp_lbl} · Outflow: {out_lbl}", tactical_note
     if ctx.is_pad_bypass:
         run_lbl = {'popliteal_patent': 'მუხლქვეშა არტერია + ≥2 წვივის არტერია გამავალია', 'tibial_single': 'ერთადერთი გამავალი წვივის/ტერფის არტერია (აუცილებელია აუტოვენა ≥3.0 მმ!)', 'desert_foot': 'Desert Foot — მძიმე დისტალური ოკლუზია (!)', 'pending': 'Runoff შესატანია'}.get(s.get('pad_runoff_status') or 'pending', 'ზუსტდება')
         alt_vein_lbl = {'pending': 'შესაფასებელია', 'contra_gsv_ok': 'კონტრალატერალური GSV ვარგისია', 'arm_ssv_ok': 'ხელის ვენა (Cephalic/Basilic) / SSV ვარგისია', 'no_autovein_prosthetic': 'აუტოვენა არ მოიძებნა — სინთეზური/კომპოზიტური პროთეზი'}.get(s.get('alt_vein_mapped') or 'pending', 'შესაფასებელია')
         gsv_is_small = (ctx.pad_gsv_mm is not None and ctx.pad_gsv_mm < 3.0)
-        gsv_raw_st = 'inadequate' if gsv_is_small else (s.get('pad_gsv_status') or 'pending')
+        gsv_stripped = 'vein_strip' in ctx.vasc_chips
+        gsv_raw_st = 'inadequate' if (gsv_is_small or gsv_stripped) else (s.get('pad_gsv_status') or 'pending')
+        gsv_inad_why = 'ამოღებულია/აბლაცია; ' if gsv_stripped else (f'{ctx.pad_gsv_mm} მმ < 3.0 მმ; ' if gsv_is_small else '')
         gsv_lbl = {
             'adequate': f"იფსილატერალური GSV ვარგისია ({ctx.pad_gsv_mm if ctx.pad_gsv_mm is not None else '≥3.0'} მმ)",
-            'inadequate': f"იფსილატერალური GSV უვარგისია ({f'{ctx.pad_gsv_mm} მმ < 3.0 მმ; ' if gsv_is_small else ''}ალტ. ვენა: {alt_vein_lbl})",
+            'inadequate': f"იფსილატერალური GSV უვარგისია ({gsv_inad_why}ალტ. ვენა: {alt_vein_lbl})",
             'pending': 'GSV კარტირება შესატანია',
         }.get(gsv_raw_st, 'ზუსტდება')
         return f"Runoff კალაპოტი: {run_lbl}", f"კონდუიტი: {gsv_lbl} · სამიზნე ჰემოდინამიკა: ABI min {ctx.min_abi if ctx.min_abi is not None else '—'}" + (f", TP min {ctx.min_tp} mmHg" if ctx.min_tp is not None else '')
     if ctx.is_pta:
         seg_lbl = {'iliac': 'თეძოს არტერიები (Iliac)', 'femoropopliteal': 'ბარძაყ-მუხლქვეშა სეგმენტი (SFA/Popliteal)', 'infrapopliteal': 'წვივის/ტერფის არტერიები (BTK)', 'multilevel': 'მრავალდონიანი დაზიანება'}.get(s.get('pta_lesion_site') or '', 'დასაზუსტებელია')
-        acc_lbl = {'cfa_clean': 'საერთო ბარძაყის არტერია (CFA) თავისუფალია პუნქციისთვის', 'cfa_calcified_scar': 'CFA კალციფიცირებული/ნაწიბუროვანია — განიხილეთ კონტრალატერალური ან რადიალური/ბრაქიალური მიდგომა!', 'pending': 'პუნქციის ზონა შესაფასებელია'}.get(s.get('pta_access_site') or 'pending', 'ზუსტდება')
+        cfa_scar_lbl = (
+            'CFA კალციფიცირებული/ნაწიბუროვანია — განიხილეთ კონტრალატერალური მიდგომა ექო-კონტროლით (დიალიზზე რადიალური/ბრაქიალური მიდგომა აკრძალულია AV ფისტულის დაცვის გამო!)'
+            if ctx.on_dialysis else
+            'CFA კალციფიცირებული/ნაწიბუროვანია — განიხილეთ კონტრალატერალური ან რადიალური/ბრაქიალური მიდგომა!'
+        )
+        acc_lbl = {'cfa_clean': 'საერთო ბარძაყის არტერია (CFA) თავისუფალია პუნქციისთვის', 'cfa_calcified_scar': cfa_scar_lbl, 'pending': 'პუნქციის ზონა შესაფასებელია'}.get(s.get('pta_access_site') or 'pending', 'ზუსტდება')
         return f"სამიზნე სეგმენტი: {seg_lbl} · ABI min {ctx.min_abi if ctx.min_abi is not None else '—'}" + (f" · TP min {ctx.min_tp} mmHg" if ctx.min_tp is not None else ''), f"არტერიული მიდგომა: {acc_lbl}"
     if ctx.is_venous:
         dup_lbl = {'deep_patent_reflux': 'ღრმა ვენები გამავალია, ზედაპირული რეფლუქსი დადასტურებულია', 'acute_dvt': 'მწვავე DVT — ოპერაცია უკუნაჩვენებია!', 'deep_obstruction': 'ღრმა ვენების ოკლუზია — აბლაცია/ფლებექტომია უკუნაჩვენებია!', 'superficial_thrombus': 'მწვავე აღმავალი თრომბოფლებიტი (SFJ/SPJ საყურადღებოა!)', 'pending': 'დუპლექსი შესატანია'}.get(s.get('ven_duplex_status') or 'pending', 'ზუსტდება')
@@ -296,24 +303,26 @@ def _build_surgical_anatomy_brief(ctx):
     rv_part = ' · რეტროაორტული/ცირკუმაორტული მარცხენა თირკმლის ვენა (!)' if s.get('aaa_renal_vein_anom') else ''
     myc_part = ' · მიკოზური AAA: სისხლის ნათესები ×2 + ემპირიული IV ანტიბიოტიკი!' if s.get('aaa_morphology') == 'inflammatory_mycotic' else ''
     rup_oac_bits = []
-    if ctx.is_rupture_suspect and ctx.on_oral_anticoag:
+    if ctx.is_rupture_suspect and (ctx.on_oral_anticoag or 'rivaroxaban_2_5' in ctx.med_chips):
         if q.get('med_warfarin'):
             rup_oac_bits.append('4F-PCC 25–50 სე/კგ IV + ვიტამინი K 10 მგ IV')
         if q.get('med_dabigatran'):
             rup_oac_bits.append('იდარუციზუმაბი (Praxbind) 5 გ IV')
         if q.get('med_doac'):
             rup_oac_bits.append('Xa-DOAC: 4F-PCC 50 სე/კგ IV (მოერიდეთ ანდექსანეტ ალფას კლამპირებამდე — ESVS 2024)')
+        elif 'rivaroxaban_2_5' in ctx.med_chips:
+            rup_oac_bits.append('რივაროქსაბანი 2.5 მგ (Xa): საჭიროებისას 4F-PCC კლინიკური სისხლდენის მიხედვით')
     rup_oac_part = f' · სასწრაფო OAC რევერსია: {" + ".join(rup_oac_bits)}!' if rup_oac_bits else ''
     return anat_summary, f"{neck_part}მუხლქვეშა სკრინინგი: {pop_map.get(s.get('popliteal_screen_status') or 'pending', '—')}{rv_part}{myc_part}{rup_oac_part}"
 
 
 def _build_surgical_abx_regimen(ctx):
-    patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
     wt_num = getattr(ctx, 'weight_sat', None)
     if wt_num is None:
         wt_num = _num(s.get('weight_kg'), lo=25, hi=260)
     is_std_evla_abx = ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not (
-        q_filled and (q.get('ven_ceap') == 'C6' or q.get('ven_acute_svt') or q.get('ven_skin_infection'))
+        q.get('ven_ceap') == 'C6' or q.get('ven_acute_svt') or q.get('ven_skin_infection')
     )
     if is_std_evla_abx:
         abx_regimen = 'რუტინული ანტიბიოტიკოპროფილაქტიკა სტანდარტულ EVLA-ზე არ ესაჭიროება (ESVS 2022)'
@@ -565,8 +574,12 @@ def _build_anesthetic_brief(ctx):
         ('დღის სტაციონარი / ამბულატორიული გაწერა ადრეული აქტივაციით' if (ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA) else 'სისხლძარღვთა ქირურგიის სტაციონარული პალატა')
     )
     disp_extras = []
+    from ..calculators import _s_raw, _sat_num
+    age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
+    bnp_mins = ctx.nt_probnp if ctx.nt_probnp is not None else _sat_num(_s_raw(s, 'nt_probnp'), 1, 100000)
+    ctn_mins = ctx.hs_ctn if ctx.hs_ctn is not None else _sat_num(_s_raw(s, 'hs_ctn'), 0.1, 50000)
     mins_cv_risk = bool(
-        (ctx.age or 0) >= 65
+        (age_eff or 0) >= 65
         or ctx.ihd_flag or ctx.chf_flag or ctx.on_dialysis
         or (ctx.egfr is not None and ctx.egfr < 60)
         or (q_filled and (q.get('dm') or q.get('neuro') or q.get('htn')))
@@ -575,8 +588,8 @@ def _build_anesthetic_brief(ctx):
         ctx.open_aortic
         or ((patient.op_subtype == 'evar' or ctx.is_pad_bypass) and mins_cv_risk)
         or ctx.rcri['score'] >= 2
-        or (ctx.nt_probnp is not None and ctx.nt_probnp >= 125)
-        or (ctx.hs_ctn is not None and ctx.hs_ctn >= 14)
+        or (bnp_mins is not None and bnp_mins >= 125)
+        or (ctn_mins is not None and ctn_mins >= 14)
     ):
         disp_extras.append('MINS მონიტორინგი: hs-cTn 24 სთ და 48 სთ (ESC 2022)')
     if ctx.needs_delirium_guard and not ctx.is_venous:

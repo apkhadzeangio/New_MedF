@@ -22,6 +22,50 @@ _FIELD_TO_INPUT_ID = {
 }
 
 
+def _append_missing_and_unknown_items(items, ev, has_q_banner):
+    seen_s2, seen_fields = set(), set()
+    for m in ev['missing_items']:
+        if m.get('tab') == 'q' and has_q_banner:
+            continue
+        fld = m.get('field') or ''
+        if fld:
+            seen_fields.add(fld)
+        if m.get('tab') == 's2':
+            seen_s2.add(fld or m.get('label'))
+        inp_id = _FIELD_TO_INPUT_ID.get(fld, '')
+        mtab = m.get('tab') or ''
+        sec = {
+            'q': 'nw-sec-q', 'header': 'nw-sec-header',
+            's2': 'nw-vitals-card' if inp_id else 'nw-sec-s2',
+            's1': 'nw-vitals-card' if inp_id else 'nw-sec-s1',
+        }.get(mtab, 'nw-vitals-card')
+        items.append({
+            'kind': 'missing', 'label': f"აკლია: {m['label']}",
+            'target_section': sec, 'target_input': inp_id, 'action_label': 'შევსება',
+        })
+
+    for u in (ev.get('unknown_state_flags') or []):
+        if not u.get('blocking'):
+            continue
+        ukey = u.get('key') or ''
+        if ukey == 'unverified_self_fill' and has_q_banner:
+            continue
+        ufld = u.get('field') or ''
+        if ufld and ufld in seen_fields and ukey not in ('implausible_values', 'renal_drug_no_crcl', 'ambiguous_creat_unit'):
+            continue
+        ufld_inp = _FIELD_TO_INPUT_ID.get(ufld, '')
+        sec_u = {
+            'dos': 'nw-sec-dos', 'q': 'nw-sec-q', 's2': 'nw-sec-s2',
+            'header': 'nw-sec-header',
+            's1': 'nw-vitals-card' if ufld_inp else 'nw-sec-s1',
+        }.get(u.get('tab') or '', 'nw-vitals-card')
+        items.append({
+            'kind': 'missing', 'label': f"დასაზუსტებელია: {u['label']}",
+            'target_section': sec_u, 'target_input': ufld_inp, 'action_label': 'შესწორება',
+        })
+    return seen_s2
+
+
 def build_plain_georgian_missing_items(patient, ev, today):
     """Numbered plain-Georgian checklist of everything missing before surgeon approval."""
     items = []
@@ -67,37 +111,7 @@ def build_plain_georgian_missing_items(patient, ev, today):
             'target_section': 'nw-sec-q', 'target_input': '', 'action_label': 'გადამოწმება',
         })
 
-    seen_s2, seen_fields = set(), set()
-    for m in ev['missing_items']:
-        if m.get('tab') == 'q' and has_q_banner:
-            continue
-        fld = m.get('field') or ''
-        if fld:
-            seen_fields.add(fld)
-        if m.get('tab') == 's2':
-            seen_s2.add(fld or m.get('label'))
-        inp_id = _FIELD_TO_INPUT_ID.get(fld, '')
-        sec = 'nw-sec-q' if m.get('tab') == 'q' else ('nw-sec-s2' if (not inp_id and m.get('tab') == 's2') else 'nw-vitals-card')
-        items.append({
-            'kind': 'missing', 'label': f"აკლია: {m['label']}",
-            'target_section': sec, 'target_input': inp_id, 'action_label': 'შევსება',
-        })
-
-    for u in (ev.get('unknown_state_flags') or []):
-        if not u.get('blocking'):
-            continue
-        ukey = u.get('key') or ''
-        if ukey == 'unverified_self_fill' and has_q_banner:
-            continue
-        ufld = u.get('field') or ''
-        if ufld and ufld in seen_fields and ukey not in ('implausible_values', 'renal_drug_no_crcl', 'ambiguous_creat_unit'):
-            continue
-        sec_u = {'dos': 'nw-sec-dos', 'q': 'nw-sec-q', 's2': 'nw-sec-s2', 'header': 'nw-patient-root'}.get(u.get('tab') or '', 'nw-vitals-card')
-        items.append({
-            'kind': 'missing', 'label': f"დასაზუსტებელია: {u['label']}",
-            'target_section': sec_u, 'target_input': _FIELD_TO_INPUT_ID.get(ufld, ''), 'action_label': 'შესწორება',
-        })
-
+    seen_s2 = _append_missing_and_unknown_items(items, ev, has_q_banner)
     for t in ev['tasks']:
         if not t['done'] and t.get('key') not in ('q', 's1') and not seen_s2:
             items.append({
@@ -164,7 +178,7 @@ def build_phone_med_script(patient, ev, today):
             'hold_or_skip': is_hold,
             'urgent_contact': is_urgent,
         }
-        if is_hold or is_urgent or row.get('tone') == 'red':
+        if is_hold or is_urgent or row.get('tone') in ('red', 'amber'):
             stop_rows.append(entry)
         else:
             keep_rows.append(entry)
@@ -175,7 +189,7 @@ def build_phone_med_script(patient, ev, today):
         'urgent_rows': [r for r in stop_rows if r['urgent_contact']],
         'keep_rows': keep_rows,
         'stop_locked': stop_locked,
-        'needs_op_date': bool(stop_rows and not op_dt and not stop_locked),
+        'needs_op_date': bool(any(r['hold_or_skip'] for r in stop_rows) and not op_dt and not stop_locked),
         'op_date_ka': _fmt_ka_date(op_dt) if op_dt else '',
         'called_valid': med_call['called_valid'],
         'outdated_call': med_call['outdated_call'],

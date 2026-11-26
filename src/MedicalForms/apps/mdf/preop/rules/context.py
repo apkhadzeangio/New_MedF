@@ -125,8 +125,8 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today
         ('bp_sys_l', 'bp_dia_l', 'წნევა (L)'),
         ('dos_bp_sys', 'dos_bp_dia', 'დილის წნევა'),
     ):
-        sv = _num(src[sk] if sk in src else s.get(sk), lo=30, hi=320)
-        dv = _num(src[dk] if dk in src else s.get(dk), lo=20, hi=220)
+        sv = _num(src[sk] if sk in src else (inv[sk] if sk in inv else s.get(sk)))
+        dv = _num(src[dk] if dk in src else (inv[dk] if dk in inv else s.get(dk)))
         if sv is not None and dv is not None and sv <= dv:
             bad.append(f'{lbl_bp} ინვერტირებულია ({int(sv)}/{int(dv)})')
     return bad
@@ -137,6 +137,7 @@ class EvalContext(SimpleNamespace):
 
 
 def _init_limb_hemodynamics(ctx):
+    from ..calculators import _sat_num
     from ..registry import rule_value
     patient, pathway, s, q = ctx.patient, ctx.pathway, ctx.s, ctx.q
     abi_noncomp_thresh = rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')['abi_noncomp']
@@ -146,6 +147,12 @@ def _init_limb_hemodynamics(ctx):
     tp_l = _int(s.get('tp_l'), lo=0, hi=400)
     tbi_r = _num(s.get('tbi_r'), lo=0.0, hi=3.0)
     tbi_l = _num(s.get('tbi_l'), lo=0.0, hi=3.0)
+    abi_r_s = abi_r if abi_r is not None else _sat_num(_s_raw(s, 'abi_r'), 0.0, 3.0)
+    abi_l_s = abi_l if abi_l is not None else _sat_num(_s_raw(s, 'abi_l'), 0.0, 3.0)
+    tp_r_s = tp_r if tp_r is not None else _sat_num(_s_raw(s, 'tp_r'), 0, 400)
+    tp_l_s = tp_l if tp_l is not None else _sat_num(_s_raw(s, 'tp_l'), 0, 400)
+    tbi_r_s = tbi_r if tbi_r is not None else _sat_num(_s_raw(s, 'tbi_r'), 0.0, 3.0)
+    tbi_l_s = tbi_l if tbi_l is not None else _sat_num(_s_raw(s, 'tbi_l'), 0.0, 3.0)
 
     unilateral_limb_pw = pathway in (PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA, PreopPatient.Pathway.VENOUS)
     unilateral_specified = unilateral_limb_pw and patient.side in ('R', 'L')
@@ -157,8 +164,8 @@ def _init_limb_hemodynamics(ctx):
         scope_legs, contra_abi, contra_tp = ('R', 'L'), None, None
 
     leg_vals = {
-        'R': {'abi': abi_r, 'tp': tp_r, 'tbi': tbi_r},
-        'L': {'abi': abi_l, 'tp': tp_l, 'tbi': tbi_l},
+        'R': {'abi': abi_r, 'tp': tp_r, 'tbi': tbi_r, 'abi_s': abi_r_s, 'tp_s': tp_r_s, 'tbi_s': tbi_r_s},
+        'L': {'abi': abi_l, 'tp': tp_l, 'tbi': tbi_l, 'abi_s': abi_l_s, 'tp_s': tp_l_s, 'tbi_s': tbi_l_s},
     }
     scoped_abis = [leg_vals[lg]['abi'] for lg in scope_legs if leg_vals[lg]['abi'] is not None]
     scoped_tps = [leg_vals[lg]['tp'] for lg in scope_legs if leg_vals[lg]['tp'] is not None]
@@ -166,17 +173,18 @@ def _init_limb_hemodynamics(ctx):
     all_abis = [v for v in (abi_r, abi_l) if v is not None]
     all_tps = [v for v in (tp_r, tp_l) if v is not None]
     all_tbis = [v for v in (tbi_r, tbi_l) if v is not None]
-
-    # Never leak contralateral limb ABI/TP into target-limb hemodynamics when side R/L is specified
     eff_abis = scoped_abis if unilateral_specified else all_abis
     eff_tps = scoped_tps if unilateral_specified else all_tps
     eff_tbis = scoped_tbis if unilateral_specified else all_tbis
+    eff_abis_s = [leg_vals[lg]['abi_s'] for lg in (scope_legs if unilateral_specified else ('R', 'L')) if leg_vals[lg]['abi_s'] is not None]
+    eff_tps_s = [leg_vals[lg]['tp_s'] for lg in (scope_legs if unilateral_specified else ('R', 'L')) if leg_vals[lg]['tp_s'] is not None]
+    eff_tbis_s = [leg_vals[lg]['tbi_s'] for lg in (scope_legs if unilateral_specified else ('R', 'L')) if leg_vals[lg]['tbi_s'] is not None]
 
-    min_abi = min(eff_abis, default=None)
-    max_abi = max(eff_abis, default=None)
+    min_abi, max_abi = min(eff_abis, default=None), max(eff_abis, default=None)
     min_comp_abi = min([v for v in eff_abis if v <= abi_noncomp_thresh], default=None)
-    min_tp = min(eff_tps, default=None)
-    min_tbi = min(eff_tbis, default=None)
+    min_comp_abi_s = min([v for v in eff_abis_s if v <= abi_noncomp_thresh], default=None)
+    min_tp, min_tbi = min(eff_tps, default=None), min(eff_tbis, default=None)
+    min_tp_s, min_tbi_s = min(eff_tps_s, default=None), min(eff_tbis_s, default=None)
 
     nc_legs = [lg for lg in scope_legs if leg_vals[lg]['abi'] is not None and leg_vals[lg]['abi'] > abi_noncomp_thresh]
     if not nc_legs and not unilateral_specified and not scoped_abis:
@@ -194,13 +202,13 @@ def _init_limb_hemodynamics(ctx):
         tbi_comp_safe = True
 
     compression_contra = bool(
-        (min_comp_abi is not None and min_comp_abi < 0.80)
-        or (min_tp is not None and min_tp < 50)
-        or (min_tbi is not None and min_tbi < 0.50)
+        (min_comp_abi_s is not None and min_comp_abi_s < 0.80)
+        or (min_tp_s is not None and min_tp_s < 50)
+        or (min_tbi_s is not None and min_tbi_s < 0.50)
     )
     tbi_reduced_comp = bool(abi_non_compressible and tbi_measured and not compression_contra and not tbi_comp_safe)
     caprini_score, caprini_tier, caprini_advice = calc_caprini(
-        patient, q, ctx.bmi, today=ctx.today, eff_renal=ctx.eff_renal,
+        patient, q, ctx.bmi_sat, today=ctx.today, eff_renal=ctx.eff_renal,
         liver_status=s.get('liver_status') or 'normal',
         compression_contra=compression_contra,
     )
@@ -209,6 +217,7 @@ def _init_limb_hemodynamics(ctx):
     ctx.contra_abi, ctx.contra_tp = contra_abi, contra_tp
     ctx.scoped_abis, ctx.scoped_tps, ctx.scoped_tbis = scoped_abis, scoped_tps, scoped_tbis
     ctx.min_abi, ctx.max_abi, ctx.min_comp_abi = min_abi, max_abi, min_comp_abi
+    ctx.min_comp_abi_sat, ctx.min_tp_sat, ctx.min_tbi_sat = min_comp_abi_s, min_tp_s, min_tbi_s
     ctx.min_tp, ctx.min_tbi = min_tp, min_tbi
     ctx.nc_legs, ctx.abi_non_compressible = nc_legs, abi_non_compressible
     ctx.tbi_measured, ctx.tbi_comp_safe = tbi_measured, tbi_comp_safe
@@ -283,8 +292,8 @@ def _init_base_flags_and_pre_reflex(ctx):
         })
     hemo_cfg = rule_value('PAD_CLTI_HEMO_THRESHOLDS')
     if not ctx.is_venous and (
-        (ctx.min_tp is not None and ctx.min_tp < hemo_cfg['tp_severe'])
-        or (ctx.min_tbi is not None and ctx.min_tbi < hemo_cfg['tbi_severe'])
+        (ctx.min_tp_sat is not None and ctx.min_tp_sat < hemo_cfg['tp_severe'])
+        or (ctx.min_tbi_sat is not None and ctx.min_tbi_sat < hemo_cfg['tbi_severe'])
     ):
         ctx.amber_flags.append(
             f'კრიტიკულად დაბალი Toe Pressure / TBI (TP {ctx.min_tp if ctx.min_tp is not None else "—"} mmHg / '
@@ -293,6 +302,7 @@ def _init_base_flags_and_pre_reflex(ctx):
 
 
 def init_eval_context(patient, today=None):
+    from ..calculators import _sat_age, _sat_bmi_from, _sat_gl_mmol, _sat_hb_gl, _sat_num
     today = _date(today) or timezone.localdate()
     pathway = _resolve_pathway(patient)
     q = merged_q(patient)
@@ -309,12 +319,21 @@ def init_eval_context(patient, today=None):
         creat_unit, on_dialysis=on_dialysis, height_cm=s.get('height_cm'),
     )
     car_r, car_l = _int(s.get('carotid_r'), lo=0, hi=100), _int(s.get('carotid_l'), lo=0, hi=100)
+    car_r_sat = _sat_num(_s_raw(s, 'carotid_r'), 0, 100)
+    car_l_sat = _sat_num(_s_raw(s, 'carotid_l'), 0, 100)
     raw_s = patient.studies if isinstance(patient.studies, dict) else {}
     implausible_fields = _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=today, q=q)
+    bmi_val = calc_bmi(s.get('weight_kg'), s.get('height_cm'))
+    bmi_sat = _sat_bmi_from(bmi_val, s)
+    age_val = _int(patient.age, lo=1, hi=120)
+    age_sat = age_val if age_val is not None else (_sat_age(patient.age) if _num(patient.age) is not None else None)
+    aaa_mm = _num(s.get('aaa_mm'), lo=10, hi=200)
+    aaa_mm_sat = aaa_mm if aaa_mm is not None else _sat_num(_s_raw(s, 'aaa_mm'), 10, 200)
 
     ctx = EvalContext(
         patient=patient,
-        age=_int(patient.age, lo=1, hi=120),
+        age=age_val,
+        age_sat=age_sat,
         today=today,
         pathway=pathway,
         is_venous=(pathway == PreopPatient.Pathway.VENOUS),
@@ -338,7 +357,9 @@ def init_eval_context(patient, today=None):
         hard_contraindications=[],
         implausible_fields=implausible_fields,
         hb_gl=normalize_hb_gl(s.get('hb')),
+        hb_gl_sat=_sat_hb_gl(_s_raw(s, 'hb')),
         gl_mmol=normalize_glucose_mmol(s.get('glucose')),
+        gl_mmol_sat=_sat_gl_mmol(_s_raw(s, 'glucose')),
         alb_gl=normalize_albumin_gl(s.get('albumin')),
         on_dialysis=on_dialysis,
         creat_unit=creat_unit,
@@ -346,12 +367,16 @@ def init_eval_context(patient, today=None):
         egfr=egfr,
         crcl=crcl,
         eff_renal=None if on_dialysis else min([v for v in (egfr, crcl) if v is not None], default=None),
-        bmi=calc_bmi(s.get('weight_kg'), s.get('height_cm')),
+        bmi=bmi_val,
+        bmi_sat=bmi_sat,
         liver_3x=(s.get('liver_status') == '3x'),
-        aaa_mm=_num(s.get('aaa_mm'), lo=10, hi=200),
+        aaa_mm=aaa_mm,
+        aaa_mm_sat=aaa_mm_sat,
         cta_months=cta_live_months_age(s, today=today),
         car_r=car_r,
         car_l=car_l,
+        car_r_sat=int(round(car_r_sat)) if car_r_sat is not None else None,
+        car_l_sat=int(round(car_l_sat)) if car_l_sat is not None else None,
         max_car=max([v for v in (car_r, car_l) if v is not None], default=None),
     )
     if implausible_fields:

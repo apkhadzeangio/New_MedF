@@ -28,21 +28,18 @@ def _parse_plt(raw):
 
 
 def _extract_bp_and_sat(s):
+    from ..calculators import _inverted_bp_arms, _raw_bp_pair
     bp_sys, bp_dia = _int(s.get('bp_sys'), lo=30, hi=320), _int(s.get('bp_dia'), lo=20, hi=220)
     bp_sys_l, bp_dia_l = _int(s.get('bp_sys_l'), lo=30, hi=320), _int(s.get('bp_dia_l'), lo=20, hi=220)
-    bp_r_inv = (bp_sys is not None and bp_dia is not None and bp_sys <= bp_dia)
-    bp_l_inv = (bp_sys_l is not None and bp_dia_l is not None and bp_sys_l <= bp_dia_l)
-    s_r_sat, d_r_sat = _sat_num(_s_raw(s, 'bp_sys'), 30, 320), _sat_num(_s_raw(s, 'bp_dia'), 20, 220)
-    s_l_sat, d_l_sat = _sat_num(_s_raw(s, 'bp_sys_l'), 30, 320), _sat_num(_s_raw(s, 'bp_dia_l'), 20, 220)
-    r_sat_inv = bp_r_inv or (s_r_sat is not None and d_r_sat is not None and s_r_sat <= d_r_sat)
-    l_sat_inv = bp_l_inv or (s_l_sat is not None and d_l_sat is not None and s_l_sat <= d_l_sat)
-    eff_sys_sat = max((v for v, inv in ((s_r_sat, r_sat_inv), (s_l_sat, l_sat_inv)) if v is not None and not inv), default=None)
-    eff_dia_sat = max((v for v, inv in ((d_r_sat, r_sat_inv), (d_l_sat, l_sat_inv)) if v is not None and not inv), default=None)
-    return bp_sys, bp_dia, bp_sys_l, bp_dia_l, bp_r_inv, bp_l_inv, eff_sys_sat, eff_dia_sat
+    s_r_sat, d_r_sat, r_raw_inv = _raw_bp_pair(s, 'bp_sys', 'bp_dia')
+    s_l_sat, d_l_sat, l_raw_inv = _raw_bp_pair(s, 'bp_sys_l', 'bp_dia_l')
+    eff_sys_sat = max((v for v, inv in ((s_r_sat, r_raw_inv), (s_l_sat, l_raw_inv)) if v is not None and not inv), default=None)
+    eff_dia_sat = max((v for v, inv in ((d_r_sat, r_raw_inv), (d_l_sat, l_raw_inv)) if v is not None and not inv), default=None)
+    return bp_sys, bp_dia, bp_sys_l, bp_dia_l, r_raw_inv, l_raw_inv, eff_sys_sat, eff_dia_sat, _inverted_bp_arms(s)
 
 
 def eval_vitals_bp(ctx):
-    patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    patient, pathway, s = ctx.patient, ctx.pathway, ctx.s
     htn_cfg, hypo_cfg, hr_cfg = rule_value('VIT_BP_SEVERE_HTN'), rule_value('VIT_BP_HYPOTENSION_SHOCK'), rule_value('VIT_HR_SPO2_METS')
     cardio_decision = patient.cardio_decision or ''
     ctx.cardio_decision, ctx.cardio_cleared = cardio_decision, (cardio_decision == 'cleared')
@@ -50,10 +47,15 @@ def eval_vitals_bp(ctx):
     ctx.anesth_plan_raw = s.get('anesthesia_plan') or 'auto'
     ctx.explicit_neuraxial = (ctx.anesth_plan_raw == 'neuraxial') or ('epidural' in ctx.anesth_lines_set)
 
-    bp_sys, bp_dia, bp_sys_l, bp_dia_l, bp_r_inverted, bp_l_inverted, eff_sys_sat, eff_dia_sat = _extract_bp_and_sat(s)
+    bp_sys, bp_dia, bp_sys_l, bp_dia_l, bp_r_inverted, bp_l_inverted, eff_sys_sat, eff_dia_sat, inv_arms = _extract_bp_and_sat(s)
     ctx.bp_inverted = bool(bp_r_inverted or bp_l_inverted)
+    ctx.eff_sys_sat, ctx.eff_dia_sat, ctx.inv_bp_arms = eff_sys_sat, eff_dia_sat, inv_arms
     if ctx.bp_inverted:
-        inv_s, inv_d = (bp_sys, bp_dia) if bp_r_inverted else (bp_sys_l, bp_dia_l)
+        inv_s, inv_d = (bp_sys, bp_dia) if (bp_r_inverted and bp_sys is not None and bp_dia is not None) else (
+            (bp_sys_l, bp_dia_l) if (bp_l_inverted and bp_sys_l is not None and bp_dia_l is not None) else (
+                (int(inv_arms[0][0]), int(inv_arms[0][1])) if inv_arms else ('?', '?')
+            )
+        )
         ctx.red_flags.append(
             f'არტერიული წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {inv_s}/{inv_d} mmHg) — გადაამოწმეთ სისტოლური და დიასტოლური მაჩვენებლები!'
         )
@@ -72,13 +74,23 @@ def eval_vitals_bp(ctx):
 
     hr, spo2 = _int(s.get('hr'), lo=15, hi=260), _int(s.get('spo2'), lo=30, hi=100)
     ctx.hr_sat = hr if hr is not None else _sat_num(_s_raw(s, 'hr'), 15, 260)
-    shock_index = round(hr / eff_sys, 2) if (hr is not None and eff_sys is not None and eff_sys > 0) else None
-    severe_htn = bool((eff_sys_sat is not None and eff_sys_sat >= htn_cfg['red_sbp']) or (eff_dia_sat is not None and eff_dia_sat >= htn_cfg['red_dbp']))
+    ctx.spo2_sat = spo2 if spo2 is not None else _sat_num(_s_raw(s, 'spo2'), 30, 100)
+    eff_sys_si = eff_sys if eff_sys is not None else eff_sys_sat
+    shock_index = round(ctx.hr_sat / eff_sys_si, 2) if (ctx.hr_sat is not None and eff_sys_si is not None and eff_sys_si > 0) else None
+    inv_htn_arms = [
+        (sv, dv) for sv, dv in inv_arms
+        if max(sv, dv) >= htn_cfg['red_sbp'] or (min(sv, dv) >= hypo_cfg['red_sbp'] and max(sv, dv) >= htn_cfg['red_dbp'])
+    ]
+    valid_severe_htn = bool((eff_sys_sat is not None and eff_sys_sat >= htn_cfg['red_sbp']) or (eff_dia_sat is not None and eff_dia_sat >= htn_cfg['red_dbp']))
+    severe_htn = bool(valid_severe_htn or inv_htn_arms)
     ctx.hr, ctx.spo2, ctx.shock_index, ctx.severe_htn = hr, spo2, shock_index, severe_htn
 
     if severe_htn:
-        disp_s = eff_sys if eff_sys is not None else (int(eff_sys_sat) if eff_sys_sat is not None else '?')
-        disp_d = eff_dia if eff_dia is not None else (int(eff_dia_sat) if eff_dia_sat is not None else '?')
+        if valid_severe_htn:
+            disp_s = eff_sys if eff_sys is not None else (int(eff_sys_sat) if eff_sys_sat is not None else '?')
+            disp_d = eff_dia if eff_dia is not None else (int(eff_dia_sat) if eff_dia_sat is not None else '?')
+        else:
+            disp_s, disp_d = int(inv_htn_arms[0][0]), int(inv_htn_arms[0][1])
         if pathway == PreopPatient.Pathway.CEA:
             ctx.red_flags.append(
                 f'მაღალი არტერიული წნევა ({disp_s}/{disp_d} mmHg >= 180/110) — CEA-ზე ცერებრული ჰიპერპერფუზიის, '
@@ -108,6 +120,11 @@ def eval_vitals_bp(ctx):
     if eff_sys is not None and eff_dia is not None and 0 < (eff_sys - eff_dia) < hypo_cfg['narrow_pp']:
         ctx.amber_flags.append(f'ვიწრო პულსური წნევა ({eff_sys - eff_dia} mmHg < 20 mmHg) — გამოირიცხოს ჰიპოვოლემია, აორტის სტენოზი ან დაბალი განდევნა.')
 
+    _eval_hr_spo2_mets(ctx, hr_cfg, hr, spo2)
+
+
+def _eval_hr_spo2_mets(ctx, hr_cfg, hr, spo2):
+    q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
     is_afib_tachy = ((s.get('ecg') or 'pending') == 'afib_controlled') and bool(ctx.hr_sat and ctx.hr_sat > hr_cfg['hr_hi'])
     if hr and (hr > hr_cfg['hr_hi'] or hr < hr_cfg['hr_lo']):
         if not is_afib_tachy:
@@ -162,11 +179,12 @@ def _eval_early_neuraxial_gate(ctx):
     p2y12_cnt_early = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
     asa_allergy_solo_p2y12 = (
         'nsaid' in ctx.allergy_chips and p2y12_cnt_early >= 1
-        and (not ctx.is_venous or bool(q.get('cad')) or bool(q.get('neuro')))
+        and (not ctx.is_venous or bool(q.get('cad')) or bool(ctx.cad_chips) or bool(q.get('neuro')))
     )
     uninterrupted_p2y12_early = (p2y12_cnt_early >= 1) and (
-        bool(q.get('recent_stent')) or has_acs_stent_early or asa_allergy_solo_p2y12
-        or (ctx.is_pta and not q.get('med_prasugrel')) or (ctx.is_symp_cea and not q.get('med_prasugrel'))
+        bool(q.get('recent_stent')) or has_acs_stent_early or asa_allergy_solo_p2y12 or (p2y12_cnt_early >= 2)
+        or (ctx.is_pta and bool(q.get('med_clopidogrel') or q.get('med_ticagrelor')))
+        or (ctx.is_symp_cea and bool(q.get('med_clopidogrel') or q.get('med_ticagrelor')))
     )
     prewashout_vka = bool(q.get('med_warfarin') and not dos_inr_present)
     hard_nx_reasons = []
@@ -245,8 +263,9 @@ def eval_hematology_coag(ctx):
     ferritin_val = _num(s.get('ferritin'), lo=1, hi=5000)
     tsat_val = _num(s.get('tsat'), lo=1, hi=100)
     hb_norm = hb_cfg['hb_norm_f'] if patient.sex == 'F' else hb_cfg['hb_norm_m']
+    hb_eff = hb_gl if hb_gl is not None else getattr(ctx, 'hb_gl_sat', None)
     ctx.tsat_val = tsat_val
-    ctx.needs_anemia_panel = (hb_gl is not None and hb_gl < hb_cfg['hb_reflex'])
+    ctx.needs_anemia_panel = (hb_eff is not None and hb_eff < hb_cfg['hb_reflex'])
     ctx.anemia_panel_satisfied = bool(s.get('anemia_panel_done')) or ferritin_val is not None or tsat_val is not None
     ctx.pbm_iv_iron_indicated = bool(
         hb_gl is not None and hb_gl < hb_norm and (
@@ -388,7 +407,12 @@ def eval_renal_electrolytes(ctx):
             co2_note = f' (მაქს. იოდის კონტრასტი ≤ {max_contrast_ml} მლ — განიხილეთ CO2 ანგიოგრაფია / IVUS!)' if co2_angio_advised else ''
             ctx.red_flags.append(f'თირკმლის მძიმე უკმარისობა ({renal_disp} მლ/წთ < 30){co2_note} — სავალდებულოა ნეფროლოგი და ტაქტიკის შეთანხმება ქირურგთან!')
         elif eff_renal < ren_cfg['hydration'] and not ctx.is_venous and not needs_hydration:
-            ctx.amber_flags.append(f'{renal_disp} მლ/წთ (CKD 3) — კონტრასტული კვლევისას საჭიროა იზოტონური ჰიდრატაცია.')
+            if na_eff is not None and na_eff >= el_cfg['na_hi']:
+                ctx.amber_flags.append(f'{renal_disp} მლ/წთ (CKD 3) — ჰიპერნატრიემიის (Na+ ≥150) გამო კონტრასტული კვლევისას მოერიდეთ 0.9% NaCl-ით დატვირთვას!')
+            elif chf_hyd_flag:
+                ctx.amber_flags.append(f'{renal_disp} მლ/წთ (CKD 3) — HFrEF ფონზე კონტრასტული კვლევისას საჭიროა შეზღუდული ჰიდრატაცია (0.5 მლ/კგ/სთ).')
+            else:
+                ctx.amber_flags.append(f'{renal_disp} მლ/წთ (CKD 3) — კონტრასტული კვლევისას საჭიროა იზოტონური ჰიდრატაცია.')
 
     k_val = _num(s.get('k'), lo=1.0, hi=12.0)
     ctx.k_val = k_val
@@ -451,15 +475,17 @@ def eval_glycemia_endocrine(ctx):
                 'მომატებულია ჭრილობის/პროთეზის ინფექციის რისკი; საჭიროა პერიოპერაციული ინსულინოთერაპიის ოპტიმიზაცია.'
             )
 
-    if q_filled and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips):
-        if (q.get('med_doac') or q.get('med_dabigatran')) and ctx.bmi is not None and ctx.bmi > 50:
+    bmi_eff = ctx.bmi if ctx.bmi is not None else getattr(ctx, 'bmi_sat', None)
+    if q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips:
+        if (q.get('med_doac') or q.get('med_dabigatran')) and bmi_eff is not None and bmi_eff > 50:
             ctx.amber_flags.append(
-                f'ექსტრემალური სიმსუქნე (BMI {ctx.bmi} > 50 კგ/მ²) DOAC/დაბიგატრანის ფონზე (ISTH 2021) — '
+                f'ექსტრემალური სიმსუქნე (BMI {bmi_eff} > 50 კგ/მ²) DOAC/დაბიგატრანის ფონზე (ISTH 2021) — '
                 'პლაზმური კონცენტრაცია შესაძლოა არაპროგნოზირებადი იყოს; განიხილეთ ანტი-Xa/დონის კონტროლი ან ვარფარინი.'
             )
         if 'amiodarone' in ctx.med_chips and (ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 60)):
+            amio_drug_lbl = 'DOAC/დაბიგატრანი' if (q.get('med_doac') or q.get('med_dabigatran')) else 'რივაროქსაბანი 2.5 მგ'
             ctx.amber_flags.append(
-                'ამიოდარონი + DOAC/დაბიგატრანი დაქვეითებული თირკმლის ფუნქციის (CrCl/eGFR < 60) ფონზე — '
+                f'ამიოდარონი + {amio_drug_lbl} დაქვეითებული თირკმლის ფუნქციის (CrCl/eGFR < 60) ფონზე — '
                 'P-gp ინჰიბირება ზრდის პრეპარატის აკუმულაციას (EHRA 2021: განიხილეთ +24 სთ-ით ადრე შეჩერება)!'
             )
 
@@ -594,14 +620,14 @@ def eval_infection_stale_labs(ctx):
                 'პროთეზის ინფიცირების მაღალი რისკი, სავალდებულოა სტომატოლოგის სანაცია!'
             )
     if has_synthetic_implant and not ctx.is_rupture_suspect:
-        shower_antiseptic = (
-            'ალტერნატიული უიოდო ანტისეპტიკური შხაპი (ქლორჰექსიდინი + იოდზე ალერგია!)' if dual_chx_iod
-            else ('პოვიდონ-იოდის შხაპი (ქლორჰექსიდინზე ალერგია!)' if 'latex_chlorhex' in ctx.allergy_chips else 'ქლორჰექსიდინის ანტისეპტიკური შხაპი')
+        shower_action = (
+            'ალტერნატიული უიოდო ანტისეპტიკური შხაპის ინსტრუქტაჟი (ქლორჰექსიდინი + იოდზე ალერგია!)' if dual_chx_iod
+            else ('პოვიდონ-იოდის შხაპის ინსტრუქტაჟი (ქლორჰექსიდინზე ალერგია!)' if 'latex_chlorhex' in ctx.allergy_chips else 'ქლორჰექსიდინის ანტისეპტიკური შხაპის ინსტრუქტაჟი')
         )
         ctx.reflex_orders.append({
             'key': 'decol',
             'trigger': 'სინთეზური სისხლძარღვოვანი პროთეზის / პატჩის / სტენტ-გრაფტის იმპლანტაცია',
-            'action': f'პროთეზის ინფექციის პრევენცია: წინასაოპერაციო {shower_antiseptic}ს ინსტრუქტაჟი',
+            'action': f'პროთეზის ინფექციის პრევენცია: წინასაოპერაციო {shower_action}',
             'done': bool(s.get('decolonization_ready')),
         })
 
@@ -630,13 +656,14 @@ def eval_pulmonary(ctx):
     if cxr == 'infiltrate':
         ctx.red_flags.append('გულმკერდის რენტგენზე ინფილტრაცია / გამონაჟონი / საყურადღებო კერა — აცნობეთ ქირურგს!')
 
+    spo2_eff = ctx.spo2 if ctx.spo2 is not None else getattr(ctx, 'spo2_sat', None)
     needs_spirometry = (
         (ctx.open_aortic and (
             (q_filled and bool(q.get('pulm')))
             or cxr == 'emphysema'
             or ctx.true_low_mets
         ))
-        or (ctx.spo2 is not None and ctx.spo2 < 94)
+        or (spo2_eff is not None and spo2_eff < 94)
         or (s.get('spiro_fev1') is not None)
     )
     ctx.needs_spirometry = needs_spirometry
@@ -681,16 +708,17 @@ def eval_carotid_gastro(ctx):
             ctx.amber_flags.append(f'ასიმპტომური კაროტიდული სტენოზი ({ctx.max_car}%) — ინტრაოპერაციული ჰიპოტენზიის თავიდან აცილება.')
 
     gastro_res = s.get('gastro_result') or 'pending'
+    hb_eff = ctx.hb_gl if ctx.hb_gl is not None else getattr(ctx, 'hb_gl_sat', None)
     if ctx.is_venous or ctx.is_pta:
         needs_gastro = (
             bool(q.get('ulcer_active_symp'))
-            or ((q_filled and bool(q.get('ulcer'))) and (ctx.hb_gl is not None and ctx.hb_gl < 100) and not ctx.is_urgent_case and not ctx.on_dialysis)
+            or ((q_filled and bool(q.get('ulcer'))) and (hb_eff is not None and hb_eff < 100) and not ctx.is_urgent_case and not ctx.on_dialysis)
             or gastro_res != 'pending'
         )
     else:
         needs_gastro = (
             bool(q.get('ulcer_active_symp'))
-            or ((ctx.hb_gl is not None and ctx.hb_gl < 100) and not ctx.is_urgent_case and not ctx.on_dialysis)
+            or ((hb_eff is not None and hb_eff < 100) and not ctx.is_urgent_case and not ctx.on_dialysis)
             or gastro_res != 'pending'
         )
     ctx.gastro_res, ctx.needs_gastro = gastro_res, needs_gastro

@@ -93,12 +93,13 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
     ctx.needs_echo_or_bnp = ctx.open_aortic or guideline_justifies_extra_cardio
     mandatory_tte = bool(('hf' in ctx.cad_chips) or ctx.has_mech_valve or s.get('echo_valve_issue') or (bnp_eff is not None and bnp_eff >= cb['bnp_red']))
     ctx.cardiac_screen_done = (lvef is not None or (not mandatory_tte and nt_probnp is not None and nt_probnp < cb['bnp_amb']))
-    ctx.needs_cxr = (q_filled and (bool(q.get('pulm')) or 'hf' in ctx.cad_chips or 'fever_resp' in ctx.inf_chip_set)) or (ctx.spo2 is not None and ctx.spo2 < 94)
+    spo2_eff = ctx.spo2 if ctx.spo2 is not None else getattr(ctx, 'spo2_sat', None)
+    ctx.needs_cxr = (q_filled and (bool(q.get('pulm')) or 'hf' in ctx.cad_chips or 'fever_resp' in ctx.inf_chip_set)) or (spo2_eff is not None and spo2_eff < 94)
 
 
 def _eval_stage1_completeness(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
-    auto_asa = calc_auto_asa(patient, q, s, egfr=ctx.egfr, bmi=ctx.bmi, today=ctx.today)
+    auto_asa = calc_auto_asa(patient, q, s, egfr=ctx.egfr, bmi=ctx.bmi_sat, today=ctx.today)
     valid_asa = ('auto', *rule_value('SCORE_ASA_PHYSICAL_STATUS')['classes'])
     asa_raw = s.get('asa_class') if s.get('asa_class') in valid_asa else 'auto'
     asa_roman = auto_asa if asa_raw == 'auto' else asa_raw
@@ -130,12 +131,14 @@ def _eval_stage1_completeness(ctx):
             or ('rivaroxaban_2_5' in ctx.med_chips)
         )
         ven_needs_inr = (not is_lean_evla) or ctx.on_oral_anticoag or (s.get('liver_status') in ('2x', '3x'))
+        bmi_eff = ctx.bmi if ctx.bmi is not None else getattr(ctx, 'bmi_sat', None)
+        age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
         ven_needs_gl = (
             (not is_lean_evla)
             or bool(q.get('dm') or q.get('dm_insulin') or q.get('metformin') or q.get('sglt2') or q.get('glp1'))
             or (ctx.hba1c is not None and ctx.hba1c >= 6.5)
-            or (ctx.bmi is not None and ctx.bmi >= 30)
-            or ((ctx.age or 0) >= 45)
+            or (bmi_eff is not None and bmi_eff >= 30)
+            or ((age_eff or 0) >= 45)
         )
         ven_labs_ok = (
             ctx.hb_gl is not None and ctx.plt is not None
@@ -263,8 +266,10 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
             vte_lbl = 'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT!)' if has_hit else 'ვარფარინი (VKA) — DOAC აკრძალულია!'
         elif has_hit:
             vte_lbl = 'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!)' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
-        elif ven_severe_renal_t or ctx.liver_3x:
+        elif ven_severe_renal_t:
             vte_lbl = 'კანქვეშა UFH / დოზა-კორექტირებული LMWH (DOAC არა!)'
+        elif ctx.liver_3x:
+            vte_lbl = 'LMWH / UFH კოაგულოგრამით (ღვიძლის ≥3x: DOAC არა!)'
         else:
             vte_lbl = 'LMWH / DOAC'
         tasks.append({'key': 'vte', 'label': f'თრომბოპროფილაქტიკის სქემის შეთანხმება (Caprini {ctx.caprini_score} — {vte_lbl})', 'done': bool(s.get('vte_prophylaxis_planned'))})
@@ -292,12 +297,17 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         )
         tasks.append({'key': 'comp', 'label': comp_lbl, 'done': bool(s.get('compression_ready')) and tbi_comp_ok})
     if ctx.is_pta and ctx.q_filled:
-        if ctx.has_mech_valve:
+        if (s.get('post_antithrombotic_plan') not in (None, '', 'auto')) and ctx.post_antithrombotic_label:
+            dapt_lbl = f'ანტითრომბოზული მზაობა: {ctx.post_antithrombotic_label}'
+        elif ctx.has_mech_valve:
             dapt_lbl = 'ანტითრომბოზული სქემა მექ. სარქველზე: ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი (DOAC / VOYAGER აკრძალულია!)'
         elif ctx.has_full_oac:
             dapt_lbl = f'ანტითრომბოზული სქემა OAC ფონზე: ანტიკოაგულანტი + {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე!)'
         elif ctx.has_active_stent_dapt:
-            dapt_lbl = f'უწყვეტი DAPT კორონარული სტენტისთვის ({ctx.alt_p2y12_lbl})'
+            if 'nsaid' in ctx.allergy_chips:
+                dapt_lbl = f'ახალი სტენტი + ასპირინზე ალერგია: {ctx.alt_p2y12_lbl} — კარდიოლოგის კონსილიუმი!'
+            else:
+                dapt_lbl = f'უწყვეტი DAPT კორონარული სტენტისთვის ({ctx.alt_p2y12_lbl})'
         elif 'nsaid' in ctx.allergy_chips:
             dapt_lbl = f'ანტითრომბოზული მზაობა: {ctx.alt_p2y12_lbl} (ასპირინზე/აასს-ზე ალერგია!)'
         elif getattr(ctx, 'voyager_safe', False):

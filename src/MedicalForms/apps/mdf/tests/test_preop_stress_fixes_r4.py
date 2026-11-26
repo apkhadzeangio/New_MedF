@@ -119,8 +119,9 @@ class PreopStressFixesRound4UnitTests(SimpleTestCase):
         self.assertEqual({r['drug'] for r in ev_inv_lo['med_schedule'] if r.get('acute_hold')}, {'ბეტა-ბლოკატორი', 'ACEi / ARB (პრილი/სარტანი)', 'ამლოდიპინი / CCB'})
         ev_inv_hi = evaluate(_go('evla', s={'bp_sys': 190, 'bp_dia': 195, 'hr': 72}), today=TODAY)
         self.assertEqual(ev_inv_hi['auto_asa'], 'III')
-        self.assertNotEqual(evaluate(_go('evla', s={'bp_sys': 85, 'bp_dia': 120, 'hr': 72}), today=TODAY)['auto_asa'], 'IV')
-        self.assertNotEqual(evaluate(_go('evla', s={'bp_sys': 80, 'bp_dia': 100, 'hr': 85}), today=TODAY)['auto_asa'], 'IV')
+        self.assertEqual(evaluate(_go('evla', s={'bp_sys': 85, 'bp_dia': 120, 'hr': 72}), today=TODAY)['auto_asa'], 'IV')
+        self.assertEqual(evaluate(_go('evla', s={'bp_sys': 80, 'bp_dia': 100, 'hr': 85}), today=TODAY)['auto_asa'], 'IV')
+        self.assertNotEqual(evaluate(_go('evla', s={'bp_sys': 85, 'bp_dia': 120, 'bp_sys_l': 120, 'bp_dia_l': 80, 'hr': 72}), today=TODAY)['auto_asa'], 'IV')
 
     def test_f3_f6_f7_f9_f10_failsafe_and_unhashable(self):
         # F3: pregnant_possible=True + dos_bhcg_negative=False blocks GO on ALL arterial subtypes

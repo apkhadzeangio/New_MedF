@@ -243,7 +243,10 @@ class StressPharmacologyAndComboTests(SimpleTestCase):
         self.assertNotIn('POISE-3', bb_sub['rule'])
 
         ev_inv = evaluate(_go_patient('evla', q={'med_chips': ['beta_blocker']}, s={'bp_sys': 85, 'bp_dia': 120}), today=TODAY)
-        self.assertNotEqual(ev_inv['auto_asa'], 'IV')
+        self.assertEqual(ev_inv['auto_asa'], 'IV')
+        self.assertTrue(ev_inv['has_blocking_unknown_state'])
+        ev_inv_contra = evaluate(_go_patient('evla', q={'med_chips': ['beta_blocker']}, s={'bp_sys': 85, 'bp_dia': 120, 'bp_sys_l': 120, 'bp_dia_l': 80}), today=TODAY)
+        self.assertNotEqual(ev_inv_contra['auto_asa'], 'IV')
 
         # PHARM-11: STOP-lock must NOT say 'do not stop' on SBP 85 / K+ 5.8 ACEi/CCB hold
         ev_sl = evaluate(_go_patient('evla', q={'ven_pregnant': True, 'med_chips': ['acei_arb', 'ccb']}, s={'bp_sys': 85, 'bp_dia': 55, 'k': 5.8}), today=TODAY)

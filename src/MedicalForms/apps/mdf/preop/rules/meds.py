@@ -68,9 +68,10 @@ def _eval_allergy_cied_and_med_hold(ctx):
         q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran')
         or q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel')
         or q.get('med_aspirin') or ('rivaroxaban_2_5' in ctx.med_chips) or ('cilostazol' in ctx.med_chips)
+        or (ctx.med_chips & {'beta_blocker', 'acei_arb', 'ccb', 'steroid', 'amiodarone', 'diuretic'})
         or q.get('metformin') or q.get('sglt2') or q.get('glp1') or q.get('dm_insulin')
-        or q.get('ven_hormones') or q.get('recent_stent') or ctx.ft_meds['unstructured_labels']
-        or q.get('self_filled') or q.get('self_fill_submitted')
+        or q.get('ven_hormones') or q.get('recent_stent') or ctx.has_acs_stent_12m
+        or ctx.ft_meds['unstructured_labels'] or q.get('self_filled') or q.get('self_fill_submitted')
     )
     ctx.med_schedule = build_med_schedule(
         patient, q, s, ctx.egfr, crcl=ctx.crcl,
@@ -108,9 +109,10 @@ def _eval_allergy_cied_and_med_hold(ctx):
             'მეტფორმინი უკუნაჩვენებია თირკმლის მძიმე უკმარისობის (CrCl/eGFR <30 / დიალიზი) ან ღვიძლის ≥3x დისფუნქციის დროს '
             '(ლაქტატ-აციდოზის რისკი) — შეწყვიტეთ დაუყოვნებლივ და შეათანხმეთ ენდოკრინოლოგთან!'
         )
-    elif (q_filled or has_crit_q_meds) and metf_hold_48h and not ctx.uses_contrast and ctx.eff_renal is not None and ctx.eff_renal < metf_cfg['dose_cap_renal']:
+    elif (q_filled or has_crit_q_meds) and q.get('metformin') and not ctx.uses_contrast and ctx.eff_renal is not None and ctx.eff_renal < metf_cfg['dose_cap_renal']:
+        hold_note = f' და ოპერაციაზე {metf_cfg["hold_hours"]} სთ შეჩერება კრეატინინის კონტროლით' if metf_hold_48h else ''
         ctx.amber_flags.append(
-            f'მეტფორმინი CrCl/eGFR {ctx.eff_renal} (30–44) ფონზე: დღიური დოზა ≤1000 მგ და ოპერაციაზე {metf_cfg["hold_hours"]} სთ შეჩერება კრეატინინის კონტროლით.'
+            f'მეტფორმინი CrCl/eGFR {ctx.eff_renal} (30–44) ფონზე: დღიური დოზა ≤1000 მგ{hold_note}.'
         )
 
 
@@ -130,7 +132,8 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
         or (bnp_early is not None and bnp_early >= 300) or ctx.on_dialysis
         or (ctx.eff_renal is not None and ctx.eff_renal <= cilo_min_crcl)
         or ((s.get('ecg') or 'pending') == 'ischemia_arrhythmia') or (hr_eff is not None and hr_eff > 110)
-        or ctx.liver_3x or bool(q.get('ulcer_active_symp')) or bool(q.get('recent_stent')) or repro_preg
+        or ctx.liver_3x or bool(q.get('ulcer_active_symp')) or (s.get('gastro_result') == 'acute_ulcer')
+        or bool(q.get('recent_stent')) or ctx.has_acs_stent_12m or repro_preg
     )
     if 'cilostazol' in ctx.med_chips and cilostazol_contra:
         ctx.red_flags.append(
@@ -215,7 +218,12 @@ def _eval_antithrombotic_conflicts(ctx):
             'პაციენტი იღებს პერორალურ ანტიკოაგულანტს (OAC / რივაროქსაბანი 2.5 მგ) ტიკაგრელორთან ან პრასუგრელთან ერთად (ESC Class III — სისხლდენის უმაღლესი რისკი)! '
             f'შეათანხმეთ დე-ესკალაცია {deesc_opt} კარდიოლოგთან!'
         )
-    if q.get('med_prasugrel') and (q.get('neuro') or ctx.is_symp_cea):
+    has_prior_stroke_tia = bool(
+        q.get('neuro') or ctx.is_symp_cea or q.get('cea_symp_event') or q.get('cea_crescendo')
+        or q.get('cea_disabling_stroke') or q.get('cea_thrombolysis')
+        or s.get('brain_imaging') == 'large_or_hemorrhage'
+    )
+    if q.get('med_prasugrel') and has_prior_stroke_tia:
         ctx.red_flags.append(
             'პრასუგრელი აბსოლუტურად უკუნაჩვენებია გადატანილი ინსულტის / TIA-ს ანამნეზში (FDA Boxed Warning — ქალასშიდა სისხლჩაქცევის რისკი)! '
             'დაუყოვნებლივ შეცვალეთ ანტიაგრეგანტი კარდიოლოგთან!'
@@ -296,6 +304,8 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
             'პოსტოპ. VOYAGER PAD (რივაროქსაბანი 2.5 მგ ×2) უკუნაჩვენებია/საშიშია (დიალიზი, CrCl/eGFR დაბალი, მექ. სარქველი, AFib, სტენტი/DAPT, ინსულტი, წყლული, ღვიძლის 3x ან ასპირინზე ალერგია) — შეარჩიეთ ალტერნატივა!'
         )
         if has_active_stent_dapt:
+            if asa_allergy:
+                return f'VOYAGER PAD უკუნაჩვენებია — ახალი სტენტი + ასპირინზე ალერგია: {alt_p2y12_lbl} / კარდიოლოგის კონსილიუმი!'
             return 'VOYAGER PAD უკუნაჩვენებია — შეინარჩუნეთ უწყვეტი DAPT (კორონარული სტენტის დაცვა!)'
         alt_v = f'{alt_p2y12_lbl} / ალტერნატივა კონსილიუმით' if asa_allergy else f'{alt_p2y12_lbl} ან ასპირინი 100 მგ'
         return f'VOYAGER PAD უკუნაჩვენებია — შეარჩიეთ {alt_v}'
@@ -305,6 +315,11 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
         )
         return f'DAPT (ასპირინით) უკუნაჩვენებია — ასპირინზე/აასს-ზე ალერგია! შეარჩიეთ {alt_p2y12_lbl} / კონსილიუმი'
     if post_at_raw == 'sapt' and has_active_stent_dapt:
+        if asa_allergy:
+            ctx.red_flags.append(
+                'ახალი კორონარული სტენტის (<6–12 თვ) + ასპირინზე ალერგიის ფონზე SAPT/სტენტის დაცვა შეათანხმეთ კარდიოლოგის კონსილიუმით (უწყვეტი P2Y12 / დესენსიბილიზაცია)!'
+            )
+            return f'SAPT უკუნაჩვენებია ახალ სტენტზე (<6–12 თვ) + ასპირინზე ალერგია: {alt_p2y12_lbl} — კარდიოლოგის კონსილიუმი!'
         ctx.red_flags.append('ახალი კორონარული სტენტის (<6–12 თვ) ფონზე პოსტოპ. მონოთერაპიაზე (SAPT) ჩამოქვეითება საშიშია — შეინარჩუნეთ DAPT!')
         return 'SAPT უკუნაჩვენებია ახალ სტენტზე (<6–12 თვ) — შეინარჩუნეთ უწყვეტი DAPT!'
     if post_at_raw == 'sapt' and asa_allergy and clop_intol:
@@ -338,7 +353,7 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
 
 
 def _eval_postop_voyager(ctx):
-    pathway, q, s, q_filled = ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    pathway, q, s = ctx.pathway, ctx.q, ctx.s
     voy_cfg = rule_value('MED_VOYAGER_RIVAROXABAN_2_5')
     post_at_raw = s.get('post_antithrombotic_plan') or 'auto'
     post_antithrombotic_label = ''
@@ -370,7 +385,7 @@ def _eval_postop_voyager(ctx):
         )
     else:
         oac_partner_lbl = 'კლოპიდოგრელი 75 მგ'
-    has_active_stent_dapt = bool((q_filled or q.get('recent_stent')) and (q.get('recent_stent') or ctx.has_acs_stent_12m))
+    has_active_stent_dapt = bool(q.get('recent_stent') or ctx.has_acs_stent_12m)
     ctx.alt_p2y12_lbl, ctx.oac_partner_lbl, ctx.has_active_stent_dapt = alt_p2y12_lbl, oac_partner_lbl, has_active_stent_dapt
 
     if pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
@@ -401,13 +416,13 @@ def _eval_postop_voyager(ctx):
 
 
 def _eval_stent_dapt_and_hold_alerts(ctx):
-    patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    patient, q, s = ctx.patient, ctx.q, ctx.s
     st_cfg = rule_value('MED_RECENT_STENT_DAPT')
     st_el_m, st_acs_m = st_cfg['elective_months'], st_cfg['acs_months']
     has_active_stent_dapt = ctx.has_active_stent_dapt
     asa_allergy_solo_p2y12 = (
         'nsaid' in ctx.allergy_chips and ctx.p2y12_count >= 1
-        and (not ctx.is_venous or bool(q.get('cad')) or bool(q.get('neuro')))
+        and (not ctx.is_venous or bool(q.get('cad')) or bool(ctx.cad_chips) or bool(q.get('neuro')))
     )
     uninterrupted_p2y12 = (
         (ctx.p2y12_count >= 1)
@@ -415,8 +430,9 @@ def _eval_stent_dapt_and_hold_alerts(ctx):
             bool(q.get('recent_stent'))
             or ctx.has_acs_stent_12m
             or asa_allergy_solo_p2y12
-            or (ctx.is_pta and not q.get('med_prasugrel'))
-            or (ctx.is_symp_cea and not q.get('med_prasugrel'))
+            or (ctx.p2y12_count >= 2)
+            or (ctx.is_pta and bool(q.get('med_clopidogrel') or q.get('med_ticagrelor')))
+            or (ctx.is_symp_cea and bool(q.get('med_clopidogrel') or q.get('med_ticagrelor')))
         )
     )
     ctx.uninterrupted_p2y12 = uninterrupted_p2y12
@@ -434,7 +450,7 @@ def _eval_stent_dapt_and_hold_alerts(ctx):
             )
         is_purely_elective_stent = (
             (ctx.pathway == PreopPatient.Pathway.CEA and not ctx.is_symp_cea)
-            or (ctx.pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and not ctx.is_clti_any)
+            or (ctx.pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and not ctx.is_clti_any and not ctx.is_ali_acute)
             or (ctx.is_venous and not (q.get('ven_bleeding') or q.get('ven_ceap') == 'C6'))
         )
         if is_purely_elective_stent:
@@ -447,7 +463,7 @@ def _eval_stent_dapt_and_hold_alerts(ctx):
             f'კორონარული სტენტი ჩადგმულია ბოლო {st_el_m} თვეში (DAPT) — თვითნებური მოხსნა საშიშია! '
             'შეათანხმეთ ანტიაგრეგანტული რეჟიმი და ოპერაციის ტაქტიკა ქირურგთან.'
         )
-    elif q_filled and ctx.has_acs_stent_12m and not ctx.cardio_cleared:
+    elif ctx.has_acs_stent_12m and not ctx.cardio_cleared:
         ctx.red_flags.append(
             f'ინფარქტის შემდგომი კორონარული სტენტი 6–12 თვეში (ESC: სტანდარტული DAPT {st_acs_m} თვეა!) — '
             'ანტიაგრეგანტის შეჩერებამდე სავალდებულოა კარდიოლოგისა და ქირურგის შეთანხმება!'
@@ -481,6 +497,7 @@ def _eval_stent_dapt_and_hold_alerts(ctx):
 
 
 def eval_meds_rules(ctx):
+    ctx.has_acs_stent_12m = ('stent_6_12m' in ctx.cad_chips and 'mi' in ctx.cad_chips)
     _eval_allergy_cied_and_med_hold(ctx)
     _eval_antithrombotic_conflicts(ctx)
     _eval_postop_voyager(ctx)

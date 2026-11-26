@@ -21,16 +21,17 @@ def _eval_aaa_anatomy(ctx, aaa_morph, aaa_neck, pop_scr):
         ctx.amber_flags.append(
             'სტერილური ანთებითი AAA / პერიაორტიტი (ESVS 2024): ღია დისექციისას მომატებულია თორმეტგოჯა ნაწლავისა და შარდსაწვეთების დაზიანების რისკი — ანატომიური შესაბამისობისას უპირატესია EVAR.'
         )
-    if aaa_mm is not None:
+    aaa_eff = aaa_mm if aaa_mm is not None else getattr(ctx, 'aaa_mm_sat', None)
+    if aaa_eff is not None:
         min_thresh = rule_value('AAA_FEMALE_MIN_MM') if patient.sex == 'F' else rule_value('AAA_MALE_MIN_MM')
-        mm_fmt = int(aaa_mm) if aaa_mm == int(aaa_mm) else aaa_mm
+        mm_fmt = int(aaa_eff) if aaa_eff == int(aaa_eff) else aaa_eff
         ctx.key_badge = f'{mm_fmt} მმ'
-        ctx.key_badge_urgent = bool(aaa_mm >= giant_mm or aaa_morph == 'inflammatory_mycotic')
-        if aaa_mm >= giant_mm:
-            msg = f'გიგანტური ანევრიზმა ({aaa_mm} მმ >= {giant_mm} მმ) — მაღალი რუპტურის რისკი, დაჩქარებული მომზადება!'
+        ctx.key_badge_urgent = bool(aaa_eff >= giant_mm or aaa_morph == 'inflammatory_mycotic')
+        if aaa_eff >= giant_mm:
+            msg = f'გიგანტური ანევრიზმა ({aaa_eff} მმ >= {giant_mm} მმ) — მაღალი რუპტურის რისკი, დაჩქარებული მომზადება!'
             ctx.red_flags.append(msg)
             ctx.priority_flags.append(msg)
-        elif aaa_mm < min_thresh:
+        elif aaa_mm is not None and aaa_mm < min_thresh:
             if aaa_morph == 'saccular':
                 ctx.amber_flags.append(
                     f'ESVS 2024: საკულარული მორფოლოგია ({aaa_mm} მმ) — '

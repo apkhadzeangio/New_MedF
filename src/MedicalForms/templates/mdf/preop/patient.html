@@ -115,7 +115,7 @@
             </div>
         </div>
 
-        <details class="po-edit-drawer" {% if not p.age or not ev.person_id or not p.side and ev.pathway != 'aaa_infra' and ev.pathway != 'abf' %}open{% endif %}>
+        <details class="po-edit-drawer" id="po-header-edit" {% if not p.age or not ev.person_id or not p.side and ev.pathway != 'aaa_infra' and ev.pathway != 'abf' %}open{% endif %}>
             <summary>
                 ✎ პირადი, კალენდარული და საოპერაციო მონაცემები
                 <span class="fw-normal opacity-75">

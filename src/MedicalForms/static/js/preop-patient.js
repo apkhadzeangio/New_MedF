@@ -118,11 +118,22 @@
         chip.addEventListener('click', function () {
             var targetTab = chip.dataset.jumpTab;
             var targetField = chip.dataset.jumpField;
-            if (!switchTab(targetTab, false)) return;
-            var pane = document.querySelector('.po-pane[data-pane="' + targetTab + '"]');
-            if (!pane || !targetField) return;
-            var el = pane.querySelector('#' + targetField) || pane.querySelector('[name="' + targetField + '"]');
-            if (!el) return;
+            var container = null;
+            if (targetTab === 'header') {
+                var hdrDetails = document.getElementById('po-header-edit');
+                if (hdrDetails) {
+                    hdrDetails.open = true;
+                    container = hdrDetails;
+                }
+            } else {
+                if (!switchTab(targetTab, false)) return;
+                container = document.querySelector('.po-pane[data-pane="' + targetTab + '"]');
+            }
+            if (!container) return;
+            var el = targetField
+                ? (container.querySelector('#' + targetField) || container.querySelector('[name="' + targetField + '"]'))
+                : container;
+            if (!el) el = container;
             var parentDetails = el.closest('details');
             if (parentDetails) parentDetails.open = true;
             var flashBox = el.closest('.fld') || el.closest('.po-task-row') || el.closest('.po-q-item') || el;

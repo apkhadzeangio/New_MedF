@@ -25,6 +25,53 @@ from ..utils import (
 )
 
 
+def _resolve_effective_anesth_label(ctx, lido_alg, needs_ett_airway):
+    patient, pathway, q, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.q_filled
+    anesth_plan_raw = ctx.anesth_plan_raw
+    if ctx.neuraxial_hard_blocked:
+        return 'ზოგადი ანესთეზია (არჩეული ნეირაქსიული უკუნაჩვენებია — შესაცვლელია!)'
+    if lido_alg and (anesth_plan_raw in ('local', 'plexus') or (anesth_plan_raw == 'auto' and (patient.op_subtype == PreopPatient.OpSubtype.EVLA or ctx.is_pta))):
+        return 'ანესთეზიოლოგთან შესათანხმებელი (ლიდოკაინზე ალერგია!)'
+    if anesth_plan_raw == 'general' and needs_ett_airway:
+        return 'ზოგადი ენდოტრაქეული ანესთეზია' + (' + ეპიდურული ანალგეზია' if 'epidural' in ctx.anesth_lines_set else '')
+    if anesth_plan_raw != 'auto':
+        return dict(ANESTH_PLAN_CHOICES).get(anesth_plan_raw, anesth_plan_raw)
+    if patient.op_subtype == PreopPatient.OpSubtype.EVLA:
+        return 'ტუმესცენტური ადგილობრივი ანესთეზია'
+    if ctx.is_pta:
+        return 'სედაცია / ანესთეზიოლოგიური მხარდაჭერა (ზურგზე წოლის შეზღუდვა)' if (q_filled and q.get('pta_cant_lie_flat')) else 'ადგილობრივი ანესთეზია (± სედაცია)'
+    if pathway == PreopPatient.Pathway.CEA:
+        return (
+            'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია — ადგილობრივი/წნულის გაუტკივარება უკუნაჩვენებია!)'
+            if lido_alg else 'ზოგადი ენდოტრაქეული ან რეგიონული ბლოკადა (ცერებრული მონიტორინგით)'
+        )
+    if pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype == 'tbd':
+        return (
+            'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია — გაუტკივარება ანესთეზიოლოგთან!)'
+            if lido_alg else 'ზუსტდება CTA ტაქტიკით (ღია: ზოგადი ენდოტრაქეული vs EVAR: ზოგადი / ადგილობრივი)'
+        )
+    if ctx.is_phleb or patient.op_subtype == 'evar' or ctx.is_pad_bypass:
+        if ctx.hard_nx_reasons:
+            base_ga_lbl = 'ზოგადი ენდოტრაქეული ანესთეზია' if needs_ett_airway else 'ზოგადი ანესთეზია'
+            return f'{base_ga_lbl} (ნეირაქსიული შეზღუდულია!)'
+        if ctx.is_phleb:
+            return (
+                'ზოგადი ანესთეზია (ლიდოკაინზე/ადგილობრივ ანესთეტიკზე ალერგია — სპინალური/ტუმესცენტური ანესთეზიოლოგთან!)'
+                if lido_alg else 'სპინალური / ზოგადი ანესთეზია'
+            )
+        if patient.op_subtype == 'evar':
+            return (
+                'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია!)'
+                if lido_alg else 'ზოგადი ან ადგილობრივი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)'
+            )
+        return 'ზოგადი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)'
+    if 'epidural' in ctx.anesth_lines_set:
+        return 'ზოგადი ენდოტრაქეული + ეპიდურული ანალგეზია'
+    if ctx.hard_nx_reasons:
+        return 'ზოგადი ენდოტრაქეული ანესთეზია (ეპიდურული შეზღუდულია!)'
+    return 'ზოგადი ენდოტრაქეული ანესთეზია'
+
+
 def _eval_asa_airway_and_modality(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
     sb_cfg = rule_value('ANES_AIRWAY_STOPBANG_ICU')
@@ -44,10 +91,15 @@ def _eval_asa_airway_and_modality(ctx):
         )
 
     pulm_chip_set = set(q.get('pulm_chips') or [])
-    has_htn_sb = bool(q_filled and q.get('htn')) or bool((ctx.eff_sys is not None and ctx.eff_sys >= 140) or (ctx.eff_dia is not None and ctx.eff_dia >= 90))
+    eff_sys_sb = ctx.eff_sys if ctx.eff_sys is not None else getattr(ctx, 'eff_sys_sat', None)
+    eff_dia_sb = ctx.eff_dia if ctx.eff_dia is not None else getattr(ctx, 'eff_dia_sat', None)
+    inv_htn_sb = any(dv >= 90 for _, dv in getattr(ctx, 'inv_bp_arms', ()))
+    has_htn_sb = bool(q_filled and q.get('htn')) or bool((eff_sys_sb is not None and eff_sys_sb >= 140) or (eff_dia_sb is not None and eff_dia_sb >= 90) or inv_htn_sb)
+    bmi_eff = ctx.bmi if ctx.bmi is not None else getattr(ctx, 'bmi_sat', None)
+    age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
     stop_bang_auto = sum([
-        bool(ctx.bmi is not None and ctx.bmi > 35),
-        bool((ctx.age or 0) > 50),
+        bool(bmi_eff is not None and bmi_eff > 35),
+        bool((age_eff or 0) > 50),
         has_htn_sb,
         bool(patient.sex == 'M'),
     ]) + (3 if 'osa' in pulm_chip_set else 0)
@@ -68,65 +120,24 @@ def _eval_asa_airway_and_modality(ctx):
         ctx.open_aortic
         or pathway == PreopPatient.Pathway.CEA
         or (bool(q.get('aaa_pain')) or has_glp1_any)
-        or (ctx.bmi is not None and ctx.bmi >= 40)
+        or (bmi_eff is not None and bmi_eff >= 40)
     )
-    anesth_plan_raw = ctx.anesth_plan_raw
-    if ctx.neuraxial_hard_blocked:
-        eff_lbl = 'ზოგადი ანესთეზია (არჩეული ნეირაქსიული უკუნაჩვენებია — შესაცვლელია!)'
-    elif lido_alg and (anesth_plan_raw in ('local', 'plexus') or (anesth_plan_raw == 'auto' and (patient.op_subtype == PreopPatient.OpSubtype.EVLA or ctx.is_pta))):
-        eff_lbl = 'ანესთეზიოლოგთან შესათანხმებელი (ლიდოკაინზე ალერგია!)'
-    elif anesth_plan_raw == 'general' and needs_ett_airway:
-        eff_lbl = 'ზოგადი ენდოტრაქეული ანესთეზია' + (' + ეპიდურული ანალგეზია' if 'epidural' in ctx.anesth_lines_set else '')
-    elif anesth_plan_raw != 'auto':
-        eff_lbl = dict(ANESTH_PLAN_CHOICES).get(anesth_plan_raw, anesth_plan_raw)
-    elif patient.op_subtype == PreopPatient.OpSubtype.EVLA:
-        eff_lbl = 'ტუმესცენტური ადგილობრივი ანესთეზია'
-    elif ctx.is_pta:
-        eff_lbl = 'სედაცია / ანესთეზიოლოგიური მხარდაჭერა (ზურგზე წოლის შეზღუდვა)' if (q_filled and q.get('pta_cant_lie_flat')) else 'ადგილობრივი ანესთეზია (± სედაცია)'
-    elif pathway == PreopPatient.Pathway.CEA:
-        eff_lbl = (
-            'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია — ადგილობრივი/წნულის გაუტკივარება უკუნაჩვენებია!)'
-            if lido_alg else 'ზოგადი ენდოტრაქეული ან რეგიონული ბლოკადა (ცერებრული მონიტორინგით)'
-        )
-    elif pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype == 'tbd':
-        eff_lbl = (
-            'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია — გაუტკივარება ანესთეზიოლოგთან!)'
-            if lido_alg else 'ზუსტდება CTA ტაქტიკით (ღია: ზოგადი ენდოტრაქეული vs EVAR: ზოგადი / ადგილობრივი)'
-        )
-    elif ctx.is_phleb or patient.op_subtype == 'evar' or ctx.is_pad_bypass:
-        if ctx.hard_nx_reasons:
-            base_ga_lbl = 'ზოგადი ენდოტრაქეული ანესთეზია' if needs_ett_airway else 'ზოგადი ანესთეზია'
-            eff_lbl = f'{base_ga_lbl} (ნეირაქსიული შეზღუდულია!)'
-        elif ctx.is_phleb:
-            eff_lbl = 'სპინალური / ზოგადი ანესთეზია'
-        elif patient.op_subtype == 'evar':
-            eff_lbl = (
-                'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია!)'
-                if lido_alg else 'ზოგადი ან ადგილობრივი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)'
-            )
-        else:
-            eff_lbl = 'ზოგადი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)'
-    else:
-        if 'epidural' in ctx.anesth_lines_set:
-            eff_lbl = 'ზოგადი ენდოტრაქეული + ეპიდურული ანალგეზია'
-        elif ctx.hard_nx_reasons:
-            eff_lbl = 'ზოგადი ენდოტრაქეული ანესთეზია (ეპიდურული შეზღუდულია!)'
-        else:
-            eff_lbl = 'ზოგადი ენდოტრაქეული ანესთეზია'
-    ctx.effective_anesth_label = eff_lbl
+    ctx.effective_anesth_label = _resolve_effective_anesth_label(ctx, lido_alg, needs_ett_airway)
     ctx.anesth_lines_txt = chip_summary(s.get('anesth_lines_chips'), 'anesth_lines_chips')
     cied_plan_raw = s.get('cied_plan') if s.get('cied_plan') in ('pending', 'bipolar_only', 'magnet_async', 'ep_reprogram') else 'pending'
     ctx.cied_plan_label = dict(CIED_PLAN_CHOICES).get(cied_plan_raw, '') if ctx.needs_cied and cied_plan_raw != 'pending' else ''
+    from ..calculators import _s_raw, _sat_num
+    lvef_icu = ctx.lvef if ctx.lvef is not None else _sat_num(_s_raw(s, 'lvef'), 5, 95)
     ctx.needs_icu_bed = bool(
         ctx.open_aortic or ctx.asa_roman == 'IV'
-        or (ctx.lvef is not None and ctx.lvef < 40)
+        or (lvef_icu is not None and lvef_icu < 40)
         or bool(q.get('cea_crescendo'))
         or bool(ctx.anesth_lines_set & {'art_line', 'cvc', 'epidural'})
     )
 
 
 def _eval_wait_fasting_and_allergy_summary(ctx):
-    patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
     cea_win_d = rule_value('CEA_SYMP_WINDOW_DAYS')[0]
     aaa_wait_giant, aaa_wait_std = rule_value('AAA_WAIT_TARGET_DAYS')
     clti_inf_d, clti_std_d = rule_value('PAD_CLTI_WAIT_DAYS')
@@ -163,12 +174,12 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
                     f'AAA ({ctx.aaa_mm} მმ): დაგეგმილი ოპერაციის მოლოდინი {wait_to_op} დღეა (UK NVR / ESVS სამიზნე ≤8 კვირა / 56 დღე).'
                 )
         elif getattr(ctx, 'is_ali_acute', False):
-            if wait_to_op > clti_inf_d:
+            if wait_to_op > 1:
                 ctx.amber_flags.append(
-                    f'მწვავე კიდურის იშემია (ALI): დაგეგმილი ოპერაცია ({ctx.planned_surgery_ka}) დაშორებულია {wait_to_op} დღით (>{clti_inf_d} დღე) — კიდურის დაკარგვის უმაღლესი რისკი!'
+                    f'მწვავე კიდურის იშემია (ALI): დაგეგმილი ოპერაცია ({ctx.planned_surgery_ka}) დაშორებულია {wait_to_op} დღით (>24 სთ) — სასწრაფო რევასკულარიზაციის აუცილებლობა, კიდურის დაკარგვის უმაღლესი რისკი!'
                 )
         elif ctx.is_clti_any:
-            clti_lim = clti_inf_d if (q_filled and q.get('abf_wet_infection')) else clti_std_d
+            clti_lim = clti_inf_d if q.get('abf_wet_infection') else clti_std_d
             if wait_to_op > clti_lim:
                 ctx.amber_flags.append(
                     f'CLTI პაციენტის დაგეგმილი ოპერაცია ({ctx.planned_surgery_ka}) დაშორებულია {wait_to_op} დღით (UK NVR სამიზნე ≤{clti_lim} დღე) — კიდურის დაკარგვის რისკი!'
@@ -184,7 +195,7 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
     if has_glp1_any:
         ctx.fasting_instruction = (
             f"GLP-1 პროტოკოლი (Multi-Society 2024 / ESAIC 2025): გართულების გარეშე უმეტეს პაციენტთან პრეპარატი გრძელდება, "
-            f"სავალდებულოა ოპერაციამდე {glp_cfg['liquid_hours']} სთ მხოლოდ სუფთა თხევადი დიეტა, მყარი საკვები შეწყდეს ≥{glp_cfg['solid_hours']} სთ-ით ადრე, "
+            f"სავალდებულოა ოპერაციამდე {glp_cfg['liquid_hours']} სთ მხოლოდ სუფთა თხევადი დიეტა (მყარი საკვების შეწყვეტა მინ. ≥{glp_cfg['solid_hours']} სთ, თუ 24 სთ თხევადი დიეტა ვერ დაიცვა), "
             f"სუფთა წყალი — {glp_cfg['water_hours']} სთ-ით ადრე (GI სიმპტომებისას — შეჩერების განხილვა და კუჭის ექო-სკრინინგი / RSI)."
         )
     elif is_local_evla_fasting:
@@ -245,7 +256,7 @@ def _build_dos_checks(ctx):
             'done': bool(s.get('dos_site_marked')) and (patient.side in valid_dos_sides),
         })
     if ctx.has_glp1_any:
-        dos_fast_lbl = f"უზმოდ ყოფნის რეჟიმი დაცულია: GLP-1 პროტოკოლი ({glp_cfg['liquid_hours']} სთ სუფთა თხევადი დიეტა / ≥{glp_cfg['solid_hours']} სთ მყარი საკვები / {glp_cfg['water_hours']} სთ წყალი)"
+        dos_fast_lbl = f"უზმოდ ყოფნის რეჟიმი დაცულია: GLP-1 პროტოკოლი ({glp_cfg['liquid_hours']} სთ სუფთა თხევადი დიეტა; მინ. ≥{glp_cfg['solid_hours']} სთ მყარი საკვები / {glp_cfg['water_hours']} სთ წყალი)"
     elif ctx.is_local_evla_fasting:
         dos_fast_lbl = 'ადგილობრივი EVLA: სედაციის გარეშე მსუბუქი საუზმე დაშვებულია (სედაციისას — 6 სთ მყარი საკვები / 2 სთ წყალი)'
     else:
@@ -288,7 +299,10 @@ def _build_dos_checks(ctx):
             'done': bool(s.get('dos_bhcg_negative')),
         })
     ctx.is_uncomplicated_pta_abx = ctx.is_pta and not (q.get('abf_wet_infection') or q.get('abf_groin_issue'))
-    if not ((ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA) or ctx.is_uncomplicated_pta_abx):
+    is_std_evla_no_abx = ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not (
+        q.get('ven_ceap') == 'C6' or q.get('ven_acute_svt') or q.get('ven_skin_infection')
+    )
+    if not (is_std_evla_no_abx or ctx.is_uncomplicated_pta_abx):
         wt_eff = getattr(ctx, 'weight_sat', ctx.weight_num)
         cefaz_dose = f'3 გ (≥{cefaz_3g_kg} კგ!)' if (wt_eff is not None and wt_eff >= cefaz_3g_kg) else '2 გ'
         abx_hint = 'ვანკომიცინი / კლინდამიცინი (β-ლაქტამზე ალერგია!)' if 'beta_lactam' in ctx.allergy_chips else f'ცეფაზოლინი {cefaz_dose} (ჭრილობამდე ≤60 წთ)'

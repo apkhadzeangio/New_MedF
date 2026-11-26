@@ -174,7 +174,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         self.assertNotIn('INR 1.35 >', ev['anesthetic_brief']['neuraxial_gate'])
 
         sched = {m['drug']: m for m in ev['med_schedule']}
-        self.assertIn('5 დღით ადრე (ASRA 5th Ed: 5 დღე)', sched['ტიკაგრელორი (ბრილინტა)']['rule'])
+        self.assertIn('5–7 დღით ადრე (ASRA 5th Ed: 5–7 დღე)', sched['ტიკაგრელორი (ბრილინტა)']['rule'])
         self.assertIn('INR ≤ 1.4', sched['ვარფარინი']['rule'])
         self.assertIn('Multi-Society 2024', sched['GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)']['rule'])
         self.assertIn('უმეტეს პაციენტთან გრძელდება', sched['GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)']['rule'])

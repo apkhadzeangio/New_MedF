@@ -49,6 +49,7 @@ from ..utils import (
     _update_hold_pause,
     chip_summary,
     consent_url_for_preop,
+    is_self_filled_q,
     make_self_fill_token,
     merged_q,
     merged_studies,
@@ -188,9 +189,17 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         if 'person_id' in request.POST:
             s['person_id'] = _clean_person_id(request.POST.get('person_id'))
         if 'birth_date' in request.POST:
-            bd = _date(request.POST.get('birth_date'))
-            s['birth_date'] = bd.isoformat() if (bd and bd <= today) else ''
-            if age_in is None and bd:
+            raw_bd = (request.POST.get('birth_date') or '').strip()
+            bd = _date(raw_bd)
+            inv = dict(s.get('_invalid_inputs') or {})
+            if raw_bd and (bd is None or bd > today):
+                s['birth_date'] = ''
+                inv['birth_date'] = raw_bd[:60]
+            else:
+                s['birth_date'] = bd.isoformat() if bd else ''
+                inv.pop('birth_date', None)
+            s['_invalid_inputs'] = inv
+            if age_in is None and bd and bd <= today:
                 age_in = _age_from_dob(bd)
         if age_in is not None or 'age' in request.POST:
             patient.age = age_in
@@ -198,30 +207,32 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             op_d = _date(request.POST.get('planned_surgery_date'))
             s['planned_surgery_date'] = op_d.isoformat() if op_d else ''
 
-        sex = request.POST.get('sex') or ''
-        if sex in ('M', 'F', ''):
-            patient.sex = sex
+        if 'sex' in request.POST and (request.POST.get('sex') or '') in ('M', 'F', ''):
+            patient.sex = request.POST.get('sex') or ''
         if 'side' in request.POST and request.POST.get('side') in ('', 'R', 'L', 'B'):
             patient.side = request.POST.get('side')
-        patient.phone = clean_text(request.POST.get('phone'), 50).replace('\n', ' ')
+        if 'phone' in request.POST:
+            patient.phone = clean_text(request.POST.get('phone'), 50).replace('\n', ' ')
         op_sub = request.POST.get('op_subtype') or ''
         if op_sub in PreopPatient.OpSubtype.values:
             patient.op_subtype = op_sub
-        surg_id = _int(request.POST.get('surgeon'), lo=1)
-        patient.surgeon = get_user_model().objects.filter(pk=surg_id).first() if surg_id is not None else None
+        if 'surgeon' in request.POST:
+            surg_id = _int(request.POST.get('surgeon'), lo=1)
+            patient.surgeon = get_user_model().objects.filter(pk=surg_id).first() if surg_id is not None else None
 
-        slot_kind = request.POST.get('slot_kind') or ''
-        if slot_kind.startswith('someday:'):
-            key = slot_kind.split(':', 1)[1]
-            patient.someday_list = key if key in PreopPatient.SomedayList.values else PreopPatient.SomedayList.CONF
-            patient.visit_date = None
-        else:
-            vd = _date(request.POST.get('visit_date'))
-            if vd:
-                patient.visit_date = vd
-                patient.someday_list = ''
-                if not patient.started_on:
-                    patient.started_on = vd
+        if 'slot_kind' in request.POST or 'visit_date' in request.POST:
+            slot_kind = request.POST.get('slot_kind') or ''
+            if slot_kind.startswith('someday:'):
+                key = slot_kind.split(':', 1)[1]
+                patient.someday_list = key if key in PreopPatient.SomedayList.values else PreopPatient.SomedayList.CONF
+                patient.visit_date = None
+            else:
+                vd = _date(request.POST.get('visit_date'))
+                if vd:
+                    patient.visit_date = vd
+                    patient.someday_list = ''
+                    if not patient.started_on:
+                        patient.started_on = vd
 
         _update_hold_pause(
             s, old_someday, patient.someday_list, today=today,
@@ -243,7 +254,11 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             patient.alerts_ack_by = None
             uf.extend(['alerts_ack_at', 'alerts_ack_by'])
             _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
-        elif patient.age != old_age or patient.sex != old_sex or s.get('planned_surgery_date') != old_op_dt:
+        elif (
+            patient.age != old_age or patient.sex != old_sex
+            or s.get('planned_surgery_date') != old_op_dt
+            or 'birth_date' in (s.get('_invalid_inputs') or {})
+        ):
             _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
         if new_pw != old_pw and new_pw in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
             s['carotid_symp'] = False
@@ -444,6 +459,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         s = merged_studies(patient)
 
         if action == 'ack_alerts':
+            if ev['clearance_seal']['code'] == 'stop' or ev.get('has_hard_contraindication'):
+                messages.error(request, 'STOP-სიგნალის / აბსოლუტური უკუჩვენების გაცნობით დადასტურება დაუშვებელია — უკუჩვენება უნდა აღმოიფხვრას!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
             s['alerts_ack_sig'] = ev['alerts_sig']
             patient.studies = s
             patient.alerts_ack_at = timezone.now()
@@ -462,6 +480,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 messages.error(request, 'აბსოლუტური უკუჩვენების, STOP-სიგნალის, ხანდაზმული ანალიზების, ნეირაქსიული ბლოკირების ან შეუვსებელი კრიტიკული მონაცემის გამო დადასტურება დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
             s['alerts_ack_sig'] = ev['alerts_sig']
+            if ev.get('red_flags'):
+                patient.alerts_ack_at = timezone.now()
+                patient.alerts_ack_by = request.user
+                uf.extend(['alerts_ack_at', 'alerts_ack_by'])
             if request.POST.get('move_ready') == '1':
                 _update_hold_pause(s, patient.someday_list, PreopPatient.SomedayList.READY, started_on=patient.started_on)
                 patient.someday_list = PreopPatient.SomedayList.READY
@@ -496,6 +518,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['self_fill_nonce'] = secrets.token_hex(4)
             s['self_fill_revoked'] = False
             q['self_fill_submitted'] = False
+            q['self_filled'] = False
+            if q.get('filled_by') == 'პაციენტი (ბმულით)':
+                q['filled_by'] = ''
             patient.questionnaire = q
             uf.append('questionnaire')
             messages.success(request, 'ახალი ერთჯერადი ბმული გენერირდა (წინა ბმული გაუქმდა).')
@@ -573,7 +598,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             'shown_anamnesis': patient.anamnesis or auto_anamnesis,
             'self_fill_path': reverse('preop-self-fill', args=[self_token]),
             'self_fill_revoked': bool(ev['s'].get('self_fill_revoked')),
-            'self_fill_used': bool(ev['q'].get('self_fill_submitted')),
+            'self_fill_used': is_self_filled_q(ev['q']),
             'consent_url': consent_url_for_preop(patient),
             'board_patient': board_patient,
             'default_board_unit': default_board_unit,

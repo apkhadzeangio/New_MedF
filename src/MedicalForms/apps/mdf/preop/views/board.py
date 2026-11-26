@@ -12,14 +12,18 @@ from ...board import add_event, clean_text
 from ...models import BoardEntry, BoardPatient, PreopPatient
 from ..constants import _PREOP_MUTATION_LOCK, _sqlite_acquire_write_lock
 from ..meds import _effective_allergy_state
-from ..utils import merged_studies
+from ..utils import _int, _num, merged_studies
+
+
+def _valid_db_pk(val):
+    return isinstance(val, int) and not isinstance(val, bool) and 0 < val < (1 << 63)
 
 
 def resolve_board_patient(patient):
     """Return active BoardPatient linked to this PreopPatient (never hijacking another PreopPatient's Board card)."""
     s = merged_studies(patient)
     bpid = s.get('board_patient_id')
-    if bpid:
+    if _valid_db_pk(bpid):
         bp = BoardPatient.objects.filter(pk=bpid, discharged_at__isnull=True).first()
         if bp:
             return bp
@@ -33,7 +37,7 @@ def resolve_board_patient(patient):
         )
         claimed_ids = {
             st.get('board_patient_id') for st in other_preops
-            if isinstance(st, dict) and st.get('board_patient_id')
+            if isinstance(st, dict) and _valid_db_pk(st.get('board_patient_id'))
         }
         qs = BoardPatient.objects.filter(discharged_at__isnull=True, name__iexact=patient.patient_name)
         if claimed_ids:
@@ -130,14 +134,17 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
         f"[წინასაოპერაციო ჰენდოფი] {op_verb}: {diag_str} · {ev['effective_asa']} · {ev['effective_anesth_label']}{anesth_line_sfx}."
     ]
     vitals_labs = []
-    if s.get('bp_sys') and s.get('bp_dia'):
-        vitals_labs.append(f"BP {s['bp_sys']}/{s['bp_dia']} mmHg")
+    bp_s = _int(s.get('bp_sys'), 30, 320)
+    bp_d = _int(s.get('bp_dia'), 20, 220)
+    if bp_s is not None and bp_d is not None and bp_s > bp_d:
+        vitals_labs.append(f'BP {bp_s}/{bp_d} mmHg')
     if ev['hb_gl'] is not None:
         vitals_labs.append(f"Hb {ev['hb_gl']} გ/ლ")
-    if s.get('plt') is not None:
-        vitals_labs.append(f"PLT {s['plt']}")
-    if s.get('inr') is not None:
-        vitals_labs.append(f"INR {s['inr']}")
+    if ev.get('plt') is not None:
+        vitals_labs.append(f"PLT {ev['plt']}")
+    inr_b = _num(s.get('inr'), 0.4, 20.0)
+    if inr_b is not None:
+        vitals_labs.append(f'INR {inr_b}')
     if ev['egfr'] is not None:
         crcl_part = f" / CrCl {ev['crcl']}" if ev.get('crcl') is not None else ''
         vitals_labs.append(f"eGFR {ev['egfr']}{crcl_part}")
@@ -147,8 +154,9 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
         vitals_labs.append(f"ABI {ev['min_abi']}")
     if ev.get('min_tp') is not None:
         vitals_labs.append(f"TP {ev['min_tp']} mmHg")
-    if s.get('lvef') is not None:
-        vitals_labs.append(f"LVEF {s['lvef']}%")
+    lvef_b = _int(s.get('lvef'), 5, 95)
+    if lvef_b is not None:
+        vitals_labs.append(f'LVEF {lvef_b}%')
     if ev.get('nt_probnp') is not None:
         vitals_labs.append(f"NT-proBNP {ev['nt_probnp']} pg/mL")
     if ev.get('hs_ctn') is not None:
@@ -174,7 +182,8 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
     if (q.get('allergy_text') or '').strip():
         safety_bits.append(f"ალერგიის ჩანაწერი: {q['allergy_text']}")
     if ev.get('bp_arm_diff') is not None and ev['bp_arm_diff'] >= 20:
-        higher_arm = 'მარჯვენა' if (s.get('bp_sys') or 0) >= (s.get('bp_sys_l') or 0) else 'მარცხენა'
+        bp_l = _int(s.get('bp_sys_l'), 30, 320)
+        higher_arm = 'მარჯვენა' if (bp_s or 0) >= (bp_l or 0) else 'მარცხენა'
         safety_bits.append(f"წნევის მონიტორინგი {higher_arm} მკლავზე (ΔBP {ev['bp_arm_diff']} mmHg)")
     if q.get('pacemaker'):
         cied_sfx = f" — {ev['cied_plan_label']}" if ev.get('cied_plan_label') else ''
@@ -218,18 +227,25 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
             f'ვენური პოსტოპ. რეჟიმი: ადრეული აქტიური სიარული · {comp_txt}',
         ))
 
+    cea_bleed_board = (
+        pathway == PreopPatient.Pathway.CEA
+        and (s.get('brain_imaging') == 'large_or_hemorrhage' or bool(ev.get('active_thrombolysis_window')))
+    )
     if 'hit_heparin' in allergy_chips:
         has_mv = 'mech_valve' in (q.get('cad_chips') or [])
         liver_3x = s.get('liver_status') == '3x'
+        sev_renal = bool(q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30))
         if has_mv:
             hit_board_agents = (
                 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე!) → ვარფარინი (VKA)'
                 if liver_3x else 'ბივალირუდინი / არგატრობანი → ვარფარინი (VKA) — ფონდაპარინუქსი/DOAC არა!'
             )
-        elif q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30):
+        elif liver_3x and sev_renal:
+            hit_board_agents = 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი CrCl<30/დიალიზზე და ღვიძლის ≥3x-ზე აკრძალულია!)'
+        elif sev_renal:
             hit_board_agents = 'ბივალირუდინი / არგატრობანი (ფონდაპარინუქსი CrCl<30/დიალიზზე აკრძალულია!)'
         elif liver_3x:
-            hit_board_agents = 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე!) / ფონდაპარინუქსი (CrCl ≥30)'
+            hit_board_agents = 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი არარეკომენდებულია!)'
         else:
             hit_board_agents = 'ფონდაპარინუქსი / არგატრობანი / ბივალირუდინი'
         task_candidates.append((
@@ -240,6 +256,11 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
         task_candidates.append((
             'VTE / ანტიკოაგულაცია:',
             'VTE / ანტიკოაგულაცია: პაციენტი მუდმივ ანტიკოაგულანტზეა (OAC) — სრული ჰემოსტაზის შემდეგ განახლდეს OAC სქემა ქირურგთან შეთანხმებით (ორმაგი ანტიკოაგულაციის გარეშე!)',
+        ))
+    elif cea_bleed_board:
+        task_candidates.append((
+            'VTE პროფილაქტიკა',
+            f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): მხოლოდ მექანიკური პროფილაქტიკა (IPC) — ფარმაკოლოგიური ანტიკოაგულაცია უკუნაჩვენებია თავის ტვინის სისხლჩაქცევის / rt-PA ≤6 დღის გამო!",
         ))
     elif ev['caprini_score'] >= 3 or not ev['is_venous']:
         vte_board_drug = (
@@ -281,8 +302,15 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
         ))
     elif ev.get('max_contrast_ml') is not None or (eff_renal_board is not None and eff_renal_board < 60):
         contrast_sfx = f" (მაქს. კონტრასტი ≤ {ev['max_contrast_ml']} მლ)" if ev.get('max_contrast_ml') is not None else ''
-        na_b = s.get('na')
-        hyd_b = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე, ნელი ჰიპოტონური კორექცია' if (isinstance(na_b, (int, float)) and na_b >= 150) else 'იზოტონური ჰიდრატაცია'
+        na_b = ev.get('na_val_sat')
+        if na_b is None:
+            na_b = _num(s.get('na'), 90, 200)
+        if na_b is not None and na_b >= 150:
+            hyd_b = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე, ნელი ჰიპოტონური კორექცია'
+        elif ev.get('chf_hyd_flag'):
+            hyd_b = 'შეზღუდული იზოტონური ჰიდრატაცია (0.5 მლ/კგ/სთ — გულის უკმარისობა / LVEF <40%!)'
+        else:
+            hyd_b = 'იზოტონური ჰიდრატაცია'
         task_candidates.append((
             'ნეფროპროტექცია:',
             f'ნეფროპროტექცია: {hyd_b} + საკონტროლო კრეატინინი და K+ 24–48 სთ-ში{contrast_sfx}',

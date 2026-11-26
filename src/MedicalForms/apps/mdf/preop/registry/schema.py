@@ -1,7 +1,7 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.4'
+REGISTRY_VERSION = '1.2.5'
 REGISTRY_UPDATED_ON = '2026-11-26'
 
 STATUS_VERIFIED = 'source-verified'
@@ -78,6 +78,18 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.5',
+        'date': '2026-11-26',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-6 გამყარება: 100% ჰენდოფის/შაბლონების/ინვარიანტების და რეესტრის სემანტიკური სიწმინდე',
+        'changes_ka': (
+            'სრულად გამყარდა ინვერტირებული წნევის (მათ შორის დიაპაზონს გარეთა SBP<=DBP), ექსტრემალური წონის/AAA/ICA/ABI/გლუკოზის/LVEF/BNP/SpO2/Hb/ასაკის/უარყოფითი eGFR-ის მონოტონურობა, არა-ASCII ციფრებისა და ჩადგმული NaN/Inf-ის გარდები, და 64-ბიტიანი PK დაცვა.',
+            'დაიხურა ყველა დარჩენილი ფარმაკოლოგიური და კომბინაციური კიდური შემთხვევა: ორმაგი ანტისეპტიკის ალერგია (_tab_s2.html), CEA rt-PA ≤6 დღე (მონოთერაპია და მექანიკური IPC VTE დაფაზე/Caprini-ზე), HIT+ღვიძლი ≥3x+თირკმლის უკმარისობა, ჰიპერნატრიემია/HFrEF ჰიდრატაცია, ცილოსტაზოლი მწვავე წყლულზე/ახალ ACS სტენტზე, პრასუგრელი სიმპტომურ CEA-ზე, დიალიზი PTA-ზე, EVLA მეტფორმინი CKD 3b, ფლებექტომია+ლიდოკაინის ალერგია და ALI გადაუდებელი ASA-E სტატუსი.',
+            'სრულად გამყარდა HTTP ნაკადები: self_fill ასაკი/სქესის ცვლილებით med_hold_agreed გაუქმება, დარეკვის მოხსნით დასტურის გაუქმება და უსაფრთხო დარეკვის ბლოკერი, STOP-ზე გაცნობითი ack-ის აკრძალვა, ახალი ხედის header/Stage-1 სექციები და ბმულის როტაციის ერთიანი განბლოკვა.',
+            'რეესტრში დაემატა გამოყოფილი წესები (AAA_ACCESS_ANATOMY_AND_DICOM, CEA_IMAGING_DICOM_READY, INF_ACTIVE_NON_UTI, INF_VIRAL_SEROLOGY_SCREEN), გაიწმინდა სემანტიკური მიბმები (BP ინვერსია, კრეატინინის ერთეული, rt-PA) და ყველა ადგილობრივი ზღვარი პატიოსნად მონიშნულია STATUS_LOCAL-ად.',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC 2022 · ASRA 5th Ed 2025 · CHEST 2022 · EHRA 2021 · ACC/AHA 2024 · CPOC 2021 · WHO Sign-In',
+    },
     {
         'version': '1.2.4',
         'date': '2026-11-26',

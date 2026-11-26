@@ -366,12 +366,68 @@
     </section>
 
     <!-- Full Clinical Sections (Expandable without losing any classic feature) -->
+    <details class="nw-section" id="nw-sec-header" {% if not p.age or not p.sex or not p.side and ev.pathway != 'aaa_infra' and ev.pathway != 'abf' %}open{% endif %}>
+        <summary class="nw-section-head">
+            <h2 class="nw-section-title">პირადი მონაცემები და საოპერაციო მხარე</h2>
+            <span class="nw-count-pill {% if p.age and p.sex %}green{% else %}amber{% endif %}">{% if p.age and p.sex %}{{ p.age }} წ.{% else %}შესავსებია{% endif %}</span>
+        </summary>
+        <div class="p-3">
+            <form method="post" class="d-flex flex-column gap-3" id="nw-header-form">
+                {% csrf_token %}
+                <input type="hidden" name="section" value="header">
+                <div class="nw-field-grid">
+                    <div class="nw-field">
+                        <label for="nw-hdr-name">პაციენტი (გვარი, სახელი)</label>
+                        <input type="text" id="nw-hdr-name" name="patient_name" value="{{ p.patient_name }}" required>
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-hdr-age">ასაკი (წ.)</label>
+                        <input type="number" id="nw-hdr-age" name="age" min="1" max="120" value="{{ p.age|default_if_none:'' }}" placeholder="მაგ. 68">
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-hdr-sex">სქესი</label>
+                        <select id="nw-hdr-sex" name="sex">
+                            <option value="" {% if not p.sex %}selected{% endif %}>აირჩიეთ...</option>
+                            <option value="M" {% if p.sex == 'M' %}selected{% endif %}>კაცი</option>
+                            <option value="F" {% if p.sex == 'F' %}selected{% endif %}>ქალი</option>
+                        </select>
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-hdr-side">საოპერაციო მხარე</label>
+                        <select id="nw-hdr-side" name="side">
+                            {% for sval, slbl in side_choices %}
+                            <option value="{{ sval }}" {% if p.side == sval %}selected{% endif %}>{{ slbl }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-hdr-pid">პირადი N (11 ციფრი)</label>
+                        <input type="text" id="nw-hdr-pid" name="person_id" value="{{ ev.person_id }}" maxlength="11" inputmode="numeric" placeholder="010XXXXXXXX">
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-hdr-bd">დაბადების თარიღი</label>
+                        <input type="date" id="nw-hdr-bd" name="birth_date" value="{{ s.birth_date }}">
+                    </div>
+                </div>
+                <button type="submit" class="nw-btn primary" style="width:100%">პირადი მონაცემების შენახვა</button>
+            </form>
+        </div>
+    </details>
+
     <details class="nw-section" id="nw-sec-q" {% if tab == 'q' %}open{% endif %}>
         <summary class="nw-section-head">
             <h2 class="nw-section-title">კითხვარი და წამლების სია</h2>
             <span class="nw-count-pill {% if q.filled %}green{% else %}amber{% endif %}">{% if q.filled %}შევსებულია{% else %}შესავსებია{% endif %}</span>
         </summary>
         <div class="p-3">{% include "mdf/preop/_tab_q.html" with tab="q" %}</div>
+    </details>
+
+    <details class="nw-section" id="nw-sec-s1" {% if tab == 's1' %}open{% endif %}>
+        <summary class="nw-section-head">
+            <h2 class="nw-section-title">სრული კვლევები და ინსტრუმენტული მონაცემები (ეკგ, დუპლექსი, CTA/MRI)</h2>
+            <span class="nw-count-pill blue">საფეხური 1</span>
+        </summary>
+        <div class="p-3">{% include "mdf/preop/_tab_s1.html" with tab="s1" %}</div>
     </details>
 
     <details class="nw-section" id="nw-sec-s2" {% if tab == 's2' %}open{% endif %}>

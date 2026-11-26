@@ -497,7 +497,8 @@ class PreopBoundaryMutationTests(unittest.TestCase):
             len(pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='open', pathway='aaa_infra', questionnaire={'filled': True}, studies={'carotid_r': 55, 'carotid_symp': False}), today=D0)['red_flags']),
         )
         self.assertTrue(any('14-დღიანი' in a for a in pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='cea_asymp', pathway='cea', side='R', questionnaire={'filled': True, 'cea_symp_event': True}), today=D0)['amber_flags']))
-        self.assertFalse(any('14-დღიანი' in a for a in pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='cea_asymp', pathway='cea', side='R', questionnaire={'filled': False, 'cea_symp_event': True}), today=D0)['amber_flags']))
+        self.assertTrue(any('14-დღიანი' in a for a in pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='cea_asymp', pathway='cea', side='R', questionnaire={'filled': False, 'cea_symp_event': True}), today=D0)['amber_flags']))
+        self.assertFalse(any('14-დღიანი' in a for a in pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='cea_asymp', pathway='cea', side='R', questionnaire={'filled': False, 'cea_symp_event': False}), today=D0)['amber_flags']))
         self.assertFalse(any('14-დღიანი' in a for a in pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='cea_symp', pathway='cea', side='R', questionnaire={'filled': True, 'cea_symp_event': True}), today=D0)['amber_flags']))
         self.assertEqual(pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='cea_symp', pathway='cea', side='R', questionnaire={'filled': True, 'cea_days_since_event': 8}), today=D0)['key_badge'], '8/14დღ')
         self.assertEqual(pm.evaluate(PreopPatient(age=65, sex='M', op_subtype='cea_asymp', pathway='cea', side='R', questionnaire={'filled': True, 'cea_days_since_event': 8}), today=D0)['key_badge'], '')

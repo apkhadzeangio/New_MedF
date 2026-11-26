@@ -119,6 +119,10 @@ class PreopSelfFillView(generic.View):
                 or (s_cur.get('case_outcome_status') or 'scheduled') != 'scheduled'
             ):
                 return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?locked=1')
+            from .. import evaluate
+            from ..nurse_ui import med_schedule_signature
+
+            ev_before = evaluate(patient) if s_cur.get('med_hold_agreed') else None
             uf = ['questionnaire', 'studies', 'side', 'started_on', 'updated_at']
             age_posted = _int(request.POST.get('age'), lo=12, hi=120) if request.POST.get('age') else None
             if age_posted and not patient.age:
@@ -132,10 +136,6 @@ class PreopSelfFillView(generic.View):
                 if ph:
                     patient.phone = ph
                     uf.append('phone')
-            from .. import evaluate
-            from ..nurse_ui import med_schedule_signature
-
-            ev_before = evaluate(patient) if s_cur.get('med_hold_agreed') else None
             apply_self_fill_post(request.POST, patient)
             s_mut = merged_studies(patient)
             pid = _clean_person_id(request.POST.get('person_id'))

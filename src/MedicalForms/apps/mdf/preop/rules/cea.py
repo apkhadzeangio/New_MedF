@@ -6,11 +6,11 @@ from ..utils import cea_live_days_since_event, is_symp_cea_patient
 
 
 def _eval_cea_symptoms_and_clocks(ctx):
-    patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    patient, q, s = ctx.patient, ctx.q, ctx.s
     win_days, warn_days, symp_max_days = rule_value('CEA_SYMP_WINDOW_DAYS')
     tl_days = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
     days_since_ev = cea_live_days_since_event(q, today=ctx.today, s=s)
-    is_symp_cea = is_symp_cea_patient(patient, q=q, s=s, today=ctx.today)
+    is_symp_cea = is_symp_cea_patient(patient, q=q, s=s, today=ctx.today, require_filled=False)
     ctx.days_since_ev = days_since_ev
     ctx.is_symp_cea = is_symp_cea
     ctx.active_thrombolysis_window = bool(
@@ -22,7 +22,7 @@ def _eval_cea_symptoms_and_clocks(ctx):
         ctx.amber_flags.append(
             f'ნევროლოგიური ეპიზოდიდან გასულია {days_since_ev} დღე (>6 თვე) — ESVS 2023 გაიდლაინით განიხილება როგორც ასიმპტომური სტენოზი.'
         )
-    elif patient.op_subtype == PreopPatient.OpSubtype.CEA_ASYMP and q_filled and q.get('cea_symp_event'):
+    elif patient.op_subtype == PreopPatient.OpSubtype.CEA_ASYMP and q.get('cea_symp_event'):
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა ნევროლოგიური სიმპტომი ბოლო 6 თვეში — გადაამოწმეთ სიმპტომური CEA-ს სტატუსი (14-დღიანი ფანჯარა)!'
         )
@@ -46,7 +46,7 @@ def _eval_cea_symptoms_and_clocks(ctx):
             ctx.red_flags.append(
                 f'ინტრავენური თრომბოლიზისი ბოლო {tl_days} დღეში (ESVS 2023) — ნაადრევი ჰეპარინიზაციის/სისხლჩაქცევის რისკი, შეათანხმეთ ოპერაციის თარიღი ქირურგთან!'
             )
-    if q_filled and q.get('cea_disabling_stroke'):
+    if q.get('cea_disabling_stroke'):
         ctx.red_flags.append(
             'მძიმე ნარჩენი ნევროლოგიური დეფიციტი (mRS >= 3) — გადაამოწმეთ CEA-ს ჩვენება და ვადები ქირურგთან და ნევროლოგთან!'
         )
@@ -74,7 +74,10 @@ def _eval_cea_symptoms_and_clocks(ctx):
 
 def _eval_cea_stenosis_and_imaging(ctx):
     patient, q_filled = ctx.patient, ctx.q_filled
-    is_symp_cea, car_r, car_l = ctx.is_symp_cea, ctx.car_r, ctx.car_l
+    is_symp_cea = ctx.is_symp_cea
+    car_r = ctx.car_r if ctx.car_r is not None else getattr(ctx, 'car_r_sat', None)
+    car_l = ctx.car_l if ctx.car_l is not None else getattr(ctx, 'car_l_sat', None)
+    max_car = max([v for v in (car_r, car_l) if v is not None], default=None)
     st_cfg = rule_value('CEA_STENOSIS_THRESHOLDS')
     occ_pct = rule_value('CEA_OCCLUSION_100_STOP')
 
@@ -89,7 +92,7 @@ def _eval_cea_stenosis_and_imaging(ctx):
         ctx.amber_flags.append('მიუთითეთ დაგეგმილი CEA-ს მხარე (მარჯვენა ან მარცხენა) პაციენტის ბარათში.')
 
     side_known = patient.side in ('R', 'L')
-    ipsi_car = car_r if patient.side == 'R' else (car_l if patient.side == 'L' else ctx.max_car)
+    ipsi_car = car_r if patient.side == 'R' else (car_l if patient.side == 'L' else max_car)
     contra_car = (
         car_l if patient.side == 'R'
         else (car_r if patient.side == 'L' else (min(car_r, car_l) if (car_r is not None and car_l is not None) else None))
@@ -191,7 +194,8 @@ def eval_cea(ctx):
     )
     tl_blocks_ap = ctx.active_thrombolysis_window and (not is_rtpa_asa_only or ('nsaid' in ctx.allergy_chips))
     antiplatelet_prohibited_cea = (brain_im == rule_value('CEA_BRAIN_HEMORRHAGE_STOP')) or tl_blocks_ap
-    if q_filled and not ctx.has_antiplatelet and not antiplatelet_prohibited_cea:
+    has_valid_cea_ap = ctx.has_safe_aspirin if is_rtpa_asa_only else ctx.has_antiplatelet
+    if q_filled and not has_valid_cea_ap and not antiplatelet_prohibited_cea:
         ctx.needs_cea_antiplatelet = True
         has_oac_only = bool(q.get('med_doac') or q.get('med_dabigatran') or q.get('med_warfarin'))
         ap_trigger = (

@@ -255,7 +255,7 @@ class PublishedPharmacologyReferenceTests(SimpleTestCase):
         r_cea_clop = _drug_row(build_med_schedule(p_cea, {'filled': True, 'med_clopidogrel': True, 'cea_symp_event': True}, p_cea.studies, 70, crcl=70), 'კლოპიდოგრელი')
         self.assertIn('გრძელდება უწყვეტად', r_cea_clop['rule'])
         r_tica_nx = _drug_row(build_med_schedule(p_open, {'filled': True, 'med_ticagrelor': True, 'med_aspirin': True}, p_open.studies, 70, crcl=70, has_neuraxial_override=True), 'ტიკაგრელორი')
-        self.assertIn('5 დღით ადრე (ASRA 5th Ed: 5 დღე)', r_tica_nx['rule'])
+        self.assertIn('5–7 დღით ადრე (ASRA 5th Ed: 5–7 დღე)', r_tica_nx['rule'])
         r_pras = _drug_row(build_med_schedule(p_open, {'filled': True, 'med_prasugrel': True, 'med_aspirin': True}, p_open.studies, 70, crcl=70), 'პრასუგრელი')
         self.assertIn('7–10 დღით', r_pras['rule'])
 

@@ -7,9 +7,9 @@ _LAB_KEYS = ('hb', 'creat', 'inr', 'plt', 'wbc', 'glucose', 'k', 'na', 'albumin'
 
 
 def _compute_score_completeness(ctx):
-    patient, q_filled, s = ctx.patient, ctx.q_filled, ctx.s
+    patient, q_filled = ctx.patient, ctx.q_filled
     age_ok = _int(patient.age, lo=12, hi=120) is not None
-    creat_missing = (not ctx.on_dialysis) and (s.get('creat') is None or ctx.creat_unit_ambiguous or ctx.egfr is None)
+    creat_missing = (not ctx.on_dialysis) and (ctx.creat_unit_ambiguous or ctx.egfr is None)
 
     rcri_missing = []
     if not q_filled:

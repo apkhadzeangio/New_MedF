@@ -104,7 +104,7 @@
 
                     {% if ev.needs_dental %}
                     <div class="po-task-row reflex-row {% if s.dental_sanitation_done %}done{% endif %}">
-                        <span><strong>რეფლექს-სანაცია პროთეზირებამდე:</strong> სტომატოლოგის სანაცია (წერილობითი ცნობა) + {% if 'latex_chlorhex' in ev.eff_allergy_chips %}პოვიდონ-იოდი (ქლორჰექსიდინზე ალერგიის გამო!){% else %}ქლორჰექსიდინი{% endif %}</span>
+                        <span><strong>რეფლექს-სანაცია პროთეზირებამდე:</strong> სტომატოლოგის სანაცია (წერილობითი ცნობა) + {% if 'latex_chlorhex' in ev.eff_allergy_chips and ev.eff_allergy_iodine %}უიოდო ალტერნატიული ანტისეპტიკი (ქლორჰექსიდინი + იოდზე ალერგია!){% elif 'latex_chlorhex' in ev.eff_allergy_chips %}პოვიდონ-იოდი (ქლორჰექსიდინზე ალერგიის გამო!){% else %}ქლორჰექსიდინი{% endif %}</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="dental_sanitation_done" value="1" {% if s.dental_sanitation_done %}checked{% endif %}>სანირებულია ✓</label>
                     </div>
                     {% endif %}
@@ -151,7 +151,7 @@
 
                     {% if ev.pathway == 'cea' and ev.needs_cea_antiplatelet %}
                     <div class="po-task-row reflex-row {% if s.cea_antiplatelet_started %}done{% endif %}">
-                        <span><strong>ESVS 2023 Class I — CEA ანტიაგრეგანტი:</strong> თავის ტვინის CT-ით სისხლჩაქცევის გამორიცხვის შემდეგ დაწყებულია {% if 'nsaid' in ev.eff_allergy_chips and 'clopidogrel_intol' in ev.eff_allergy_chips %}ალტერნატიული ანტიაგრეგანტი (ასპირინზე ალერგია + კლოპიდოგრელზე აუტანლობა — კარდიოლოგი/ნევროლოგი!){% elif 'nsaid' in ev.eff_allergy_chips %}კლოპიდოგრელი (ასპირინზე/აასს-ზე ალერგია!){% elif 'clopidogrel_intol' in ev.eff_allergy_chips %}ასპირინი (კლოპიდოგრელზე აუტანლობა!){% else %}ასპირინი (± კლოპიდოგრელი){% endif %}</span>
+                        <span><strong>ESVS 2023 Class I — CEA ანტიაგრეგანტი:</strong> თავის ტვინის CT-ით სისხლჩაქცევის გამორიცხვის შემდეგ დაწყებულია {% if ev.active_thrombolysis_window %}{% if 'nsaid' in ev.eff_allergy_chips %}ნევროლოგთან შეთანხმებული მონოთერაპია (rt-PA ≤6 დღე + ასპირინზე ალერგია — P2Y12/DAPT დაბლოკილია!){% else %}ასპირინი 75–100 მგ მონოთერაპია (rt-PA ≤6 დღე — P2Y12/DAPT დაბლოკილია!){% endif %}{% elif 'nsaid' in ev.eff_allergy_chips and 'clopidogrel_intol' in ev.eff_allergy_chips %}ალტერნატიული ანტიაგრეგანტი (ასპირინზე ალერგია + კლოპიდოგრელზე აუტანლობა — კარდიოლოგი/ნევროლოგი!){% elif 'nsaid' in ev.eff_allergy_chips %}კლოპიდოგრელი (ასპირინზე/აასს-ზე ალერგია!){% elif 'clopidogrel_intol' in ev.eff_allergy_chips %}ასპირინი (კლოპიდოგრელზე აუტანლობა!){% else %}ასპირინი (± კლოპიდოგრელი){% endif %}</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="cea_antiplatelet_started" value="1" {% if s.cea_antiplatelet_started %}checked{% endif %}>დაწყებულია ✓</label>
                     </div>
                     {% endif %}
@@ -185,7 +185,9 @@
                     {% if ev.is_pta and q.filled %}
                     <div class="po-task-row {% if s.dapt_ready %}done{% endif %}">
                         <span>
-                            {% if ev.has_full_oac %}
+                            {% if ev.has_mech_valve %}
+                            <strong>მექანიკური სარქველი — ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი (DOAC / VOYAGER აკრძალულია!)</strong>
+                            {% elif ev.has_full_oac %}
                             <strong>ანტითრომბოზული გეგმა OAC ფონზე: {% if 'clopidogrel_intol' in ev.eff_allergy_chips and 'nsaid' in ev.eff_allergy_chips %}OAC მონოთერაპია ან კონსილიუმი (ასპირინზე ალერგია + კლოპიდოგრელზე აუტანლობა!){% elif 'clopidogrel_intol' in ev.eff_allergy_chips %}OAC + ასპირინი (კლოპიდოგრელზე აუტანლობა — OAC + ტიკაგრელორი არა!){% else %}OAC + კლოპიდოგრელი (სამმაგი თერაპიის — OAC+ASA+P2Y12 — გარეშე!){% endif %}</strong>
                             {% else %}
                             <strong>{% if 'nsaid' in ev.eff_allergy_chips and 'clopidogrel_intol' in ev.eff_allergy_chips %}ალტერნატიული ანტიაგრეგანტული გეგმა (ასპირინზე ალერგია + კლოპიდოგრელზე აუტანლობა — კარდიოლოგთან შეთანხმებით!){% elif 'nsaid' in ev.eff_allergy_chips %}ანტიაგრეგანტული თერაპია — კლოპიდოგრელი (ასპირინზე/აასს-ზე ალერგია!){% elif 'clopidogrel_intol' in ev.eff_allergy_chips %}ორმაგი ანტიაგრეგანტული თერაპია — DAPT (ასპირინი + ტიკაგრელორი — კლოპიდოგრელზე აუტანლობა!){% else %}ორმაგი ანტიაგრეგანტული თერაპია — DAPT (ასპირინი + კლოპიდოგრელი / დატვირთვის დოზა){% endif %}</strong>
@@ -278,7 +280,7 @@
 
                     {% if ev.has_synthetic_implant %}
                     <div class="po-task-row {% if s.decolonization_ready %}done{% endif %}">
-                        <span><strong>პროთეზის ინფექციის პრევენცია:</strong> წინასაოპერაციო ანტისეპტიკური ({% if ev.eff_allergy_latex %}პოვიდონ-იოდის — ქლორჰექსიდინზე ალერგიის გამო!{% else %}ქლორჰექსიდინის{% endif %}) შხაპის ინსტრუქტაჟი</span>
+                        <span><strong>პროთეზის ინფექციის პრევენცია:</strong> წინასაოპერაციო ანტისეპტიკური ({% if ev.eff_allergy_latex and ev.eff_allergy_iodine %}უიოდო ალტერნატიული ანტისეპტიკი — ქლორჰექსიდინი + იოდზე ალერგია!{% elif ev.eff_allergy_latex %}პოვიდონ-იოდის — ქლორჰექსიდინზე ალერგიის გამო!{% else %}ქლორჰექსიდინის{% endif %}) შხაპის ინსტრუქტაჟი</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="decolonization_ready" value="1" {% if s.decolonization_ready %}checked{% endif %}>ინსტრუქცია გაცემულია ✓</label>
                     </div>
                     {% endif %}

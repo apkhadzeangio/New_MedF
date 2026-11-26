@@ -42,13 +42,22 @@ def is_self_filled_q(q):
 # Parsing & clinical math helpers (with explicit unit-ambiguity guards)
 # --------------------------------------------------------------------------
 
+_ASCII_NUM_RE = re.compile(r'^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$', re.ASCII)
+
+
 def _num(val, lo=None, hi=None):
     if val is None or val == '' or isinstance(val, (bool, list, tuple, dict, set)):
         return None
-    try:
-        v = float(str(val).strip().replace(',', '.'))
-    except (ValueError, TypeError):
-        return None
+    if isinstance(val, (int, float)):
+        v = float(val)
+    else:
+        s_val = str(val).strip().replace(',', '.')
+        if not _ASCII_NUM_RE.match(s_val):
+            return None
+        try:
+            v = float(s_val)
+        except (ValueError, TypeError):
+            return None
     if not math.isfinite(v):
         return None
     if lo is not None and v < lo:
@@ -87,8 +96,8 @@ def _resolve_pathway(patient):
 
 
 def _clean_person_id(val):
-    """Return digits-only Georgian Personal ID (up to 11 digits)."""
-    return re.sub(r'\D', '', str(val or ''))[:11]
+    """Return ASCII digits-only Georgian Personal ID (up to 11 digits)."""
+    return re.sub(r'[^0-9]', '', str(val or ''))[:11]
 
 
 def _fmt_ka_date(val, short=False):
@@ -302,6 +311,22 @@ def _str_list(val):
     return [x for x in val if isinstance(x, str)] if isinstance(val, (list, tuple, set)) else []
 
 
+def _strip_non_finite(obj):
+    if isinstance(obj, float):
+        return None if not math.isfinite(obj) else (0.0 if obj == 0 else obj)
+    if isinstance(obj, dict):
+        return {
+            dk: _strip_non_finite(dv) for dk, dv in obj.items()
+            if not (isinstance(dv, float) and not math.isfinite(dv))
+        }
+    if isinstance(obj, list):
+        return [
+            _strip_non_finite(x) for x in obj
+            if not (isinstance(x, float) and not math.isfinite(x))
+        ]
+    return obj
+
+
 def _sanitize_merged_dict(defaults, raw_dict):
     """Merge JSON payload against typed defaults, stripping NaN/Inf, booleans-as-numbers, and corrupt non-iterables."""
     data = {}
@@ -329,13 +354,7 @@ def _sanitize_merged_dict(defaults, raw_dict):
         if k not in data:
             if isinstance(rv, float) and not math.isfinite(rv):
                 continue
-            if isinstance(rv, dict):
-                data[k] = {
-                    dk: dv for dk, dv in rv.items()
-                    if not (isinstance(dv, float) and not math.isfinite(dv))
-                }
-            else:
-                data[k] = rv
+            data[k] = _strip_non_finite(rv)
     return data
 
 

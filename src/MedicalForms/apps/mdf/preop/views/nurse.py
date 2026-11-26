@@ -148,6 +148,7 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
     def post(self, request, pk):
         from .. import evaluate
         from ..nurse_ui import med_schedule_signature
+        from .parsers import _invalidate_approval_if_needed
 
         patient = get_object_or_404(PreopPatient, pk=pk)
         action = request.POST.get('action') or 'called'
@@ -157,15 +158,23 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
             patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
             ev = evaluate(patient)
             s = merged_studies(patient)
+            uf = ['studies', 'updated_at', 'updated_by']
 
+            med_call_unsafe = (
+                any(u.get('key') in ('renal_drug_no_crcl', 'ambiguous_creat_unit') for u in (ev.get('unknown_state_flags') or ()))
+                or any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ()))
+            )
             if action == 'clear':
                 s['nurse_med_called_at'] = ''
                 s['nurse_med_called_by'] = ''
                 s['nurse_med_called_sig'] = ''
                 s['med_hold_agreed'] = False
+                _invalidate_approval_if_needed(patient, uf)
                 messages.info(request, 'დარეკვის მონიშვნა მოიხსნა.')
             elif ev['clearance_seal']['code'] == 'stop' or ev['has_hard_contraindication']:
                 messages.error(request, 'STOP-სიგნალის დროს წამლების შეწყვეტა დაბლოკილია — ჯერ ქირურგს დაუკავშირდით!')
+            elif med_call_unsafe:
+                messages.error(request, 'წამლების გრაფიკი შეიცავს უკუნაჩვენებ, დაუზუსტებელ ან CrCl-ის გარეშე პრეპარატს — ჯერ შეათანხმეთ ექიმთან!')
             else:
                 s['nurse_med_called_at'] = timezone.localtime().strftime('%d.%m.%Y %H:%M')
                 s['nurse_med_called_by'] = person_name(request.user)
@@ -176,7 +185,7 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
 
             patient.studies = s
             patient.updated_by = request.user
-            patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
+            patient.save(update_fields=list(dict.fromkeys(uf)))
 
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-med-call-card')
 

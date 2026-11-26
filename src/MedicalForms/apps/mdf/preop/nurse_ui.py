@@ -364,7 +364,7 @@ def build_nurse_patient_context(request, patient, ev):
     op_dt = _date(ev['s'].get('planned_surgery_date'))
     self_path = request.build_absolute_uri(ev.get('self_fill_path') or '') if ev.get('self_fill_path') else ''
 
-    phone_digits = re.sub(r'\D', '', patient.phone or '')
+    phone_digits = re.sub(r'[^0-9]', '', patient.phone or '')
     if len(phone_digits) == 9 and phone_digits.startswith('5'):
         wa_phone = '995' + phone_digits
     else:

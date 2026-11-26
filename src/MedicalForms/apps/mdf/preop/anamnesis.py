@@ -1,20 +1,25 @@
 """Structured Georgian preoperative anamnesis generator and Self-Fill highlights extractor."""
 from ..board import person_name
 from ..models import PreopPatient
-from .utils import _str_list, chip_summary, is_self_filled_q
+from .utils import _int, _num, _str_list, chip_summary, is_self_filled_q
 
 _SF_SIMPLE_FLAGS = (
     ('aaa_pain', 'urgent', 'მუცლის/წელის ტკივილი (AAA)!'),
     ('cea_thrombolysis', 'urgent', 'თრომბოლიზისი ≤6 დღეში!'),
+    ('cea_hoarseness', 'warn', 'ხმის ჩახლეჩა / დისფაგია (CEA)'),
+    ('cea_prior_neck', 'warn', 'კისრის წინა ოპერაცია / დასხივება (CEA)'),
     ('abf_rest_pain', 'warn', 'მოსვენებითი იშემიური ტკივილი'),
     ('abf_ulcer', 'warn', 'ტერფის წყლული/ნეკროზი'),
     ('abf_wet_infection', 'urgent', 'ტერფის სველი ნეკროზი / ჩირქოვანი ინფექცია!'),
+    ('pta_cant_lie_flat', 'warn', 'ზურგზე ვერ წვება (ორთოპნოე / ტკივილი)'),
     ('ven_acute_svt', 'urgent', 'მწვავე თრომბოფლებიტი!'),
+    ('ven_skin_infection', 'urgent', 'კანის ინფექცია / სველი ვენური წყლული!'),
     ('ven_lidocaine_allergy', 'urgent', 'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე!'),
     ('ven_bleeding', 'urgent', 'სისხლდენა ვარიკოზული კვანძიდან!'),
     ('ven_dvt_history', 'warn', 'გადატანილი DVT / PE'),
     ('ven_thrombophilia', 'warn', 'თრომბოფილია'),
     ('ven_hormones', 'warn', 'ჰორმონული პრეპარატი / კონტრაცეპტივი'),
+    ('ven_cancer_immob', 'warn', 'ონკოლოგია / იმობილიზაცია'),
     ('active_infection', 'urgent', 'სიცხე / აქტიური ინფექცია!'),
     ('dental_infection', 'warn', 'კარიესული/ჩირქოვანი კბილი'),
     ('anesth_issue', 'warn', 'ანესთეზიის გართულება ანამნეზში'),
@@ -32,7 +37,8 @@ _SF_MED_BOOLS = (
     ('glp1', 'GLP-1 (ოზემპიკი/მუნჯარო)'), ('metformin', 'მეტფორმინი'),
 )
 _SF_MED_CHIP_LABELS = (
-    ('rivaroxaban_2_5', 'რივაროქსაბანი 2.5 მგ ×2'), ('cilostazol', 'ცილოსტაზოლი'), ('steroid', 'სტეროიდი'),
+    ('rivaroxaban_2_5', 'რივაროქსაბანი 2.5 მგ ×2'), ('cilostazol', 'ცილოსტაზოლი'),
+    ('steroid', 'სტეროიდი'), ('amiodarone', 'ამიოდარონი'),
 )
 
 
@@ -66,6 +72,8 @@ def build_self_fill_highlights(q):
     for key, lvl, label in _SF_SIMPLE_FLAGS:
         if q.get(key):
             items.append((lvl, label))
+    if q.get('cea_neck_chips') and not q.get('cea_prior_neck'):
+        items.append(('warn', 'კისრის წინა ოპერაცია / დასხივება (CEA)'))
 
     med_chips = set(_str_list(q.get('med_chips')))
     meds = [lbl for key, lbl in _SF_MED_BOOLS if q.get(key)]
@@ -104,7 +112,10 @@ def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
         if q.get('cea_crescendo'):
             extra_neuro.append('აღინიშნება მერყევი/განმეორებითი დეფიციტი ბოლო 24–48 სთ-ში!')
         if q.get('cea_thrombolysis'):
-            extra_neuro.append('ჩატარებულია თრომბოლიზისი ბოლო 6 დღეში!')
+            if ev.get('active_thrombolysis_window') or live_ev_d is None or live_ev_d <= 6:
+                extra_neuro.append('ჩატარებულია თრომბოლიზისი ბოლო 6 დღეში!')
+            else:
+                extra_neuro.append('ანამნეზში ჩატარებულია თრომბოლიზისი (>6 დღის წინ)')
         if q.get('cea_disabling_stroke'):
             extra_neuro.append('ნარჩენი დეფიციტი mRS >= 3')
         extra_str = f" ({'; '.join(extra_neuro)})" if extra_neuro else ''
@@ -123,9 +134,11 @@ def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
         'pending': 'ზუსტდება',
     }
     disc_str = 'DICOM დისკი ადგილზეა' if s.get('cta_disc') else 'DICOM დისკი მოსატანია'
+    car_r_c = _int(s.get('carotid_r'), 0, 100)
+    car_l_c = _int(s.get('carotid_l'), 0, 100)
     lines.append(
-        f"საძილეები და ვიზუალიზაცია (NASCET): R ICA {s.get('carotid_r') if s.get('carotid_r') is not None else '—'}% / "
-        f"L ICA {s.get('carotid_l') if s.get('carotid_l') is not None else '—'}%; "
+        f"საძილეები და ვიზუალიზაცია (NASCET): R ICA {car_r_c if car_r_c is not None else '—'}% / "
+        f"L ICA {car_l_c if car_l_c is not None else '—'}%; "
         f"კისრის CTA — {cta_map.get(s.get('cea_cta_status') or 'pending', 'ზუსტდება')}; "
         f"თავის ტვინის CT/MRI — {br_map.get(s.get('brain_imaging') or 'pending', 'ზუსტდება')} ({disc_str})."
     )
@@ -203,14 +216,17 @@ def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
         wet_str = 'სველი/ჩირქოვანი ინფექციით (!)' if q.get('abf_wet_infection') else 'მწვავე ჩირქოვანი გამონადენის გარეშე'
         lines.append(f"ტროფიკული სტატუსი: {ulcer_txt or 'ტერფის წყლული/ნეკროზი'}, {wet_str}.")
 
-    abi_r_s = s.get('abi_r') if s.get('abi_r') is not None else '—'
-    abi_l_s = s.get('abi_l') if s.get('abi_l') is not None else '—'
+    abi_r_v = _num(s.get('abi_r'), 0.0, 3.0)
+    abi_l_v = _num(s.get('abi_l'), 0.0, 3.0)
+    abi_r_s = abi_r_v if abi_r_v is not None else '—'
+    abi_l_s = abi_l_v if abi_l_v is not None else '—'
     if pathway == PreopPatient.Pathway.PAD_BYPASS:
         run_map = {'popliteal_patent': 'მუხლქვეშა არტერია გამავალია', 'tibial_single': 'წვივის არტერიაზე დისტალური მიმღები', 'desert_foot': 'არადამაკმაყოფილებელი კალაპოტი (!)', 'pending': 'ზუსტდება'}
         gsv_map = {'adequate': 'ვარგისია (≥3.0 მმ)', 'inadequate': 'უვარგისია (<3.0 მმ / ამოღებულია!)', 'pending': 'ზუსტდება'}
-        gsv_val = s.get('pad_gsv_mm')
-        gsv_eff_st = 'inadequate' if (isinstance(gsv_val, (int, float)) and gsv_val < 3.0) else (s.get('pad_gsv_status') or 'pending')
-        gsv_d = f" ({gsv_val} მმ)" if gsv_val is not None else ''
+        gsv_val = _num(s.get('pad_gsv_mm'), 0.5, 25.0)
+        gsv_stripped = 'vein_strip' in _str_list(q.get('vasc_chips'))
+        gsv_eff_st = 'inadequate' if (gsv_stripped or (gsv_val is not None and gsv_val < 3.0)) else (s.get('pad_gsv_status') or 'pending')
+        gsv_d = f' ({gsv_val} მმ)' if gsv_val is not None else ''
         lines.append(
             f"ანატომია და აუტოვენა: ABI R {abi_r_s} / L {abi_l_s}; "
             f"Runoff — {run_map.get(s.get('pad_runoff_status') or 'pending', 'ზუსტდება')}; "
@@ -252,7 +268,8 @@ def _anam_venous(patient, ev, q, s, head_prefix, surgeon_str):
         'superficial_thrombus': 'მწვავე აღმავალი თრომბოფლებიტი (!)',
         'pending': 'დუპლექსის მონაცემი შესატანია',
     }
-    diam_str = f", მაქს. დიამეტრი {s['ven_gsv_mm']} მმ" if s.get('ven_gsv_mm') is not None else ''
+    gsv_v_mm = _num(s.get('ven_gsv_mm'), 1.0, 50.0)
+    diam_str = f', მაქს. დიამეტრი {gsv_v_mm} მმ' if gsv_v_mm is not None else ''
     lines.append(
         f"ვენური სტატუსი: CEAP {ceap} (Caprini ქულა: {ev['caprini_score']} — {ev['caprini_tier']}); "
         f"სამიზნე აუზი — {vein_map.get(s.get('ven_target_vein') or 'gsv', 'GSV')}{diam_str}; "
@@ -439,21 +456,26 @@ def _anam_anesth_labs(pathway, ev, q, s):
     lines.append(f"ანესთეზიოლოგიური სტატუსი: {'; '.join(anesth_flags)}.")
 
     lab_bits = []
-    if s.get('bp_sys') and s.get('bp_dia'):
-        bp_str = f"BP {s['bp_sys']}/{s['bp_dia']}"
-        if s.get('bp_sys_l') and s.get('bp_dia_l'):
-            bp_str += f" (L: {s['bp_sys_l']}/{s['bp_dia_l']})"
+    bp_s = _int(s.get('bp_sys'), 30, 320)
+    bp_d = _int(s.get('bp_dia'), 20, 220)
+    bp_sl = _int(s.get('bp_sys_l'), 30, 320)
+    bp_dl = _int(s.get('bp_dia_l'), 20, 220)
+    if bp_s is not None and bp_d is not None and bp_s > bp_d:
+        bp_str = f'BP {bp_s}/{bp_d}'
+        if bp_sl is not None and bp_dl is not None and bp_sl > bp_dl:
+            bp_str += f' (L: {bp_sl}/{bp_dl})'
         lab_bits.append(f'{bp_str} mmHg')
-    elif s.get('bp_sys_l') and s.get('bp_dia_l'):
-        lab_bits.append(f"BP (L) {s['bp_sys_l']}/{s['bp_dia_l']} mmHg")
+    elif bp_sl is not None and bp_dl is not None and bp_sl > bp_dl:
+        lab_bits.append(f'BP (L) {bp_sl}/{bp_dl} mmHg')
     if ev.get('bmi') is not None:
         lab_bits.append(f"BMI {ev['bmi']}")
     if ev['hb_gl'] is not None:
         lab_bits.append(f"Hb {ev['hb_gl']} გ/ლ")
-    if s.get('plt') is not None and pathway in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
-        lab_bits.append(f"PLT {s['plt']}")
-    if s.get('inr') is not None and pathway in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
-        lab_bits.append(f"INR {s['inr']}")
+    if ev.get('plt') is not None:
+        lab_bits.append(f"PLT {ev['plt']}")
+    inr_a = _num(s.get('inr'), 0.4, 20.0)
+    if inr_a is not None:
+        lab_bits.append(f'INR {inr_a}')
     if ev['egfr'] is not None:
         crcl_part = f" (CrCl {ev['crcl']})" if ev.get('crcl') is not None else ''
         lab_bits.append(f"eGFR {ev['egfr']} მლ/წთ{crcl_part}")
@@ -463,26 +485,30 @@ def _anam_anesth_labs(pathway, ev, q, s):
         lab_bits.append(f"ალბუმინი {ev['alb_gl']} გ/ლ")
     if ev.get('ldl') is not None:
         lab_bits.append(f"LDL {ev['ldl']} მმოლ/ლ")
-    if s.get('lvef') is not None:
-        lab_bits.append(f"LVEF {s['lvef']}%")
+    lvef_a = _int(s.get('lvef'), 5, 95)
+    if lvef_a is not None:
+        lab_bits.append(f'LVEF {lvef_a}%')
     if ev.get('nt_probnp') is not None:
         lab_bits.append(f"NT-proBNP {ev['nt_probnp']} pg/mL")
     if ev.get('hs_ctn') is not None:
         lab_bits.append(f"hs-cTn {ev['hs_ctn']} ng/L")
     if ev.get('tsat') is not None:
         lab_bits.append(f"TSAT {ev['tsat']}%")
-    if pathway not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA) and (s.get('carotid_r') is not None or s.get('carotid_l') is not None):
-        car_r_s = s.get('carotid_r') if s.get('carotid_r') is not None else '—'
-        car_l_s = s.get('carotid_l') if s.get('carotid_l') is not None else '—'
-        lab_bits.append(f"საძილეები R {car_r_s}% / L {car_l_s}%")
+    car_r_a = _int(s.get('carotid_r'), 0, 100)
+    car_l_a = _int(s.get('carotid_l'), 0, 100)
+    if pathway not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA) and (car_r_a is not None or car_l_a is not None):
+        car_r_s = car_r_a if car_r_a is not None else '—'
+        car_l_s = car_l_a if car_l_a is not None else '—'
+        lab_bits.append(f'საძილეები R {car_r_s}% / L {car_l_s}%')
     if ev.get('min_abi') is not None and pathway == PreopPatient.Pathway.VENOUS:
         lab_bits.append(f"ABI min {ev['min_abi']}")
     if ev.get('min_tp') is not None:
         lab_bits.append(f"TP min {ev['min_tp']} mmHg")
     elif ev.get('min_tbi') is not None:
         lab_bits.append(f"TBI min {ev['min_tbi']}")
-    if s.get('spiro_fev1') is not None:
-        lab_bits.append(f"FEV1 {s['spiro_fev1']}%")
+    fev1_a = _int(s.get('spiro_fev1'), 10, 160)
+    if fev1_a is not None:
+        lab_bits.append(f'FEV1 {fev1_a}%')
     if lab_bits:
         lines.append(f"კვლევებით: {', '.join(lab_bits)}.")
     return lines

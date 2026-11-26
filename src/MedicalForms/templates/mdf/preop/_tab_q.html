@@ -3,7 +3,7 @@
             {% csrf_token %}
             <input type="hidden" name="section" value="questionnaire">
 
-            {% if ev.self_fill_highlights %}
+            {% if ev.self_fill_highlights or ev.is_self_filled and not q.nurse_verified %}
             <section class="po-sf-summary">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div>
@@ -19,6 +19,8 @@
                 <div class="d-flex flex-wrap gap-1">
                     {% for tone, txt in ev.self_fill_highlights %}
                     <span class="po-sf-tag {{ tone }}">{{ txt }}</span>
+                    {% empty %}
+                    <span class="po-sf-tag info">დადებითი რისკ-ფაქტორები არ დაფიქსირებულა</span>
                     {% endfor %}
                 </div>
             </section>
@@ -535,7 +537,7 @@
                     <div class="po-q-item">
                         <div class="po-q-text">
                             4. მუდმივი მედიკამენტები (ავტომატურად ააწყობს შეჩერების/გაგრძელების ცხრილს — ESC 2022 / ESVS / ASRA):
-                            {% if ev.pathway == 'cea' %}<small class="text-muted">(ESVS 2023: სიმპტომურ CEA-ზე ასპირინი ± კლოპიდოგრელი არ იხსნება!)</small>{% elif p.op_subtype == 'evla' %}<small class="text-muted">(ESVS 2022: EVLA შესაძლებელია ანტიკოაგულაციის მოუხსნელადაც)</small>{% endif %}
+                            {% if ev.pathway == 'cea' and ev.active_thrombolysis_window %}<small class="text-muted">(rt-PA ≤6 დღე: P2Y12/DAPT დაბლოკილია — მხოლოდ ასპირინი ნევროლოგთან შეთანხმებით!)</small>{% elif ev.pathway == 'cea' %}<small class="text-muted">(ESVS 2023: სიმპტომურ CEA-ზე ასპირინი ± კლოპიდოგრელი არ იხსნება!)</small>{% elif p.op_subtype == 'evla' %}<small class="text-muted">(ESVS 2022: EVLA შესაძლებელია ანტიკოაგულაციის მოუხსნელადაც)</small>{% endif %}
                         </div>
                         <div class="po-chip-row">
                             <label class="chip-check"><input type="checkbox" name="med_aspirin" value="1" {% if q.med_aspirin %}checked{% endif %}>ასპირინი / კარდიომაგნილი</label>

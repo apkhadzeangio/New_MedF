@@ -135,7 +135,11 @@ def _oracle_cardio_cxr_uti(oracles, patient, ev, q, s, pw, is_venous, open_aorti
         oracles['esc2022_cardiology_gate'].record(exp_cardio, ev['needs_cardio'])
 
     spo2_v = s.get('spo2')
-    spo2_n = int(round(spo2_v)) if isinstance(spo2_v, (int, float)) and not isinstance(spo2_v, bool) and 30 <= spo2_v <= 100 else None
+    spo2_n = (
+        max(30, min(100, int(round(spo2_v))))
+        if isinstance(spo2_v, (int, float)) and not isinstance(spo2_v, bool) and spo2_v == spo2_v and abs(spo2_v) != float('inf')
+        else None
+    )
     exp_cxr = bool(
         bool(q.get('pulm'))
         or ('hf' in cad_chips)
