@@ -12,11 +12,13 @@ from ..constants import (
     STATUS_READY,
     VQI_30D_CHOICES,
 )
+from ..registry import rule_value
 from ..utils import _alerts_signature, _clean_person_id, _date, _fmt_ka_date, _int, _num, chip_summary
 
 
 def _eval_asa_airway_and_modality(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    sb_cfg = rule_value('ANES_AIRWAY_STOPBANG_ICU')
     ctx.effective_asa = f"ASA {ctx.asa_roman}{'-E' if (s.get('asa_emergency') or ctx.is_acute_emergency) else ''}"
     if pathway == PreopPatient.Pathway.CEA and not ctx.is_symp_cea and (patient.age or 0) >= 80 and ctx.asa_roman == 'IV':
         ctx.red_flags.append(
@@ -40,7 +42,7 @@ def _eval_asa_airway_and_modality(ctx):
         has_htn_sb,
         bool(patient.sex == 'M'),
     ]) + (3 if 'osa' in pulm_chip_set else 0)
-    auto_sb_tier = 'high' if ('osa' in pulm_chip_set or stop_bang_auto >= 5) else ('intermediate' if stop_bang_auto >= 3 else 'low')
+    auto_sb_tier = 'high' if ('osa' in pulm_chip_set or stop_bang_auto >= sb_cfg['stop_bang_high']) else ('intermediate' if stop_bang_auto >= sb_cfg['stop_bang_int'] else 'low')
     sb_raw = s.get('stop_bang_risk') if s.get('stop_bang_risk') in ('auto', 'low', 'intermediate', 'high') else 'auto'
     effective_stop_bang = auto_sb_tier if sb_raw == 'auto' else sb_raw
     ctx.stop_bang_auto = stop_bang_auto
@@ -101,6 +103,9 @@ def _eval_asa_airway_and_modality(ctx):
 
 def _eval_wait_fasting_and_allergy_summary(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    cea_win_d = rule_value('CEA_SYMP_WINDOW_DAYS')[0]
+    aaa_wait_giant, aaa_wait_std = rule_value('AAA_WAIT_TARGET_DAYS')
+    clti_inf_d, clti_std_d = rule_value('PAD_CLTI_WAIT_DAYS')
     ctx.person_id = _clean_person_id(s.get('person_id'))
     ctx.birth_date_ka = _fmt_ka_date(s.get('birth_date'))
     op_dt = _date(s.get('planned_surgery_date'))
@@ -118,23 +123,23 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
                 (op_dt - ev_dt).days if ev_dt
                 else ((ctx.days_since_ev + (op_dt - ctx.today).days) if (ctx.days_since_ev is not None and op_dt >= ctx.today) else None)
             )
-            if symp_to_op is not None and symp_to_op > 14:
+            if symp_to_op is not None and symp_to_op > cea_win_d:
                 ctx.amber_flags.append(
                     f'დაგეგმილი CEA-ს თარიღი ({ctx.planned_surgery_ka}) სცდება სიმპტომიდან 14-დღიან ფანჯარას '
                     f'({symp_to_op} დღე — ESVS 2023 / NVR სამიზნე ≤14 დღე)! განიხილეთ უფრო ადრეული საოპერაციო სლოტი.'
                 )
         elif pathway == PreopPatient.Pathway.AAA_INFRA and ctx.aaa_mm is not None:
-            min_aaa_thresh = 50 if patient.sex == 'F' else 55
-            if ctx.aaa_mm >= 70 and wait_to_op > 14:
+            min_aaa_thresh = rule_value('AAA_FEMALE_MIN_MM') if patient.sex == 'F' else rule_value('AAA_MALE_MIN_MM')
+            if ctx.aaa_mm >= rule_value('AAA_GIANT_MM') and wait_to_op > aaa_wait_giant:
                 ctx.amber_flags.append(
                     f'გიგანტური AAA ({ctx.aaa_mm} მმ): დაგეგმილი ოპერაციის თარიღი ({ctx.planned_surgery_ka}) დაშორებულია {wait_to_op} დღით (>14 დღე — მაღალი რუპტურის რისკი)!'
                 )
-            elif ctx.aaa_mm >= min_aaa_thresh and wait_to_op > 56:
+            elif ctx.aaa_mm >= min_aaa_thresh and wait_to_op > aaa_wait_std:
                 ctx.amber_flags.append(
                     f'AAA ({ctx.aaa_mm} მმ): დაგეგმილი ოპერაციის მოლოდინი {wait_to_op} დღეა (UK NVR / ESVS სამიზნე ≤8 კვირა / 56 დღე).'
                 )
         elif ctx.is_clti_any:
-            clti_lim = 5 if (q_filled and q.get('abf_wet_infection')) else 14
+            clti_lim = clti_inf_d if (q_filled and q.get('abf_wet_infection')) else clti_std_d
             if wait_to_op > clti_lim:
                 ctx.amber_flags.append(
                     f'CLTI პაციენტის დაგეგმილი ოპერაცია ({ctx.planned_surgery_ka}) დაშორებულია {wait_to_op} დღით (UK NVR სამიზნე ≤{clti_lim} დღე) — კიდურის დაკარგვის რისკი!'
@@ -179,6 +184,7 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
 
 def _build_dos_checks(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    cefaz_3g_kg = rule_value('ALLERGY_HIT_ABX_PROPHYLAXIS')['cefazolin_3g_kg']
     dos_checks = [
         {
             'key': 'dos_identity_consent',
@@ -230,7 +236,7 @@ def _build_dos_checks(ctx):
         })
     ctx.is_uncomplicated_pta_abx = ctx.is_pta and not (q_filled and (q.get('abf_wet_infection') or q.get('abf_groin_issue')))
     if not ((ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA) or ctx.is_uncomplicated_pta_abx):
-        cefaz_dose = '3 გ (≥120 კგ!)' if (ctx.weight_num is not None and ctx.weight_num >= 120) else '2 გ'
+        cefaz_dose = f'3 გ (≥{cefaz_3g_kg} კგ!)' if (ctx.weight_num is not None and ctx.weight_num >= cefaz_3g_kg) else '2 გ'
         abx_hint = 'ვანკომიცინი / კლინდამიცინი (β-ლაქტამზე ალერგია!)' if 'beta_lactam' in ctx.allergy_chips else f'ცეფაზოლინი {cefaz_dose} (ჭრილობამდე ≤60 წთ)'
         if ctx.unclarified_allergy_other:
             abx_hint += ' [დააზუსტეთ უცნობი ალერგია შეყვანამდე!]'
@@ -259,6 +265,7 @@ def _build_dos_checks(ctx):
 
 def _eval_dos_and_vqi(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    dos_cfg = rule_value('DOS_WHO_SIGNIN_THRESHOLDS')
     dos_checks = _build_dos_checks(ctx)
 
     dos_sys, dos_dia = _int(s.get('dos_bp_sys'), lo=40, hi=300), _int(s.get('dos_bp_dia'), lo=20, hi=200)
@@ -267,17 +274,17 @@ def _eval_dos_and_vqi(ctx):
     dos_warnings = list(ctx.hard_contraindications)
     if dos_sys is not None and dos_dia is not None and dos_sys <= dos_dia:
         dos_warnings.append(f'ოპერაციის დილის წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი და მაჩვენებელი!')
-    elif (dos_sys and dos_sys >= 180) or (dos_dia and dos_dia >= 110):
+    elif (dos_sys and dos_sys >= dos_cfg['sbp_hi']) or (dos_dia and dos_dia >= dos_cfg['dbp_hi']):
         dos_warnings.append(f'ოპერაციის დილის კრიტიკული ჰიპერტენზია ({dos_sys or "?"}/{dos_dia or "?"} mmHg >= 180/110) — გეგმური ინდუქცია საშიშია, საჭიროა სტაბილიზაცია!')
-    elif dos_sys and dos_sys < 90:
+    elif dos_sys and dos_sys < dos_cfg['sbp_lo']:
         dos_warnings.append(f'ოპერაციის დილის ჰიპოტენზია ({dos_sys}/{dos_dia or "?"} mmHg < 90) — სასწრაფოდ შეფასდეს ჰემოდინამიკა!')
-    if dos_gl is not None and (dos_gl >= 14.0 or dos_gl < 3.9):
+    if dos_gl is not None and (dos_gl >= dos_cfg['gl_hi'] or dos_gl < dos_cfg['gl_lo']):
         dos_warnings.append(f'ოპერაციის დილის კრიტიკული გლიკემია ({dos_gl} მმოლ/ლ) — საჭიროა კორექცია საოპერაციოში შეყვანამდე!')
-    elif dos_gl is not None and dos_gl > 10.0:
+    elif dos_gl is not None and dos_gl > dos_cfg['gl_amb']:
         ctx.amber_flags.append(f'ოპერაციის დილის ჰიპერგლიკემია ({dos_gl} მმოლ/ლ > 10.0) — სასურველია ინსულინით კორექცია პერიოპერაციული ინფექციის შესამცირებლად.')
 
     is_evla_only = ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.has_neuraxial_plan
-    inr_lim = 3.0 if is_evla_only else (1.4 if ctx.has_neuraxial_plan else 1.5)
+    inr_lim = dos_cfg['inr_evla'] if is_evla_only else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
     any_dos_ticked = any(c['done'] for c in dos_checks)
     if dos_inr is not None:
         if dos_inr > inr_lim:

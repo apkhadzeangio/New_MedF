@@ -1,0 +1,93 @@
+"""Schema, versioning, and changelog for the preoperative clinical rule registry."""
+from dataclasses import dataclass
+
+REGISTRY_VERSION = '1.0.0'
+REGISTRY_UPDATED_ON = '2026-11-26'
+
+STATUS_VERIFIED = 'source-verified'
+STATUS_LOCAL = 'local-decision'
+
+STATUS_LABELS = {
+    STATUS_VERIFIED: 'პირველწყაროთი დადასტურებული',
+    STATUS_LOCAL: 'ადგილობრივი გადაწყვეტილება — საჭიროებს ექიმის ხელმოწერას',
+}
+
+DOMAIN_LABELS = {
+    'aaa': 'აორტის ანევრიზმა (AAA / EVAR)',
+    'cea': 'საძილე არტერიები (CEA)',
+    'abf': 'აორტო-ბიფემორალური და პერიფერიული შუნტირება',
+    'pta': 'ენდოვასკულური ანგიოპლასტიკა (PTA)',
+    'venous': 'ვენური ქირურგია (EVLA / ფლებექტომია)',
+    'labs': 'ვიტალები, ლაბორატორია და ინფექციები',
+    'meds': 'მედიკამენტები, ანტიკოაგულაცია და ASRA',
+    'cardiac': 'კარდიოლოგია და ბიომარკერები',
+    'anaesthesia': 'ანესთეზიოლოგია და ოპერაციის დილა',
+    'scores': 'რისკ-ინდექსები და კალკულატორები',
+    'workflow': 'ვადები და უსაფრთხო შეფასების წესები',
+}
+
+KIND_LABELS = {
+    'threshold': 'ზღვარი',
+    'score': 'რისკ-ინდექსი / კალკულატორი',
+    'drug_hold': 'წამლის შეჩერება / რეჟიმი',
+    'stop': 'უპირობო STOP / უკუჩვენება',
+    'alert': 'გაფრთხილება',
+    'reflex': 'ავტომატური რეფლექს-დავალება',
+}
+
+
+@dataclass(frozen=True)
+class RuleEntry:
+    """Single canonical definition for a clinical threshold, score, drug hold, STOP, alert, or reflex order."""
+
+    id: str
+    domain: str
+    kind: str
+    title_ka: str
+    description_ka: str
+    source: str
+    year: int
+    section: str
+    class_level: str
+    source_wording: str
+    value: object
+    value_label: str
+    verified_on: str = REGISTRY_UPDATED_ON
+    status: str = STATUS_VERIFIED
+    match_patterns: tuple = ()
+
+    def to_meta(self):
+        return {
+            'id': self.id,
+            'domain': self.domain,
+            'domain_label': DOMAIN_LABELS.get(self.domain, self.domain),
+            'kind': self.kind,
+            'kind_label': KIND_LABELS.get(self.kind, self.kind),
+            'title_ka': self.title_ka,
+            'description_ka': self.description_ka,
+            'source': self.source,
+            'year': self.year,
+            'section': self.section,
+            'class_level': self.class_level,
+            'source_wording': self.source_wording,
+            'value_label': self.value_label,
+            'verified_on': self.verified_on,
+            'status': self.status,
+            'status_label': STATUS_LABELS.get(self.status, self.status),
+        }
+
+
+CHANGELOG = (
+    {
+        'version': '1.0.0',
+        'date': '2026-11-26',
+        'title_ka': 'კლინიკური წესების ერთიანი რეესტრის შექმნა (ტრეკი A)',
+        'changes_ka': (
+            'შეფასების ძრავის ყველა კლინიკური ზღვარი, რისკ-ინდექსი, მედიკამენტის შეჩერების ვადა, STOP უკუჩვენება '
+            'და რეფლექს-დავალება გაერთიანდა ერთ რეესტრში მყარი საიდენტიფიკაციო კოდებითა და პირველწყაროებით.',
+            'მკაფიოდ გაიმიჯნა პირველწყაროთი დადასტურებული წესები და ადგილობრივი კლინიკური გადაწყვეტილებები, '
+            'რომლებიც საჭიროებს ექიმის ხელმოწერას.',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC 2022 · ASRA 5th Ed 2025 · CHEST 2022 / PAUSE · EHRA 2021 · ESAIC 2023–2025 · NICE NG45',
+    },
+)

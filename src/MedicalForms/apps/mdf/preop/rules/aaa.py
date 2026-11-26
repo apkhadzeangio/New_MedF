@@ -1,8 +1,11 @@
 """Infrarenal AAA pathway clinical rules (ESVS 2024 / ESC 2022)."""
+from ..registry import rule_value
 
 
 def _eval_aaa_anatomy(ctx, aaa_morph, aaa_neck, pop_scr):
     patient, q, s, q_filled, aaa_mm = ctx.patient, ctx.q, ctx.s, ctx.q_filled, ctx.aaa_mm
+    giant_mm = rule_value('AAA_GIANT_MM')
+    young_age = rule_value('AAA_YOUNG_AGE_GENETIC')
 
     if q_filled and q.get('aaa_pain'):
         ctx.red_flags.append(
@@ -19,12 +22,12 @@ def _eval_aaa_anatomy(ctx, aaa_morph, aaa_neck, pop_scr):
             'სტერილური ანთებითი AAA / პერიაორტიტი (ESVS 2024): ღია დისექციისას მომატებულია თორმეტგოჯა ნაწლავისა და შარდსაწვეთების დაზიანების რისკი — ანატომიური შესაბამისობისას უპირატესია EVAR.'
         )
     if aaa_mm is not None:
-        min_thresh = 50 if patient.sex == 'F' else 55
+        min_thresh = rule_value('AAA_FEMALE_MIN_MM') if patient.sex == 'F' else rule_value('AAA_MALE_MIN_MM')
         mm_fmt = int(aaa_mm) if aaa_mm == int(aaa_mm) else aaa_mm
         ctx.key_badge = f'{mm_fmt} მმ'
-        ctx.key_badge_urgent = bool(aaa_mm >= 70 or aaa_morph == 'inflammatory_mycotic')
-        if aaa_mm >= 70:
-            msg = f'გიგანტური ანევრიზმა ({aaa_mm} მმ >= 70 მმ) — მაღალი რუპტურის რისკი, დაჩქარებული მომზადება!'
+        ctx.key_badge_urgent = bool(aaa_mm >= giant_mm or aaa_morph == 'inflammatory_mycotic')
+        if aaa_mm >= giant_mm:
+            msg = f'გიგანტური ანევრიზმა ({aaa_mm} მმ >= {giant_mm} მმ) — მაღალი რუპტურის რისკი, დაჩქარებული მომზადება!'
             ctx.red_flags.append(msg)
             ctx.priority_flags.append(msg)
         elif aaa_mm < min_thresh:
@@ -43,9 +46,9 @@ def _eval_aaa_anatomy(ctx, aaa_morph, aaa_neck, pop_scr):
                     f'ფუზიფორმული ანევრიზმის დიამეტრი ({aaa_mm} მმ) სტანდარტულ ზღვარზე (< {min_thresh} მმ) ნაკლებია '
                     '(ESVS 2024 Class III) — გეგმური ოპერაციული ჩვენება გადაამოწმეთ ქირურგთან!'
                 )
-        if patient.age is not None and patient.age < 50:
+        if patient.age is not None and patient.age < young_age:
             ctx.amber_flags.append(
-                f'ახალგაზრდა ასაკში გამოვლენილი აორტის ანევრიზმა ({patient.age} წ. < 50 წ.) — ESVS 2024: '
+                f'ახალგაზრდა ასაკში გამოვლენილი აორტის ანევრიზმა ({patient.age} წ. < {young_age} წ.) — ESVS 2024: '
                 'გამოირიცხოს შემაერთებელი ქსოვილის გენეტიკური არტერიოპათია (Marfan / Loeys-Dietz / ვასკულიტი) და მთელი აორტის პათოლოგია.'
             )
 
@@ -91,8 +94,9 @@ def eval_aaa(ctx):
     elif ctx.days in (5, 6) and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
         ctx.amber_flags.append(f'მომზადების მე-{ctx.days} დღე ({ctx.t_days} დღიდან) — დააჩქარეთ დარჩენილი კვლევები.')
 
+    cta_max_m, cta_large_m, cta_large_mm = rule_value('AAA_CTA_STALE_MONTHS')
     if ctx.cta_months is not None:
-        if ctx.cta_months > 6 or (ctx.cta_months > 3 and ctx.aaa_mm is not None and ctx.aaa_mm >= 65):
+        if ctx.cta_months > cta_max_m or (ctx.cta_months > cta_large_m and ctx.aaa_mm is not None and ctx.aaa_mm >= cta_large_mm):
             ctx.red_flags.append(f'კტ-ანგიოგრაფია ხანდაზმულია ({ctx.cta_months} თვის წინანდელი) — შეათანხმეთ განმეორებითი CTA ქირურგთან.')
     if q_filled and not s.get('cta_disc'):
         ctx.amber_flags.append('აორტის კტ-ანგიოგრაფიის DICOM დისკი ჯერ არ არის მოტანილი / შემოწმებული.')

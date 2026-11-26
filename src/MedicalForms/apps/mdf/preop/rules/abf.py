@@ -1,5 +1,6 @@
 """Aortobifemoral Bypass (ABF) and Infrainguinal PAD Bypass pathway clinical rules (ESVS 2024)."""
 from ...models import PreopPatient
+from ..registry import rule_value
 
 
 def _eval_abf_clinical(ctx, is_clti):
@@ -37,6 +38,8 @@ def _eval_abf_clinical(ctx, is_clti):
 
 def eval_abf(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    hemo_cfg = rule_value('PAD_CLTI_HEMO_THRESHOLDS')
+    ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
     is_clti = (patient.op_subtype == PreopPatient.OpSubtype.ABF_CLTI) or (
         q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')))
     )
@@ -74,15 +77,15 @@ def eval_abf(ctx):
 
     if ctx.min_comp_abi is not None:
         ctx.key_badge = f'ABI {ctx.min_comp_abi}'
-        ctx.key_badge_urgent = bool(is_clti or ctx.min_comp_abi < 0.4)
-        if ctx.min_comp_abi < 0.4 and not is_clti:
+        ctx.key_badge_urgent = bool(is_clti or ctx.min_comp_abi < hemo_cfg['abi_severe'])
+        if ctx.min_comp_abi < hemo_cfg['abi_severe'] and not is_clti:
             ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < 0.40) — შეესაბამება მძიმე იშემიას.')
     elif ctx.min_tp is not None:
         ctx.key_badge = f'TP {ctx.min_tp}'
-        ctx.key_badge_urgent = bool(is_clti or ctx.min_tp < 30)
+        ctx.key_badge_urgent = bool(is_clti or ctx.min_tp < hemo_cfg['tp_severe'])
     elif ctx.min_tbi is not None:
         ctx.key_badge = f'TBI {ctx.min_tbi}'
-        ctx.key_badge_urgent = bool(is_clti or ctx.min_tbi < 0.30)
+        ctx.key_badge_urgent = bool(is_clti or ctx.min_tbi < hemo_cfg['tbi_severe'])
     elif is_clti:
         ctx.key_badge = 'CLTI'
         ctx.key_badge_urgent = True
@@ -95,18 +98,19 @@ def eval_abf(ctx):
         ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I: ასპირინი ან კლოპიდოგრელი).')
     if q_filled and not ctx.has_statin and not ctx.liver_3x:
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I: მაღალი ინტენსივობის სტატინი).')
-    elif ctx.ldl_val is not None and ctx.ldl_val >= 1.4 and not ctx.liver_3x:
-        ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= 1.4 მმოლ/ლ) — განიხილეთ ლიპიდდამწევი თერაპიის გაძლიერება (ESVS 2024).')
+    elif ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
+        ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — განიხილეთ ლიპიდდამწევი თერაპიის გაძლიერება (ESVS 2024).')
 
     ctx.needs_wound_care = q_filled and (bool(q.get('abf_ulcer')) or bool(q.get('abf_wet_infection')) or bool(q.get('abf_groin_issue')))
 
 
 def _eval_bypass_conduit(ctx, is_clti):
     patient, s = ctx.patient, ctx.s
+    gsv_cfg = rule_value('PAD_GSV_MIN_MM')
     gsv_st = s.get('pad_gsv_status') or 'pending'
     gsv_inadequate = (
         gsv_st == 'inadequate'
-        or (ctx.pad_gsv_mm is not None and ctx.pad_gsv_mm < 3.0)
+        or (ctx.pad_gsv_mm is not None and ctx.pad_gsv_mm < gsv_cfg['gsv_min_mm'])
         or ('vein_strip' in ctx.vasc_chips)
     )
     if not gsv_inadequate:
@@ -122,17 +126,17 @@ def _eval_bypass_conduit(ctx, is_clti):
     if s.get('alt_vein_mapped') == 'contra_gsv_ok':
         if patient.side == 'B':
             ctx.red_flags.append('ორმხრივი შუნტირებისას (მხარე B) „კონტრალატერალური GSV“ წინააღმდეგობრივია — დააზუსტეთ საოპერაციო მხარე და კონდუიტი!')
-        elif (contra_abi is not None and contra_abi < 0.50) or (contra_tp is not None and contra_tp < 40):
+        elif (contra_abi is not None and contra_abi < gsv_cfg['donor_abi_red']) or (contra_tp is not None and contra_tp < gsv_cfg['donor_tp_red']):
             ctx.red_flags.append(
                 f'კონტრალატერალურ კიდურზე მძიმე არტერიული იშემიაა (ABI {contra_abi if contra_abi is not None else "—"} / '
                 f'TP {contra_tp if contra_tp is not None else "—"} mmHg) — იშემიური კიდურიდან GSV-ის აღება საშიშია ჭრილობის ნეკროზის გამო! განიხილეთ ხელის ვენა (Arm Vein).'
             )
-        elif (contra_abi is not None and contra_abi < 0.70) or (contra_tp is not None and contra_tp < 60):
+        elif (contra_abi is not None and contra_abi < gsv_cfg['donor_abi_amb']) or (contra_tp is not None and contra_tp < gsv_cfg['donor_tp_amb']):
             ctx.amber_flags.append(
                 f'დონორ (კონტრალატერალურ) კიდურზე დაქვეითებული პერფუზიაა (ABI {contra_abi if contra_abi is not None else "—"} / '
                 f'TP {contra_tp if contra_tp is not None else "—"}) — GSV-ის აღებისას საყურადღებოა ჭრილობის შეხორცება!'
             )
-        elif contra_abi is not None and contra_abi > 1.40 and not (contra_tp is not None and contra_tp >= 60):
+        elif contra_abi is not None and contra_abi > 1.40 and not (contra_tp is not None and contra_tp >= gsv_cfg['donor_tp_amb']):
             ctx.amber_flags.append(
                 f'დონორ კიდურზე არაკომპრესირებადი ABI ({contra_abi} > 1.40) — კონტრალატერალური GSV-ის აღებამდე გადაამოწმეთ Toe Pressure ≥60 mmHg!'
             )
@@ -152,6 +156,10 @@ def _eval_bypass_conduit(ctx, is_clti):
 
 def eval_pad_bypass(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    hemo_cfg = rule_value('PAD_CLTI_HEMO_THRESHOLDS')
+    abi_norm_lo, abi_norm_hi = rule_value('PAD_IC_BMT_3M')
+    gsv_min = rule_value('PAD_GSV_MIN_MM')['gsv_min_mm']
+    ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
     is_clti = (patient.op_subtype == PreopPatient.OpSubtype.BYPASS_CLTI) or (
         q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')))
     )
@@ -190,7 +198,7 @@ def eval_pad_bypass(ctx):
     if not is_clti and patient.side in ('R', 'L'):
         t_abi_byp = ctx.abi_r if patient.side == 'R' else ctx.abi_l
         t_tp_byp = ctx.tp_r if patient.side == 'R' else ctx.tp_l
-        if t_abi_byp is not None and 0.90 <= t_abi_byp <= 1.40 and not (t_tp_byp is not None and t_tp_byp < 60):
+        if t_abi_byp is not None and abi_norm_lo <= t_abi_byp <= abi_norm_hi and not (t_tp_byp is not None and t_tp_byp < 60):
             ctx.red_flags.append(
                 f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_byp} — 0.90–1.40) კოჭლობის ფონზე — '
                 'გადაამოწმეთ არჩეული მხარე (R/L) ან დატვირთვის შემდგომი პერფუზია ქირურგთან!'
@@ -203,13 +211,13 @@ def eval_pad_bypass(ctx):
 
     if ctx.pad_gsv_mm is not None:
         ctx.key_badge = f'GSV {ctx.pad_gsv_mm}მმ'
-        ctx.key_badge_urgent = bool(ctx.pad_gsv_mm < 3.0 or is_clti)
+        ctx.key_badge_urgent = bool(ctx.pad_gsv_mm < gsv_min or is_clti)
     elif ctx.min_comp_abi is not None:
         ctx.key_badge = f'ABI {ctx.min_comp_abi}'
-        ctx.key_badge_urgent = bool(is_clti or ctx.min_comp_abi < 0.4)
+        ctx.key_badge_urgent = bool(is_clti or ctx.min_comp_abi < hemo_cfg['abi_severe'])
     elif ctx.min_tp is not None:
         ctx.key_badge = f'TP {ctx.min_tp}'
-        ctx.key_badge_urgent = bool(is_clti or ctx.min_tp < 30)
+        ctx.key_badge_urgent = bool(is_clti or ctx.min_tp < hemo_cfg['tp_severe'])
     elif is_clti:
         ctx.key_badge = 'CLTI'
         ctx.key_badge_urgent = True
@@ -220,6 +228,6 @@ def eval_pad_bypass(ctx):
         ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I).')
     if q_filled and not ctx.has_statin and not ctx.liver_3x:
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I).')
-    elif ctx.ldl_val is not None and ctx.ldl_val >= 1.4 and not ctx.liver_3x:
-        ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= 1.4 მმოლ/ლ) — განიხილეთ სტატინის ინტენსიფიკაცია ± ეზეტიმიბი.')
+    elif ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
+        ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — განიხილეთ სტატინის ინტენსიფიკაცია ± ეზეტიმიბი.')
     ctx.needs_wound_care = q_filled and (bool(q.get('abf_ulcer')) or bool(q.get('abf_wet_infection')) or bool(q.get('abf_groin_issue')))

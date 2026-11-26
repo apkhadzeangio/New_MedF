@@ -2,11 +2,13 @@
 from ...models import PreopPatient
 from ..constants import POST_ANTITHROMBOTIC_CHOICES
 from ..meds import build_med_schedule
+from ..registry import rule_value
 from ..utils import _date, _int
 
 
 def _eval_allergy_cied_and_med_hold(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    metf_cfg = rule_value('MED_METFORMIN_RENAL_CONTRAST')
     abx_prophylaxis_note = ''
     if 'hit_heparin' in ctx.allergy_chips:
         ctx.red_flags.append(
@@ -57,11 +59,11 @@ def _eval_allergy_cied_and_med_hold(ctx):
         patient, q, s, ctx.egfr, crcl=ctx.crcl, has_neuraxial_override=ctx.has_neuraxial_plan,
     ) if q_filled else []
     clop_needs_hold = bool(q.get('med_clopidogrel') and not ctx.is_pta and not ctx.is_symp_cea)
-    metf_contra_any = bool(q.get('metformin')) and (ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 30) or ctx.liver_3x)
+    metf_contra_any = bool(q.get('metformin')) and (ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < metf_cfg['contra_renal']) or ctx.liver_3x)
     metf_hold_48h = bool(q.get('metformin')) and (
-        (ctx.uses_contrast and (ctx.eff_renal is None or ctx.eff_renal < 60))
+        (ctx.uses_contrast and (ctx.eff_renal is None or ctx.eff_renal < metf_cfg['contrast_hold_renal']))
         or ctx.open_major
-        or (ctx.eff_renal is not None and ctx.eff_renal < 45)
+        or (ctx.eff_renal is not None and ctx.eff_renal < metf_cfg['dose_cap_renal'])
     )
     ctx.metf_contra_any = metf_contra_any
     ctx.needs_med_hold = q_filled and (
@@ -89,6 +91,10 @@ def _eval_allergy_cied_and_med_hold(ctx):
 
 def _eval_antithrombotic_conflicts(ctx):
     q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
+    cilo_min_crcl = rule_value('MED_CILOSTAZOL_BLACKBOX')['crcl_min']
+    mech_inr_min = rule_value('MED_MECH_VALVE_SAFETY')
+    vka_hold_days = rule_value('MED_WARFARIN_HOLD_DAYS')['hold_days']
+    triple_min = rule_value('MED_ANTITHROMBOTIC_CONFLICTS')
     has_mech_valve = 'mech_valve' in ctx.cad_chips
     has_acs_stent_12m = ('stent_6_12m' in ctx.cad_chips) and ('mi' in ctx.cad_chips)
     has_afib = ('afib' in ctx.cad_chips) or ((s.get('ecg') or 'pending') == 'afib_controlled')
@@ -114,7 +120,7 @@ def _eval_antithrombotic_conflicts(ctx):
         )
     if p2y12_count >= 2:
         ctx.red_flags.append('ერთდროულად მონიშნულია ორი P2Y12 ანტიაგრეგანტი — გადაამოწმეთ მედიკამენტური დუბლირება!')
-    if q_filled and total_at_count >= 3:
+    if q_filled and total_at_count >= triple_min:
         ctx.red_flags.append(
             'პაციენტი ერთდროულად იღებს ≥3 ანტითრომბოზულ პრეპარატს (სამმაგი ანტითრომბოზული თერაპია — სისხლდენის მაღალი რისკი)! '
             'ESC / ESVS / EMA გაიდლაინით გადაამოწმეთ დე-ესკალაცია (ასპირინის/ცილოსტაზოლის მოხსნა და OAC + მონო-ანტიაგრეგანტი).'
@@ -134,7 +140,7 @@ def _eval_antithrombotic_conflicts(ctx):
         ctx.chf_hyd_flag
         or (lvef_early is not None and lvef_early < 50 and 'hf' in ctx.cad_chips)
         or ctx.on_dialysis
-        or (ctx.eff_renal is not None and ctx.eff_renal <= 25)
+        or (ctx.eff_renal is not None and ctx.eff_renal <= cilo_min_crcl)
         or ((s.get('ecg') or 'pending') == 'ischemia_arrhythmia')
         or (ctx.hr is not None and ctx.hr > 110)
     )
@@ -158,11 +164,11 @@ def _eval_antithrombotic_conflicts(ctx):
             ctx.red_flags.append(
                 'ფიქსირდება მექანიკური სარქველი ვარფარინის (VKA) გარეშე — სარქვლის მწვავე თრომბოზის საფრთხე! გადაამოწმეთ ანტიკოაგულაცია კარდიოლოგთან!'
             )
-        elif ctx.inr is not None and ctx.inr < 2.0:
-            in_vka_washout = bool(op_dt_early and 0 <= (op_dt_early - ctx.today).days <= 5)
+        elif ctx.inr is not None and ctx.inr < mech_inr_min:
+            in_vka_washout = bool(op_dt_early and 0 <= (op_dt_early - ctx.today).days <= vka_hold_days)
             if not in_vka_washout:
                 ctx.red_flags.append(
-                    f'მექანიკურ სარქველზე საბაზისო INR სუბთერაპიულია ({ctx.inr} < 2.0) — სარქვლის თრომბოზის რისკი, სასწრაფოდ შეაფასეთ ჰეპარინის ხიდი კარდიოლოგთან!'
+                    f'მექანიკურ სარქველზე საბაზისო INR სუბთერაპიულია ({ctx.inr} < {mech_inr_min}) — სარქვლის თრომბოზის რისკი, სასწრაფოდ შეაფასეთ ჰეპარინის ხიდი კარდიოლოგთან!'
                 )
         if 'hit_heparin' in ctx.allergy_chips:
             ctx.red_flags.append(
@@ -178,12 +184,13 @@ def _eval_antithrombotic_conflicts(ctx):
 
 def _eval_postop_voyager(ctx):
     pathway, q, s, q_filled = ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    voy_cfg = rule_value('MED_VOYAGER_RIVAROXABAN_2_5')
     post_at_raw = s.get('post_antithrombotic_plan') or 'auto'
     post_antithrombotic_label = ''
     voyager_safe = (
-        (ctx.eff_renal is None or ctx.eff_renal >= 30)
-        and (ctx.egfr is None or ctx.egfr >= 30)
-        and (ctx.crcl is None or ctx.crcl >= 15)
+        (ctx.eff_renal is None or ctx.eff_renal >= voy_cfg['min_egfr'])
+        and (ctx.egfr is None or ctx.egfr >= voy_cfg['min_egfr'])
+        and (ctx.crcl is None or ctx.crcl >= voy_cfg['min_crcl'])
         and not ctx.on_dialysis
         and not q.get('ulcer_active_symp')
         and not q.get('neuro')

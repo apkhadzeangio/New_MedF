@@ -94,6 +94,16 @@ from .meds import (
     _effective_allergy_state,
     build_med_schedule,
 )
+from .registry import (
+    CHANGELOG,
+    REGISTRY_UPDATED_ON,
+    REGISTRY_VERSION,
+    RULES,
+    RULES_BY_ID,
+    registry_summary,
+    rule_meta,
+    rule_value,
+)
 from .utils import (
     _age_from_dob,
     _alerts_signature,

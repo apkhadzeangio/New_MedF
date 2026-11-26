@@ -1,12 +1,14 @@
 """Carotid Endarterectomy (CEA) pathway clinical rules (ESVS 2023 / SVS 2022)."""
 from ...models import PreopPatient
+from ..registry import rule_value
 from ..utils import _int, cea_live_days_since_event
 
 
 def _eval_cea_symptoms_and_clocks(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    win_days, warn_days, symp_max_days = rule_value('CEA_SYMP_WINDOW_DAYS')
     days_since_ev = cea_live_days_since_event(q, today=ctx.today, s=s)
-    symp_within_6m = (days_since_ev is None) or (days_since_ev <= 180)
+    symp_within_6m = (days_since_ev is None) or (days_since_ev <= symp_max_days)
     is_symp_cea = (
         (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP and symp_within_6m)
         or (q_filled and bool(q.get('cea_symp_event')) and symp_within_6m)
@@ -14,7 +16,7 @@ def _eval_cea_symptoms_and_clocks(ctx):
     ctx.days_since_ev = days_since_ev
     ctx.is_symp_cea = is_symp_cea
 
-    if days_since_ev is not None and days_since_ev > 180 and (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP or q.get('cea_symp_event')):
+    if days_since_ev is not None and days_since_ev > symp_max_days and (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP or q.get('cea_symp_event')):
         ctx.amber_flags.append(
             f'ნევროლოგიური ეპიზოდიდან გასულია {days_since_ev} დღე (>6 თვე) — ESVS 2023 გაიდლაინით განიხილება როგორც ასიმპტომური სტენოზი.'
         )
@@ -42,13 +44,13 @@ def _eval_cea_symptoms_and_clocks(ctx):
         )
 
     if is_symp_cea and days_since_ev is not None and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
-        if days_since_ev > 14:
-            msg = f'ინდექსური სიმპტომიდან გავიდა {days_since_ev} დღე — გადაცილებულია ESVS 2023-ის 14-დღიანი ოპტიმალური ფანჯარა! დააჩქარეთ ქირურგის შეფასება.'
+        if days_since_ev > win_days:
+            msg = f'ინდექსური სიმპტომიდან გავიდა {days_since_ev} დღე — გადაცილებულია ESVS 2023-ის {win_days}-დღიანი ოპტიმალური ფანჯარა! დააჩქარეთ ქირურგის შეფასება.'
             ctx.red_flags.append(msg)
             ctx.priority_flags.append(msg)
-        elif days_since_ev >= 10:
+        elif days_since_ev >= warn_days:
             ctx.amber_flags.append(
-                f'სიმპტომიდან გასულია {days_since_ev} დღე (ESVS 14-დღიანი ფანჯრიდან დარჩა {14 - days_since_ev} დღე) — დააჩქარეთ კვლევები!'
+                f'სიმპტომიდან გასულია {days_since_ev} დღე (ESVS {win_days}-დღიანი ფანჯრიდან დარჩა {win_days - days_since_ev} დღე) — დააჩქარეთ კვლევები!'
             )
 
     if ctx.days > ctx.t_days and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
@@ -65,8 +67,10 @@ def _eval_cea_symptoms_and_clocks(ctx):
 def _eval_cea_stenosis_and_imaging(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
     is_symp_cea, car_r, car_l = ctx.is_symp_cea, ctx.car_r, ctx.car_l
+    st_cfg = rule_value('CEA_STENOSIS_THRESHOLDS')
+    occ_pct = rule_value('CEA_OCCLUSION_100_STOP')
 
-    if patient.side == 'B':
+    if patient.side == rule_value('CEA_BILATERAL_STOP'):
         bilat_cea_msg = (
             'ერთდროული ორმხრივი კაროტიდული ენდარტერექტომია (CEA, მხარე B) აბსოლუტურად უკუნაჩვენებია — '
             'ორმხრივი კრანიალური ნერვების დამბლისა და ასფიქსიის ლეტალური რისკი (ESVS 2023)! დაგეგმეთ ეტაპობრივად (R ან L).'
@@ -87,30 +91,30 @@ def _eval_cea_stenosis_and_imaging(ctx):
         side_prefix = f'{patient.side} ' if patient.side in ('R', 'L') else ''
         ctx.key_badge = f'{side_prefix}{ipsi_car}%'
         ctx.key_badge_urgent = bool(is_symp_cea or ipsi_car >= 90)
-        if ipsi_car >= 100:
+        if ipsi_car >= occ_pct:
             occ_msg = (
                 'საოპერაციო მხარეს ICA-ს სრული ოკლუზია (100%) — CEA სრულ ქრონიკულ ოკლუზიაზე არ ტარდება! '
                 'სასწრაფოდ გადაამოწმეთ CTA ქირურგთან (near-occlusion vs ოკლუზია).'
             )
             ctx.red_flags.append(occ_msg)
             ctx.hard_contraindications.append(occ_msg)
-        elif is_symp_cea and ipsi_car < 50:
-            ctx.red_flags.append(f'საოპერაციო მხარეს სტენოზი ({ipsi_car}%) < 50% (NASCET) — გადაამოწმეთ CEA-ს ჩვენება ქირურგთან.')
-        elif not is_symp_cea and ipsi_car < 60:
-            ctx.red_flags.append(f'ასიმპტომურ საოპერაციო მხარეს სტენოზი ({ipsi_car}%) < 60% (NASCET) — გადაამოწმეთ CEA-ს ჩვენება ქირურგთან.')
-        elif not is_symp_cea and ipsi_car < 70:
+        elif is_symp_cea and ipsi_car < st_cfg['symp_min']:
+            ctx.red_flags.append(f'საოპერაციო მხარეს სტენოზი ({ipsi_car}%) < {st_cfg["symp_min"]}% (NASCET) — გადაამოწმეთ CEA-ს ჩვენება ქირურგთან.')
+        elif not is_symp_cea and ipsi_car < st_cfg['asymp_min']:
+            ctx.red_flags.append(f'ასიმპტომურ საოპერაციო მხარეს სტენოზი ({ipsi_car}%) < {st_cfg["asymp_min"]}% (NASCET) — გადაამოწმეთ CEA-ს ჩვენება ქირურგთან.')
+        elif not is_symp_cea and ipsi_car < st_cfg['asymp_grey']:
             ctx.amber_flags.append(f'ასიმპტომური სტენოზი {ipsi_car}% (60–69% NASCET) — გადაამოწმეთ მაღალი რისკის ბალთის ნიშნები CTA/დუპლექსზე.')
     elif is_symp_cea and ctx.days_since_ev is not None:
         ctx.key_badge = f'{ctx.days_since_ev}/14დღ'
         ctx.key_badge_urgent = True
 
     if contra_car is not None:
-        if contra_car >= 80:
+        if contra_car >= st_cfg['contra_crit']:
             ctx.red_flags.append(
                 f'კონტრალატერალური საძილე არტერიის კრიტიკული სტენოზი / ოკლუზია ({contra_car}%) — '
                 'ინტრაოპერაციული შუნტის (Shunt) მზადყოფნა და ჰიპერპერფუზიის მაღალი რისკი!'
             )
-        elif contra_car >= 50:
+        elif contra_car >= st_cfg['contra_mod']:
             ctx.amber_flags.append(f'კონტრალატერალური საძილე არტერიის სტენოზი ({contra_car}%) — საყურადღებოა ცერებრული პერფუზიისთვის.')
 
 
@@ -127,7 +131,7 @@ def eval_cea(ctx):
 
     ctx.needs_brain_ct = ctx.is_symp_cea or (q_filled and bool(q.get('neuro')))
     brain_im = s.get('brain_imaging') or 'pending'
-    if brain_im == 'large_or_hemorrhage':
+    if brain_im == rule_value('CEA_BRAIN_HEMORRHAGE_STOP'):
         hem_msg = (
             'თავის ტვინის CT/MRI-ზე სისხლჩაქცევა ან ფართო მწვავე ინფარქტი (>1/3 MCA) — '
             'ნაადრევი CEA საშიშია, სასწრაფოდ აცნობეთ ქირურგსა და ნევროლოგს!'
@@ -151,7 +155,7 @@ def eval_cea(ctx):
     ctx.cea_high_surg_risk = bool(
         ('neck_rad' in cea_neck_set) or ('ipsi_restenosis' in cea_neck_set)
         or laryng_res == 'palsy' or cea_cta == 'high_calcified'
-        or (lvef_prelim is not None and lvef_prelim < 40)
+        or (lvef_prelim is not None and lvef_prelim < rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red'])
     )
     if ctx.cea_high_surg_risk:
         ctx.amber_flags.append(
@@ -161,7 +165,7 @@ def eval_cea(ctx):
 
     # ESVS 2023 Class I: perioperative antiplatelet is mandatory BEFORE CEA (holding OAC alone leaves patient unprotected),
     # UNLESS acute intracranial hemorrhage/large infarct or recent IV thrombolysis prohibits immediate antiplatelet initiation!
-    antiplatelet_prohibited_cea = (brain_im == 'large_or_hemorrhage') or (q_filled and bool(q.get('cea_thrombolysis')))
+    antiplatelet_prohibited_cea = (brain_im == rule_value('CEA_BRAIN_HEMORRHAGE_STOP')) or (q_filled and bool(q.get('cea_thrombolysis')))
     if q_filled and not ctx.has_antiplatelet and not antiplatelet_prohibited_cea:
         ctx.needs_cea_antiplatelet = True
         has_oac_only = bool(q.get('med_doac') or q.get('med_dabigatran') or q.get('med_warfarin'))
@@ -180,7 +184,8 @@ def eval_cea(ctx):
                 'პაციენტი არ იღებს ანტიაგრეგანტს (ასპირინი / კლოპიდოგრელი)! ESVS 2023 Class I-ით CEA-ს წინ '
                 'ანტიაგრეგანტული თერაპია სავალდებულოა ინსულტის პრევენციისთვის — აცნობეთ ქირურგს.'
             )
+    ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
     if q_filled and not ctx.has_statin and not ctx.liver_3x:
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინის მიღება (ESVS 2023 Class I: CEA-ს წინ ნაჩვენებია მაღალი ინტენსივობის სტატინი).')
-    elif ctx.ldl_val is not None and ctx.ldl_val >= 1.4 and not ctx.liver_3x:
-        ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= 1.4 მმოლ/ლ) — ESVS 2023/ESC სამიზნისთვის განიხილეთ სტატინის მაქსიმალური დოზა ± ეზეტიმიბი.')
+    elif ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
+        ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — ESVS 2023/ESC სამიზნისთვის განიხილეთ სტატინის მაქსიმალური დოზა ± ეზეტიმიბი.')

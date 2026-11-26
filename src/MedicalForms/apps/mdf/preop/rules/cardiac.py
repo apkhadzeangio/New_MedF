@@ -2,39 +2,42 @@
 from ...models import PreopPatient
 from ..calculators import calc_auto_asa
 from ..constants import PATHWAY_SHORT
+from ..registry import rule_value
 from ..utils import _int, _num
 
 
 def _eval_cardiac_biomarkers_and_audit(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    cb = rule_value('CARDIO_BIOMARKERS_ECHO')
+    carp = rule_value('CARDIO_CARP_AUDIT_GATE')
     lvef = _int(s.get('lvef'), lo=5, hi=95)
     nt_probnp = _int(s.get('nt_probnp'), lo=1, hi=50000)
     hs_ctn = _num(s.get('hs_ctn'), lo=0.1, hi=50000)
     ecg = s.get('ecg') or 'pending'
     ctx.lvef, ctx.nt_probnp, ctx.hs_ctn, ctx.ecg = lvef, nt_probnp, hs_ctn, ecg
 
-    if nt_probnp is not None and nt_probnp >= 125:
+    if nt_probnp is not None and nt_probnp >= cb['bnp_amb']:
         if ctx.cardio_cleared:
             ctx.amber_flags.append(f'NT-proBNP {nt_probnp} პგ/მლ (≥125) — შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
-        elif nt_probnp >= 300:
+        elif nt_probnp >= cb['bnp_red']:
             echo_req_s = f'ექოკარდიოგრაფია ჩატარებულია (LVEF {lvef}%) — სავალდებულოა კარდიოლოგის შეფასება.' if lvef is not None else 'სავალდებულოა ექოკარდიოგრაფია და კარდიოლოგის შეფასება.'
             ctx.red_flags.append(
-                f'მაღალი NT-proBNP ({nt_probnp} პგ/მლ >= 300) — გულის უკმარისობისა და პერიოპერაციული MACE მაღალი რისკი! {echo_req_s}'
+                f'მაღალი NT-proBNP ({nt_probnp} პგ/მლ >= {cb["bnp_red"]}) — გულის უკმარისობისა და პერიოპერაციული MACE მაღალი რისკი! {echo_req_s}'
             )
         elif lvef is not None:
-            ctx.amber_flags.append(f'მომატებული NT-proBNP ({nt_probnp} პგ/მლ >= 125; LVEF {lvef}% შეფასებულია) — ESC 2022-ით საჭიროა კარდიოლოგის კონსულტაცია.')
+            ctx.amber_flags.append(f'მომატებული NT-proBNP ({nt_probnp} პგ/მლ >= {cb["bnp_amb"]}; LVEF {lvef}% შეფასებულია) — ESC 2022-ით საჭიროა კარდიოლოგის კონსულტაცია.')
         else:
-            ctx.amber_flags.append(f'მომატებული NT-proBNP ({nt_probnp} პგ/მლ >= 125) — ESC 2022 Class I-ით ნაჩვენებია ექოკარდიოგრაფია და კარდიოლოგი.')
+            ctx.amber_flags.append(f'მომატებული NT-proBNP ({nt_probnp} პგ/მლ >= {cb["bnp_amb"]}) — ESC 2022 Class I-ით ნაჩვენებია ექოკარდიოგრაფია და კარდიოლოგი.')
 
-    if hs_ctn is not None and hs_ctn >= 14:
+    if hs_ctn is not None and hs_ctn >= cb['ctn_amb']:
         if ctx.cardio_cleared:
             ctx.amber_flags.append(f'საბაზისო hs-cTn {hs_ctn} ნგ/ლ — შეფასებულია კარდიოლოგის მიერ ✓')
-        elif hs_ctn >= 52:
+        elif hs_ctn >= cb['ctn_red']:
             ctx.red_flags.append(f'მნიშვნელოვნად მომატებული საბაზისო ტროპონინი (hs-cTn {hs_ctn} ნგ/ლ) — გამოირიცხოს მწვავე მიოკარდიუმის დაზიანება კარდიოლოგთან!')
         else:
             ctx.amber_flags.append(f'საბაზისო hs-cTn {hs_ctn} ნგ/ლ (>ULN) — დაფიქსირებულია პოსტოპერაციული MINS შედარებისთვის; შეაფასოს კარდიოლოგმა.')
 
-    if (lvef is not None and lvef < 40) or s.get('echo_valve_issue') or ecg == 'ischemia_arrhythmia':
+    if (lvef is not None and lvef < cb['lvef_red']) or s.get('echo_valve_issue') or ecg == 'ischemia_arrhythmia':
         if ctx.cardio_cleared:
             ctx.amber_flags.append('კარდიორისკი (LVEF < 40% / სარქვლოვანი პათოლოგია / ეკგ) შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
         else:
@@ -46,7 +49,7 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
             ctx.amber_flags.append('ნორმოსისტოლური მოციმციმე არითმია — შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
         else:
             ctx.amber_flags.append('ეკგ-ზე ნორმოსისტოლური მოციმციმე არითმია — საჭიროა კარდიოლოგის შეფასება.')
-    elif lvef is not None and lvef < 50:
+    elif lvef is not None and lvef < cb['lvef_amb']:
         ctx.amber_flags.append(f'ზომიერად დაქვეითებული განდევნის ფრაქცია (LVEF {lvef}%).')
 
     is_pure_local_pta = (
@@ -54,20 +57,20 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
         and not (q_filled and bool(q.get('pta_cant_lie_flat')))
         and (s.get('anesthesia_plan') in (None, '', 'auto', 'local'))
     )
-    ckd_cardio_thresh = 45 if is_pure_local_pta else 60
+    ckd_cardio_thresh = carp['ckd_pta'] if is_pure_local_pta else carp['ckd_std']
     guideline_justifies_cag = (
         ctx.true_low_mets
         or (q_filled and bool(q.get('cad')))
-        or (lvef is not None and lvef < 50)
-        or (nt_probnp is not None and nt_probnp >= 300)
-        or (hs_ctn is not None and hs_ctn >= 14)
+        or (lvef is not None and lvef < cb['lvef_amb'])
+        or (nt_probnp is not None and nt_probnp >= cb['bnp_red'])
+        or (hs_ctn is not None and hs_ctn >= cb['ctn_amb'])
         or bool(s.get('echo_valve_issue'))
         or ecg == 'ischemia_arrhythmia'
     )
     guideline_justifies_extra_cardio = (
         guideline_justifies_cag
         or ctx.needs_cied
-        or (nt_probnp is not None and nt_probnp >= 125)
+        or (nt_probnp is not None and nt_probnp >= cb['bnp_amb'])
         or ecg == 'afib_controlled'
         or (ctx.hr is not None and (ctx.hr > 110 or ctx.hr < 45))
         or (pathway not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS) and q_filled and bool(q.get('neuro')))
@@ -94,8 +97,8 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
         or bool(s.get('irregular_hr')) or ctx.severe_htn or bool(ctx.cardio_decision)
     )
     ctx.needs_echo_or_bnp = ctx.open_aortic or guideline_justifies_extra_cardio
-    mandatory_tte = bool(('hf' in ctx.cad_chips) or ctx.has_mech_valve or s.get('echo_valve_issue') or (nt_probnp is not None and nt_probnp >= 300))
-    ctx.cardiac_screen_done = (lvef is not None or (not mandatory_tte and nt_probnp is not None and nt_probnp < 125))
+    mandatory_tte = bool(('hf' in ctx.cad_chips) or ctx.has_mech_valve or s.get('echo_valve_issue') or (nt_probnp is not None and nt_probnp >= cb['bnp_red']))
+    ctx.cardiac_screen_done = (lvef is not None or (not mandatory_tte and nt_probnp is not None and nt_probnp < cb['bnp_amb']))
     ctx.needs_cxr = (q_filled and (bool(q.get('pulm')) or 'hf' in ctx.cad_chips or 'fever_resp' in ctx.inf_chip_set)) or (ctx.spo2 is not None and ctx.spo2 < 94)
 
 

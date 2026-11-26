@@ -6,17 +6,19 @@ from .utils import _int, _num, _resolve_pathway, _str_list, cea_live_days_since_
 
 def _parse_scr_mgdl(creat, creat_unit=''):
     """Return (scr_mgdl, is_ambiguous). Range 15.0 < c < 35.0 requires explicit unit ('mgdl'|'umol')."""
+    from .registry import rule_value
+    ren_u = rule_value('SCORE_RENAL_CKDEPI_CG')
     c = _num(creat, lo=0.1, hi=3000)
     if c is None:
         return None, False
     if creat_unit == 'mgdl':
         return c, False
     if creat_unit == 'umol':
-        return c / 88.4, False
-    if 0.2 <= c <= 15.0:
+        return c / ren_u['umol_factor'], False
+    if 0.2 <= c <= ren_u['ambig_lo']:
         return c, False
-    if c >= 35.0:
-        return c / 88.4, False
+    if c >= ren_u['ambig_hi']:
+        return c / ren_u['umol_factor'], False
     return None, True
 
 
@@ -375,6 +377,8 @@ def _ihd_and_chf_flags(q, s):
 
 def calc_rcri(patient, q, s, is_symp_cea=False):
     """Validated 6-factor Revised Cardiac Risk Index (Lee et al., Circulation 1999 / ESC 2022)."""
+    from .registry import rule_value
+    rcri_cfg = rule_value('SCORE_RCRI_LEE_1999')
     pathway = _resolve_pathway(patient)
     q_filled = bool(q.get('filled'))
     ihd, chf = _ihd_and_chf_flags(q, s)
@@ -404,7 +408,7 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
         factors.append('ინსულტი / TIA ანამნეზში')
     if q_filled and bool(q.get('dm_insulin')):
         factors.append('ინსულინოთერაპია')
-    if (q_filled and bool(q.get('on_dialysis'))) or (scr_mgdl is not None and scr_mgdl > 2.0):
+    if (q_filled and bool(q.get('on_dialysis'))) or (scr_mgdl is not None and scr_mgdl > rcri_cfg['scr_mgdl']):
         factors.append('კრეატინინი >2.0 მგ/დლ (>177 მკმოლ/ლ) / დიალიზი')
 
     score = len(factors)
@@ -427,6 +431,8 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
 
 def calc_vsg_cri(patient, q, s):
     """Vascular Study Group of New England Cardiac Risk Index (Bertges et al., J Vasc Surg 2010 — exact published MACE table)."""
+    from .registry import rule_value
+    vsg_cfg = rule_value('SCORE_VSG_CRI_BERTGES_2010')
     pathway = _resolve_pathway(patient)
     if pathway == PreopPatient.Pathway.VENOUS:
         return None
@@ -472,7 +478,7 @@ def calc_vsg_cri(patient, q, s):
     if has_copd:
         pts += 2
         factors.append('ფქოდ / COPD (+2)')
-    if (q_filled and bool(q.get('on_dialysis'))) or (scr_mgdl is not None and scr_mgdl >= 1.8):
+    if (q_filled and bool(q.get('on_dialysis'))) or (scr_mgdl is not None and scr_mgdl >= vsg_cfg['scr_mgdl']):
         pts += 2
         factors.append('კრეატინინი ≥1.8 მგ/დლ / დიალიზი (+2)')
     if 'beta_blocker' in med_chips:
@@ -483,19 +489,19 @@ def calc_vsg_cri(patient, q, s):
         factors.append('წარსულში რევასკულარიზაცია CABG/PCI (-1)')
 
     # Exact published Bertges et al. 2010 (J Vasc Surg) 6-category MACE probabilities:
-    # 0-3: 2.6%, 4: 3.5%, 5: 6.0%, 6: 6.6%, 7: 8.9%, >=8: 14.3%
+    rates = vsg_cfg['rates']
     if pts <= 3:
-        tier, est, lbl = 'low', '2.6%', 'დაბალი (2.6%)'
+        tier, est, lbl = 'low', rates['0_3'], f"დაბალი ({rates['0_3']})"
     elif pts == 4:
-        tier, est, lbl = 'low', '3.5%', 'დაბალი/საშუალო (3.5%)'
+        tier, est, lbl = 'low', rates['4'], f"დაბალი/საშუალო ({rates['4']})"
     elif pts == 5:
-        tier, est, lbl = 'intermediate', '6.0%', 'საშუალო (6.0%)'
+        tier, est, lbl = 'intermediate', rates['5'], f"საშუალო ({rates['5']})"
     elif pts == 6:
-        tier, est, lbl = 'intermediate', '6.6%', 'საშუალო (6.6%)'
+        tier, est, lbl = 'intermediate', rates['6'], f"საშუალო ({rates['6']})"
     elif pts == 7:
-        tier, est, lbl = 'high', '8.9%', 'მაღალი (8.9%)'
+        tier, est, lbl = 'high', rates['7'], f"მაღალი ({rates['7']})"
     else:
-        tier, est, lbl = 'high', '14.3%', 'ძალიან მაღალი (14.3%)'
+        tier, est, lbl = 'high', rates['ge8'], f"ძალიან მაღალი ({rates['ge8']})"
     return {
         'score': pts,
         'tier': tier,
@@ -507,6 +513,8 @@ def calc_vsg_cri(patient, q, s):
 
 def calc_ariscat_pulm(patient, q, s, hb_gl=None):
     """Validated ARISCAT postoperative pulmonary complication (PPC) score (Canet et al. 2010 / ESAIC 2024)."""
+    from .registry import rule_value
+    ari_cfg = rule_value('SCORE_ARISCAT_CANET_2010')
     pathway = _resolve_pathway(patient)
     q_filled = bool(q.get('filled'))
     inf_chips = set(_str_list(q.get('inf_chips')))
@@ -538,7 +546,7 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
         pts += 17
         factors.append('რესპირატორული ინფექცია / ინფილტრაცია (+17)')
 
-    if hb_gl is not None and hb_gl <= 100:
+    if hb_gl is not None and hb_gl <= ari_cfg['hb_max']:
         pts += 11
         factors.append('ანემია Hb ≤100 გ/ლ (+11)')
 
@@ -571,9 +579,9 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
         pts += 8
         factors.append('სასწრაფო/გადაუდებელი ჩვენება (+8)')
 
-    if pts < 26:
+    if pts < ari_cfg['low_lt']:
         tier, ppc_pct, lbl = 'low', '1.6%', 'დაბალი (~1.6% PPC)'
-    elif pts <= 44:
+    elif pts <= ari_cfg['int_max']:
         tier, ppc_pct, lbl = 'intermediate', '13.3%', 'საშუალო (~13.3% PPC)'
     else:
         tier, ppc_pct, lbl = 'high', '42.1%', 'მაღალი (~42.1% PPC)'
