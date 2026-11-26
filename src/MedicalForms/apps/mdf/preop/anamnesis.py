@@ -3,80 +3,73 @@ from ..board import person_name
 from ..models import PreopPatient
 from .utils import _str_list, chip_summary, is_self_filled_q
 
+_SF_SIMPLE_FLAGS = (
+    ('aaa_pain', 'urgent', 'მუცლის/წელის ტკივილი (AAA)!'),
+    ('cea_thrombolysis', 'urgent', 'თრომბოლიზისი ≤6 დღეში!'),
+    ('abf_rest_pain', 'warn', 'მოსვენებითი იშემიური ტკივილი'),
+    ('abf_ulcer', 'warn', 'ტერფის წყლული/ნეკროზი'),
+    ('abf_wet_infection', 'urgent', 'ტერფის სველი ნეკროზი / ჩირქოვანი ინფექცია!'),
+    ('ven_acute_svt', 'urgent', 'მწვავე თრომბოფლებიტი!'),
+    ('ven_lidocaine_allergy', 'urgent', 'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე!'),
+    ('ven_bleeding', 'urgent', 'სისხლდენა ვარიკოზული კვანძიდან!'),
+    ('ven_dvt_history', 'warn', 'გადატანილი DVT / PE'),
+    ('ven_thrombophilia', 'warn', 'თრომბოფილია'),
+    ('ven_hormones', 'warn', 'ჰორმონული პრეპარატი / კონტრაცეპტივი'),
+    ('active_infection', 'urgent', 'სიცხე / აქტიური ინფექცია!'),
+    ('dental_infection', 'warn', 'კარიესული/ჩირქოვანი კბილი'),
+    ('anesth_issue', 'warn', 'ანესთეზიის გართულება ანამნეზში'),
+    ('on_dialysis', 'urgent', 'პროგრამული დიალიზი'),
+    ('htn', 'info', 'ჰიპერტენზია'),
+    ('pulm', 'info', 'ფილტვების დაავადება / ასთმა'),
+    ('thyroid_disease', 'info', 'ფარისებრი ჯირკვალი'),
+    ('neuro', 'warn', 'გადატანილი ინსულტი'),
+    ('pacemaker', 'warn', 'კარდიოსტიმულატორი / ICD'),
+)
+_SF_MED_BOOLS = (
+    ('med_warfarin', 'ვარფარინი'), ('med_dabigatran', 'პრადაქსა'), ('med_doac', 'ქსარელტო/ელიქვისი'),
+    ('med_prasugrel', 'პრასუგრელი'), ('med_ticagrelor', 'ტიკაგრელორი'), ('med_clopidogrel', 'კლოპიდოგრელი'),
+    ('med_aspirin', 'ასპირინი'), ('sglt2', 'SGLT2 (ჯარდიანსი/ფორსიგა)'),
+    ('glp1', 'GLP-1 (ოზემპიკი/მუნჯარო)'), ('metformin', 'მეტფორმინი'),
+)
+_SF_MED_CHIP_LABELS = (
+    ('rivaroxaban_2_5', 'რივაროქსაბანი 2.5 მგ ×2'), ('cilostazol', 'ცილოსტაზოლი'), ('steroid', 'სტეროიდი'),
+)
+
 
 def build_self_fill_highlights(q):
     """Extract concise positive findings reported by the patient via Self-Fill link for 5-second nurse reconciliation."""
     if not isinstance(q, dict) or not (q.get('filled') or is_self_filled_q(q)):
         return []
     items = []
-    if q.get('aaa_pain'):
-        items.append(('urgent', 'მუცლის/წელის ტკივილი (AAA)!'))
     if q.get('cea_crescendo'):
         items.append(('urgent', 'განმეორებითი TIA/სიმპტომი <48 სთ!'))
     elif q.get('cea_symp_event'):
         items.append(('warn', 'ნევროლოგიური სიმპტომი ანამნეზში'))
-    if q.get('cea_thrombolysis'):
-        items.append(('urgent', 'თრომბოლიზისი ≤6 დღეში!'))
-    if q.get('abf_rest_pain'):
-        items.append(('warn', 'მოსვენებითი იშემიური ტკივილი'))
-    if q.get('abf_ulcer'):
-        items.append(('warn', 'ტერფის წყლული/ნეკროზი'))
-    if q.get('ven_acute_svt'):
-        items.append(('urgent', 'მწვავე თრომბოფლებიტი!'))
     if q.get('ven_pregnant') or q.get('pregnant_possible'):
         items.append(('urgent', 'ორსულობა / შესაძლო ორსულობა / ლაქტაცია!'))
-    if q.get('ven_dvt_history'):
-        items.append(('warn', 'გადატანილი DVT / PE'))
-    if q.get('active_infection'):
-        items.append(('urgent', 'სიცხე / აქტიური ინფექცია!'))
     if q.get('recent_stent'):
         items.append(('urgent', 'კორონარული სტენტი <6 თვეში!'))
     elif q.get('cad'):
         items.append(('warn', 'გულის დაავადება / სტენტი / არითმია'))
+    if 'mech_valve' in _str_list(q.get('cad_chips')):
+        items.append(('urgent', 'მექანიკური სარქველი!'))
     if not q.get('mets_ok', True):
         items.append(('warn', f"დატვირთვის შეზღუდვა ({'კიდურით' if q.get('mets_limitation') == 'limb' else '<4 METs ქოშინი/გული'})"))
-    if q.get('on_dialysis'):
-        items.append(('urgent', 'პროგრამული დიალიზი'))
     if q.get('dm'):
         items.append(('info', 'შაქრიანი დიაბეტი' + (' (ინსულინზე)' if q.get('dm_insulin') else '')))
     elif q.get('dm_insulin'):
         items.append(('warn', 'ინსულინი'))
-    if q.get('htn'):
-        items.append(('info', 'ჰიპერტენზია'))
-    if q.get('pulm'):
-        items.append(('info', 'ფილტვების დაავადება / ასთმა'))
-    if q.get('thyroid_disease'):
-        items.append(('info', 'ფარისებრი ჯირკვალი'))
-    if q.get('neuro'):
-        items.append(('warn', 'გადატანილი ინსულტი'))
     if q.get('ulcer_active_symp'):
         items.append(('urgent', 'აქტიური კუჭის ტკივილი / მელენა!'))
     elif q.get('ulcer'):
         items.append(('info', 'კუჭის წყლული ანამნეზში'))
-    if q.get('pacemaker'):
-        items.append(('warn', 'კარდიოსტიმულატორი / ICD'))
+    for key, lvl, label in _SF_SIMPLE_FLAGS:
+        if q.get(key):
+            items.append((lvl, label))
 
-    meds = []
-    if q.get('med_warfarin'):
-        meds.append('ვარფარინი')
-    if q.get('med_dabigatran'):
-        meds.append('პრადაქსა')
-    if q.get('med_doac'):
-        meds.append('ქსარელტო/ელიქვისი')
-    if q.get('med_prasugrel'):
-        meds.append('პრასუგრელი')
-    if q.get('med_ticagrelor'):
-        meds.append('ტიკაგრელორი')
-    if q.get('med_clopidogrel'):
-        meds.append('კლოპიდოგრელი')
-    if q.get('med_aspirin'):
-        meds.append('ასპირინი')
-    if q.get('sglt2'):
-        meds.append('SGLT2 (ჯარდიანსი/ფორსიგა)')
-    if q.get('glp1'):
-        meds.append('GLP-1 (ოზემპიკი/მუნჯარო)')
-    if q.get('metformin'):
-        meds.append('მეტფორმინი')
+    med_chips = set(_str_list(q.get('med_chips')))
+    meds = [lbl for key, lbl in _SF_MED_BOOLS if q.get(key)]
+    meds.extend(lbl for ck, lbl in _SF_MED_CHIP_LABELS if ck in med_chips)
     if meds:
         items.append(('warn', 'მედიკამენტები: ' + ', '.join(meds)))
     raw_other_meds = q.get('other_meds') if isinstance(q.get('other_meds'), str) else ''
@@ -163,6 +156,8 @@ def _anam_abf(patient, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer
         claud_part += ' (დუნდულოებისა და ბარძაყების არეში — ლერიშის სინდრომი)'
     if q.get('abf_duration'):
         claud_part += f", ხანგრძლივობა: {q['abf_duration']}"
+        if q.get('abf_duration') == '< 2 კვირა':
+            claud_part += ' — საეჭვოა მწვავე იშემია (ALI)!'
     rest_part = 'აღნიშნავს მოსვენებით/ღამის იშემიურ ტკივილს' if q.get('abf_rest_pain') else 'მოსვენებით ტკივილს უარყოფს'
     lines.append(f'სისხლძარღვოვანი ჩივილები: {claud_part}; {rest_part}.')
 
@@ -200,6 +195,8 @@ def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
     claud_part = f"კოჭლობა {q['abf_claud_m']} მ-ში" if q.get('abf_claud_m') is not None else 'ხანგამოშვებითი კოჭლობა'
     if q.get('abf_duration'):
         claud_part += f", ხანგრძლივობა: {q['abf_duration']}"
+        if q.get('abf_duration') == '< 2 კვირა':
+            claud_part += ' — საეჭვოა მწვავე იშემია (ALI)!'
     rest_part = 'მოსვენებითი ტკივილი (+)' if q.get('abf_rest_pain') else 'მოსვენებით ტკივილს უარყოფს'
     lines.append(f'სისხლძარღვოვანი ჩივილები: {claud_part}; {rest_part}.')
     if q.get('abf_ulcer'):
@@ -497,7 +494,7 @@ def generate_anamnesis(patient, ev=None):
         from . import evaluate
         ev = evaluate(patient)
     q, s = ev['q'], ev['s']
-    if not q.get('filled'):
+    if not (q.get('filled') or is_self_filled_q(q)):
         return ''
 
     pathway = ev['pathway']

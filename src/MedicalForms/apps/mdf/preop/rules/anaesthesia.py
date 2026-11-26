@@ -89,7 +89,10 @@ def _eval_asa_airway_and_modality(ctx):
             if lido_alg else 'ზოგადი ენდოტრაქეული ან რეგიონული ბლოკადა (ცერებრული მონიტორინგით)'
         )
     elif pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype == 'tbd':
-        eff_lbl = 'ზუსტდება CTA ტაქტიკით (ღია: ზოგადი ენდოტრაქეული vs EVAR: ზოგადი / ადგილობრივი)'
+        eff_lbl = (
+            'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია — გაუტკივარება ანესთეზიოლოგთან!)'
+            if lido_alg else 'ზუსტდება CTA ტაქტიკით (ღია: ზოგადი ენდოტრაქეული vs EVAR: ზოგადი / ადგილობრივი)'
+        )
     elif ctx.is_phleb or patient.op_subtype == 'evar' or ctx.is_pad_bypass:
         if ctx.hard_nx_reasons:
             base_ga_lbl = 'ზოგადი ენდოტრაქეული ანესთეზია' if needs_ett_airway else 'ზოგადი ანესთეზია'
@@ -97,7 +100,10 @@ def _eval_asa_airway_and_modality(ctx):
         elif ctx.is_phleb:
             eff_lbl = 'სპინალური / ზოგადი ანესთეზია'
         elif patient.op_subtype == 'evar':
-            eff_lbl = 'ზოგადი ან ადგილობრივი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)'
+            eff_lbl = (
+                'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია!)'
+                if lido_alg else 'ზოგადი ან ადგილობრივი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)'
+            )
         else:
             eff_lbl = 'ზოგადი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)'
     else:
@@ -124,11 +130,11 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
     cea_win_d = rule_value('CEA_SYMP_WINDOW_DAYS')[0]
     aaa_wait_giant, aaa_wait_std = rule_value('AAA_WAIT_TARGET_DAYS')
     clti_inf_d, clti_std_d = rule_value('PAD_CLTI_WAIT_DAYS')
+    glp_cfg = rule_value('MED_GLP1_FASTING_PROTOCOL')
     ctx.person_id = _clean_person_id(s.get('person_id'))
     ctx.birth_date_ka = _fmt_ka_date(s.get('birth_date'))
     op_dt = _date(s.get('planned_surgery_date'))
-    ctx.planned_surgery_ka = _fmt_ka_date(op_dt)
-    ctx.planned_surgery_short = _fmt_ka_date(op_dt, short=True)
+    ctx.planned_surgery_ka, ctx.planned_surgery_short = _fmt_ka_date(op_dt), _fmt_ka_date(op_dt, short=True)
     ctx.operated_date_ka = _fmt_ka_date(s.get('operated_date'))
     ctx.case_outcome_label = dict(CASE_OUTCOME_CHOICES).get(ctx.case_outcome, '')
 
@@ -156,6 +162,11 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
                 ctx.amber_flags.append(
                     f'AAA ({ctx.aaa_mm} მმ): დაგეგმილი ოპერაციის მოლოდინი {wait_to_op} დღეა (UK NVR / ESVS სამიზნე ≤8 კვირა / 56 დღე).'
                 )
+        elif getattr(ctx, 'is_ali_acute', False):
+            if wait_to_op > clti_inf_d:
+                ctx.amber_flags.append(
+                    f'მწვავე კიდურის იშემია (ALI): დაგეგმილი ოპერაცია ({ctx.planned_surgery_ka}) დაშორებულია {wait_to_op} დღით (>{clti_inf_d} დღე) — კიდურის დაკარგვის უმაღლესი რისკი!'
+                )
         elif ctx.is_clti_any:
             clti_lim = clti_inf_d if (q_filled and q.get('abf_wet_infection')) else clti_std_d
             if wait_to_op > clti_lim:
@@ -166,19 +177,15 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
     lido_alg = bool(q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips)
     has_glp1_any = bool(q.get('glp1') or ctx.ft_meds.get('has_glp1'))
     is_local_evla_fasting = (
-        patient.op_subtype == PreopPatient.OpSubtype.EVLA
-        and not ctx.has_neuraxial_plan
-        and ctx.anesth_plan_raw in ('auto', 'local')
-        and not lido_alg
-        and not bool(ctx.hard_contraindications)
+        patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.has_neuraxial_plan
+        and ctx.anesth_plan_raw in ('auto', 'local') and not lido_alg and not bool(ctx.hard_contraindications)
     )
-    ctx.is_local_evla_fasting = is_local_evla_fasting
-    ctx.has_glp1_any = has_glp1_any
+    ctx.is_local_evla_fasting, ctx.has_glp1_any = is_local_evla_fasting, has_glp1_any
     if has_glp1_any:
         ctx.fasting_instruction = (
-            'GLP-1 პროტოკოლი (Multi-Society 2024 / ESAIC 2025): გართულების გარეშე უმეტეს პაციენტთან პრეპარატი გრძელდება, '
-            'სავალდებულოა ოპერაციამდე 24 სთ მხოლოდ სუფთა თხევადი დიეტა, მყარი საკვები შეწყდეს ≥8 სთ-ით ადრე, სუფთა წყალი — 2 სთ-ით ადრე '
-            '(GI სიმპტომებისას — შეჩერების განხილვა და კუჭის ექო-სკრინინგი / RSI).'
+            f"GLP-1 პროტოკოლი (Multi-Society 2024 / ESAIC 2025): გართულების გარეშე უმეტეს პაციენტთან პრეპარატი გრძელდება, "
+            f"სავალდებულოა ოპერაციამდე {glp_cfg['liquid_hours']} სთ მხოლოდ სუფთა თხევადი დიეტა, მყარი საკვები შეწყდეს ≥{glp_cfg['solid_hours']} სთ-ით ადრე, "
+            f"სუფთა წყალი — {glp_cfg['water_hours']} სთ-ით ადრე (GI სიმპტომებისას — შეჩერების განხილვა და კუჭის ექო-სკრინინგი / RSI)."
         )
     elif is_local_evla_fasting:
         ctx.fasting_instruction = (
@@ -218,15 +225,14 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
 
 
 def _build_dos_checks(ctx):
-    patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
     cefaz_3g_kg = rule_value('ALLERGY_HIT_ABX_PROPHYLAXIS')['cefazolin_3g_kg']
-    dos_checks = [
-        {
-            'key': 'dos_identity_consent',
-            'label': 'პაციენტის იდენტიფიკაცია (პირადი N / დაბ. თარიღი) და ხელმოწერილი ინფორმირებული თანხმობა',
-            'done': bool(s.get('dos_identity_consent')),
-        },
-    ]
+    glp_cfg, ketone_max = rule_value('MED_GLP1_FASTING_PROTOCOL'), rule_value('MED_SGLT2_HOLD_DAYS')['ketone_max']
+    dos_checks = [{
+        'key': 'dos_identity_consent',
+        'label': 'პაციენტის იდენტიფიკაცია (პირადი N / დაბ. თარიღი) და ხელმოწერილი ინფორმირებული თანხმობა',
+        'done': bool(s.get('dos_identity_consent')),
+    }]
     if pathway not in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF):
         valid_dos_sides = ('R', 'L') if pathway == PreopPatient.Pathway.CEA else ('R', 'L', 'B')
         side_hint = (
@@ -235,19 +241,17 @@ def _build_dos_checks(ctx):
             else {'R': 'მარჯვენა', 'L': 'მარცხენა', 'B': 'ორმხრივი'}.get(patient.side, 'მხარე მიუთითეთ!')
         )
         dos_checks.append({
-            'key': 'dos_site_marked',
-            'label': f'საოპერაციო მხარის მარკირება კანზე ({side_hint}) — WHO Sign-In',
+            'key': 'dos_site_marked', 'label': f'საოპერაციო მხარის მარკირება კანზე ({side_hint}) — WHO Sign-In',
             'done': bool(s.get('dos_site_marked')) and (patient.side in valid_dos_sides),
         })
     if ctx.has_glp1_any:
-        dos_fast_lbl = 'უზმოდ ყოფნის რეჟიმი დაცულია: GLP-1 პროტოკოლი (24 სთ სუფთა თხევადი დიეტა / ≥8 სთ მყარი საკვები / 2 სთ წყალი)'
+        dos_fast_lbl = f"უზმოდ ყოფნის რეჟიმი დაცულია: GLP-1 პროტოკოლი ({glp_cfg['liquid_hours']} სთ სუფთა თხევადი დიეტა / ≥{glp_cfg['solid_hours']} სთ მყარი საკვები / {glp_cfg['water_hours']} სთ წყალი)"
     elif ctx.is_local_evla_fasting:
         dos_fast_lbl = 'ადგილობრივი EVLA: სედაციის გარეშე მსუბუქი საუზმე დაშვებულია (სედაციისას — 6 სთ მყარი საკვები / 2 სთ წყალი)'
     else:
         dos_fast_lbl = 'უზმოდ ყოფნის რეჟიმი დაცულია (6 სთ მყარი საკვები / 2 სთ სუფთა წყალი)'
     dos_checks.append({'key': 'dos_fasting_confirmed', 'label': dos_fast_lbl, 'done': bool(s.get('dos_fasting_confirmed'))})
-    has_any_hold_row = any(r.get('hold_or_skip') for r in (ctx.med_schedule or ()))
-    if ctx.needs_med_hold or ctx.has_any_antithrombotic or has_any_hold_row or ('steroid' in ctx.med_chips):
+    if ctx.needs_med_hold or ctx.has_any_antithrombotic or any(r.get('hold_or_skip') for r in (ctx.med_schedule or ())) or ('steroid' in ctx.med_chips):
         dos_checks.append({
             'key': 'dos_med_hold_verified',
             'label': 'ანტიკოაგულანტის / P2Y12 / SGLT2 / ინსულინის / სტეროიდის რეჟიმი და დილის დაშვებული წამლების მიღება გადამოწმდა',
@@ -256,7 +260,7 @@ def _build_dos_checks(ctx):
     if q.get('sglt2') or ('sglt2' in ctx.ft_meds.get('matched_keys', ())):
         dos_checks.append({
             'key': 'dos_ketones_ok',
-            'label': 'SGLT2 უსაფრთხოება (ეუგლიკემიური DKA-ს გამორიცხვა): სისხლის/შარდის კეტონები ნორმაშია (β-OHB < 0.6 მმოლ/ლ) და პრეპარატი შეჩერებულია ≥72–96 სთ',
+            'label': f'SGLT2 უსაფრთხოება (ეუგლიკემიური DKA-ს გამორიცხვა): სისხლის/შარდის კეტონები ნორმაშია (β-OHB < {ketone_max} მმოლ/ლ) და პრეპარატი შეჩერებულია ≥72–96 სთ',
             'done': bool(s.get('dos_ketones_ok')),
         })
     k_eff = getattr(ctx, 'k_val_sat', ctx.k_val)
@@ -268,11 +272,11 @@ def _build_dos_checks(ctx):
         )
         dos_checks.append({'key': 'dos_k_verified', 'label': k_lbl, 'done': bool(s.get('dos_k_verified'))})
     if 'latex_chlorhex' in ctx.allergy_chips:
-        dos_checks.append({
-            'key': 'dos_latex_free_or',
-            'label': 'ულატექსო საოპერაციო გარემო (ხელთათმანები/კათეტერი) და პოვიდონ-იოდის ანტისეპტიკი (ქლორჰექსიდინის გარეშე!) მზადაა',
-            'done': bool(s.get('dos_latex_free_or')),
-        })
+        ant_lbl = (
+            'ალტერნატიული უიოდო ანტისეპტიკი (ლატექსი/ქლორჰექსიდინი + იოდზე ალერგია!)'
+            if ctx.eff_allergy_iodine else 'პოვიდონ-იოდის ანტისეპტიკი (ქლორჰექსიდინის გარეშე!)'
+        )
+        dos_checks.append({'key': 'dos_latex_free_or', 'label': f'ულატექსო საოპერაციო გარემო (ხელთათმანები/კათეტერი) და {ant_lbl} მზადაა', 'done': bool(s.get('dos_latex_free_or'))})
     needs_bhcg = is_pregnancy_eligible(patient) and (
         bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
         or (patient.sex == 'F' and (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD) or ctx.is_pta or ctx.is_venous))
@@ -283,9 +287,10 @@ def _build_dos_checks(ctx):
             'label': 'ორსულობის გამორიცხვა (β-hCG უარყოფითია) — ფლუოროსკოპიის/კონტრასტის/ვენური ჩარევის უსაფრთხოება (12–55 წ. ქალი)',
             'done': bool(s.get('dos_bhcg_negative')),
         })
-    ctx.is_uncomplicated_pta_abx = ctx.is_pta and not (q_filled and (q.get('abf_wet_infection') or q.get('abf_groin_issue')))
+    ctx.is_uncomplicated_pta_abx = ctx.is_pta and not (q.get('abf_wet_infection') or q.get('abf_groin_issue'))
     if not ((ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA) or ctx.is_uncomplicated_pta_abx):
-        cefaz_dose = f'3 გ (≥{cefaz_3g_kg} კგ!)' if (ctx.weight_num is not None and ctx.weight_num >= cefaz_3g_kg) else '2 გ'
+        wt_eff = getattr(ctx, 'weight_sat', ctx.weight_num)
+        cefaz_dose = f'3 გ (≥{cefaz_3g_kg} კგ!)' if (wt_eff is not None and wt_eff >= cefaz_3g_kg) else '2 გ'
         abx_hint = 'ვანკომიცინი / კლინდამიცინი (β-ლაქტამზე ალერგია!)' if 'beta_lactam' in ctx.allergy_chips else f'ცეფაზოლინი {cefaz_dose} (ჭრილობამდე ≤60 წთ)'
         if ctx.unclarified_allergy_other:
             abx_hint += ' [დააზუსტეთ უცნობი ალერგია შეყვანამდე!]'
@@ -294,9 +299,11 @@ def _build_dos_checks(ctx):
         decol_sfx = ''
         if ctx.has_synthetic_implant:
             decol_sfx = (
-                ' · ანტისეპტიკა: პოვიდონ-იოდი (ქლორჰექსიდინზე ალერგია!)'
-                if 'latex_chlorhex' in ctx.allergy_chips else
-                (' · ქლორჰექსიდინის შხაპი ✓' if s.get('decolonization_ready') else ' · ანტისეპტიკური შხაპი')
+                ' · ანტისეპტიკა: ალტერნატიული უიოდო (ქლორჰექსიდინი + იოდის ალერგია!)'
+                if ('latex_chlorhex' in ctx.allergy_chips and ctx.eff_allergy_iodine) else (
+                    ' · ანტისეპტიკა: პოვიდონ-იოდი (ქლორჰექსიდინზე ალერგია!)' if 'latex_chlorhex' in ctx.allergy_chips
+                    else (' · ქლორჰექსიდინის შხაპი ✓' if s.get('decolonization_ready') else ' · ანტისეპტიკური შხაპი')
+                )
             )
         dos_checks.append({
             'key': 'dos_blood_implant_ready',
@@ -304,11 +311,7 @@ def _build_dos_checks(ctx):
             'done': bool(s.get('dos_blood_implant_ready')),
         })
     if ctx.needs_icu_bed:
-        dos_checks.append({
-            'key': 'icu_bed_booked',
-            'label': 'პოსტოპერაციული რეანიმაციის (ICU / HDU) საწოლი დაჯავშნილია და დადასტურებულია',
-            'done': bool(s.get('icu_bed_booked')),
-        })
+        dos_checks.append({'key': 'icu_bed_booked', 'label': 'პოსტოპერაციული რეანიმაციის (ICU / HDU) საწოლი დაჯავშნილია და დადასტურებულია', 'done': bool(s.get('icu_bed_booked'))})
     return dos_checks
 
 
@@ -409,7 +412,7 @@ def _eval_triage_and_passport_cautions(ctx):
             f'პულმო-სიფრთხილე (დაშვებულია ✓): მძიმე სპირომეტრიული დარღვევა (FEV1 {ctx.spiro_fev1}%) — ფილტვ-დამზოგველი ვენტილაცია და პოსტოპ. მონიტორინგი.'
         )
     for af in ctx.amber_flags:
-        if len(passport_cautions) >= 4:
+        if len(passport_cautions) >= 6:
             break
         if af not in passport_cautions and any(
             kw in af for kw in (

@@ -28,6 +28,7 @@ from ..utils import (
     _clean_person_id,
     _date,
     _int,
+    is_self_filled_q,
     mask_person_id,
     mask_phone,
     merged_q,
@@ -73,7 +74,7 @@ class PreopSelfFillView(generic.View):
             return render(request, self.template_name, {'invalid_link': True}, status=404)
         ev = evaluate(patient)
         staff_locked = bool(patient.approved_at or ev['q'].get('nurse_verified') or ev['case_outcome'] != 'scheduled')
-        submitted_once = bool(ev['q'].get('self_fill_submitted'))
+        submitted_once = is_self_filled_q(ev['q'])
         is_done_screen = (request.GET.get('done') == '1') and submitted_once and not staff_locked
         locked = staff_locked or (submitted_once and not is_done_screen)
         emergency_symptom = bool(ev['q'].get('aaa_pain') or ev['q'].get('cea_crescendo')) if is_done_screen else False
@@ -113,7 +114,7 @@ class PreopSelfFillView(generic.View):
             if (
                 patient.approved_at
                 or q_cur.get('nurse_verified')
-                or q_cur.get('self_fill_submitted')
+                or is_self_filled_q(q_cur)
                 or s_cur.get('self_fill_revoked')
                 or (s_cur.get('case_outcome_status') or 'scheduled') != 'scheduled'
             ):
@@ -154,6 +155,10 @@ class PreopSelfFillView(generic.View):
                     med_schedule_signature(ev_before) != med_schedule_signature(ev_after)
                     or ev_after['clearance_seal']['code'] == 'stop'
                     or ev_after.get('has_hard_contraindication')
+                    or (
+                        ev_after['alerts_sig'] != ev_before['alerts_sig']
+                        and (ev_after.get('has_unacked_red') or ev_after.get('dos_hold_danger'))
+                    )
                 ):
                     s_mut['med_hold_agreed'] = False
                     patient.studies = s_mut

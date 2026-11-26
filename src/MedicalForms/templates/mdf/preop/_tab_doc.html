@@ -112,7 +112,7 @@
                         {% elif ev.needs_stale_labs and not s.stale_labs_refreshed %}
                         <span class="po-badge st-alert">ანალიზები ხანდაზმულია (&gt;14 დღე) — საჭიროა განახლება!</span>
                         {% endif %}
-                        {% if ev.has_unacked_red and not ev.has_hard_contraindication %}
+                        {% if ev.has_unacked_red and not ev.has_hard_contraindication and ev.clearance_seal.code != 'stop' %}
                         <button type="submit" name="action" value="ack_alerts" class="x-btn">
                             ✓ გაფრთხილებებს გავეცანი (ქირურგი)
                         </button>

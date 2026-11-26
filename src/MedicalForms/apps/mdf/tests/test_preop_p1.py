@@ -167,11 +167,12 @@ class PreopStageP1RationalAndBridgeTests(PrivateMediaTest):
         })
         pta.refresh_from_db()
         ev_btk = evaluate(pta, today=today)
-        self.assertTrue(any('ESVS 2024 / ACC-AHA 2024 Class III' in rf and 'BTK' in rf for rf in ev_btk['red_flags']))
         self.assertTrue(any('ALI' in rf for rf in ev_btk['red_flags']))
+        self.assertFalse(ev_btk['has_hard_contraindication'])
         self.assertFalse(any('≥3 თვიანი' in af for af in ev_btk['amber_flags']))
         pta.questionnaire['abf_duration'] = '> 3 თვე'
         ev_btk_chr = evaluate(pta, today=today)
+        self.assertTrue(any('ESVS 2024 / ACC-AHA 2024 Class III' in rf and 'BTK' in rf for rf in ev_btk_chr['red_flags']))
         self.assertTrue(any('≥3 თვიანი' in af for af in ev_btk_chr['amber_flags']))
 
         # 2. Prosthetic infrainguinal bypass for claudication -> ESVS 2024 Class III Red Flag

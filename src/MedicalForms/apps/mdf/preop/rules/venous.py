@@ -28,11 +28,12 @@ def _eval_venous_lido_and_contra(ctx, ceap, ven_dup, gsv_mm):
         else:
             ctx.lidocaine_max_mg = min(lido_cfg['max_std'], int(round(dosing_wt_lido * lido_cfg['mg_per_kg'])))
 
-    if ven_dup == 'acute_dvt':
+    dvt_stop, obs_stop = rule_value('VEN_ACUTE_DVT_OBSTRUCTION_STOP')
+    if ven_dup == dvt_stop:
         dvt_msg = 'ვენების დუპლექსით მწვავე ღრმა ვენების თრომბოზი (DVT) — გეგმური EVLA / ფლებექტომია აბსოლუტურად უკუნაჩვენებია! სასწრაფოდ აცნობეთ ქირურგს.'
         ctx.red_flags.append(dvt_msg)
         ctx.hard_contraindications.append(dvt_msg)
-    elif ven_dup == 'deep_obstruction':
+    elif ven_dup == obs_stop:
         obs_msg = 'ღრმა ვენური სისტემის ოკლუზია (ზედაპირული ვენა მთავარი კოლატერალია) — აბლაცია/ფლებექტომია უკუნაჩვენებია! აცნობეთ ქირურგს.'
         ctx.red_flags.append(obs_msg)
         ctx.hard_contraindications.append(obs_msg)
@@ -63,8 +64,9 @@ def _eval_venous_lido_and_contra(ctx, ceap, ven_dup, gsv_mm):
     if q_filled and q.get('ven_bleeding'):
         ctx.red_flags.append('ანამნეზში სისხლდენა ვარიკოზული კვანძიდან (ESVS 2022) — აცნობეთ ქირურგს პრიორიტეტული ჩარევისთვის!')
 
-    if gsv_mm is not None and gsv_mm >= 15:
-        ctx.amber_flags.append(f'საჩინო ვენის დიდი დიამეტრი ({gsv_mm} მმ >= 15 მმ) — გაითვალისწინეთ EHIT-ის პრევენცია და ენერგიის რეჟიმი.')
+    gsv_large_mm = rule_value('VEN_DUPLEX_ANATOMY_AND_CEAP')['gsv_large_mm']
+    if gsv_mm is not None and gsv_mm >= gsv_large_mm:
+        ctx.amber_flags.append(f'საჩინო ვენის დიდი დიამეტრი ({gsv_mm} მმ >= {gsv_large_mm} მმ) — გაითვალისწინეთ EHIT-ის პრევენცია და ენერგიის რეჟიმი.')
     if s.get('ven_epifascial'):
         ctx.amber_flags.append('დუპლექსით ეპიფასციური / კანთან ახლო ღერო (<5 მმ) — საჭიროა ჭარბი ტუმესცენტური ბალიში კანის დამწვრობის/პიგმენტაციის ასაცილებლად.')
     if s.get('ven_tortuous'):
@@ -254,7 +256,7 @@ def eval_cross_pathway_and_urgency(ctx):
                 ctx.hard_contraindications.append(preg_art_msg)
 
     if not ctx.is_venous and (bool(q.get('ven_lidocaine_allergy')) or 'lidocaine' in ctx.allergy_chips):
-        if ctx.is_pta or s.get('anesthesia_plan') in ('local', 'plexus'):
+        if ctx.is_pta or patient.op_subtype in ('evar', 'tbd') or s.get('anesthesia_plan') in ('local', 'plexus'):
             ctx.red_flags.append(
                 'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე — ადგილობრივი/წნულის ანესთეზია საშიშია! '
                 'სავალდებულოა ანესთეზიოლოგის ჩართვა და ალტერნატიული გაუტკივარების შეთანხმება.'

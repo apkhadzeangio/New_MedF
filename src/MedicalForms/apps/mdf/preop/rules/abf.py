@@ -156,21 +156,21 @@ def _eval_bypass_conduit(ctx, is_clti):
                 f'დონორ (კონტრალატერალურ) კიდურზე დაქვეითებული პერფუზიაა (ABI {contra_abi if contra_abi is not None else "—"} / '
                 f'TP {contra_tp if contra_tp is not None else "—"}) — GSV-ის აღებისას საყურადღებოა ჭრილობის შეხორცება!'
             )
-        elif contra_abi is not None and contra_abi > 1.40 and not (contra_tp is not None and contra_tp >= gsv_cfg['donor_tp_amb']):
+        elif contra_abi is not None and contra_abi > rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')['abi_noncomp'] and not (contra_tp is not None and contra_tp >= gsv_cfg['donor_tp_amb']):
             ctx.amber_flags.append(
                 f'დონორ კიდურზე არაკომპრესირებადი ABI ({contra_abi} > 1.40) — კონტრალატერალური GSV-ის აღებამდე გადაამოწმეთ Toe Pressure ≥60 mmHg!'
             )
         elif contra_abi is None and contra_tp is None:
             ctx.amber_flags.append('კონტრალატერალური GSV-ის აღებამდე გადაამოწმეთ დონორი კიდურის ABI / პულსაცია!')
     if s.get('alt_vein_mapped') == 'no_autovein_prosthetic':
-        if not is_clti and rule_value('PAD_PROSTHETIC_IC_STOP'):
+        if not is_clti and not ctx.is_ali_acute and rule_value('PAD_PROSTHETIC_IC_STOP'):
             pros_ic_msg = (
                 'ხანგამოშვებითი კოჭლობის (IC) დროს აუტოვენის არარსებობისას სინთეზური ინფრაინგვინალური შუნტირება '
                 'უკუნაჩვენებია (ESVS 2024 / ACC-AHA Class III — Harm)! გადაამოწმეთ ჩვენება ქირურგთან!'
             )
             ctx.red_flags.append(pros_ic_msg)
             ctx.hard_contraindications.append(pros_ic_msg)
-        elif is_clti:
+        elif is_clti or ctx.is_ali_acute:
             ctx.red_flags.append('ვარგისი აუტოვენა ვერცერთ კიდურზე ვერ მოიძებნა — შეათანხმეთ სინთეზური/კომპოზიტური პროთეზის ან ენდოვასკულური ტაქტიკა ქირურგთან!')
 
 
@@ -235,7 +235,7 @@ def eval_pad_bypass(ctx):
 
     runoff = s.get('pad_runoff_status') or 'pending'
     if runoff == 'desert_foot':
-        if not is_clti:
+        if not is_clti and not ctx.is_ali_acute:
             df_msg = (
                 'ხანგამოშვებითი კოჭლობის (IC) დროს Desert foot კალაპოტზე ინფრაინგვინალური შუნტირება '
                 'უკუნაჩვენებია (ESVS 2024 Class III — თრომბოზისა და კიდურის დაკარგვის რისკი)! გადაამოწმეთ ჩვენება ქირურგთან!'

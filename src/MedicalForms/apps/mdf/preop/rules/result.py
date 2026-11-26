@@ -92,9 +92,10 @@ def _result_clinical_part(ctx):
 
 
 def _result_flags_and_needs_part(ctx):
+    hr_eff = getattr(ctx, 'hr_sat', ctx.hr)
     ecg_display_label = (
         'მოციმციმე არითმია — ტაქისისტოლია (HR > 110!)'
-        if (ctx.ecg == 'afib_controlled' and ctx.hr is not None and ctx.hr > 110)
+        if (ctx.ecg == 'afib_controlled' and hr_eff is not None and hr_eff > 110)
         else ECG_LABELS.get(ctx.ecg, ctx.ecg)
     )
     return {

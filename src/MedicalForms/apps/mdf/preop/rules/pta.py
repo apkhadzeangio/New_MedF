@@ -23,14 +23,14 @@ def eval_pta(ctx):
         ctx.red_flags.append(msg)
         ctx.priority_flags.append(msg)
 
-    if not is_clti and (s.get('pta_lesion_site') == rule_value('PTA_BTK_IC_STOP')):
+    if not is_clti and not ctx.is_ali_acute and (s.get('pta_lesion_site') == rule_value('PTA_BTK_IC_STOP')):
         btk_ic_msg = (
             'ხანგამოშვებითი კოჭლობის (IC) დროს წვივის/ტერფის არტერიებზე (BTK / Infrapopliteal) ენდოვასკულური ჩარევა '
             'უკუნაჩვენებია (ESVS 2024 / ACC-AHA 2024 Class III — Harm)! გადაამოწმეთ ჩვენება ქირურგთან.'
         )
         ctx.red_flags.append(btk_ic_msg)
         ctx.hard_contraindications.append(btk_ic_msg)
-    elif not is_clti and (s.get('pta_lesion_site') == 'multilevel'):
+    elif not is_clti and not ctx.is_ali_acute and (s.get('pta_lesion_site') == 'multilevel'):
         ctx.amber_flags.append(
             'მრავალდონიანი დაზიანება ხანგამოშვებითი კოჭლობისას — დარწმუნდით, რომ არ იგეგმება იზოლირებული წვივის (BTK) არტერიების ჩარევა (ESVS 2024 Class III).'
         )

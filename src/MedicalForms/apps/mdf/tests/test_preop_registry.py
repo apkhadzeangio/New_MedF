@@ -81,6 +81,24 @@ class PreopRuleRegistryTests(SimpleTestCase):
         self.assertEqual(rule_value('MED_WARFARIN_HOLD_DAYS')['hold_days'], 5)
         self.assertEqual(rule_value('INF_STALE_LABS_DAYS'), 14)
 
+    def test_every_registry_dict_key_referenced_in_engine(self):
+        from pathlib import Path
+
+        preop_dir = Path(__file__).resolve().parent.parent / 'preop'
+        src_parts = []
+        for py_path in sorted(preop_dir.rglob('*.py')):
+            if 'registry' in py_path.parts:
+                continue
+            src_parts.append(py_path.read_text(encoding='utf-8'))
+        engine_src = '\n'.join(src_parts)
+        dead = []
+        for r in RULES:
+            if isinstance(r.value, dict):
+                for k in r.value:
+                    if f"'{k}'" not in engine_src and f'"{k}"' not in engine_src:
+                        dead.append(f'{r.id}[{k!r}]')
+        self.assertEqual(dead, [], f'Dead registry dict keys not read by engine: {dead}')
+
 
 class PreopRulesCatalogAndCitationUITests(TestCase):
     """Verify '/preop/rules/' catalog, clinician sign-off persistence, and patient ⓘ citations."""

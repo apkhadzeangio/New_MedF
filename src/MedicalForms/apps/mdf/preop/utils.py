@@ -329,7 +329,13 @@ def _sanitize_merged_dict(defaults, raw_dict):
         if k not in data:
             if isinstance(rv, float) and not math.isfinite(rv):
                 continue
-            data[k] = rv
+            if isinstance(rv, dict):
+                data[k] = {
+                    dk: dv for dk, dv in rv.items()
+                    if not (isinstance(dv, float) and not math.isfinite(dv))
+                }
+            else:
+                data[k] = rv
     return data
 
 

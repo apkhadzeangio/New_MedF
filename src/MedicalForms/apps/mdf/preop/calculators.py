@@ -179,14 +179,17 @@ def calc_max_contrast_ml(egfr, on_dialysis=False):
     from .registry import rule_value
     if on_dialysis or egfr is None:
         return None
+    eg_v = _num(egfr, lo=0, hi=500)
+    if eg_v is None:
+        return None
     ren = rule_value('REN_CKD_NEPHRO_HYDRATION')
-    if egfr < ren['red']:
-        return max(15, int(round(egfr * ren.get('mult_lt30', 1.0))))
-    if egfr < ren['nephro']:
-        return int(round(egfr * ren.get('mult_30_44', 1.5)))
-    if egfr < ren['hydration']:
-        return int(round(egfr * ren.get('mult_45_59', 2.0)))
-    return min(250, int(round(egfr * ren['gurm_mult'])))
+    if eg_v < ren['red']:
+        return max(15, int(round(eg_v * ren.get('mult_lt30', 1.0))))
+    if eg_v < ren['nephro']:
+        return int(round(eg_v * ren.get('mult_30_44', 1.5)))
+    if eg_v < ren['hydration']:
+        return int(round(eg_v * ren.get('mult_45_59', 2.0)))
+    return min(250, int(round(eg_v * ren['gurm_mult'])))
 
 
 def _valid_bilateral_sbp(s):
@@ -196,6 +199,16 @@ def _valid_bilateral_sbp(s):
     r_inv = (bp_sys is not None and bp_dia is not None and bp_sys <= bp_dia)
     l_inv = (bp_sys_l is not None and bp_dia_l is not None and bp_sys_l <= bp_dia_l)
     valid = [v for v, inv in ((bp_sys, r_inv), (bp_sys_l, l_inv)) if v is not None and not inv]
+    return max(valid, default=None)
+
+
+def _valid_bilateral_dbp(s):
+    """Return max valid diastolic BP across R/L arms, rejecting inverted readings (SBP <= DBP)."""
+    bp_sys, bp_dia = _sat_num(_s_raw(s, 'bp_sys'), 30, 320), _sat_num(_s_raw(s, 'bp_dia'), 20, 220)
+    bp_sys_l, bp_dia_l = _sat_num(_s_raw(s, 'bp_sys_l'), 30, 320), _sat_num(_s_raw(s, 'bp_dia_l'), 20, 220)
+    r_inv = (bp_sys is not None and bp_dia is not None and bp_sys <= bp_dia)
+    l_inv = (bp_sys_l is not None and bp_dia_l is not None and bp_sys_l <= bp_dia_l)
+    valid = [v for v, inv in ((bp_dia, r_inv), (bp_dia_l, l_inv)) if v is not None and not inv]
     return max(valid, default=None)
 
 
@@ -276,14 +289,16 @@ def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
 
 
 def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_liver, compression_contra):
+    from .registry import rule_value
+    cap_cfg = rule_value('SCORE_CAPRINI_VTE')
     comp_sfx = '' if compression_contra else ' + კომპრესია'
     comp_low = ' (კომპრესია უკუნაჩვენებია არტერიული უკმარისობის გამო!)' if compression_contra else ' + ელასტიური კომპრესია'
     hit_dtis = (
         'IV ბივალირუდინი (არგატრობანი ღვიძლის ≥3x-ზე ერიდეთ/დოზა -75%!)'
         if severe_liver else 'IV ბივალირუდინი/არგატრობანი'
     )
-    if pts >= 5:
-        tier = 'მაღალი (≥5)'
+    if pts >= cap_cfg['high_min']:
+        tier = f"მაღალი (≥{cap_cfg['high_min']})"
         if has_mech_valve:
             if has_hit:
                 advice = f'მექანიკური სარქველი + HIT: სტაციონარული {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}'
@@ -304,8 +319,8 @@ def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_
             advice = f'ფარმაკოლოგიური პროფილაქტიკა: LMWH / UFH კოაგულოგრამის კონტროლით (ღვიძლის ≥3x-ზე DOAC უკუნაჩვენებია!){comp_sfx}'
         else:
             advice = f'ფარმაკოლოგიური პროფილაქტიკა (LMWH / DOAC 7–10 დღე){comp_sfx}'
-    elif pts >= 3:
-        tier = 'საშუალო (3–4)'
+    elif pts > cap_cfg['low_max']:
+        tier = f"საშუალო ({cap_cfg['low_max'] + 1}–{cap_cfg['mod_max']})"
         if has_mech_valve and has_hit:
             advice = f'მექანიკური სარქველი + HIT: {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}'
         elif has_mech_valve:
@@ -394,6 +409,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     hba1c = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     spo2 = _sat_num(_s_raw(s, 'spo2'), 30, 100)
     eff_sbp = _valid_bilateral_sbp(s)
+    eff_dbp = _valid_bilateral_dbp(s)
     inv_bp = _inverted_bp_arms(s) if eff_sbp is None else []
     inv_max = max((max(a, b) for a, b in inv_bp), default=None)
     inv_min = min((min(a, b) for a, b in inv_bp), default=None)
@@ -450,7 +466,8 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or bool(q.get('dm_insulin')) or (bmi_v is not None and bmi_v >= 40)
         or bool(q.get('pacemaker')) or ('copd' in _str_list(q.get('pulm_chips')))
         or (spo2 is not None and spo2 < 94) or (eff_sbp is not None and eff_sbp >= 180)
-        or (inv_max is not None and (inv_max >= 180 or inv_min >= 110))
+        or (eff_dbp is not None and eff_dbp >= 110)
+        or (inv_max is not None and (inv_max >= 180 or inv_min >= 110 or inv_min < 90))
         or (k_val is not None and (k_val >= 5.4 or k_val < 3.3)) or (q.get('cfs_level') == '5_plus')
     ):
         return 'III'
@@ -545,14 +562,16 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
         factors.append('კრეატინინი >2.0 მგ/დლ (>177 მკმოლ/ლ) / დიალიზი')
 
     score = len(factors)
+    band_map = dict(rcri_cfg['bands'])
     if score == 0:
-        mace_pct, tier, tier_label = '0.4%', 'low', 'დაბალი (~0.4% MACE)'
+        mace_pct, tier, tier_label = band_map[0], 'low', f'დაბალი (~{band_map[0]} MACE)'
     elif score == 1:
-        mace_pct, tier, tier_label = '0.9%', 'low', 'დაბალი (~0.9% MACE)'
+        mace_pct, tier, tier_label = band_map[1], 'low', f'დაბალი (~{band_map[1]} MACE)'
     elif score == 2:
-        mace_pct, tier, tier_label = '6.6%', 'intermediate', 'საშუალო (~6.6% MACE)'
+        mace_pct, tier, tier_label = band_map[2], 'intermediate', f'საშუალო (~{band_map[2]} MACE)'
     else:
-        mace_pct, tier, tier_label = '≥11.0%', 'high', 'მაღალი (≥11.0% MACE)'
+        pct_hi = band_map[3].replace('>=', '≥')
+        mace_pct, tier, tier_label = pct_hi, 'high', f'მაღალი ({pct_hi} MACE)'
     return {
         'score': score,
         'mace_pct': mace_pct,
@@ -653,7 +672,6 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
     s = s if isinstance(s, dict) else {}
     ari_cfg = rule_value('SCORE_ARISCAT_CANET_2010')
     pathway = _resolve_pathway(patient)
-    q_filled = bool(q.get('filled'))
     inf_chips = set(_str_list(q.get('inf_chips')))
     spo2 = _sat_num(_s_raw(s, 'spo2'), 30, 100)
     eff_hb = hb_gl if hb_gl is not None else _sat_hb_gl(_s_raw(s, 'hb'))
@@ -681,7 +699,7 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
             pts += 8
             factors.append(f'SpO2 {spo2_i}% 91–95 (+8)')
 
-    if (q_filled and 'fever_resp' in inf_chips) or (s.get('cxr') == 'infiltrate'):
+    if ('fever_resp' in inf_chips) or (s.get('cxr') == 'infiltrate'):
         pts += 17
         factors.append('რესპირატორული ინფექცია / ინფილტრაცია (+17)')
 

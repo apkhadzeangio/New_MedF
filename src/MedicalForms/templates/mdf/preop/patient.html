@@ -213,7 +213,7 @@
     {% if ev.red_flags or ev.reflex_orders or ev.amber_flags %}
     <div class="po-alerts" role="region" aria-label="კლინიკური გაფრთხილებები და რეფლექს-პროტოკოლები">
         {% if red_flag_items %}
-            {% if ev.alerts_acked and not ev.has_hard_contraindication %}
+            {% if ev.alerts_acked and not ev.has_hard_contraindication and ev.clearance_seal.code != 'stop' %}
             <details class="po-alert red" style="display:block">
                 <summary style="cursor:pointer;font-weight:600">
                     ✓ ქირურგმა გაეცნო ({{ red_flag_items|length }} გაფრთხილება) — დააწკაპეთ სრულად სანახავად

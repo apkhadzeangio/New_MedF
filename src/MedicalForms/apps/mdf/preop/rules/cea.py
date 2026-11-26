@@ -1,7 +1,8 @@
 """Carotid Endarterectomy (CEA) pathway clinical rules (ESVS 2023 / SVS 2022)."""
 from ...models import PreopPatient
+from ..calculators import _s_raw, _sat_num
 from ..registry import rule_value
-from ..utils import _int, cea_live_days_since_event, is_symp_cea_patient
+from ..utils import cea_live_days_since_event, is_symp_cea_patient
 
 
 def _eval_cea_symptoms_and_clocks(ctx):
@@ -31,10 +32,16 @@ def _eval_cea_symptoms_and_clocks(ctx):
         )
     if ctx.active_thrombolysis_window:
         if (s.get('brain_imaging') == 'normal_small') and days_since_ev is not None and days_since_ev >= 1:
-            ctx.red_flags.append(
-                f'ინტრავენური თრომბოლიზისი ბოლო {tl_days} დღეში (ESVS 2023) — >24 სთ-ის შემდეგ საკონტროლო CT-ით ჰემორაგიის გამორიცხვისას '
-                f'დასაშვებია ასპირინი 75–100 მგ ქირურგ/ნევროლოგთან შეთანხმებით, ხოლო ნაადრევი სისტემური ჰეპარინიზაცია/CEA ≤{tl_days} დღეში საშიშია!'
-            )
+            if 'nsaid' in ctx.allergy_chips:
+                ctx.red_flags.append(
+                    f'ინტრავენური თრომბოლიზისი ბოლო {tl_days} დღეში (ESVS 2023) + ასპირინზე/აასს-ზე ალერგია — '
+                    f'არ დაიწყოთ ასპირინი; OAC/P2Y12 და სისტემური ჰეპარინიზაცია ≤{tl_days} დღეში დაბლოკილია — შეათანხმეთ ინდივიდუალური რეჟიმი ნევროლოგთან!'
+                )
+            else:
+                ctx.red_flags.append(
+                    f'ინტრავენური თრომბოლიზისი ბოლო {tl_days} დღეში (ESVS 2023) — >24 სთ-ის შემდეგ საკონტროლო CT-ით ჰემორაგიის გამორიცხვისას '
+                    f'დასაშვებია ასპირინი 75–100 მგ ქირურგ/ნევროლოგთან შეთანხმებით, ხოლო ნაადრევი სისტემური ჰეპარინიზაცია/CEA ≤{tl_days} დღეში საშიშია!'
+                )
         else:
             ctx.red_flags.append(
                 f'ინტრავენური თრომბოლიზისი ბოლო {tl_days} დღეში (ESVS 2023) — ნაადრევი ჰეპარინიზაციის/სისხლჩაქცევის რისკი, შეათანხმეთ ოპერაციის თარიღი ქირურგთან!'
@@ -166,7 +173,7 @@ def eval_cea(ctx):
         )
 
     cea_neck_set = set(q.get('cea_neck_chips') or [])
-    lvef_prelim = _int(s.get('lvef'), lo=5, hi=95)
+    lvef_prelim = _sat_num(_s_raw(s, 'lvef'), 5, 95)
     ctx.cea_high_surg_risk = bool(
         ('neck_rad' in cea_neck_set) or ('ipsi_restenosis' in cea_neck_set)
         or laryng_res == 'palsy' or cea_cta == 'high_calcified'
@@ -178,9 +185,11 @@ def eval_cea(ctx):
             'ქირურგთან განიხილეთ კაროტიდული სტენტირება (CAS / TCAR).'
         )
 
-    tl_blocks_ap = ctx.active_thrombolysis_window and not (
-        brain_im == 'normal_small' and ctx.days_since_ev is not None and ctx.days_since_ev >= 1
+    is_rtpa_asa_only = bool(
+        ctx.active_thrombolysis_window and brain_im == 'normal_small'
+        and ctx.days_since_ev is not None and ctx.days_since_ev >= 1
     )
+    tl_blocks_ap = ctx.active_thrombolysis_window and (not is_rtpa_asa_only or ('nsaid' in ctx.allergy_chips))
     antiplatelet_prohibited_cea = (brain_im == rule_value('CEA_BRAIN_HEMORRHAGE_STOP')) or tl_blocks_ap
     if q_filled and not ctx.has_antiplatelet and not antiplatelet_prohibited_cea:
         ctx.needs_cea_antiplatelet = True
@@ -189,7 +198,10 @@ def eval_cea(ctx):
             'პაციენტი იღებს მხოლოდ ანტიკოაგულანტს (რომელიც ოპერაციამდე ჩერდება) ანტიაგრეგანტის გარეშე!'
             if has_oac_only else 'CEA-ს წინ პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2023 Class I)'
         )
-        if 'nsaid' in ctx.allergy_chips:
+        if is_rtpa_asa_only:
+            ap_opt = 'ასპირინი 75–100 მგ მონოთერაპია (თრომბოლიზისი ≤6 დღე — P2Y12/DAPT დაბლოკილია!)'
+            ap_name = 'ასპირინი 75–100 მგ (rt-PA ≤6 დღე — P2Y12 დაბლოკილია)'
+        elif 'nsaid' in ctx.allergy_chips:
             ap_opt = 'ალტერნატიული P2Y12 კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი 75 მგ (ასპირინზე/აასს-ზე ალერგია!)'
             ap_name = 'ალტერნატიული P2Y12 (ასპირინზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი (ასპირინზე ალერგია!)'
         elif 'clopidogrel_intol' in ctx.allergy_chips:

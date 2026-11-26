@@ -4,6 +4,7 @@ from ..anamnesis import build_self_fill_highlights
 from ..calculators import _ihd_and_chf_flags, calc_ariscat_pulm, calc_rcri, calc_vsg_cri
 from ..constants import AAA_MORPHOLOGY_CHOICES, AAA_NECK_CHOICES, POPLITEAL_SCREEN_CHOICES, STATUS_READY
 from ..meds import _apply_stop_lock_to_med_schedule
+from ..registry import rule_value
 from ..utils import _num, is_self_filled_q
 
 
@@ -234,9 +235,10 @@ def _build_surgical_anatomy_brief(ctx):
     if pathway == PreopPatient.Pathway.CEA:
         cea_cta_lbl = {'concordant': 'ტიპური ბიფურკაცია, დუპლექსთან შესაბამისი', 'high_calcified': 'მაღალი ბიფურკაცია (C2) / მძიმე კალციფიკაცია / კინკინგი (!)', 'pending': 'CTA შესატანია'}.get(s.get('cea_cta_status') or 'pending', 'ზუსტდება')
         br_lbl = {'normal_small': 'სისხლჩაქცევის გარეშე / მცირე კერა', 'large_or_hemorrhage': 'ფართო ინფარქტი (>1/3 MCA) ან ჰემორაგია — უკუჩვენება!', 'pending': 'შესატანია' if ctx.needs_brain_ct else 'არ იყო ნაჩვენები'}.get(s.get('brain_imaging') or 'pending', 'ზუსტდება')
+        contra_crit = rule_value('CEA_STENOSIS_THRESHOLDS')['contra_crit']
         shunt_note = (
-            'ინტრაოპერაციული შუნტის (Shunt) სავალდებულო მზადყოფნა (კონტრალატ. სტენოზი/ოკლუზია ≥80% ან გადატანილი ინსულტი)!'
-            if ((ctx.contra_car is not None and ctx.contra_car >= 80) or (q_filled and q.get('neuro')) or ctx.is_symp_cea)
+            f'ინტრაოპერაციული შუნტის (Shunt) სავალდებულო მზადყოფნა (კონტრალატ. სტენოზი/ოკლუზია ≥{contra_crit}% ან გადატანილი ინსულტი)!'
+            if ((ctx.contra_car is not None and ctx.contra_car >= contra_crit) or (q_filled and q.get('neuro')) or ctx.is_symp_cea)
             else 'სტანდარტული ცერებრული მონიტორინგი / სელექციური შუნტირება'
         )
         return (
@@ -307,7 +309,9 @@ def _build_surgical_anatomy_brief(ctx):
 
 def _build_surgical_abx_regimen(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
-    wt_num = _num(s.get('weight_kg'), lo=25, hi=260)
+    wt_num = getattr(ctx, 'weight_sat', None)
+    if wt_num is None:
+        wt_num = _num(s.get('weight_kg'), lo=25, hi=260)
     is_std_evla_abx = ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not (
         q_filled and (q.get('ven_ceap') == 'C6' or q.get('ven_acute_svt') or q.get('ven_skin_infection'))
     )
@@ -366,9 +370,10 @@ def _build_surgical_brief(ctx):
         heparin_plan = f'არაფრაქციული ჰეპარინი (UFH) 70–100 სე/კგ IV კლამპირებამდე/ჩარევამდე (სამიზნე ACT > 200–250 წმ · საბაზისო PLT: {plt_s})'
 
     contrast_plan = ''
+    na_eff = getattr(ctx, 'na_val_sat', ctx.na_val)
     hyd_fluid_note = (
         'ჰიპერნატრიემია Na+ ≥150 — 0.9% NaCl-ით დატვირთვა აკრძალულია!'
-        if (ctx.na_val is not None and ctx.na_val >= 150) else
+        if (na_eff is not None and na_eff >= 150) else
         ('ფრთხილი 0.9% NaCl 0.5 მლ/კგ/სთ (HFrEF!)' if ctx.chf_hyd_flag else 'პერიპროცედურული 0.9% NaCl 1 მლ/კგ/სთ ჰიდრატაცია')
     )
     if ctx.max_contrast_ml is not None:
@@ -397,7 +402,11 @@ def _build_surgical_brief(ctx):
     if is_cea_ich_b or (is_cea_rtpa_b and not (s.get('brain_imaging') == 'normal_small' and ctx.days_since_ev is not None and ctx.days_since_ev >= 1)):
         default_postop_at = 'ტვინის სისხლჩაქცევის / თრომბოლიზისის ფონზე ანტიკოაგულაციისა და ანტიაგრეგანტების აღდგენა დაბლოკილია — სავალდებულოა ნეიროქირურგისა და ნევროლოგის კონსილიუმი!'
     elif is_cea_rtpa_b:
-        default_postop_at = 'თრომბოლიზისი ≤6 დღე: სისტემური ანტიკოაგულაციის/LMWH/DAPT აღდგენა დაბლოკილია — CT-ზე ჰემორაგიის გამორიცხვისას დასაშვებია მხოლოდ ასპირინი 75–100 მგ ნევროლოგთან შეთანხმებით!'
+        default_postop_at = (
+            'თრომბოლიზისი ≤6 დღე + ასპირინზე ალერგია: სისტემური ანტიკოაგულაცია/LMWH/P2Y12 და ასპირინი დაბლოკილია — შეათანხმეთ ინდივიდუალური რეჟიმი ნევროლოგთან!'
+            if asa_allergy else
+            'თრომბოლიზისი ≤6 დღე: სისტემური ანტიკოაგულაციის/LMWH/DAPT აღდგენა დაბლოკილია — CT-ზე ჰემორაგიის გამორიცხვისას დასაშვებია მხოლოდ ასპირინი 75–100 მგ ნევროლოგთან შეთანხმებით!'
+        )
     elif ctx.is_venous:
         default_postop_at = ctx.caprini_advice
     elif ctx.post_antithrombotic_label:
@@ -545,8 +554,9 @@ def _build_anesthetic_brief(ctx):
     cied_brief_sfx = f' · CIED: {ctx.cied_plan_label}' if ctx.cied_plan_label else (' · CIED: რეჟიმი დასაზუსტებელია (!) — გარე პედების მზადყოფნა!' if ctx.needs_cied else '')
     fistula_sfx = ' · AV ფისტულის მკლავის დაცვა (წნევის მანჟეტი, პუნქცია და კათეტერი აკრძალულია!)' if ctx.on_dialysis else ''
 
-    needs_glycemic_corridor = bool((q_filled and (q.get('dm') or q.get('dm_insulin'))) or (ctx.gl_mmol is not None and ctx.gl_mmol >= 7.0) or (ctx.hba1c is not None and ctx.hba1c >= 6.5))
-    needs_vriii = bool((q_filled and q.get('dm_insulin') and ctx.open_aortic) or (ctx.gl_mmol is not None and ctx.gl_mmol >= 12.0) or (ctx.dos_gl is not None and ctx.dos_gl >= 12.0))
+    gl_eff = getattr(ctx, 'gl_mmol_sat', ctx.gl_mmol)
+    needs_glycemic_corridor = bool((q_filled and (q.get('dm') or q.get('dm_insulin'))) or (gl_eff is not None and gl_eff >= 7.0) or (ctx.hba1c is not None and ctx.hba1c >= 6.5))
+    needs_vriii = bool((q_filled and q.get('dm_insulin') and ctx.open_aortic) or (gl_eff is not None and gl_eff >= 12.0) or (ctx.dos_gl is not None and ctx.dos_gl >= 12.0))
     vriii_sfx = ' · ინტრაოპ./ICU: IV ინსულინის ინფუზია (VRIII) საათობრივი გლუკოზისა და K+ კონტროლით!' if needs_vriii else ''
 
     base_disp = (

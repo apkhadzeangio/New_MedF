@@ -70,12 +70,14 @@ def set_preop_ui_mode(request, mode):
 
 
 def med_schedule_signature(ev):
-    """Stable short fingerprint of planned surgery date + hold/skip medication instructions."""
+    """Stable short fingerprint of planned surgery date + full medication instructions & safety flags."""
     s = ev['s']
     parts = [str(s.get('planned_surgery_date') or '')]
     for row in ev['med_schedule']:
-        if row.get('hold_or_skip') or row.get('tone') == 'red':
-            parts.append(f"{row.get('drug')}|{row.get('date_plan')}|{row.get('tone')}")
+        parts.append(
+            f"{row.get('drug')}|{row.get('date_plan')}|{row.get('tone')}|{row.get('rule')}"
+            f"|{bool(row.get('contraindicated'))}|{bool(row.get('acute_hold'))}|{bool(row.get('hold_or_skip'))}"
+        )
     return hashlib.sha1('\n'.join(parts).encode('utf-8')).hexdigest()[:12]
 
 

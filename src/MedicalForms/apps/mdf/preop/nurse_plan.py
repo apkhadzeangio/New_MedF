@@ -28,21 +28,30 @@ def build_plain_georgian_missing_items(patient, ev, today):
     q = ev['q']
 
     if ev['has_hard_contraindication'] or ev['clearance_seal']['code'] == 'stop' or ev.get('dos_hold_danger'):
-        reason = (
-            ev['dos_warnings'][0] if ev.get('dos_warnings')
-            else (ev['red_flags'][0] if ev['red_flags'] else 'ოპერაციაზე დაშვება შეჩერებულია')
-        )
-        items.append({
-            'kind': 'stop', 'label': f'STOP — აცნობეთ ქირურგს: {reason}',
-            'target_section': 'nw-dos-card' if ev.get('dos_warnings') else 'nw-sec-doc',
-            'target_input': '', 'action_label': 'ექიმის სექცია',
-        })
+        if ev.get('dos_warnings'):
+            for dw in ev['dos_warnings'][:4]:
+                items.append({
+                    'kind': 'stop', 'label': f'STOP — აცნობეთ ქირურგს: {dw}',
+                    'target_section': 'nw-sec-dos', 'target_input': '', 'action_label': 'დილის შემოწმება',
+                })
+        else:
+            reason = ev['red_flags'][0] if ev['red_flags'] else 'ოპერაციაზე დაშვება შეჩერებულია'
+            items.append({
+                'kind': 'stop', 'label': f'STOP — აცნობეთ ქირურგს: {reason}',
+                'target_section': 'nw-sec-doc', 'target_input': '', 'action_label': 'ექიმის სექცია',
+            })
     elif ev['has_unacked_red']:
         for rf in ev['red_flags'][:3]:
             items.append({
                 'kind': 'alert', 'label': f'ექიმს უნდა ეცნობოს: {rf}',
                 'target_section': 'nw-sec-doc', 'target_input': '', 'action_label': 'ქირურგის ნახვა',
             })
+    if ev.get('neuraxial_hard_blocked') and not any(it['kind'] == 'stop' for it in items):
+        items.append({
+            'kind': 'alert',
+            'label': 'ანესთეზიის გეგმა შესაცვლელია: არჩეული ნეირაქსიული ბლოკადა უკუნაჩვენებია (ASRA 5th Ed)!',
+            'target_section': 'nw-sec-s2', 'target_input': '', 'action_label': 'ანესთეზიის შეცვლა',
+        })
 
     has_q_banner = False
     if not q.get('filled') or ev['status'] == STATUS_NO_Q:
@@ -77,13 +86,13 @@ def build_plain_georgian_missing_items(patient, ev, today):
     for u in (ev.get('unknown_state_flags') or []):
         if not u.get('blocking'):
             continue
-        if u.get('key') == 'unverified_self_fill' and has_q_banner:
+        ukey = u.get('key') or ''
+        if ukey == 'unverified_self_fill' and has_q_banner:
             continue
         ufld = u.get('field') or ''
-        if ufld and ufld in seen_fields:
+        if ufld and ufld in seen_fields and ukey not in ('implausible_values', 'renal_drug_no_crcl', 'ambiguous_creat_unit'):
             continue
-        tab_u = u.get('tab') or ''
-        sec_u = {'dos': 'nw-dos-card', 'q': 'nw-sec-q', 's2': 'nw-sec-s2', 'header': 'nw-sec-header'}.get(tab_u, 'nw-vitals-card')
+        sec_u = {'dos': 'nw-sec-dos', 'q': 'nw-sec-q', 's2': 'nw-sec-s2', 'header': 'nw-patient-root'}.get(u.get('tab') or '', 'nw-vitals-card')
         items.append({
             'kind': 'missing', 'label': f"დასაზუსტებელია: {u['label']}",
             'target_section': sec_u, 'target_input': _FIELD_TO_INPUT_ID.get(ufld, ''), 'action_label': 'შესწორება',
@@ -138,11 +147,11 @@ def build_phone_med_script(patient, ev, today):
         plan = (row.get('date_plan') or '').strip()
         is_skip_text = ('გამოტოვეთ' in plan) or ('არ მიიღოთ' in plan)
         is_hold = bool(row.get('hold_or_skip')) or is_skip_text
-        is_urgent = bool(row.get('acute_hold') or row.get('contraindicated') or row.get('unstructured'))
-        is_red_deesc = bool(row.get('tone') == 'red' and ('დე-ესკალაცია' in plan or 'შეათანხმეთ' in plan or 'შეცვალეთ' in plan or 'დააზუსტეთ' in plan))
+        is_acute_or_contra = bool(row.get('acute_hold') or row.get('contraindicated') or row.get('unstructured'))
+        is_urgent = is_acute_or_contra or bool(row.get('tone') == 'red' and not stop_locked)
         spoken_txt = (
             'არ შეწყვიტოთ თვითნებურად — ოპერაცია შეჩერებულია (STOP)!'
-            if (stop_locked and is_hold and not is_urgent)
+            if (stop_locked and is_hold and not is_acute_or_contra)
             else _spoken_med_phrase(row, op_ka)
         )
         entry = {
@@ -153,9 +162,9 @@ def build_phone_med_script(patient, ev, today):
             'tone': row['tone'],
             'date_plan': plan,
             'hold_or_skip': is_hold,
-            'urgent_contact': is_urgent or is_red_deesc,
+            'urgent_contact': is_urgent,
         }
-        if is_hold or is_urgent or row.get('unstructured') or is_red_deesc:
+        if is_hold or is_urgent or row.get('tone') == 'red':
             stop_rows.append(entry)
         else:
             keep_rows.append(entry)

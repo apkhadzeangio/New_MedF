@@ -52,7 +52,7 @@ def _eval_aaa_anatomy(ctx, aaa_morph, aaa_neck, pop_scr):
             'გამოირიცხოს შემაერთებელი ქსოვილის გენეტიკური არტერიოპათია (Marfan / Loeys-Dietz / ვასკულიტი) და მთელი აორტის პათოლოგია.'
         )
 
-    if aaa_neck == 'hostile_neck':
+    if aaa_neck == rule_value('AAA_HOSTILE_NECK'):
         if patient.op_subtype == 'evar':
             ctx.red_flags.append(
                 'CTA-ზე Hostile Neck (ყელი <10–15 მმ / კუთხე >60° / თრომბი-კალციფიკაცია — IFU-ს გარეთ)! '

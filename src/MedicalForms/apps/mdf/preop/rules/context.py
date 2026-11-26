@@ -112,6 +112,7 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today
     for dkey, dlbl, raw_val in (
         ('cta_date', 'CTA თარიღი', src['cta_date'] if 'cta_date' in src else s.get('cta_date')),
         ('cea_event_date', 'CEA ეპიზოდის თარიღი', q_d.get('cea_event_date')),
+        ('birth_date', 'დაბადების თარიღი', src['birth_date'] if 'birth_date' in src else s.get('birth_date')),
     ):
         if _has_raw(raw_val):
             dt_v = _date(raw_val)
@@ -119,6 +120,15 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today
                 bad.append(_fmt_bad_val(dlbl, raw_val))
         elif dkey in inv and _has_raw(inv[dkey]):
             bad.append(_fmt_bad_val(dlbl, inv[dkey]))
+    for sk, dk, lbl_bp in (
+        ('bp_sys', 'bp_dia', 'წნევა (R)'),
+        ('bp_sys_l', 'bp_dia_l', 'წნევა (L)'),
+        ('dos_bp_sys', 'dos_bp_dia', 'დილის წნევა'),
+    ):
+        sv = _num(src[sk] if sk in src else s.get(sk), lo=30, hi=320)
+        dv = _num(src[dk] if dk in src else s.get(dk), lo=20, hi=220)
+        if sv is not None and dv is not None and sv <= dv:
+            bad.append(f'{lbl_bp} ინვერტირებულია ({int(sv)}/{int(dv)})')
     return bad
 
 
@@ -127,7 +137,9 @@ class EvalContext(SimpleNamespace):
 
 
 def _init_limb_hemodynamics(ctx):
+    from ..registry import rule_value
     patient, pathway, s, q = ctx.patient, ctx.pathway, ctx.s, ctx.q
+    abi_noncomp_thresh = rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')['abi_noncomp']
     abi_r = _num(s.get('abi_r'), lo=0.0, hi=3.0)
     abi_l = _num(s.get('abi_l'), lo=0.0, hi=3.0)
     tp_r = _int(s.get('tp_r'), lo=0, hi=400)
@@ -162,13 +174,13 @@ def _init_limb_hemodynamics(ctx):
 
     min_abi = min(eff_abis, default=None)
     max_abi = max(eff_abis, default=None)
-    min_comp_abi = min([v for v in eff_abis if v <= 1.40], default=None)
+    min_comp_abi = min([v for v in eff_abis if v <= abi_noncomp_thresh], default=None)
     min_tp = min(eff_tps, default=None)
     min_tbi = min(eff_tbis, default=None)
 
-    nc_legs = [lg for lg in scope_legs if leg_vals[lg]['abi'] is not None and leg_vals[lg]['abi'] > 1.40]
+    nc_legs = [lg for lg in scope_legs if leg_vals[lg]['abi'] is not None and leg_vals[lg]['abi'] > abi_noncomp_thresh]
     if not nc_legs and not unilateral_specified and not scoped_abis:
-        nc_legs = [lg for lg in ('R', 'L') if leg_vals[lg]['abi'] is not None and leg_vals[lg]['abi'] > 1.40]
+        nc_legs = [lg for lg in ('R', 'L') if leg_vals[lg]['abi'] is not None and leg_vals[lg]['abi'] > abi_noncomp_thresh]
     abi_non_compressible = bool(nc_legs)
     if nc_legs:
         tbi_measured = all((leg_vals[lg]['tp'] is not None or leg_vals[lg]['tbi'] is not None) for lg in nc_legs)
@@ -205,10 +217,16 @@ def _init_limb_hemodynamics(ctx):
 
 
 def _init_base_flags_and_pre_reflex(ctx):
+    from ..calculators import _sat_num
     q, s = ctx.q, ctx.s
     ctx.pad_gsv_mm = _num(s.get('pad_gsv_mm'), lo=0.5, hi=30)
     ctx.ldl_val = normalize_ldl_mmol(s.get('ldl'))
     ctx.weight_num = _num(s.get('weight_kg'), lo=25, hi=260)
+    ctx.weight_sat = _sat_num(_s_raw(s, 'weight_kg'), 25, 260)
+    ctx.is_ali_acute = bool(
+        ctx.pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
+        and q.get('abf_duration') == '< 2 კვირა'
+    )
 
     ctx.ipsi_car, ctx.contra_car, ctx.is_symp_cea, ctx.is_clti_any = None, None, False, False
     ctx.days_since_ev = None
@@ -236,12 +254,15 @@ def _init_base_flags_and_pre_reflex(ctx):
         w in (q.get('other_meds') or '').lower()
         for w in ('სტატინ', 'ატორვ', 'როზუვ', 'კრესტორ', 'ლიპრიმ', 'statin', 'atorvast', 'rosuvast', 'simvast', 'ezetimib')
     )
+    ctx.has_safe_aspirin = bool(q.get('med_aspirin') and 'nsaid' not in ctx.allergy_chips)
+    ctx.has_safe_clopidogrel = bool(q.get('med_clopidogrel') and 'clopidogrel_intol' not in ctx.allergy_chips)
     ctx.has_antiplatelet = bool(
-        q.get('med_aspirin') or q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel')
+        ctx.has_safe_aspirin or ctx.has_safe_clopidogrel or q.get('med_ticagrelor') or q.get('med_prasugrel')
     )
     # Cilostazol is a vasodilator/PDE3 inhibitor, NOT an ESC/ESVS guideline substitute for antiplatelet therapy
     ctx.has_any_antithrombotic = bool(
-        ctx.has_antiplatelet or q.get('med_doac') or q.get('med_dabigatran')
+        ctx.has_antiplatelet or q.get('med_aspirin') or q.get('med_clopidogrel')
+        or q.get('med_doac') or q.get('med_dabigatran')
         or q.get('med_warfarin') or ('rivaroxaban_2_5' in ctx.med_chips)
     )
 

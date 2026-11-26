@@ -41,6 +41,7 @@ def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is
         patient.op_subtype in (PreopPatient.OpSubtype.ABF_CLTI, PreopPatient.OpSubtype.BYPASS_CLTI, PreopPatient.OpSubtype.PTA_CLTI)
         or bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))
     )
+    is_ali_or = bool(q.get('abf_duration') == '< 2 კვირა')
     preg_bio_or = (patient.sex != 'M') and not (patient.sex == 'F' and patient.age is not None and patient.age > 55)
     eff_preg_or = preg_bio_or and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
     uses_contrast_or = (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)) or is_pta
@@ -53,8 +54,8 @@ def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is
         (pw == PreopPatient.Pathway.CEA and patient.side in ('R', 'L') and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)
         or (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
         or (pw == PreopPatient.Pathway.CEA and patient.side == 'B')
-        or (is_pta and not is_clti_or and s.get('pta_lesion_site') == 'infrapopliteal')
-        or (pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti_or and (
+        or (is_pta and not is_clti_or and not is_ali_or and s.get('pta_lesion_site') == 'infrapopliteal')
+        or (pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti_or and not is_ali_or and (
             s.get('pad_runoff_status') == 'desert_foot'
             or (s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
         ))
@@ -93,11 +94,19 @@ def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is
 
 
 def _oracle_cardio_cxr_uti(oracles, patient, ev, q, s, pw, is_venous, open_aortic, cad_chips, inf_chips, eff_s, eff_d):
+    from ...preop.calculators import _s_raw, _sat_num
+
     if not patient.cardio_decision:
-        hr_v = s.get('hr')
-        hr_n = int(round(hr_v)) if isinstance(hr_v, (int, float)) and not isinstance(hr_v, bool) and 15 <= hr_v <= 260 else None
-        lvef_v = s.get('lvef')
-        lvef_n = int(round(lvef_v)) if isinstance(lvef_v, (int, float)) and not isinstance(lvef_v, bool) and 5 <= lvef_v <= 95 else None
+        hr_n = _sat_num(_s_raw(s, 'hr'), 15, 260)
+        lvef_n = _sat_num(_s_raw(s, 'lvef'), 5, 95)
+        bnp_n = ev['nt_probnp'] if ev['nt_probnp'] is not None else _sat_num(_s_raw(s, 'nt_probnp'), 1, 100000)
+        ctn_n = ev['hs_ctn'] if ev['hs_ctn'] is not None else _sat_num(_s_raw(s, 'hs_ctn'), 0.1, 50000)
+        sat_s = max([v for v in (_sat_num(_s_raw(s, 'bp_sys'), 30, 320), _sat_num(_s_raw(s, 'bp_sys_l'), 30, 320)) if v is not None], default=None)
+        sat_d = max([v for v in (_sat_num(_s_raw(s, 'bp_dia'), 20, 220), _sat_num(_s_raw(s, 'bp_dia_l'), 20, 220)) if v is not None], default=None)
+        sev_htn_or = bool(
+            (eff_s is not None and eff_s >= 180) or (eff_d is not None and eff_d >= 110)
+            or (sat_s is not None and sat_s >= 180) or (sat_d is not None and sat_d >= 110)
+        )
         true_low_mets = (not q.get('mets_ok', True)) and (q.get('mets_limitation') != 'limb')
         is_pure_local_pta = (
             pw == PreopPatient.Pathway.PAD_PTA
@@ -109,15 +118,16 @@ def _oracle_cardio_cxr_uti(oracles, patient, ev, q, s, pw, is_venous, open_aorti
             open_aortic
             or true_low_mets
             or bool(q.get('cad'))
+            or bool(q.get('recent_stent'))
             or bool(q.get('pacemaker'))
             or (lvef_n is not None and lvef_n < 50)
-            or (ev['nt_probnp'] is not None and ev['nt_probnp'] >= 125)
-            or (ev['hs_ctn'] is not None and ev['hs_ctn'] >= 14)
+            or (bnp_n is not None and bnp_n >= 125)
+            or (ctn_n is not None and ctn_n >= 14)
             or bool(s.get('echo_valve_issue'))
             or s.get('ecg') in ('ischemia_arrhythmia', 'afib_controlled')
             or bool(s.get('irregular_hr'))
             or (hr_n is not None and (hr_n > 110 or hr_n < 45))
-            or ((eff_s is not None and eff_s >= 180) or (eff_d is not None and eff_d >= 110))
+            or sev_htn_or
             or (pw not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS) and bool(q.get('neuro')))
             or (not is_venous and (bool(q.get('on_dialysis')) or (ev['egfr'] is not None and ev['egfr'] < ckd_cardio_thresh)))
             or (not is_venous and bool(q.get('dm_insulin')))

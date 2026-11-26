@@ -1,6 +1,6 @@
 """Dual-track cardiac biomarkers/echo, ESC 2022/CARP audit, Stage 1 completeness & dynamic tasks."""
 from ...models import PreopPatient
-from ..calculators import calc_auto_asa
+from ..calculators import _s_raw, _sat_num, calc_auto_asa
 from ..constants import PATHWAY_SHORT
 from ..registry import rule_value
 from ..utils import _int, _num
@@ -13,45 +13,51 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
     lvef = _int(s.get('lvef'), lo=5, hi=95)
     nt_probnp = _int(s.get('nt_probnp'), lo=1, hi=100000)
     hs_ctn = _num(s.get('hs_ctn'), lo=0.1, hi=50000)
+    lvef_eff = lvef if lvef is not None else _sat_num(_s_raw(s, 'lvef'), 5, 95)
+    bnp_eff = nt_probnp if nt_probnp is not None else _sat_num(_s_raw(s, 'nt_probnp'), 1, 100000)
+    ctn_eff = hs_ctn if hs_ctn is not None else _sat_num(_s_raw(s, 'hs_ctn'), 0.1, 50000)
+    hr_eff = getattr(ctx, 'hr_sat', ctx.hr)
     ecg = s.get('ecg') or 'pending'
     ctx.lvef, ctx.nt_probnp, ctx.hs_ctn, ctx.ecg = lvef, nt_probnp, hs_ctn, ecg
 
-    if nt_probnp is not None and nt_probnp >= cb['bnp_amb']:
+    if bnp_eff is not None and bnp_eff >= cb['bnp_amb']:
+        bnp_d = nt_probnp if nt_probnp is not None else int(bnp_eff)
         if ctx.cardio_cleared:
-            ctx.amber_flags.append(f'NT-proBNP {nt_probnp} პგ/მლ (≥125) — შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
-        elif nt_probnp >= cb['bnp_red']:
+            ctx.amber_flags.append(f'NT-proBNP {bnp_d} პგ/მლ (≥125) — შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
+        elif bnp_eff >= cb['bnp_red']:
             echo_req_s = f'ექოკარდიოგრაფია ჩატარებულია (LVEF {lvef}%) — სავალდებულოა კარდიოლოგის შეფასება.' if lvef is not None else 'სავალდებულოა ექოკარდიოგრაფია და კარდიოლოგის შეფასება.'
             ctx.red_flags.append(
-                f'მაღალი NT-proBNP ({nt_probnp} პგ/მლ >= {cb["bnp_red"]}) — გულის უკმარისობისა და პერიოპერაციული MACE მაღალი რისკი! {echo_req_s}'
+                f'მაღალი NT-proBNP ({bnp_d} პგ/მლ >= {cb["bnp_red"]}) — გულის უკმარისობისა და პერიოპერაციული MACE მაღალი რისკი! {echo_req_s}'
             )
         elif lvef is not None:
-            ctx.amber_flags.append(f'მომატებული NT-proBNP ({nt_probnp} პგ/მლ >= {cb["bnp_amb"]}; LVEF {lvef}% შეფასებულია) — ESC 2022-ით საჭიროა კარდიოლოგის კონსულტაცია.')
+            ctx.amber_flags.append(f'მომატებული NT-proBNP ({bnp_d} პგ/მლ >= {cb["bnp_amb"]}; LVEF {lvef}% შეფასებულია) — ESC 2022-ით საჭიროა კარდიოლოგის კონსულტაცია.')
         else:
             tte_cls = 'Class I' if (ctx.open_aortic or ctx.true_low_mets) else 'Class IIb'
-            ctx.amber_flags.append(f'მომატებული NT-proBNP ({nt_probnp} პგ/მლ >= {cb["bnp_amb"]}) — ESC 2022 {tte_cls}-ით განიხილეთ ექოკარდიოგრაფია და კარდიოლოგი.')
+            ctx.amber_flags.append(f'მომატებული NT-proBNP ({bnp_d} პგ/მლ >= {cb["bnp_amb"]}) — ESC 2022 {tte_cls}-ით განიხილეთ ექოკარდიოგრაფია და კარდიოლოგი.')
 
-    if hs_ctn is not None and hs_ctn >= cb['ctn_amb']:
+    if ctn_eff is not None and ctn_eff >= cb['ctn_amb']:
+        ctn_d = hs_ctn if hs_ctn is not None else ctn_eff
         if ctx.cardio_cleared:
-            ctx.amber_flags.append(f'საბაზისო hs-cTn {hs_ctn} ნგ/ლ — შეფასებულია კარდიოლოგის მიერ ✓')
-        elif hs_ctn >= cb['ctn_red']:
-            ctx.red_flags.append(f'მნიშვნელოვნად მომატებული საბაზისო ტროპონინი (hs-cTn {hs_ctn} ნგ/ლ) — გამოირიცხოს მწვავე მიოკარდიუმის დაზიანება კარდიოლოგთან!')
+            ctx.amber_flags.append(f'საბაზისო hs-cTn {ctn_d} ნგ/ლ — შეფასებულია კარდიოლოგის მიერ ✓')
+        elif ctn_eff >= cb['ctn_red']:
+            ctx.red_flags.append(f'მნიშვნელოვნად მომატებული საბაზისო ტროპონინი (hs-cTn {ctn_d} ნგ/ლ) — გამოირიცხოს მწვავე მიოკარდიუმის დაზიანება კარდიოლოგთან!')
         else:
-            ctx.amber_flags.append(f'საბაზისო hs-cTn {hs_ctn} ნგ/ლ (>ULN) — დაფიქსირებულია პოსტოპერაციული MINS შედარებისთვის; შეაფასოს კარდიოლოგმა.')
+            ctx.amber_flags.append(f'საბაზისო hs-cTn {ctn_d} ნგ/ლ (>ULN) — დაფიქსირებულია პოსტოპერაციული MINS შედარებისთვის; შეაფასოს კარდიოლოგმა.')
 
-    if ecg == 'afib_controlled' and ctx.hr is not None and ctx.hr > 110:
-        ctx.red_flags.append(f'მოციმციმე არითმია — ტაქისისტოლია (HR {ctx.hr}/წთ > 110) — სავალდებულოა რიტმის/სიხშირის კონტროლი კარდიოლოგთან!')
-    if (lvef is not None and lvef < cb['lvef_red']) or s.get('echo_valve_issue') or ecg == 'ischemia_arrhythmia':
+    if ecg == 'afib_controlled' and hr_eff is not None and hr_eff > 110:
+        ctx.red_flags.append(f'მოციმციმე არითმია — ტაქისისტოლია (HR {ctx.hr if ctx.hr is not None else int(hr_eff)}/წთ > 110) — სავალდებულოა რიტმის/სიხშირის კონტროლი კარდიოლოგთან!')
+    if (lvef_eff is not None and lvef_eff < cb['lvef_red']) or s.get('echo_valve_issue') or ecg == 'ischemia_arrhythmia':
         if ctx.cardio_cleared:
             ctx.amber_flags.append('კარდიორისკი (LVEF < 40% / სარქვლოვანი პათოლოგია / ეკგ) შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
         else:
             ctx.red_flags.append('კარდიოლოგიური Red Flag (LVEF < 40% / მძიმე სარქვლოვანი მანკი / მწვავე ეკგ ცვლილება) — აცნობეთ ქირურგსა და კარდიოლოგს!')
-    elif ecg == 'afib_controlled' and not (ctx.hr is not None and ctx.hr > 110):
+    elif ecg == 'afib_controlled' and not (hr_eff is not None and hr_eff > 110):
         if ctx.cardio_cleared:
             ctx.amber_flags.append('ნორმოსისტოლური მოციმციმე არითმია — შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
         else:
             ctx.amber_flags.append('ეკგ-ზე ნორმოსისტოლური მოციმციმე არითმია — საჭიროა კარდიოლოგის შეფასება.')
-    elif lvef is not None and lvef < cb['lvef_amb']:
-        ctx.amber_flags.append(f'ზომიერად დაქვეითებული განდევნის ფრაქცია (LVEF {lvef}%).')
+    elif lvef_eff is not None and lvef_eff < cb['lvef_amb']:
+        ctx.amber_flags.append(f'ზომიერად დაქვეითებული განდევნის ფრაქცია (LVEF {lvef or int(lvef_eff)}%).')
 
     is_pure_local_pta = (
         ctx.is_pta
@@ -61,23 +67,14 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
     ckd_cardio_thresh = carp['ckd_pta'] if is_pure_local_pta else carp['ckd_std']
     # ESC 2022 Class III / CARP: stable asymptomatic CAD alone does NOT justify routine preoperative CAG/PCI!
     guideline_justifies_cag = (
-        ctx.true_low_mets
-        or (q_filled and (bool(q.get('recent_stent')) or 'angina' in ctx.cad_chips))
-        or (lvef is not None and lvef < cb['lvef_red'])
-        or (nt_probnp is not None and nt_probnp >= cb['bnp_red'])
-        or (hs_ctn is not None and hs_ctn >= cb['ctn_amb'])
-        or bool(s.get('echo_valve_issue'))
-        or ecg == 'ischemia_arrhythmia'
+        ctx.true_low_mets or (q_filled and (bool(q.get('recent_stent')) or 'angina' in ctx.cad_chips))
+        or (lvef_eff is not None and lvef_eff < cb['lvef_red']) or (bnp_eff is not None and bnp_eff >= cb['bnp_red'])
+        or (ctn_eff is not None and ctn_eff >= cb['ctn_amb']) or bool(s.get('echo_valve_issue')) or ecg == 'ischemia_arrhythmia'
     )
     guideline_justifies_extra_cardio = (
-        guideline_justifies_cag
-        or ctx.true_low_mets
-        or (q_filled and bool(q.get('cad')))
-        or (lvef is not None and lvef < cb['lvef_amb'])
-        or ctx.needs_cied
-        or (nt_probnp is not None and nt_probnp >= cb['bnp_amb'])
-        or ecg == 'afib_controlled'
-        or (ctx.hr is not None and (ctx.hr > 110 or ctx.hr < 45))
+        guideline_justifies_cag or ctx.true_low_mets or (q_filled and bool(q.get('cad')))
+        or (lvef_eff is not None and lvef_eff < cb['lvef_amb']) or ctx.needs_cied or (bnp_eff is not None and bnp_eff >= cb['bnp_amb'])
+        or ecg == 'afib_controlled' or (hr_eff is not None and (hr_eff > 110 or hr_eff < 45))
         or (pathway not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS) and q_filled and bool(q.get('neuro')))
         or (not ctx.is_venous and (ctx.on_dialysis or (ctx.egfr is not None and ctx.egfr < ckd_cardio_thresh)))
         or (not ctx.is_venous and q_filled and bool(q.get('dm_insulin')))
@@ -94,7 +91,7 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
     ctx.guideline_justifies_extra_cardio, ctx.cardio_non_compliant = guideline_justifies_extra_cardio, cardio_non_compliant
     ctx.needs_cardio = ctx.open_aortic or guideline_justifies_extra_cardio or bool(s.get('irregular_hr')) or ctx.severe_htn or bool(ctx.cardio_decision)
     ctx.needs_echo_or_bnp = ctx.open_aortic or guideline_justifies_extra_cardio
-    mandatory_tte = bool(('hf' in ctx.cad_chips) or ctx.has_mech_valve or s.get('echo_valve_issue') or (nt_probnp is not None and nt_probnp >= cb['bnp_red']))
+    mandatory_tte = bool(('hf' in ctx.cad_chips) or ctx.has_mech_valve or s.get('echo_valve_issue') or (bnp_eff is not None and bnp_eff >= cb['bnp_red']))
     ctx.cardiac_screen_done = (lvef is not None or (not mandatory_tte and nt_probnp is not None and nt_probnp < cb['bnp_amb']))
     ctx.needs_cxr = (q_filled and (bool(q.get('pulm')) or 'hf' in ctx.cad_chips or 'fever_resp' in ctx.inf_chip_set)) or (ctx.spo2 is not None and ctx.spo2 < 94)
 
@@ -102,7 +99,8 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
 def _eval_stage1_completeness(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
     auto_asa = calc_auto_asa(patient, q, s, egfr=ctx.egfr, bmi=ctx.bmi, today=ctx.today)
-    asa_raw = s.get('asa_class') if s.get('asa_class') in ('auto', 'I', 'II', 'III', 'IV') else 'auto'
+    valid_asa = ('auto', *rule_value('SCORE_ASA_PHYSICAL_STATUS')['classes'])
+    asa_raw = s.get('asa_class') if s.get('asa_class') in valid_asa else 'auto'
     asa_roman = auto_asa if asa_raw == 'auto' else asa_raw
     ctx.auto_asa, ctx.asa_roman = auto_asa, asa_roman
 
@@ -212,7 +210,8 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
         tasks.append({'key': 'nephro', 'label': n_lbl, 'done': bool(s.get('nephro_panel_done'))})
     if ctx.needs_hydration and not ctx.is_rupture_suspect:
         c_tag = f' (მაქს. კონტრასტი ≤ {ctx.max_contrast_ml} მლ)' if ctx.max_contrast_ml else ''
-        if ctx.na_val is not None and ctx.na_val >= 150:
+        na_eff = getattr(ctx, 'na_val_sat', ctx.na_val)
+        if na_eff is not None and na_eff >= 150:
             hyd_mode = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე!'
         elif ctx.chf_hyd_flag:
             hyd_mode = 'შეზღუდული ჰიდრატაცია (0.5 მლ/კგ/სთ — HFrEF!)'
@@ -238,7 +237,9 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
     if ctx.needs_alt_vein:
         tasks.append({'key': 'alt_vein', 'label': 'რეფლექს ექო-კარტირება: კონტრალატერალური GSV / SSV / ხელის ვენები', 'done': (s.get('alt_vein_mapped') or 'pending') != 'pending'})
     if pathway == PreopPatient.Pathway.CEA and ctx.needs_cea_antiplatelet:
-        if 'nsaid' in ctx.allergy_chips:
+        if getattr(ctx, 'active_thrombolysis_window', False):
+            ap_t_lbl = 'ასპირინი 75–100 მგ (rt-PA ≤6 დღე — P2Y12/DAPT არა!)'
+        elif 'nsaid' in ctx.allergy_chips:
             ap_t_lbl = 'ალტერნატიული P2Y12 (ასპირინზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი 75 მგ (ასპირინზე ალერგია!)'
         elif 'clopidogrel_intol' in ctx.allergy_chips:
             ap_t_lbl = 'ასპირინი (კლოპიდოგრელზე აუტანლობა!)'
@@ -291,12 +292,18 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         )
         tasks.append({'key': 'comp', 'label': comp_lbl, 'done': bool(s.get('compression_ready')) and tbi_comp_ok})
     if ctx.is_pta and ctx.q_filled:
-        if ctx.has_full_oac:
+        if ctx.has_mech_valve:
+            dapt_lbl = 'ანტითრომბოზული სქემა მექ. სარქველზე: ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი (DOAC / VOYAGER აკრძალულია!)'
+        elif ctx.has_full_oac:
             dapt_lbl = f'ანტითრომბოზული სქემა OAC ფონზე: ანტიკოაგულანტი + {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე!)'
+        elif ctx.has_active_stent_dapt:
+            dapt_lbl = f'უწყვეტი DAPT კორონარული სტენტისთვის ({ctx.alt_p2y12_lbl})'
         elif 'nsaid' in ctx.allergy_chips:
             dapt_lbl = f'ანტითრომბოზული მზაობა: {ctx.alt_p2y12_lbl} (ასპირინზე/აასს-ზე ალერგია!)'
-        else:
+        elif getattr(ctx, 'voyager_safe', False):
             dapt_lbl = f'ანტითრომბოზული მზაობა (DAPT: ასპირინი + {ctx.alt_p2y12_lbl} ან VOYAGER PAD)'
+        else:
+            dapt_lbl = f'ანტითრომბოზული მზაობა (DAPT: ასპირინი + {ctx.alt_p2y12_lbl})'
         tasks.append({'key': 'dapt', 'label': dapt_lbl, 'done': bool(s.get('dapt_ready'))})
     if ctx.open_major:
         tasks.append({'key': 'blood', 'label': 'სისხლის კომპონენტების რეზერვის მომზადება', 'done': bool(s.get('blood_reserved'))})

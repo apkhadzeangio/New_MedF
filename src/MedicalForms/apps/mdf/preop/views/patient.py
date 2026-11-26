@@ -89,6 +89,10 @@ def _sync_med_hold_after_mutation(patient, ev_before, ev_after, save=True):
         med_schedule_signature(ev_before) != sig_after
         or ev_after['clearance_seal']['code'] == 'stop'
         or ev_after.get('has_hard_contraindication')
+        or (
+            ev_after['alerts_sig'] != ev_before['alerts_sig']
+            and (ev_after.get('has_unacked_red') or ev_after.get('dos_hold_danger'))
+        )
         or (s_cur.get('nurse_med_called_sig') and s_cur.get('nurse_med_called_sig') != sig_after)
     ):
         if s_cur.get('med_hold_agreed'):
@@ -325,10 +329,13 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             else dos_check_keys
         )
         for bf in _DOS_CHECK_BOOLS:
-            if form_present or (dos_partial and bf in present_keys) or bf in post:
+            if (form_present and bf in present_keys) or (dos_partial and bf in present_keys) or bf in post:
                 s[bf] = post.get(bf) in ('1', 'on', 'true')
         for bf in _VQI_CHECK_BOOLS:
-            if (form_present and not dos_partial) or (dos_partial and bf in present_keys) or bf in post:
+            if bf == 'icu_bed_booked':
+                if bf in present_keys or bf in post:
+                    s[bf] = post.get(bf) in ('1', 'on', 'true')
+            elif (form_present and not dos_partial) or (dos_partial and bf in present_keys) or bf in post:
                 s[bf] = post.get(bf) in ('1', 'on', 'true')
         if post.get('case_outcome_status') in dict(CASE_OUTCOME_CHOICES):
             s['case_outcome_status'] = post.get('case_outcome_status')

@@ -35,6 +35,7 @@ def _check_passport_and_hard_contra(patient, ev, q, s, pw, q_filled, rendered_pa
         patient.op_subtype in (PreopPatient.OpSubtype.ABF_CLTI, PreopPatient.OpSubtype.BYPASS_CLTI, PreopPatient.OpSubtype.PTA_CLTI)
         or (q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))))
     )
+    is_ali_sim = bool(q_filled and q.get('abf_duration') == '< 2 კვირა')
     gsv_inadeq_sim = (
         (s.get('pad_gsv_status') == 'inadequate')
         or (ev.get('pad_gsv_mm') is not None and ev['pad_gsv_mm'] < 3.0)
@@ -45,9 +46,9 @@ def _check_passport_and_hard_contra(patient, ev, q, s, pw, q_filled, rendered_pa
     ipsi_100 = (pw == PreopPatient.Pathway.CEA and patient.side in ('R', 'L') and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)
     brain_bleed = (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
     bilat_cea = (pw == PreopPatient.Pathway.CEA and patient.side == 'B')
-    claud_btk = (pw == PreopPatient.Pathway.PAD_PTA and not is_clti_sim and s.get('pta_lesion_site') == 'infrapopliteal')
+    claud_btk = (pw == PreopPatient.Pathway.PAD_PTA and not is_clti_sim and not is_ali_sim and s.get('pta_lesion_site') == 'infrapopliteal')
     claud_byp_contra = (
-        pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti_sim and (
+        pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti_sim and not is_ali_sim and (
             s.get('pad_runoff_status') == 'desert_foot'
             or (gsv_inadeq_sim and s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
         )
@@ -171,10 +172,11 @@ def _check_pathway_and_risk_guards(patient, ev, q, s, pw, q_filled, cad_chips, v
         patient.op_subtype in (PreopPatient.OpSubtype.ABF_CLTI, PreopPatient.OpSubtype.BYPASS_CLTI, PreopPatient.OpSubtype.PTA_CLTI)
         or (q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))))
     )
-    if pw == PreopPatient.Pathway.PAD_PTA and not is_clti and s.get('pta_lesion_site') == 'infrapopliteal':
+    is_ali = bool(q_filled and q.get('abf_duration') == '< 2 კვირა')
+    if pw == PreopPatient.Pathway.PAD_PTA and not is_clti and not is_ali and s.get('pta_lesion_site') == 'infrapopliteal':
         if not any('Class III' in rf for rf in ev['red_flags']):
             violations.append('INV-10_BTK_PTA_CLAUDICATION_MISSED')
-    if pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti and s.get('alt_vein_mapped') == 'no_autovein_prosthetic':
+    if pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti and not is_ali and s.get('alt_vein_mapped') == 'no_autovein_prosthetic':
         if s.get('pad_gsv_status') == 'inadequate' and not any('უკუნაჩვენებია' in rf for rf in ev['red_flags']):
             violations.append('INV-10_PROSTHETIC_BYPASS_CLAUDICATION_MISSED')
 
