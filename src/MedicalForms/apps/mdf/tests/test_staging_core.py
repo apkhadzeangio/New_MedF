@@ -1,21 +1,10 @@
 """Tests for GLASS/WIfI/PLAN tables, schema v2, staging pages, and vector artery map."""
-import io
 import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
-from .helpers import PrivateMediaTest, synthetic_doppler
+from .helpers import PrivateMediaTest
 
 
 class StagingTablesTests(TestCase):
@@ -99,7 +88,7 @@ class StagingSchemaV2Tests(TestCase):
     """Schema v2: 26 segments, lossless v1 -> v2 upgrade, validation, and shared infrarenal aorta."""
 
     def test_26_segments_and_anatomical_paths(self):
-        from ..staging import SEGMENTS, SEGMENT_KEYS, map_context, segment_path
+        from ..staging import SEGMENT_KEYS, SEGMENTS, map_context, segment_path
         self.assertEqual(len(SEGMENTS), 26)
         for key in ('aorta', 'cia', 'iia', 'eia', 'cfa', 'pfa', 'sfa1', 'pop1', 'pop2', 'pop3',
                     'tpt', 'at1', 'pt1', 'per1', 'dp', 'mpa', 'lpa', 'arch'):
@@ -115,6 +104,7 @@ class StagingSchemaV2Tests(TestCase):
 
     def test_v1_upgrade_is_lossless_and_idempotent(self):
         import copy
+
         from ..staging import clean, compute, map_context, upgrade_limb
         v1 = {
             'segments': {
@@ -158,6 +148,7 @@ class StagingSchemaV2Tests(TestCase):
 
     def test_v2_segment_and_intervention_validation(self):
         import datetime
+
         from ..staging import clean, clean_interventions, clean_partial_date, clean_segments
         today = datetime.date(2026, 11, 24)
         self.assertEqual(clean_partial_date('2021', today=today), '2021')
@@ -213,6 +204,7 @@ class StagingSchemaV2Tests(TestCase):
 
     def test_lumen_sync_dates_and_bypass_note(self):
         import datetime
+
         from ..staging import clean, clean_partial_date, compute, format_partial_date, interventions_view
         today = datetime.date(2026, 11, 24)
         self.assertEqual(clean_partial_date('06.2023', today=today), '2023-06')
@@ -451,7 +443,7 @@ class StagingVectorMapTests(PrivateMediaTest):
 
         # Left leg mirrors coordinates around axis=300 and flips start<->end anchors without flipping text
         self.assertEqual(right['axis'], 300)
-        for r_lbl, l_lbl in zip(right['labels'], left['labels']):
+        for r_lbl, l_lbl in zip(right['labels'], left['labels'], strict=True):
             self.assertEqual(r_lbl['text'], l_lbl['text'])
             self.assertAlmostEqual(r_lbl['x'] + l_lbl['x'], 300.0, places=1)
             self.assertTrue(-58 <= l_lbl['x'] <= 358, l_lbl)

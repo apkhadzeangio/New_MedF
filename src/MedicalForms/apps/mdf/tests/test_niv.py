@@ -1,18 +1,16 @@
 """Tests for NIV-300-9/a prescriptions, login, templates, staff, backup, and blood order."""
-import io
 import json
 import shutil
 from unittest import skipUnless
 
-from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.cache import cache, caches
+from django.core.cache import cache
 from django.core.management import call_command
 from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
+from ..models import Medicine, NivForm, PrescriptionTemplate, StaffProfile
 from ..utils import validate_take_medicine
 from ..views import NivDocumentView
 from .helpers import BaseViewTest, hours
@@ -187,7 +185,6 @@ class DeleteTests(BaseViewTest):
 
     def test_delete_requires_csrf(self):
         niv = self.make_niv()
-        from django.test import Client
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.user)
         r = client.post(reverse('niv-delete', args=[niv.pk]))
@@ -297,7 +294,7 @@ class TemplateTests(BaseViewTest):
         self.assertEqual(tpl.rows[0]['r']['d1'], {'a': '+', 'b': '+'})
         r = self.client.get(reverse('niv-cover') + f'?tpl={tpl.pk}')
         self.assertContains(r, 'id="rx-templates-data"')
-        self.assertContains(r, 'data-apply="%d"' % tpl.pk)
+        self.assertContains(r, f'data-apply="{tpl.pk}"')
         self.client.post(reverse('rx-template-used', args=[tpl.pk]))
         tpl.refresh_from_db()
         self.assertEqual(tpl.use_count, 1)
@@ -358,7 +355,6 @@ class TemplateTests(BaseViewTest):
         self.assertEqual(tpl.rows[0]['r']['d1'], {'a': '+', 'i': '+'})
 
     def test_csrf_failure_page(self):
-        from django.test import Client
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.user)
         r = client.post(reverse('niv-create'), {'title': 'x'})
@@ -404,8 +400,9 @@ class StaffAndBackupTests(TestCase):
     def test_photo_upload(self):
         from io import BytesIO
         from tempfile import TemporaryDirectory
-        from PIL import Image
+
         from django.core.files.uploadedfile import SimpleUploadedFile
+        from PIL import Image
         user = User.objects.create_user('ia', password='test-pass-3')
         self.client.force_login(user)
         buf = BytesIO()

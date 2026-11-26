@@ -1,20 +1,8 @@
 """Tests for foot angiosomes, map suggestions, DSA presentation/print, and Georgian protocols."""
-import io
 import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
 from .helpers import PrivateMediaTest
 
 

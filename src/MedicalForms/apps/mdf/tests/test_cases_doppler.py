@@ -1,21 +1,11 @@
 """Tests for vascular conference cases, private photos, and Hadeco Doppler PDF parser."""
 import io
 import json
-import shutil
-from unittest import skipUnless
 
 from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
-from .helpers import BaseViewTest, BoardBase, PrivateMediaTest, _jpeg, as_pdf, synthetic_doppler
+from .helpers import PrivateMediaTest, _jpeg, as_pdf, synthetic_doppler
 
 
 class CaseTests(PrivateMediaTest):
@@ -50,6 +40,7 @@ class CaseTests(PrivateMediaTest):
 
     def test_photo_upload_is_upright_small_and_without_hidden_data(self):
         import os
+
         from PIL import Image
         case = self.make_case()
         r = self.client.post(reverse('case-photos', args=[case.pk]),
@@ -82,6 +73,7 @@ class CaseTests(PrivateMediaTest):
 
     def test_bad_file_and_photo_edit_delete(self):
         import os
+
         from ..cases import add_photo
         case = self.make_case()
         bad = io.BytesIO(b'not an image')
@@ -101,6 +93,7 @@ class CaseTests(PrivateMediaTest):
 
     def test_decision_presentation_and_delete(self):
         import os
+
         from ..cases import add_photo
         from ..models import Case, CasePhoto
         a = self.make_case(patient_name='ბერიძე ნინო', proposal='შუნტირება')
@@ -161,7 +154,7 @@ class DopplerTests(PrivateMediaTest):
         self.assertEqual(dp.tbi_class(0.81)[0], 'ok')
         chart = dp.chart(fem)
         self.assertTrue(chart['d'].startswith('M'))
-        self.assertEqual([l['text'] for l in chart['labels']], ['40', '20', '0'])
+        self.assertEqual([lbl['text'] for lbl in chart['labels']], ['40', '20', '0'])
         self.assertLess(chart['labels'][0]['top'], chart['labels'][2]['top'])      # 40 above 0
 
     def test_no_signal_and_other_values(self):
@@ -175,6 +168,7 @@ class DopplerTests(PrivateMediaTest):
 
     def test_unknown_files_are_refused(self):
         from PIL import Image
+
         from .. import doppler as dp
         with self.assertRaises(dp.DopplerError):
             dp.parse(Image.new('RGB', (800, 600), 'white'))              # another size
@@ -185,6 +179,7 @@ class DopplerTests(PrivateMediaTest):
 
     def test_upload_show_edit_and_delete(self):
         import os
+
         from ..models import DopplerStudy
         case = self.make_case()
         f = io.BytesIO(as_pdf(synthetic_doppler()))

@@ -1,8 +1,22 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import (BoardEntry, BoardPatient, ConsentForm, RosterDay, RosterLog, RosterPerson, DutyNote, DutyReport, Medicine, NivForm,
-                     PreopFile, PreopPatient, PrescriptionTemplate, StaffProfile)
+from .models import (
+    BoardEntry,
+    BoardPatient,
+    ConsentForm,
+    DutyNote,
+    DutyReport,
+    Medicine,
+    NivForm,
+    PreopFile,
+    PreopPatient,
+    PrescriptionTemplate,
+    RosterDay,
+    RosterLog,
+    RosterPerson,
+    StaffProfile,
+)
 
 admin.site.site_header = 'Medical Forms - ადმინისტრირება'
 admin.site.site_title = 'Medical Forms'

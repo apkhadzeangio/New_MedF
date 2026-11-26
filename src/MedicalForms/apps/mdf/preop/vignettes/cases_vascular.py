@@ -1,6 +1,6 @@
 """26 synthetic vascular-pathway vignettes (7 AAA/EVAR, 6 CEA, 8 ABF/Bypass/PTA, 5 Venous)."""
 from ...models import PreopPatient
-from .schema import ClinicalVignette, VIGNETTE_OP_DATE
+from .schema import VIGNETTE_OP_DATE, ClinicalVignette
 
 _OP = PreopPatient.OpSubtype
 

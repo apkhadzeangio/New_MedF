@@ -4,20 +4,25 @@ import json
 import logging
 import os
 import tempfile
-from urllib.parse import quote
 from typing import Any
+from urllib.parse import quote
 
-from django.contrib import messages
-from django.contrib.auth import logout, authenticate, login
-from django.contrib.auth.mixins import LoginRequiredMixin
 from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core import serializers
 from django.core.cache import caches
 from django.core.management import call_command
 from django.db.models import Case, F, IntegerField, Q, Value, When
 from django.forms import model_to_dict
 from django.http import (
-    FileResponse, Http404, HttpRequest, HttpResponse, HttpResponseRedirect, JsonResponse,
+    FileResponse,
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    HttpResponseRedirect,
+    JsonResponse,
 )
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse, reverse_lazy
@@ -28,13 +33,18 @@ from django_docxtpl import DocxTemplateView
 
 from . import analysis
 from .backends import ModelFilterBackend
-from .enums import Symbols, YesNo, RadialPulse
+from .enums import RadialPulse, Symbols, YesNo
 from .forms import LoginForm, NivFormForm, PhotoForm
-from .mixins import LoginRedirectMixin, GetObjectMixin
+from .mixins import GetObjectMixin, LoginRedirectMixin
 from .models import (
-    Medicine, Note, NivForm, PrescriptionTemplate, StaffProfile, ROW_COUNT,
+    ROW_COUNT,
+    Medicine,
+    NivForm,
+    Note,
+    PrescriptionTemplate,
+    StaffProfile,
 )
-from .utils import validate_take_medicine, clean_template_rows, resize_photo
+from .utils import clean_template_rows, resize_photo, validate_take_medicine
 
 logger = logging.getLogger(__name__)
 
@@ -151,8 +161,12 @@ def board_prefill(request):
     from .enums import RadialPulse
     from .models import BoardPatient, PreopPatient
     from .preop import (
-        _clean_person_id, _fmt_ka_date, _num, calc_bmi,
-        resolve_board_patient, resolve_preop_for_board,
+        _clean_person_id,
+        _fmt_ka_date,
+        _num,
+        calc_bmi,
+        resolve_board_patient,
+        resolve_preop_for_board,
     )
 
     def _niv_kwargs_from_preop(pre):

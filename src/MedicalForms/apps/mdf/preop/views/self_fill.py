@@ -10,6 +10,7 @@ from django.views import generic
 from ...board import clean_text
 from ...models import PreopPatient
 from ..constants import (
+    _PREOP_MUTATION_LOCK,
     CEAP_CHOICES,
     CHIP_CATALOGS,
     DEFAULT_Q,
@@ -19,7 +20,6 @@ from ..constants import (
     SELF_FILL_MAX_AGE,
     SELF_FILL_MED_HINTS,
     SELF_FILL_SALT,
-    _PREOP_MUTATION_LOCK,
     _sqlite_acquire_write_lock,
 )
 from ..forms import apply_self_fill_post

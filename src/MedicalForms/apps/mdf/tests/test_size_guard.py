@@ -10,7 +10,6 @@ import ast
 import pathlib
 import unittest
 
-
 APP_ROOT = pathlib.Path(__file__).resolve().parent.parent
 MAX_FILE_LINES = 800
 MAX_FUNC_LINES = 100

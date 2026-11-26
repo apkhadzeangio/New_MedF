@@ -1,6 +1,6 @@
 """Schema and deterministic evaluator for the 40 synthetic Track A4 clinical vignettes."""
-from dataclasses import dataclass
 import datetime
+from dataclasses import dataclass
 
 from ...models import PreopPatient
 from ..engine import evaluate

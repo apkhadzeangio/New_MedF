@@ -1,20 +1,8 @@
 """Tests for Pre-op Stage P3 continuity hardening and pre-pilot simulation integration."""
-import io
-import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test import Client
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
 from .helpers import PrivateMediaTest
 
 
@@ -23,8 +11,9 @@ class PreopStageP3ReferenceHardeningTests(PrivateMediaTest):
 
     def test_p3_1_pharmacology_neuraxial_epidural_abw_crcl_insulin_metformin_and_voyager_cea_guards(self):
         import datetime
+
         from ..models import PreopPatient
-        from ..preop import evaluate, calc_crcl
+        from ..preop import calc_crcl, evaluate
 
         # 1. Devine Adjusted Body Weight (ABW) CrCl prevents renal DOAC overdose in morbid obesity (BMI >= 30)
         crcl_abw = calc_crcl(130, 74, sex='F', weight_kg=130, height_cm=160)
@@ -110,9 +99,8 @@ class PreopStageP3ReferenceHardeningTests(PrivateMediaTest):
         self.assertTrue(any('VOYAGER' in rf for rf in ev_pad_oac['red_flags']))
 
     def test_p3_2_target_limb_tbi_venous_c6_hard_contraindications_nan_safety_and_self_fill_112(self):
-        from django.test import Client
         from ..models import PreopPatient
-        from ..preop import evaluate, make_self_fill_token, STATUS_ALERT
+        from ..preop import STATUS_ALERT, evaluate, make_self_fill_token
 
         # 1. Right-sided EVLA with non-compressible right ABI (1.55) + normal left TP (78) MUST NOT clear tbi_measured or compression_ready!
         p_ven = PreopPatient.objects.create(
@@ -265,7 +253,9 @@ class PreopStageP3ReferenceHardeningTests(PrivateMediaTest):
 
     def test_p3_3b_hold_pause_operated_week_decongestion_and_sticky_chips(self):
         import datetime
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import prep_days_elapsed
 
@@ -332,8 +322,8 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
     """Pre-Pilot Phase 1-4 tests: Nurse UX, 2-Page Specialist Dossier, Risk Indices & Simulation Objectivity."""
 
     def test_pre_pilot_1_nurse_ergonomics_jump_chips_self_fill_reconciliation_and_pre_q_alerts(self):
-        from django.test import Client
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import STATUS_ALERT, STATUS_NO_Q, evaluate, make_self_fill_token, merged_q
 
@@ -395,6 +385,7 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
 
     def test_pre_pilot_2a_academic_two_page_dossier_and_risk_indices(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate
 
@@ -457,7 +448,9 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
 
     def test_pre_pilot_2b_neuraxial_p2y12_ckd_gentamicin_and_cea_thrombolysis_briefings(self):
         import datetime
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate
 
@@ -502,7 +495,9 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
 
     def test_pre_pilot_3_simulation_invariants_and_multi_pathway_e2e_lifecycle(self):
         import datetime
+
         from django.utils import timezone
+
         from ..models import BoardPatient, Case, PreopPatient
         from ..preop import STATUS_READY, evaluate
         from .sim import run_simulation

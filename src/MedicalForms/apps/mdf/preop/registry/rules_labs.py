@@ -1,5 +1,5 @@
 """Vitals, hematology, renal, glycemic, endocrine, infection, pulmonary & GI registry rules."""
-from .schema import RuleEntry, STATUS_LOCAL, STATUS_VERIFIED
+from .schema import STATUS_LOCAL, RuleEntry
 
 LABS_RULES = (
     # --- Vitals & Hemodynamics ---

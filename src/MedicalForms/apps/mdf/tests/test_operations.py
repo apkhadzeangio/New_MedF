@@ -1,21 +1,15 @@
 """Tests for informed consent, duty roster, quotes, and UI refinement batches."""
 import io
-import json
 import shutil
 from unittest import skipUnless
 
-from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test import Client, RequestFactory
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
+from ..models import NivForm
 from ..views import NivDocumentView
-from .helpers import BaseViewTest, BoardBase
+from .helpers import BaseViewTest
 
 
 class ConsentTests(BaseViewTest):
@@ -23,7 +17,7 @@ class ConsentTests(BaseViewTest):
 
     def docx(self, paragraphs):
         """A tiny .docx with (text, bold) paragraphs."""
-        import io, zipfile
+        import zipfile
         from html import escape
         body = ''.join(
             f'<w:p><w:r>{"<w:rPr><w:b/></w:rPr>" if bold else ""}<w:t xml:space="preserve">{escape(t)}</w:t></w:r></w:p>'
@@ -66,6 +60,7 @@ class ConsentTests(BaseViewTest):
 
     def test_save_keeps_last_edit_and_is_cleaned(self):
         import json as _json
+
         from ..models import ConsentForm
         form = ConsentForm.objects.order_by('id').first()
         data = {'name': 'ბარძაყ-მუხლქვეშა შუნტირება 🙂',
@@ -157,6 +152,7 @@ class ConsentUploadFormatsTests(BaseViewTest):
 
     def test_empty_file_gets_a_clear_message(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
+
         from ..models import ConsentForm
         count = ConsentForm.objects.count()
         r = self.client.post(reverse('consent-new'), {'docx': SimpleUploadedFile('x.docx', b'')}, follow=True)
@@ -166,6 +162,7 @@ class ConsentUploadFormatsTests(BaseViewTest):
     @skipUnless(shutil.which('soffice'), 'LibreOffice is needed for .rtf')
     def test_rtf_is_converted(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
+
         from ..models import ConsentForm
         rtf = (r'{\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}'
                r'\pard ასევე ჩემთვის ცნობილია შედეგების შესახებ.\par'
@@ -232,6 +229,7 @@ class RosterTests(BaseViewTest):
 
     def test_weekends_even_out_over_months(self):
         from collections import Counter
+
         from ..models import RosterDay
         from ..roster import georgian_holidays, is_heavy
         for i, (y, m) in enumerate(((2026, 11), (2026, 12), (2027, 1), (2027, 2), (2027, 3), (2027, 4))):
@@ -244,6 +242,7 @@ class RosterTests(BaseViewTest):
 
     def test_manual_change_is_locked_and_kept(self):
         import datetime
+
         from ..models import RosterDay, RosterLog, RosterPerson
         self.save(2026, 11)
         gela = RosterPerson.objects.get(name='გიგა')
@@ -267,6 +266,7 @@ class RosterTests(BaseViewTest):
 
     def test_swap_two_days(self):
         import datetime
+
         from ..models import RosterDay
         self.save(2026, 11)
         a = RosterDay.objects.get(date=datetime.date(2026, 11, 3)).person
@@ -289,6 +289,7 @@ class RosterTests(BaseViewTest):
 
     def test_month_page_and_holidays(self):
         import datetime
+
         from ..roster import georgian_holidays
         h = georgian_holidays(2026)
         self.assertEqual(h[datetime.date(2026, 4, 12)], 'აღდგომა')
@@ -341,6 +342,7 @@ class RosterBorderTests(BaseViewTest):
 
     def test_no_back_to_back_across_the_month_border(self):
         import datetime
+
         from ..models import RosterDay
         for seed in range(1, 21):
             RosterDay.objects.all().delete()
@@ -352,6 +354,7 @@ class RosterBorderTests(BaseViewTest):
 
     def test_misha_gap_counts_from_previous_month(self):
         import datetime
+
         from ..models import RosterDay, RosterPerson
         misha = RosterPerson.objects.get(name='მიშა')
         RosterDay.objects.create(date=datetime.date(2026, 11, 28), person=misha, locked=True, source='manual')
@@ -387,7 +390,6 @@ class RosterNeverAdjacentTests(BaseViewTest):
                 self.assert_apart(rows, f'{y}-{m} seed {seed}')
 
     def test_never_adjacent_across_the_month_border(self):
-        import datetime
         from ..models import RosterDay
         for seed in range(1, 16):
             RosterDay.objects.all().delete()
@@ -400,6 +402,7 @@ class RosterNeverAdjacentTests(BaseViewTest):
     def test_when_the_one_pass_placement_gets_stuck_the_search_still_keeps_every_rule(self):
         import collections
         from unittest import mock
+
         from .. import roster
         for y, m in [(2026, 12), (2027, 1), (2027, 11)]:
             for seed in range(1, 11):
@@ -414,25 +417,27 @@ class RosterNeverAdjacentTests(BaseViewTest):
                                  'fell back to filling in turn')
                 # the same number of duties and of weekend duties per doctor as the normal pass
                 hol = roster.georgian_holidays(y)
-                count = lambda rr: collections.Counter(
-                    (r['person'].name, roster.is_heavy(r['date'], hol)) for r in rr)
-                self.assertEqual(count(rows), count(normal), f'{y}-{m} seed {seed}')
+                def _count(rr, _hol=hol):
+                    return collections.Counter(
+                        (r['person'].name, roster.is_heavy(r['date'], _hol)) for r in rr
+                    )
+                self.assertEqual(_count(rows), _count(normal), f'{y}-{m} seed {seed}')
 
     def test_impossible_month_relaxes_instead_of_filling_in_turn(self):
         import datetime
-        from ..models import RosterDay, RosterPerson
+
         from .. import roster
+        from ..models import RosterDay, RosterPerson
         ia = RosterPerson.objects.get(name='ია')
         # many hand-locked days for one doctor: the quotas cannot be kept exactly
         for day in (1, 3, 5, 7, 9, 11, 13, 15):
             RosterDay.objects.create(date=datetime.date(2027, 3, day), person=ia, locked=True, source='manual')
         rows, _ = roster.generate(2027, 3, 5)
         self.assertTrue(all(r['person'] for r in rows))
-        for a, b in zip(rows, rows[1:]):
+        for a, b in zip(rows, rows[1:], strict=False):
             self.assertNotEqual(a['person'], b['person'], a['date'])
 
     def test_rule_is_not_shown_on_the_site(self):
-        import datetime
         for url in (reverse('roster') + '?y=2026&m=12', reverse('roster-generate') + '?y=2026&m=12&seed=3'):
             r = self.client.get(url)
             self.assertEqual(r.status_code, 200)
@@ -468,6 +473,7 @@ class QuoteTests(BaseViewTest):
 
     def test_one_quote_a_day_in_turn(self):
         import datetime
+
         from ..models import Quote
         from ..quotes import quote_of_the_day
         for i in range(5):
@@ -514,8 +520,9 @@ class RefineBatch1Tests(BaseViewTest):
         self.assertEqual(p.order, 2)                                          # kept as it was
 
     def test_board_next_only_to_own_pages(self):                              # A7
-        from ..board import back_to
         from django.test import RequestFactory
+
+        from ..board import back_to
         rf = RequestFactory()
         for bad in ('/\\evil.com', '//evil.com', 'https://evil.com', '/\\/evil.com'):
             req = rf.post('/', {'next': bad})
@@ -523,8 +530,10 @@ class RefineBatch1Tests(BaseViewTest):
         self.assertEqual(back_to(rf.post('/', {'next': '/board/?show=mine'}), '/x/'), '/board/?show=mine')
 
     def test_consent_import_refuses_huge_document(self):                       # A9
-        import io, zipfile
+        import zipfile
+
         from django.core.files.uploadedfile import SimpleUploadedFile
+
         from ..models import ConsentForm
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
@@ -544,6 +553,7 @@ class RefineBatch1Tests(BaseViewTest):
 
     def test_old_reports_purged_once_a_day(self):                              # B2
         import datetime
+
         from ..board import purge_old_reports
         from ..models import DutyReport
         old = datetime.date(2020, 1, 1)
@@ -568,6 +578,7 @@ class RefineBatch3Tests(BaseViewTest):
 
     def test_a6_roster_confirm_saves_only_what_was_previewed(self):
         import datetime as dt
+
         from ..models import RosterDay, RosterPerson
         page = self.client.get(reverse('roster-generate'), dict(y=2026, m=12, seed=5))
         fp = page.context['fingerprint']
@@ -609,7 +620,6 @@ class RefineBatch3Tests(BaseViewTest):
         self.assertEqual(niv.m1, 'Warfarin')
 
     def test_a3_print_context_unchanged(self):
-        from ..views import NivDocumentView
         niv = self.make_niv()
         view = NivDocumentView()
         view.request = RequestFactory().get('/', {'t': niv.pk})
@@ -619,6 +629,7 @@ class RefineBatch3Tests(BaseViewTest):
 
     def test_b1_pdf_cached_until_saved(self):
         from unittest import mock
+
         from django_docxtpl import DocxTemplateView
         niv = self.make_niv()
         real = DocxTemplateView.get
@@ -655,6 +666,7 @@ class RefineBatch3Tests(BaseViewTest):
         import datetime as dt
         from unittest import mock
         from zoneinfo import ZoneInfo
+
         from ..models import RosterDay, RosterPerson
         from ..quotes import today_panel
         RosterDay.objects.create(date=dt.date(2026, 12, 5), person=RosterPerson.objects.get(name='ია'))

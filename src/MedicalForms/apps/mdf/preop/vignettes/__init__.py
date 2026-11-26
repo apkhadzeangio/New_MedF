@@ -3,9 +3,9 @@ from .cases_pharm import PHARM_VIGNETTES
 from .cases_vascular import VASCULAR_VIGNETTES
 from .schema import (
     CATEGORY_LABELS,
-    ClinicalVignette,
     VIGNETTE_OP_DATE,
     VIGNETTE_TODAY,
+    ClinicalVignette,
     build_vignette_patient,
     evaluate_vignette,
 )

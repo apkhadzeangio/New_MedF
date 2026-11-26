@@ -65,7 +65,7 @@ def _eval_cea_symptoms_and_clocks(ctx):
 
 
 def _eval_cea_stenosis_and_imaging(ctx):
-    patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    patient, q_filled = ctx.patient, ctx.q_filled
     is_symp_cea, car_r, car_l = ctx.is_symp_cea, ctx.car_r, ctx.car_l
     st_cfg = rule_value('CEA_STENOSIS_THRESHOLDS')
     occ_pct = rule_value('CEA_OCCLUSION_100_STOP')

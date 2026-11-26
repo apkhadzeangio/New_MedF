@@ -16,6 +16,7 @@ from ...board import clean_text, doctors, person_name
 from ...models import Case, PreopPatient
 from ..case_import import detect_case_preop, import_case_to_preop
 from ..constants import (
+    _PREOP_MUTATION_LOCK,
     MONTHS_SHORT,
     OP_SUBTYPE_GROUPS,
     STATUS_ALERT,
@@ -23,7 +24,6 @@ from ..constants import (
     STATUS_PROGRESS,
     STATUS_READY,
     WEEKDAYS_KA,
-    _PREOP_MUTATION_LOCK,
     _sqlite_acquire_write_lock,
 )
 from ..utils import (

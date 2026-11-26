@@ -1,21 +1,9 @@
 """Tests for core Pre-op AAA, CEA, ABF, and Venous clinical pathways."""
 import io
-import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
-from .helpers import PrivateMediaTest, _jpeg
+from .helpers import PrivateMediaTest
 
 
 class PreopTests(PrivateMediaTest):
@@ -23,7 +11,9 @@ class PreopTests(PrivateMediaTest):
 
     def test_tweek_calendar_case_transfer_and_clock_persistence(self):
         import datetime
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate
 
@@ -67,6 +57,7 @@ class PreopTests(PrivateMediaTest):
 
     def _create_aaa_workup_patient(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import STATUS_NO_Q, STATUS_PROGRESS, evaluate
 
@@ -186,7 +177,9 @@ class PreopTests(PrivateMediaTest):
 
     def test_private_photo_and_pdf_uploads_and_cleanup(self):
         import os
+
         from PIL import Image
+
         from ..models import PreopFile, PreopPatient
 
         p = PreopPatient.objects.create(patient_name='გელაშვილი ზურაბი', created_by=self.user)
@@ -411,7 +404,9 @@ class PreopCeaAndAbfTests(PrivateMediaTest):
 
     def test_cea_crescendo_thrombolysis_brain_hemorrhage_and_cardio_audit_stroke_window(self):
         import datetime
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate
 
@@ -484,6 +479,7 @@ class PreopVenousTests(PrivateMediaTest):
 
     def test_evla_lean_day_surgery_and_signed_patient_self_fill_link(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import STATUS_READY, evaluate, generate_anamnesis, make_self_fill_token
 

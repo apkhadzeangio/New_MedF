@@ -1,5 +1,5 @@
 """Risk scores, cardiology audit, anesthesiology, DoS WHO Sign-In & workflow registry rules."""
-from .schema import RuleEntry, STATUS_LOCAL, STATUS_VERIFIED
+from .schema import STATUS_LOCAL, RuleEntry
 
 SCORES_AND_WORKFLOW_RULES = (
     # --- Quantitative Risk Indices & Calculators ---

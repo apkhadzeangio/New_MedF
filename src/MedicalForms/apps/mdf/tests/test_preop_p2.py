@@ -1,20 +1,8 @@
 """Tests for Pre-op Stage P2 identifiers, calendar med schedule, anesthesia DoS, and VQI."""
-import io
-import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test import Client
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
 from .helpers import PrivateMediaTest
 
 
@@ -23,6 +11,7 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
 
     def _setup_p2_calendar_patient(self):
         import datetime
+
         from ..models import PreopPatient
         from ..preop import merged_studies
 
@@ -62,7 +51,7 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
 
     def test_p2_1_identifiers_dob_auto_age_ecosystem_prefills_and_exact_calendar_med_schedule(self):
         import datetime
-        from django.test import Client
+
         from ..models import PreopPatient
         from ..preop import evaluate, make_self_fill_token, merged_studies
 
@@ -120,7 +109,9 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
 
     def test_p2_2_structured_anesthesiology_cabinet_asa_mallampati_stop_bang_cied_and_waiting_guard(self):
         import datetime
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import STATUS_READY, evaluate, generate_anamnesis
 
@@ -193,6 +184,7 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
 
     def test_p2_3_dos_who_signin_morning_vitals_stop_gate_and_one_click_complete_to_board_with_reverse_link(self):
         import datetime
+
         from ..models import BoardEntry, BoardPatient, PreopPatient
         from ..preop import evaluate, merged_studies
 
@@ -252,7 +244,9 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
 
     def test_p2_4_cancellation_audit_30d_svs_vqi_registry_and_executive_audit_kpis(self):
         import datetime
+
         from django.utils import timezone
+
         from ..models import PreopPatient
 
         today = timezone.localdate()

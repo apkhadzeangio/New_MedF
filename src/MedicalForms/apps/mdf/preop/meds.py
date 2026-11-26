@@ -465,7 +465,7 @@ def _append_cardio_other_rows(c):
             add_row('სტატინი', 'გრძელდება უწყვეტად ოპერაციის დილის ჩათვლით (ESVS/ESC Class I)', 'ok', f'მიიღეთ {d_str(0)}-ის დილის ჩათვლით', hold_or_skip=False)
     if 'beta_blocker' in med_chips:
         bb_hold_vitals = (bp_sys_cur is not None and bp_sys_cur < vaso_cfg['bb_min_sbp']) or (hr_cur is not None and hr_cur < vaso_cfg['bb_min_hr'])
-        bb_plan = f'გამოტოვეთ დილას! (SBP<100 ან HR<55)' if bb_hold_vitals else f'მიიღეთ {d_str(0)}-ის დილას (თუ SBP≥100, HR≥55)'
+        bb_plan = 'გამოტოვეთ დილას! (SBP<100 ან HR<55)' if bb_hold_vitals else f'მიიღეთ {d_str(0)}-ის დილას (თუ SBP≥100, HR≥55)'
         add_row(
             'ბეტა-ბლოკატორი',
             'გრძელდება უწყვეტად ოპერაციის დილას ყლუპი წყლით, თუ SBP ≥ 100 mmHg და HR ≥ 55/წთ (დაბალ წნევა/პულსზე დილის დოზა გამოტოვეთ! — ESC Class I / POISE-3)',
@@ -474,7 +474,7 @@ def _append_cardio_other_rows(c):
     if 'acei_arb' in med_chips:
         ace_hold_vitals = (bp_sys_cur is not None and bp_sys_cur < vaso_cfg['bb_min_sbp']) or (k_cur is not None and k_cur >= vaso_cfg['ace_max_k'])
         if ace_hold_vitals:
-            add_row('ACEi / ARB (პრილი/სარტანი)', 'საბაზისო SBP < 100 mmHg ან K+ ≥ 5.2 მმოლ/ლ — ოპერაციის დილის დოზა გამოტოვეთ (ჰიპოტენზიის/ჰიპერკალიემიის რისკი)!', 'amber', f'გამოტოვეთ დილას! (SBP<100 / K+≥5.2)', hold_or_skip=True, force_date_plan=True)
+            add_row('ACEi / ARB (პრილი/სარტანი)', 'საბაზისო SBP < 100 mmHg ან K+ ≥ 5.2 მმოლ/ლ — ოპერაციის დილის დოზა გამოტოვეთ (ჰიპოტენზიის/ჰიპერკალიემიის რისკი)!', 'amber', 'გამოტოვეთ დილას! (SBP<100 / K+≥5.2)', hold_or_skip=True, force_date_plan=True)
         elif c['has_true_hfref']:
             add_row('ACEi / ARB (პრილი/სარტანი)', 'ჭეშმარიტი HFrEF (LVEF <40%) — გრძელდება ანესთეზიოლოგთან შეთანხმებით (თუ SBP ≥ 100 mmHg და K+ < 5.2 — ESC 2022)', 'amber', f'შეათანხმეთ HFrEF-ზე ({d_str(0)})', hold_or_skip=False)
         elif c['is_open_major'] or c['is_neuraxial'] or pw == PreopPatient.Pathway.CEA or c['anesth_plan'] == 'general' or patient.op_subtype in ('evar', 'tbd'):

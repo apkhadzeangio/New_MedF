@@ -23,8 +23,8 @@ from ..preop.registry import (
     registry_summary,
     rule_value,
 )
-from .test_preop_golden import build_golden_scenarios
 from .sim import SIM_TODAY
+from .test_preop_golden import build_golden_scenarios
 
 
 class PreopRuleRegistryTests(SimpleTestCase):

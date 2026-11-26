@@ -1,20 +1,7 @@
 """Tests for Pre-op Stage P1 rational testing, fast-track CEA, and board/prescription bridges."""
-import io
-import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
 from .helpers import PrivateMediaTest
 
 
@@ -24,7 +11,9 @@ class PreopStageP1RationalAndBridgeTests(PrivateMediaTest):
 
     def test_p1_1a_fast_track_cea_and_open_aaa_bnp_ppi_asb_spiro(self):
         from datetime import timedelta
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import STATUS_READY, evaluate
 
@@ -96,6 +85,7 @@ class PreopStageP1RationalAndBridgeTests(PrivateMediaTest):
 
     def test_p1_1b_claudication_mets_audit_and_lean_asa1_evla(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import STATUS_ALERT, evaluate
 
@@ -151,6 +141,7 @@ class PreopStageP1RationalAndBridgeTests(PrivateMediaTest):
 
     def test_p1_2_claudication_class3_appropriateness_oac_pta_guard_and_voyager_pad(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate, generate_anamnesis
 
@@ -230,6 +221,7 @@ class PreopStageP1RationalAndBridgeTests(PrivateMediaTest):
 
     def test_p1_3_aaa_cea_anatomical_depth_pbm_iv_iron_and_contrast_budget(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate
 
@@ -320,6 +312,7 @@ class PreopStageP1RationalAndBridgeTests(PrivateMediaTest):
 
     def test_p1_4_seamless_preop_to_board_one_click_handoff_bridge(self):
         from django.utils import timezone
+
         from ..models import BoardEntry, BoardPatient, PreopPatient
         from ..preop import merged_studies
 

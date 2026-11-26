@@ -1,5 +1,5 @@
 """Medication hold, antithrombotic safety, ASRA 5th Ed neuraxial & allergy prophylaxis registry rules."""
-from .schema import RuleEntry, STATUS_LOCAL, STATUS_VERIFIED
+from .schema import STATUS_LOCAL, RuleEntry
 
 MEDS_RULES = (
     # --- ASRA 5th Ed (2025) Neuraxial Safety Gate ---

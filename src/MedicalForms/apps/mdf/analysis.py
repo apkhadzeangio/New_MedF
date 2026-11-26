@@ -12,7 +12,7 @@ from collections import Counter, defaultdict
 from django.core.cache import cache
 from django.db.models import Count, Max
 
-from .models import NivForm, ROW_COUNT
+from .models import ROW_COUNT, NivForm
 
 ICD_RE = re.compile(r'\b([A-TV-Z]\d{2}(?:\.\d{1,2})?)\b', re.IGNORECASE)
 
@@ -157,9 +157,9 @@ def matching_prescriptions(q, field='diagnosis'):
 
 
 CLOCK = {
-    'd1': dict(zip('abcdefghijklm', [8, 10, 12, 14, 16, 18, 20, 22, 24, 2, 4, 6, 8])),
-    'd2': dict(zip('abcdefghijkl', [10, 12, 14, 16, 18, 20, 22, 24, 2, 4, 6, 8])),
-    'd3': dict(zip('abcdefghijkl', [10, 12, 14, 16, 18, 20, 22, 24, 2, 4, 6, 8])),
+    'd1': dict(zip('abcdefghijklm', [8, 10, 12, 14, 16, 18, 20, 22, 24, 2, 4, 6, 8], strict=True)),
+    'd2': dict(zip('abcdefghijkl', [10, 12, 14, 16, 18, 20, 22, 24, 2, 4, 6, 8], strict=True)),
+    'd3': dict(zip('abcdefghijkl', [10, 12, 14, 16, 18, 20, 22, 24, 2, 4, 6, 8], strict=True)),
 }
 
 

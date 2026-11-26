@@ -6,7 +6,6 @@ import apps.mdf.preop as pm
 
 from ..models import PreopPatient
 
-
 D0 = datetime.date(2026, 11, 25)
 
 
@@ -521,7 +520,7 @@ class PreopBoundaryMutationTests(unittest.TestCase):
             sd = 'R' if pw_ov != 'abf' else ''
             ev_d7 = pm.evaluate(PreopPatient(age=65, sex='M', op_subtype=sub_ov, pathway=pw_ov, side=sd, started_on=D0 - datetime.timedelta(days=6), questionnaire={'filled': True, 'abf_rest_pain': True}), today=D0)
             ev_d8 = pm.evaluate(PreopPatient(age=65, sex='M', op_subtype=sub_ov, pathway=pw_ov, side=sd, started_on=D0 - datetime.timedelta(days=7), questionnaire={'filled': True, 'abf_rest_pain': True}), today=D0)
-            ev_d8_ap = pm.evaluate(PreopPatient(age=65, sex='M', op_subtype=sub_ov, pathway=pw_ov, side=sd, started_on=D0 - datetime.timedelta(days=7), approved_at=datetime.datetime(2026, 6, 15, 12, 0, tzinfo=datetime.timezone.utc), questionnaire={'filled': True, 'abf_rest_pain': True}), today=D0)
+            ev_d8_ap = pm.evaluate(PreopPatient(age=65, sex='M', op_subtype=sub_ov, pathway=pw_ov, side=sd, started_on=D0 - datetime.timedelta(days=7), approved_at=datetime.datetime(2026, 6, 15, 12, 0, tzinfo=datetime.UTC), questionnaire={'filled': True, 'abf_rest_pain': True}), today=D0)
             self.assertNotIn('გახანგრძლივებული მომზადება', ' '.join(ev_d7['red_flags']))
             self.assertIn('გახანგრძლივებული მომზადება', ' '.join(ev_d8['red_flags']))
             self.assertNotIn('გახანგრძლივებული მომზადება', ' '.join(ev_d8_ap['red_flags']))

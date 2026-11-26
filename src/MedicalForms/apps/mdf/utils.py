@@ -1,12 +1,11 @@
 import re
-from typing import Dict, Tuple, List
 
 from apps.mdf.enums import Symbols
 
 TM_KEY_REGEX = re.compile(r'^r(1[0-6]|[1-9])-d[123]$')
 
 
-def validate_take_medicine(data: Dict) -> Tuple[Dict, List[str]]:
+def validate_take_medicine(data: dict) -> tuple[dict, list[str]]:
     result, keys = dict(), list()
     if not data:
         return result, keys

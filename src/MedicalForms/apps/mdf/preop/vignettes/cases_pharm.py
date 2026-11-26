@@ -1,6 +1,6 @@
 """14 synthetic pharmacology, anesthesiology & polymorbid clinical vignettes (V27–V40)."""
 from ...models import PreopPatient
-from .schema import ClinicalVignette, VIGNETTE_OP_DATE
+from .schema import VIGNETTE_OP_DATE, ClinicalVignette
 
 _OP = PreopPatient.OpSubtype
 

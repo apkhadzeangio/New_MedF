@@ -1,20 +1,12 @@
 """Shared test helpers and base TestCase classes for `apps.mdf.tests`."""
 import io
-import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
+from ..models import NivForm, StaffProfile
 
 
 def hours(*letters):
@@ -99,7 +91,9 @@ class PrivateMediaTest(BaseViewTest):
 def synthetic_doppler(hr='62', pv='31.6', arm='120', abi='0.55', blank_left=False):
     """A Smart-XT-like report drawn with the device's own character shapes (no patient data)."""
     import math
+
     from PIL import Image
+
     from .. import doppler as dp
     from ..doppler_glyphs import templates
     img = Image.new('RGB', (dp.WIDTH, dp.HEIGHT), 'white')
@@ -136,7 +130,7 @@ def synthetic_doppler(hr='62', pv='31.6', arm='120', abi='0.55', blank_left=Fals
             for x in range(axis + 1, right):
                 px[x, zero] = (0, 0, 0)
             labels = ('0.25', '0', '-0.25') if toe else ('40', '20', '0')
-            for tick, text in zip(dp.TICK_OFFSETS, labels):
+            for tick, text in zip(dp.TICK_OFFSETS, labels, strict=True):
                 label(text, side, top, tick)
             last = None
             for x in range(axis + 1, right):
@@ -150,7 +144,7 @@ def synthetic_doppler(hr='62', pv='31.6', arm='120', abi='0.55', blank_left=Fals
                 last = y
             paint('cell', hr, left + 266, top + 5)
             paint('cell', pv, left + 250, top + 63)
-    for key, y0, y1 in dp.TABLE_ROWS:
+    for key, y0, _y1 in dp.TABLE_ROWS:
         for side in ('R', 'L'):
             text = {'arm': arm if side == 'R' else '', 'pt': '66', 'dp': '68', 'toe': '39',
                     'abi_pt': abi, 'abi_dp': '1.06', 'tbi': '0.32'}[key]

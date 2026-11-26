@@ -16,6 +16,7 @@ from ...models import BoardPatient, Case, PreopFile, PreopPatient
 from ..anamnesis import generate_anamnesis
 from ..calculators import normalize_fibrinogen_gl, normalize_ldl_mmol
 from ..constants import (
+    _PREOP_MUTATION_LOCK,
     AAA_MORPHOLOGY_CHOICES,
     AAA_NECK_CHOICES,
     ANESTH_PLAN_CHOICES,
@@ -35,7 +36,6 @@ from ..constants import (
     STOP_BANG_CHOICES,
     SURG_DURATION_CHOICES,
     VQI_30D_CHOICES,
-    _PREOP_MUTATION_LOCK,
     _sqlite_acquire_write_lock,
 )
 from ..forms import apply_questionnaire_post
@@ -680,8 +680,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         }
 
     def _render(self, request, patient):
-        from .. import evaluate
         from ...blood import BLOOD_GROUPS as BG_LIST
+        from .. import evaluate
 
         ev = evaluate(patient)
         tab = request.GET.get('tab') or ('q' if not ev['q'].get('filled') else 's1')

@@ -34,11 +34,10 @@ from .sim import (
     _random_stratified_patient,
 )
 
-
 APP_ROOT = pathlib.Path(__file__).resolve().parent.parent
 SNAPSHOT_PATH = APP_ROOT / 'fixtures' / 'preop_golden_snapshot.json.xz'
 STATIC_PATIENT_JS = APP_ROOT.parent.parent / 'static' / 'js' / 'preop-patient.js'
-SIM_NOW = datetime.datetime(2026, 11, 25, 10, 0, 0, tzinfo=datetime.timezone.utc)
+SIM_NOW = datetime.datetime(2026, 11, 25, 10, 0, 0, tzinfo=datetime.UTC)
 PATIENT_TABS = ('q', 's1', 's2', 'doc', 'dos')
 
 _CSRF_RE = re.compile(r'<input type="hidden" name="csrfmiddlewaretoken" value="[^"]+">')

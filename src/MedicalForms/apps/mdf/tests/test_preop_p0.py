@@ -1,20 +1,9 @@
 """Tests for Pre-op Stage P0 pharmacology, ASRA neuraxial, unit guards, and case auto-import."""
-import io
-import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test import Client
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
+from ..models import StaffProfile
 from .helpers import PrivateMediaTest
 
 
@@ -23,7 +12,9 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
 
     def test_p0_1a_cea_clopidogrel_uninterrupted_and_missing_antiplatelet_guard(self):
         from datetime import timedelta
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import STATUS_ALERT, STATUS_READY, evaluate
 
@@ -76,6 +67,7 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
 
     def test_p0_1b_asra_neuraxial_crcl_doac_dabigatran_glp1_hit_and_cied(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate
 
@@ -131,7 +123,8 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
 
     def test_p0_2_self_fill_data_wipe_protection_post_verification_lock_and_passport(self):
         from django.utils import timezone
-        from ..models import PreopPatient, StaffProfile
+
+        from ..models import PreopPatient
         from ..preop import make_self_fill_token, merged_q, merged_studies
 
         StaffProfile.objects.update_or_create(
@@ -150,7 +143,6 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
         url = reverse('preop-self-fill', args=[token])
 
         # Public unauthenticated client submits Self-Fill form
-        from django.test import Client
         anon = Client()
         resp_get = anon.get(url)
         self.assertEqual(resp_get.status_code, 200)
@@ -207,7 +199,9 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
 
     def test_p0_3_2d_triage_state_machine_specialist_signoff_hold_and_alert_ack_stability(self):
         from datetime import timedelta
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import STATUS_ALERT, STATUS_READY, evaluate
 
@@ -274,7 +268,9 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
 
     def test_p0_4a_unit_guards_and_live_calendar_dates(self):
         from datetime import timedelta
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import calc_egfr, evaluate, merged_studies, normalize_glucose_mmol, normalize_hb_gl
 
@@ -342,6 +338,7 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
     def test_p0_4b_non_compressible_abi_tbi_and_case_auto_import(self):
         from django.core.files.base import ContentFile
         from django.utils import timezone
+
         from ..models import DopplerStudy, PreopPatient
         from ..preop import STATUS_PROGRESS, STATUS_READY, evaluate, merged_q, merged_studies
 

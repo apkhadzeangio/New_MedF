@@ -4,7 +4,7 @@ from django.urls import reverse_lazy
 from .models import NivForm
 
 
-class GetObjectMixin(object):
+class GetObjectMixin:
 
     def get_object(self, kwarg='t'):
         """Return the NivForm whose id is in ?<kwarg>=..., or None."""
@@ -15,7 +15,7 @@ class GetObjectMixin(object):
             return None
 
 
-class LoginRedirectMixin(object):
+class LoginRedirectMixin:
     redirect_url = '/'
 
     def dispatch(self, request, *args, **kwargs):

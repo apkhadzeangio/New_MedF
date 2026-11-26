@@ -325,7 +325,7 @@ def _simplify(points, eps):
         if idx is not None and far > eps:
             keep[idx] = True
             stack += [(a, idx), (idx, b)]
-    return [p for p, k in zip(points, keep) if k]
+    return [p for p, k in zip(points, keep, strict=True) if k]
 
 
 def read_curve(page, side, top, zero):
@@ -379,7 +379,7 @@ def parse(image):
     sites = []
     for row, (key, label, label_en) in enumerate(SITES):
         top = BOX_TOPS[row]
-        for side, (left, axis, right) in SIDES.items():
+        for side, (left, _axis, _right) in SIDES.items():
             where = f'{"მარჯვენა" if side == "R" else "მარცხენა"} — {label}'
             hr_text, hr_d = read_cells(page, left + 265, top + 1, 3, 17)
             pv_text, pv_d = read_cells(page, left + 249, top + 59, 6, 18)

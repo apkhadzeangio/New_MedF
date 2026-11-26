@@ -1,20 +1,8 @@
 """Tests for Pre-op standing reflex orders, zero-text chips, passport, and peripheral PAD."""
-import io
-import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
+from ..models import StaffProfile
 from .helpers import PrivateMediaTest
 
 
@@ -23,8 +11,10 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
 
     def _setup_reflex_evar_patient(self):
         from datetime import timedelta
+
         from django.utils import timezone
-        from ..models import PreopPatient, StaffProfile
+
+        from ..models import PreopPatient
 
         StaffProfile.objects.update_or_create(user=self.user, defaults={'full_name': 'გიორგი აფხაძე'})
         today = timezone.localdate()
@@ -61,8 +51,12 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
 
     def test_standing_reflex_orders_zero_text_chips_med_schedule_passport_and_consent(self):
         from ..preop import (
-            STATUS_ALERT, STATUS_PROGRESS, STATUS_READY,
-            consent_url_for_preop, evaluate, generate_anamnesis,
+            STATUS_ALERT,
+            STATUS_PROGRESS,
+            STATUS_READY,
+            consent_url_for_preop,
+            evaluate,
+            generate_anamnesis,
         )
 
         p = self._setup_reflex_evar_patient()
@@ -140,6 +134,7 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
 
     def test_bilateral_arm_bp_asymmetry_on_cea_and_venous_caprini_score(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate
 

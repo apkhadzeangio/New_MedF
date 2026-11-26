@@ -3,27 +3,6 @@
 Re-exports every public and internal symbol previously defined in `apps/mdf/preop.py`
 for 100% backward compatibility with views, board/blood/prescription bridges, and tests.
 """
-from .engine import evaluate
-from .views import (
-    PreopAuditView,
-    PreopBoardHandoffView,
-    PreopChangelogView,
-    PreopCreateView,
-    PreopFileDeleteView,
-    PreopFileUploadView,
-    PreopFileView,
-    PreopMoveView,
-    PreopPassportView,
-    PreopPatientView,
-    PreopRulesView,
-    PreopSelfFillView,
-    PreopVignettesView,
-    PreopWeekView,
-    _admit_preop_to_board_locked,
-    admit_preop_to_board,
-    resolve_board_patient,
-    resolve_preop_for_board,
-)
 from .anamnesis import build_self_fill_highlights, generate_anamnesis
 from .calculators import (
     _ihd_and_chf_flags,
@@ -46,6 +25,10 @@ from .calculators import (
 )
 from .case_import import detect_case_preop, import_case_to_preop
 from .constants import (
+    _FREETEXT_ALLERGY_STEMS,
+    _FREETEXT_HIGH_RISK_MED_RULES,
+    _HIT_WORD_RE,
+    _PREOP_MUTATION_LOCK,
     AAA_MORPHOLOGY_CHOICES,
     AAA_NECK_CHOICES,
     ANESTH_PLAN_CHOICES,
@@ -83,12 +66,9 @@ from .constants import (
     TARGET_PREP_DAYS,
     VQI_30D_CHOICES,
     WEEKDAYS_KA,
-    _FREETEXT_ALLERGY_STEMS,
-    _FREETEXT_HIGH_RISK_MED_RULES,
-    _HIT_WORD_RE,
-    _PREOP_MUTATION_LOCK,
     _sqlite_acquire_write_lock,
 )
+from .engine import evaluate
 from .forms import apply_questionnaire_post, apply_self_fill_post, save_preop_file
 from .meds import (
     _apply_stop_lock_to_med_schedule,
@@ -133,6 +113,26 @@ from .utils import (
     merged_studies,
     prep_days_elapsed,
     target_prep_days,
+)
+from .views import (
+    PreopAuditView,
+    PreopBoardHandoffView,
+    PreopChangelogView,
+    PreopCreateView,
+    PreopFileDeleteView,
+    PreopFileUploadView,
+    PreopFileView,
+    PreopMoveView,
+    PreopPassportView,
+    PreopPatientView,
+    PreopRulesView,
+    PreopSelfFillView,
+    PreopVignettesView,
+    PreopWeekView,
+    _admit_preop_to_board_locked,
+    admit_preop_to_board,
+    resolve_board_patient,
+    resolve_preop_for_board,
 )
 
 __all__ = [

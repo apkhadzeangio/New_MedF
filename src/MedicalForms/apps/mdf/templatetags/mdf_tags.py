@@ -39,6 +39,7 @@ def niv_rows(niv, bounds=None):
 def duty_html(value):
     """Note text with only simple formatting kept (safe to show)."""
     from django.utils.safestring import mark_safe
+
     from apps.mdf.duty import clean_html
     return mark_safe(clean_html(value))
 

@@ -24,7 +24,6 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import Http404, HttpResponseRedirect, JsonResponse
-from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.utils import timezone
 from django.views import generic
@@ -337,7 +336,7 @@ def _spread_penalty(assign):
             penalty += 1000
     for days in per.values():
         days.sort()
-        for a, b in zip(days, days[1:]):
+        for a, b in zip(days, days[1:], strict=False):
             gap = (b - a).days
             penalty += {1: 100, 2: 6, 3: 2}.get(gap, 0)
     return penalty

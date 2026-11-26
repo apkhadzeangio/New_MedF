@@ -1,21 +1,12 @@
 """Tests for duty notes, inpatient board, reminders, stats, and seasonal decorations."""
 import io
 import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.core.cache import cache
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
-from .helpers import BaseViewTest, BoardBase, hours
+from ..models import DutyNote, Medicine, NivForm
+from .helpers import BaseViewTest, BoardBase
 
 
 class DutyNoteTests(BaseViewTest):
@@ -29,6 +20,7 @@ class DutyNoteTests(BaseViewTest):
 
     def test_duty_date_rule(self):
         import datetime
+
         from ..duty import duty_date_for
         d = datetime.date
         cases = {
@@ -48,9 +40,9 @@ class DutyNoteTests(BaseViewTest):
         for moment, expected in cases.items():
             self.assertEqual(duty_date_for(self.at(moment)), expected, moment)
         # the same moment given in UTC: 13:00 UTC = 17:00 Tbilisi
-        utc = datetime.datetime(2026, 11, 21, 13, 0, tzinfo=datetime.timezone.utc)
+        utc = datetime.datetime(2026, 11, 21, 13, 0, tzinfo=datetime.UTC)
         self.assertEqual(duty_date_for(utc), d(2026, 11, 22))
-        utc = datetime.datetime(2026, 11, 21, 12, 59, tzinfo=datetime.timezone.utc)
+        utc = datetime.datetime(2026, 11, 21, 12, 59, tzinfo=datetime.UTC)
         self.assertEqual(duty_date_for(utc), d(2026, 11, 21))
 
     def create(self, moment, **data):
@@ -274,6 +266,7 @@ class BoardTests(BoardBase):
     def test_report_takes_only_this_duty_and_is_frozen(self):
         import datetime
         from unittest import mock
+
         from ..board import build_report
         from ..models import BoardEntry, DutyReport
         with mock.patch('django.utils.timezone.now', return_value=self.at('20.11.2026 10:00')):
@@ -322,6 +315,7 @@ class BoardTests(BoardBase):
     def test_reports_are_deleted_after_a_month(self):
         import datetime
         from unittest import mock
+
         from ..models import DutyReport
         keep = DutyReport.objects.create(duty_date=datetime.date(2026, 11, 1), data={})
         DutyReport.objects.create(duty_date=datetime.date(2026, 10, 21), data={})
@@ -419,8 +413,10 @@ class RemindersAndMedicinesTests(BaseViewTest):
             self.assertEqual([r['key'].split('-')[0] for r in page.context['reminders']], ['expiry'])
 
     def test_expiry_from_api_when_available(self):
-        import datetime, io, json
+        import datetime
+        import json
         from unittest import mock
+
         from django.core.cache import cache
         self.client.get(reverse('backup-download'))
         cache.clear()
@@ -446,7 +442,6 @@ class RemindersAndMedicinesTests(BaseViewTest):
 
     def test_api_failure_never_breaks_a_page(self):
         from unittest import mock
-        from django.core.cache import cache
         cache.clear()
         with mock.patch.dict('os.environ', {'API_TOKEN': 'x'}), \
                 mock.patch('urllib.request.urlopen', side_effect=OSError('blocked')):
@@ -480,6 +475,7 @@ class StatsAndAppTests(BoardBase):
 
     def test_month_stats(self):
         import datetime
+
         from ..board import month_stats
         from ..models import BoardEntry, BoardPatient
         a = BoardPatient.objects.create(name='ა', unit='icu', doctor=self.user, admitted_at=self.at('02.10.2026 10:00'),

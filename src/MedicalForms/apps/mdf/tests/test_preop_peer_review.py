@@ -1,20 +1,8 @@
 """Tests for Pre-op peer-review clinical safety sprints 1-5."""
-import io
-import json
-import shutil
-from unittest import skipUnless
 
-from django.conf import settings
-from django.contrib.auth.models import User
-from django.core.cache import cache, caches
-from django.core.management import call_command
-from django.http import QueryDict
-from django.test import Client, RequestFactory, TestCase, override_settings
+from django.test import Client
 from django.urls import reverse
 
-from ..models import DutyNote, Medicine, NivForm, PrescriptionTemplate, StaffProfile
-from ..utils import validate_take_medicine
-from ..views import NivDocumentView
 from .helpers import PrivateMediaTest
 
 
@@ -23,6 +11,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
 
     def test_review_1_calendar_week_title_all_months_and_december_http_200(self):
         import datetime
+
         from ..duty import MONTHS
         from ..preop import _monday_of, _week_title
 
@@ -50,7 +39,6 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
             self.assertEqual(resp_dec.status_code, 200)
 
     def test_review_2_self_fill_pii_masking_one_time_lock_revocable_nonce_and_privacy_headers(self):
-        from django.test import Client
         from ..models import PreopPatient
         from ..preop import make_self_fill_token, merged_q, merged_studies
 
@@ -208,6 +196,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
 
     def test_sprint1a_antithrombotic_stop_lock_mech_valve_and_cilostazol(self):
         from django.utils import timezone
+
         from ..duty import strip_astral
         from ..models import PreopPatient
         from ..preop import evaluate
@@ -281,6 +270,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
 
     def test_sprint1b_freetext_board_rehandoff_and_renal_hepatic_pharmacology(self):
         from django.utils import timezone
+
         from ..models import BoardEntry, BoardPatient, PreopPatient
         from ..preop import admit_preop_to_board, evaluate
 
@@ -343,9 +333,13 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
 
     def test_sprint2a_lab_normalizers_asra_neuraxial_and_cied(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import (
-            evaluate, normalize_fibrinogen_gl, normalize_glucose_mmol, normalize_ldl_mmol,
+            evaluate,
+            normalize_fibrinogen_gl,
+            normalize_glucose_mmol,
+            normalize_ldl_mmol,
         )
 
         today = timezone.localdate()
@@ -406,6 +400,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
 
     def test_sprint2b_vitals_shock_index_and_passport_visibility(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate
 
@@ -454,7 +449,9 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
 
     def test_sprint3a_esvs_never_events_venous_deadlock_and_cta_age(self):
         import datetime
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import cta_live_months_age, evaluate, generate_anamnesis
 
@@ -520,7 +517,9 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
 
     def test_sprint3b_rupture_fast_track_and_metabolic_guards(self):
         import datetime
+
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate
 
@@ -574,6 +573,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
 
     def test_sprint4_asa_rcri_frailty_coag_pbm_nice_esc_deescalation_and_nurse_seal(self):
         from django.utils import timezone
+
         from ..models import PreopPatient
         from ..preop import evaluate, generate_anamnesis
 
@@ -667,10 +667,11 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
 
     def test_sprint5_http_lifecycle_invalidation_hold_clock_stage2_preserve_and_owasp(self):
         import datetime
+
         from django.contrib.auth import get_user_model
         from django.core.files.uploadedfile import SimpleUploadedFile
-        from django.test import Client
         from django.utils import timezone
+
         from ..models import PreopFile, PreopPatient
         from ..preop import evaluate, make_self_fill_token, merged_studies
 

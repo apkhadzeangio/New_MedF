@@ -1,5 +1,5 @@
 """Vascular & venous pathway rules for the preoperative clinical rule registry."""
-from .schema import RuleEntry, STATUS_LOCAL, STATUS_VERIFIED
+from .schema import STATUS_LOCAL, RuleEntry
 
 VASCULAR_RULES = (
     # --- AAA / EVAR (ESVS 2024) ---

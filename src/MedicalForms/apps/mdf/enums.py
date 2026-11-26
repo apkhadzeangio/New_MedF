@@ -1,5 +1,7 @@
 import enum
+
 from django.db import models
+
 
 class Symbols(enum.Enum):
     CHECKED = '🗹'
