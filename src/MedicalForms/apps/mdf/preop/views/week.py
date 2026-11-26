@@ -236,6 +236,8 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
     """Inline 1-line Tweek add (POST) or 1-click transfer/re-sync from a Conference Case (GET/POST)."""
 
     def get(self, request):
+        from .parsers import _invalidate_approval_if_needed
+
         case_id_int = _int(request.GET.get('case'), lo=1)
         if case_id_int is not None:
             case = get_object_or_404(Case, pk=case_id_int)
@@ -243,10 +245,24 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
             if existing:
                 if request.GET.get('sync') == '1':
                     op_sub, side = detect_case_preop(case)
+                    side_changed = False
                     if not existing.side and side:
                         existing.side = side
-                        existing.save(update_fields=['side'])
-                    import_case_to_preop(case, existing)
+                        side_changed = True
+                    imported = import_case_to_preop(case, existing)
+                    if imported or side_changed:
+                        s_sy = merged_studies(existing)
+                        s_sy['med_hold_agreed'] = False
+                        s_sy['alerts_ack_sig'] = ''
+                        existing.studies = s_sy
+                        existing.alerts_ack_at = None
+                        existing.alerts_ack_by = None
+                        uf = ['studies', 'alerts_ack_at', 'alerts_ack_by', 'updated_at', 'updated_by']
+                        if side_changed:
+                            uf.append('side')
+                        _invalidate_approval_if_needed(existing, uf, clear_anamnesis=True)
+                        existing.updated_by = request.user
+                        existing.save(update_fields=list(dict.fromkeys(uf)))
                     messages.success(request, 'კონფერენციის ქეისიდან სტადირება და ანატომიური მონაცემები განახლდა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[existing.pk]))
             op_sub, side = detect_case_preop(case)
@@ -295,7 +311,10 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
         sex = request.POST.get('sex') if request.POST.get('sex') in ('M', 'F') else default_sex
         if slot.startswith('someday:'):
             key = slot.split(':', 1)[1]
-            someday = key if key in PreopPatient.SomedayList.values else PreopPatient.SomedayList.CONF
+            if key == PreopPatient.SomedayList.READY or key not in PreopPatient.SomedayList.values:
+                someday = PreopPatient.SomedayList.CONF
+            else:
+                someday = key
             if someday == PreopPatient.SomedayList.HOLD:
                 init_studies['hold_since'] = today.isoformat()
         else:
@@ -374,6 +393,18 @@ class PreopMoveView(LoginRequiredMixin, generic.View):
                 key = slot.split(':', 1)[1]
                 if key not in PreopPatient.SomedayList.values or not key:
                     return JsonResponse({'error': 'bad_slot'}, status=400) if ajax else HttpResponseRedirect(reverse('preop'))
+                if key == PreopPatient.SomedayList.READY:
+                    ev_mv = evaluate(patient)
+                    if (
+                        not patient.approved_at
+                        or ev_mv['clearance_seal']['code'] == 'stop'
+                        or ev_mv.get('has_hard_contraindication')
+                        or ev_mv.get('has_blocking_unknown_state')
+                    ):
+                        if ajax:
+                            return JsonResponse({'error': 'not_approved'}, status=400)
+                        messages.error(request, 'მზა სიაში გადატანა დასაშვებია მხოლოდ ქირურგის დადასტურების შემდეგ (STOP-ის გარეშე)!')
+                        return HttpResponseRedirect(reverse('preop'))
                 patient.someday_list = key
                 patient.visit_date = None
             else:

@@ -148,12 +148,47 @@ def _parse_s1_numbers_and_dates(post, s, today):
         else:
             s.pop('_invalid_inputs', None)
     if 'labs_date' in post:
-        ld = _date(post.get('labs_date'))
-        s['labs_date'] = ld.isoformat() if (ld and ld <= today) else ''
-        if ld and ld <= today and (today - ld).days <= 14:
-            s['stale_labs_refreshed'] = False
+        raw_ld = (post.get('labs_date') or '').strip()
+        ld = _date(raw_ld)
+        raw_inv = s.get('_invalid_inputs')
+        inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
+        if not raw_ld:
+            s['labs_date'] = ''
+            inv.pop('labs_date', None)
+        elif ld and ld <= today:
+            s['labs_date'] = ld.isoformat()
+            inv.pop('labs_date', None)
+            if (today - ld).days <= 14:
+                s['stale_labs_refreshed'] = False
+        else:
+            s['labs_date'] = ''
+            inv['labs_date'] = clean_text(raw_ld, 24)
+        if inv:
+            s['_invalid_inputs'] = inv
+        else:
+            s.pop('_invalid_inputs', None)
     if 'creat_unit' in post and post.get('creat_unit') in ('', 'umol', 'mgdl'):
         s['creat_unit'] = post.get('creat_unit')
+
+
+def med_hold_agreement_block_reason(ev, s):
+    """Return Georgian error string if med_hold_agreed / nurse med-call confirmation is clinically unsafe."""
+    if ev['clearance_seal']['code'] == 'stop' or ev.get('has_hard_contraindication'):
+        return 'STOP-სიგნალის დროს წამლების შეწყვეტა დაბლოკილია — ჯერ ქირურგს დაუკავშირდით!'
+    if ev.get('neuraxial_hard_blocked'):
+        return 'ნეირაქსიული ბლოკადა დაბლოკილია — წამლების შეჩერების სქემა ჯერ ანესთეზიოლოგთან/ქირურგთან შეათანხმეთ!'
+    if not ev['q'].get('filled'):
+        return 'კითხვარი ჯერ არ არის შევსებული — წამლების გეგმის დადასტურება შეუძლებელია!'
+    if any(
+        u.get('key') in ('unverified_self_fill', 'renal_drug_no_crcl', 'ambiguous_creat_unit')
+        for u in (ev.get('unknown_state_flags') or ())
+    ):
+        return 'პაციენტის კითხვარი დაუდასტურებელია ან CrCl/კრეატინინის ერთეული აკლია — წამლების გეგმა ჯერ გადაამოწმეთ!'
+    if any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ())):
+        return 'წამლების გრაფიკი შეიცავს უკუნაჩვენებ ან დაუზუსტებელ პრეპარატს — ჯერ შეათანხმეთ ექიმთან!'
+    if any(r.get('hold_or_skip') for r in (ev.get('med_schedule') or ())) and not _date(s.get('planned_surgery_date')):
+        return 'შესაჩერებელი წამლებისთვის ჯერ მიუთითეთ დაგეგმილი ოპერაციის თარიღი!'
+    return ''
 
 
 def _parse_s1_flags_and_selects(post, patient, s):
@@ -182,6 +217,26 @@ def _parse_s1_flags_and_selects(post, patient, s):
             s[sel_key] = post.get(sel_key)
 
 
+def _set_planned_surgery_date_field(s, raw_val, today):
+    raw_op = (raw_val or '').strip()
+    op_d = _date(raw_op)
+    raw_inv = s.get('_invalid_inputs')
+    inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
+    is_scheduled = (s.get('case_outcome_status') or 'scheduled') == 'scheduled'
+    if not raw_op:
+        s['planned_surgery_date'] = ''
+        inv.pop('planned_surgery_date', None)
+    elif op_d is None or (is_scheduled and op_d < today):
+        inv['planned_surgery_date'] = clean_text(raw_op, 24)
+    else:
+        s['planned_surgery_date'] = op_d.isoformat()
+        inv.pop('planned_surgery_date', None)
+    if inv:
+        s['_invalid_inputs'] = inv
+    else:
+        s.pop('_invalid_inputs', None)
+
+
 def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
     for key, fn, lo, hi in (
         ('spiro_fev1', _int, 10, 160),
@@ -193,12 +248,12 @@ def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
         if key in post:
             _set_num_field(s, key, post.get(key), lo=lo, hi=hi, norm_fn=(lambda v, f=fn, a=lo, b=hi: f(v, lo=a, hi=b)))
     if 'planned_surgery_date' in post:
-        op_d = _date(post.get('planned_surgery_date'))
-        s['planned_surgery_date'] = op_d.isoformat() if op_d else ''
+        _set_planned_surgery_date_field(s, post.get('planned_surgery_date'), timezone.localdate())
     for sel_key, allowed in _S2_SELECT_FIELDS:
         if post.get(sel_key) in allowed:
             s[sel_key] = post.get(sel_key)
 
+    s2_full = (post.get('s2_full_form') == '1')
     s2_bool_visible = {
         'anesth_done': True,
         'stale_labs_refreshed': bool(ev_before['needs_stale_labs']),
@@ -227,10 +282,8 @@ def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
     for bf in _S2_BOOL_FIELDS:
         if bf in post:
             s[bf] = post.get(bf) in ('1', 'on', 'true')
-        elif s2_bool_visible.get(bf, True):
+        elif s2_full and s2_bool_visible.get(bf, True):
             s[bf] = False
-    if ev_before['clearance_seal']['code'] == 'stop' and s.get('med_hold_agreed'):
-        s['med_hold_agreed'] = False
     if (s.get('cied_plan') or 'pending') != 'pending':
         s['cied_checked'] = True
 
@@ -243,9 +296,12 @@ def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
 
 
 def _parse_s2_notes_and_cardio(post, patient, s, cab_present, old_nurse_chips, old_nurse_chip_txt, old_cardio_chips, old_cardio_chip_txt):
+    s2_full = (post.get('s2_full_form') == '1')
     if hasattr(post, 'getlist'):
-        s['nurse_note_chips'] = [k for k in post.getlist('nurse_note_chips') if k in CHIP_LABELS['nurse_note_chips']]
-        s['cardio_note_chips'] = [k for k in post.getlist('cardio_note_chips') if k in CHIP_LABELS['cardio_note_chips']]
+        if s2_full or 'nurse_note_chips' in post or 'nurse_note_custom' in post:
+            s['nurse_note_chips'] = [k for k in post.getlist('nurse_note_chips') if k in CHIP_LABELS['nurse_note_chips']]
+        if s2_full or 'cardio_note_chips' in post or 'cardio_note_custom' in post:
+            s['cardio_note_chips'] = [k for k in post.getlist('cardio_note_chips') if k in CHIP_LABELS['cardio_note_chips']]
         if cab_present or 'anesth_lines_chips' in post:
             s['anesth_lines_chips'] = [k for k in post.getlist('anesth_lines_chips') if k in CHIP_LABELS['anesth_lines_chips']]
 
@@ -254,7 +310,7 @@ def _parse_s2_notes_and_cardio(post, patient, s, cab_present, old_nurse_chips, o
         custom_nn = clean_text(post.get('nurse_note_custom'), 1000)
         s['nurse_note_custom'] = custom_nn
         s['nurse_note'] = '; '.join([x for x in (new_nurse_chip_txt, custom_nn) if x])[:1000]
-    else:
+    elif s2_full or 'nurse_note' in post or 'nurse_note_chips' in post:
         raw_nurse = clean_text(post.get('nurse_note'), 1000)
         if raw_nurse == old_nurse_chip_txt and s['nurse_note_chips'] != old_nurse_chips:
             raw_nurse = ''
@@ -287,7 +343,7 @@ def _parse_s2_notes_and_cardio(post, patient, s, cab_present, old_nurse_chips, o
         s['cardio_note_custom'] = custom_cn
         patient.cardio_note = '; '.join([x for x in (new_cardio_chip_txt, custom_cn) if x])[:255]
         uf.append('cardio_note')
-    elif 'cardio_note' in post or 'cardio_note_chips' in post:
+    elif s2_full or 'cardio_note' in post or 'cardio_note_chips' in post:
         raw_cn = clean_text(post.get('cardio_note'), 255).replace('\n', ' ')
         if raw_cn == old_cardio_chip_txt and s['cardio_note_chips'] != old_cardio_chips:
             raw_cn = ''

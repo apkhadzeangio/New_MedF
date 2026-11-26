@@ -368,26 +368,26 @@ _FREETEXT_ALLERGY_STEMS = (
         'პენიცილ', 'ამოქსი', 'აუგმენტ', 'ამპიცილ', 'ცეფაზოლ', 'კეფაზოლ', 'კეფზოლ',
         'ცეფტრიაქს', 'ცეფეპიმ', 'ცეფუროქს', 'მეროპენემ', 'ცეფალოსპ', 'ბეტა-ლაქტ', 'ბეტალაქტ',
         'penicil', 'amoxi', 'augment', 'ampicil', 'cefazol', 'kefzol', 'ceftriax',
-        'cefepim', 'meropenem', 'cephalosp', 'beta-lact',
+        'cefepim', 'meropenem', 'cephalosp', 'beta-lact', 'ოგმენტინ', 'ამოქსიკლავ', 'amoxiclav',
     )),
     ('hit_heparin', (
         'ჰეპარინ', 'კლექსან', 'ფრაქსიპარ', 'ენოქსაპარ', 'ნადროპარ', 'ციბორ', 'ფრაგმინ',
         'heparin', 'clexane', 'fraxipar', 'enoxapar', 'nadropar', 'daltepar', 'bemipar', 'lovenox',
     )),
     ('lidocaine', (
-        'ლიდოკაინ', 'ნოვოკაინ', 'ბუპივაკაინ', 'როპივაკაინ', 'არტიკაინ',
-        'lidocain', 'novocain', 'bupivacain', 'ropivacain', 'articain',
+        'ლიდოკაინ', 'ნოვოკაინ', 'ბუპივაკაინ', 'როპივაკაინ', 'არტიკაინ', 'ულტრაკაინ', 'უბისტეზინ',
+        'lidocain', 'novocain', 'bupivacain', 'ropivacain', 'articain', 'ultracain', 'ubistesin',
     )),
     ('latex_chlorhex', (
         'ლატექს', 'ქლორჰექს', 'latex', 'chlorhex',
     )),
     ('iodine', (
-        'იოდ', 'კონტრასტ', 'ომნიპაკ', 'ულტრავისტ', 'ვიზიპაკ',
-        'iodin', 'contrast', 'omnipaque', 'ultravist', 'visipaque',
+        'იოდ', 'კონტრასტ', 'ომნიპაკ', 'ულტრავისტ', 'ვიზიპაკ', 'ბეტადინ', 'პოვიდონ',
+        'iodin', 'contrast', 'omnipaque', 'ultravist', 'visipaque', 'betadin', 'povidon',
     )),
     ('nsaid', (
-        'ანალგინ', 'კეტოროლ', 'კეტონალ', 'დექსკეტო', 'დიკლოფენ', 'იბუპროფ', 'აასს', 'ასპირინ',
-        'nsaid', 'ketorol', 'ketonal', 'dexketo', 'diclofen', 'ibuprof', 'analgin', 'aspirin',
+        'ანალგინ', 'კეტოროლ', 'კეტონალ', 'დექსკეტო', 'დიკლოფენ', 'იბუპროფ', 'აასს', 'ასპირინ', 'ნიმესილ', 'ნიმესულ', 'მელოქსიკ',
+        'nsaid', 'ketorol', 'ketonal', 'dexketo', 'diclofen', 'ibuprof', 'analgin', 'aspirin', 'nimesil', 'nimesul',
     )),
     ('clopidogrel_intol', (
         'კლოპიდოგ', 'პლავიქს', 'clopidog', 'plavix',
@@ -398,7 +398,7 @@ _HIT_WORD_RE = re.compile(r'(?<![a-zA-Zა-ჰ])hit(?![a-zA-Zა-ჰ])', re.IGNO
 
 _FREETEXT_HIGH_RISK_MED_RULES = (
     ('warfarin', 'ვარფარინი / აცენოკუმაროლი (VKA)', True, (
-        'ვარფარინ', 'warfarin', 'კუმადინ', 'coumadin',
+        'ვარფარინ', 'warfarin', 'კუმადინ', 'coumadin', 'მარევან', 'marevan',
         'სინკუმარ', 'სინტრომ', 'აცენოკუმარ', 'sintrom', 'acenocoumar', 'syncumar',
     )),
     ('doac', 'Xa-DOAC (ქსარელტო / ელიქვისი / ედიქსანი)', True, (
@@ -720,4 +720,6 @@ DEFAULT_STUDIES = {
     'vqi_surveillance_scheduled': False,
     'vqi_30d_status': 'pending',    # pending | uneventful | complication | readmission | mortality_30d
     'vqi_complication_chips': [],
+    'self_fill_submitted_nonce': '',
+    'self_fill_reopened': False,
 }

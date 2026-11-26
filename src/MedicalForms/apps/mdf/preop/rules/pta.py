@@ -74,7 +74,7 @@ def eval_pta(ctx):
     if q_filled and q.get('pta_cant_lie_flat'):
         ctx.amber_flags.append('პაციენტს უჭირს ზურგზე გაუნძრევლად წოლა 60–90 წთ — ავტომატურად ჩაირთო ანესთეზიოლოგი (სედაციისთვის).')
     if 'clopidogrel_intol' in ctx.allergy_chips:
-        has_oac_pta = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran') or ('rivaroxaban_2_5' in ctx.med_chips))
+        has_oac_pta = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
         if has_oac_pta and 'nsaid' in ctx.allergy_chips:
             alt_pta_txt = 'ინდივიდუალური რეჟიმი კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია — OAC + ტიკაგრელორი ESC Class III არ ინიშნება!)'
         elif has_oac_pta:

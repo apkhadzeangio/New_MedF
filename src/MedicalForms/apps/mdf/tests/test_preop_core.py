@@ -1,4 +1,5 @@
 """Tests for core Pre-op AAA, CEA, ABF, and Venous clinical pathways."""
+import datetime
 import io
 
 from django.urls import reverse
@@ -136,6 +137,7 @@ class PreopTests(PrivateMediaTest):
         self.client.post(reverse('preop-patient', args=[p.pk]), clean_s1)
         s2_base = {
             'section': 'stage2',
+            'planned_surgery_date': (timezone.localdate() + datetime.timedelta(days=10)).isoformat(),
             'spiro_fev1': '78', 'gastro_result': 'remission', 'ppi_started': '1',
             'blood_reserved': '1', 'med_hold_agreed': '1', 'anesth_done': '1',
         }
@@ -656,6 +658,7 @@ class PreopVenousTests(PrivateMediaTest):
         })
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage2',
+            'planned_surgery_date': (timezone.localdate() + datetime.timedelta(days=10)).isoformat(),
             'abi_r': '1.05', 'abi_l': '1.02',
             'vte_prophylaxis_planned': '1',
             'compression_ready': '1',

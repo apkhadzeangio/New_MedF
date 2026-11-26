@@ -197,7 +197,7 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
             pathway='cea', op_subtype='cea_asymp', surgeon=self.user,
             visit_date=today, started_on=today,
             questionnaire={'filled': True, 'mets_ok': True, 'med_aspirin': True, 'med_warfarin': True},
-            studies={'asa_class': 'IV'},
+            studies={'asa_class': 'IV', 'bp_sys': 130, 'bp_dia': 78, 'hr': 72, 'spo2': 98},
         )
         # 1. Dangerous morning BP (194/112) + high morning INR (1.8) triggers dos_hold_danger even if checks ticked
         self.client.post(reverse('preop-patient', args=[p.pk]), {

@@ -184,7 +184,17 @@ def _result_flags_and_needs_part(ctx):
 
 
 def _result_needs_part(ctx):
+    ft_keys = ctx.ft_meds.get('matched_keys') or ()
     return {
+        'implausible_fields': ctx.implausible_fields,
+        'severe_htn': ctx.severe_htn,
+        'ft_meds_keys': sorted(ft_keys),
+        'cyp2c19_ppi_sensitive': bool(
+            ctx.q.get('med_clopidogrel')
+            or 'cilostazol' in ctx.med_chips
+            or 'clopidogrel' in ft_keys
+            or 'cilostazol' in ft_keys
+        ),
         'needs_anemia_panel': ctx.needs_anemia_panel,
         'needs_hba1c_reflex': ctx.needs_hba1c_reflex,
         'needs_endo_reflex': ctx.needs_endo_reflex,

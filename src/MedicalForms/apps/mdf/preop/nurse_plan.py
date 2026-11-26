@@ -155,7 +155,7 @@ def build_phone_med_script(patient, ev, today):
     stop_locked = (ev['clearance_seal']['code'] == 'stop' or ev['has_hard_contraindication'])
     med_call = _med_call_status(ev, today)
 
-    stop_rows, keep_rows = [], []
+    stop_rows, caution_rows, keep_rows = [], [], []
     for row in ev['med_schedule']:
         plain_drug = _DRUG_PLAIN_PREFIX.get(row['drug'], row['drug'])
         plan = (row.get('date_plan') or '').strip()
@@ -178,15 +178,18 @@ def build_phone_med_script(patient, ev, today):
             'hold_or_skip': is_hold,
             'urgent_contact': is_urgent,
         }
-        if is_hold or is_urgent or row.get('tone') in ('red', 'amber'):
+        if is_hold or is_acute_or_contra:
             stop_rows.append(entry)
+        elif row.get('tone') in ('red', 'amber') or is_urgent:
+            caution_rows.append(entry)
         else:
             keep_rows.append(entry)
 
     return {
-        'has_meds': bool(stop_rows or keep_rows),
+        'has_meds': bool(stop_rows or caution_rows or keep_rows),
         'stop_rows': stop_rows,
-        'urgent_rows': [r for r in stop_rows if r['urgent_contact']],
+        'caution_rows': caution_rows,
+        'urgent_rows': [r for r in (stop_rows + caution_rows) if r['urgent_contact']],
         'keep_rows': keep_rows,
         'stop_locked': stop_locked,
         'needs_op_date': bool(any(r['hold_or_skip'] for r in stop_rows) and not op_dt and not stop_locked),
@@ -374,7 +377,8 @@ def build_patient_plain_explanation(patient, ev, today):
         'arrival_items': arrival_items,
         'fasting_plain': fasting_plain,
         'stop_meds': med_script['stop_rows'],
-        'urgent_meds': [r for r in med_script['stop_rows'] if r.get('urgent_contact')],
+        'caution_meds': med_script['caution_rows'],
+        'urgent_meds': med_script['urgent_rows'],
         'keep_meds': med_script['keep_rows'],
         'stop_locked': med_script['stop_locked'],
         'emergency_sign': _PATHWAY_EMERGENCY_SIGNS_KA.get(pw, 'უეცარი ძლიერი ტკივილი, სიცხე ან სუნთქვის გაძნელება — დაუყოვნებლივ დარეკეთ კლინიკაში.'),

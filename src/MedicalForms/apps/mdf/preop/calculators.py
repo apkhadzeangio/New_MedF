@@ -74,13 +74,18 @@ def _parse_scr_mgdl(creat, creat_unit=''):
 
 
 def _sat_scr_mgdl(creat, creat_unit=''):
-    """Return scr_mgdl for risk scoring, saturating extreme >3000 umol/L to worst-case renal failure."""
+    """Return scr_mgdl for risk scoring, saturating extreme >3000 umol/L or explicit mgdl >35 to worst-case renal failure."""
+    from .registry import rule_value
+    ren_u = rule_value('SCORE_RENAL_CKDEPI_CG')
     scr, ambig = _parse_scr_mgdl(creat, creat_unit)
     if scr is not None:
         return scr
     raw = _num(creat)
-    if raw is not None and raw > 3000 and not ambig:
-        return 3000.0 / 88.4
+    if raw is not None and (
+        (raw > 3000 and not ambig)
+        or (creat_unit == 'mgdl' and raw > ren_u['ambig_hi'])
+    ):
+        return 3000.0 / ren_u['umol_factor']
     return None
 
 
@@ -113,7 +118,8 @@ def calc_crcl(creat, age, sex='M', weight_kg=None, creat_unit='', on_dialysis=Fa
     age_v = int(round(min(age_num, 120))) if (age_num is not None and age_num >= 12) else None
     if scr_mgdl is None or w is None or age_v is None or sex not in ('M', 'F'):
         return None
-    h = _num(height_cm, lo=100, hi=230)
+    h_raw = _num(height_cm)
+    h = max(100.0, min(230.0, h_raw)) if (h_raw is not None and h_raw > 0) else None
     eff_w = float(w)
     if h is not None:
         bmi_v = w / ((h / 100.0) ** 2)
@@ -136,11 +142,13 @@ def calc_bmi(weight_kg, height_cm):
 
 
 def normalize_hb_gl(hb):
-    """Return hemoglobin in g/L (converts g/dL ONLY in physiologic 3.5..22.0 range; 29 stays 29 g/L)."""
+    """Return hemoglobin in g/L using registered LAB_UNIT_AUTO_CONVERSION bounds."""
+    from .registry import rule_value
     v = _num(hb, lo=1, hi=260)
     if v is None:
         return None
-    return round(v * 10, 1) if 3.5 <= v <= 22.0 else v
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    return round(v * 10, 1) if u['hb_gdl_lo'] <= v <= u['hb_gdl_hi'] else v
 
 
 def normalize_glucose_mmol(gl):
@@ -154,27 +162,33 @@ def normalize_glucose_mmol(gl):
 
 
 def normalize_albumin_gl(alb):
-    """Return serum albumin in g/L (converts g/dL ONLY in 1.0..6.0 range)."""
+    """Return serum albumin in g/L using registered LAB_UNIT_AUTO_CONVERSION bounds."""
+    from .registry import rule_value
     v = _num(alb, lo=0.5, hi=80)
     if v is None:
         return None
-    return round(v * 10, 1) if 1.0 <= v <= 6.0 else v
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    return round(v * 10, 1) if u['alb_gdl_lo'] <= v <= u['alb_gdl_hi'] else v
 
 
 def normalize_fibrinogen_gl(fib):
-    """Return plasma fibrinogen in g/L (converts mg/dL > 15.0 via /100, e.g. 140 mg/dL -> 1.4 g/L)."""
-    v = _num(fib, lo=0.2, hi=1500)
+    """Return plasma fibrinogen in g/L (idempotent across 15.01..1500 mg/dL via lo=0.15)."""
+    from .registry import rule_value
+    v = _num(fib, lo=0.15, hi=1500)
     if v is None:
         return None
-    return round(v / 100.0, 2) if v > 15.0 else v
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    return round(v / 100.0, 2) if v > u['fib_mgdl_gt'] else v
 
 
 def normalize_ldl_mmol(ldl):
-    """Return LDL cholesterol in mmol/L (converts mg/dL > 20.0 via /38.67, e.g. 130 mg/dL -> 3.36 mmol/L)."""
+    """Return LDL cholesterol in mmol/L using registered LAB_UNIT_AUTO_CONVERSION bounds."""
+    from .registry import rule_value
     v = _num(ldl, lo=0.2, hi=500)
     if v is None:
         return None
-    return round(v / 38.67, 2) if v > 20.0 else v
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    return round(v / 38.67, 2) if v > u['ldl_mgdl_gt'] else v
 
 
 def calc_max_contrast_ml(egfr, on_dialysis=False):
@@ -428,8 +442,9 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     spo2 = _sat_num(_s_raw(s, 'spo2'), 30, 100)
     eff_sbp = _valid_bilateral_sbp(s)
     eff_dbp = _valid_bilateral_dbp(s)
-    inv_bp = _inverted_bp_arms(s) if eff_sbp is None else []
-    inv_max = max((max(a, b) for a, b in inv_bp), default=None)
+    inv_bp_all = _inverted_bp_arms(s)
+    inv_bp = inv_bp_all if eff_sbp is None else []
+    inv_max_all = max((max(a, b) for a, b in inv_bp_all), default=None)
     inv_min = min((min(a, b) for a, b in inv_bp), default=None)
     raw_sbp_low = min([v for v in (_sat_num(_s_raw(s, 'bp_sys'), 30, 320), _sat_num(_s_raw(s, 'bp_sys_l'), 30, 320)) if v is not None], default=None)
     hr_val = _sat_num(_s_raw(s, 'hr'), 15, 260)
@@ -443,10 +458,10 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     is_symp_cea = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=False)
 
     if (
-        bool(q.get('aaa_pain'))
+        (pw == PreopPatient.Pathway.AAA_INFRA and bool(q.get('aaa_pain')))
         or (aaa_mm is not None and aaa_mm >= rule_value('AAA_GIANT_MM'))
         or (s.get('aaa_morphology') == 'inflammatory_mycotic')
-        or bool(q.get('cea_crescendo'))
+        or (pw == PreopPatient.Pathway.CEA and bool(q.get('cea_crescendo')))
         or (is_symp_cea and (cea_d is None or cea_d <= 90))
         or bool(q.get('recent_stent'))
         or ('mech_valve' in cad_chips and ('hit_heparin' in allergy_chips or bool(q.get('med_doac')) or bool(q.get('med_dabigatran')) or (bool(q.get('filled')) and not q.get('med_warfarin'))))
@@ -458,7 +473,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or (spo2 is not None and spo2 < 90)
         or (eff_sbp is not None and eff_sbp < 90)
         or (eff_sbp is not None and eff_sbp <= 100 and hr_val is not None and hr_val >= eff_sbp)
-        or (eff_sbp is None and raw_sbp_low is not None and raw_sbp_low <= 100 and hr_val is not None and hr_val >= 100 and hr_val >= raw_sbp_low)
+        or (eff_sbp is None and raw_sbp_low is not None and raw_sbp_low <= 100 and hr_val is not None and hr_val >= raw_sbp_low)
         or (inv_min is not None and inv_min < 90)
         or (hr_val is not None and (hr_val >= 135 or hr_val < 40))
         or (k_val is not None and (k_val >= 6.0 or k_val < 3.0))
@@ -485,7 +500,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         or bool(q.get('pacemaker')) or ('copd' in _str_list(q.get('pulm_chips')))
         or (spo2 is not None and spo2 < 94) or (eff_sbp is not None and eff_sbp >= 180)
         or (eff_dbp is not None and eff_dbp >= 110)
-        or (inv_max is not None and inv_max >= 110)
+        or (inv_max_all is not None and inv_max_all >= 110)
         or (k_val is not None and (k_val >= 5.4 or k_val < 3.3)) or (q.get('cfs_level') == '5_plus')
     ):
         return 'III'
@@ -656,7 +671,7 @@ def calc_vsg_cri(patient, q, s):
     if 'beta_blocker' in med_chips:
         pts += 1
         factors.append('მუდმივი β-ბლოკატორი (+1)')
-    if (('cabg' in cad_chips) or ('stent_old' in cad_chips)) and not (q_filled and q.get('recent_stent')):
+    if (('cabg' in cad_chips) or ('stent_old' in cad_chips)) and not bool(q.get('recent_stent')):
         pts = max(0, pts - 1)
         factors.append('წარსულში რევასკულარიზაცია CABG/PCI (-1)')
 
@@ -750,7 +765,16 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
         pts += 16
         factors.append(f'ოპერაციის ხანგრძლივობა 2–3 სთ{auto_sfx} (+16)')
 
-    if s.get('asa_emergency') or q.get('aaa_pain') or q.get('cea_crescendo'):
+    is_ali_ar = (
+        pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
+        and q.get('abf_duration') == '< 2 კვირა'
+    )
+    if (
+        s.get('asa_emergency')
+        or (pathway == PreopPatient.Pathway.AAA_INFRA and q.get('aaa_pain'))
+        or (pathway == PreopPatient.Pathway.CEA and q.get('cea_crescendo'))
+        or is_ali_ar
+    ):
         pts += 8
         factors.append('სასწრაფო/გადაუდებელი ჩვენება (+8)')
 

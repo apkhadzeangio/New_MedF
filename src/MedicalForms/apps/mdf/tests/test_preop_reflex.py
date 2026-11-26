@@ -1,6 +1,8 @@
 """Tests for Pre-op standing reflex orders, zero-text chips, passport, and peripheral PAD."""
+import datetime
 
 from django.urls import reverse
+from django.utils import timezone
 
 from ..models import StaffProfile
 from .helpers import PrivateMediaTest
@@ -92,7 +94,9 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
         self.assertEqual(evaluate(p)['status'], STATUS_ALERT)
 
         self.client.post(reverse('preop-patient', args=[p.pk]), {
-            'section': 'stage2', 'stale_labs_refreshed': '1', 'ferritin': '42',
+            'section': 'stage2',
+            'planned_surgery_date': (timezone.localdate() + datetime.timedelta(days=10)).isoformat(),
+            'stale_labs_refreshed': '1', 'ferritin': '42',
             'anemia_panel_done': '1', 'hba1c': '9.1', 'endo_consult_done': '1',
             'nephro_panel_done': '1', 'hydration_planned': '1', 'tsh_status': 'euthyroid',
             'dental_sanitation_done': '1', 'contrast_premed_done': '1',

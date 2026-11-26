@@ -1,6 +1,6 @@
 """Chronic Venous Disease (EVLA / Phlebectomy) pathway rules and cross-pathway urgency flags."""
 from ...models import PreopPatient
-from ..calculators import _ihd_and_chf_flags, _valid_bilateral_sbp
+from ..calculators import _ihd_and_chf_flags, _inverted_bp_arms, _s_raw, _sat_num, _valid_bilateral_sbp
 from ..registry import rule_value
 from ..utils import _num, is_pregnancy_eligible
 
@@ -17,11 +17,12 @@ def _eval_venous_lido_and_contra(ctx, ceap, ven_dup, gsv_mm):
         else:
             dosing_wt_lido = ctx.weight_num
         _, chf_lido = _ihd_and_chf_flags(q, s)
+        age_lido = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
         reduced_lido_cl = bool(
             chf_lido
             or (s.get('liver_status') in ('2x', '3x'))
             or ('amiodarone' in ctx.med_chips)
-            or ((ctx.age or 0) >= 80 and (ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 45)))
+            or ((age_lido or 0) >= 80 and (ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 45)))
         )
         if reduced_lido_cl:
             ctx.lidocaine_max_mg = min(lido_cfg['max_reduced'], int(round(dosing_wt_lido * lido_cfg['mg_per_kg'] * lido_cfg['reduced_factor'])))
@@ -73,23 +74,72 @@ def _eval_venous_lido_and_contra(ctx, ceap, ven_dup, gsv_mm):
         ctx.amber_flags.append('დუპლექსით ძლიერ დაკლაკნილი ღერო / სინექიები — გაითვალისწინეთ დამატებითი პუნქციის ან ფლებექტომიის საჭიროება.')
     if q_filled and ceap == 'C6' and not q.get('ven_skin_infection'):
         ctx.amber_flags.append('აქტიური ვენური წყლული (CEAP C6) — ESVS 2022 Class I-ით ადრეული EVLA აჩქარებს წყლულის შეხორცებას.')
-    if q_filled and patient.side not in ('R', 'L', 'B'):
+    side_s = patient.side if isinstance(patient.side, str) else ''
+    if q_filled and side_s not in ('R', 'L', 'B'):
         ctx.amber_flags.append('მიუთითეთ საოპერაციო კიდური (მარჯვენა, მარცხენა ან ორმხრივი).')
+
+
+def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
+    q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
+    high_vte = q_filled and (
+        bool(q.get('ven_dvt_history')) or bool(q.get('ven_thrombophilia'))
+        or bool(q.get('ven_cancer_immob')) or bool(q.get('ven_acute_svt'))
+        or ('hit_heparin' in ctx.allergy_chips)
+    )
+    mod_vte_count = sum([
+        bool((age_eff or 0) >= 60),
+        bool(bmi_eff is not None and bmi_eff >= 30),
+        bool(q_filled and q.get('ven_hormones')),
+        ctx.is_phleb,
+        bool(q_filled and ceap in ('C5', 'C6')),
+    ])
+    cap_thresh = rule_value('VEN_VTE_CAPRINI_PROPHYLAXIS')
+    ctx.needs_vte_prophylaxis = high_vte or (q_filled and (mod_vte_count >= 2 or ctx.caprini_score >= cap_thresh))
+    if ctx.needs_vte_prophylaxis and not s.get('vte_prophylaxis_planned'):
+        ven_severe_renal = ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 30)
+        has_hit = 'hit_heparin' in ctx.allergy_chips
+        arg_liv = ' (ღვიძლის ≥3x: არგატრობანი −75% / უპირატესია ბივალირუდინი!)' if ctx.liver_3x else ''
+        if 'mech_valve' in ctx.cad_chips:
+            vte_agents = (
+                f'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT + მექ. სარქველი — ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!){arg_liv}'
+                if has_hit else 'ვარფარინი (VKA) კარდიოლოგის სქემით — DOAC აკრძალულია!'
+            )
+        elif has_hit:
+            vte_agents = (
+                f'IPC / არგატრობანი-ბივალირუდინი — HIT + CrCl<30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!{arg_liv}'
+                if ven_severe_renal else
+                ('IPC / IV ბივალირუდინი — HIT + ღვიძლის ≥3x: ჰეპარინი, DOAC და ფონდაპარინუქსი არარეკომენდებულია!' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC — HIT: ჰეპარინი აკრძალულია!')
+            )
+        elif ven_severe_renal:
+            vte_agents = 'კანქვეშა UFH / დოზა-კორექტირებული LMWH (DOAC არა!)'
+        elif ctx.liver_3x:
+            vte_agents = 'LMWH / UFH კოაგულოგრამის კონტროლით (ღვიძლის ≥3x-ზე DOAC არა!)'
+        else:
+            vte_agents = 'LMWH / DOAC'
+        vte_tier_lbl = (
+            f'მაღალი თრომბოემბოლიური რისკი (Caprini {ctx.caprini_score})'
+            if (high_vte or ctx.caprini_score >= cap_thresh)
+            else f'მომატებული/საშუალო თრომბოემბოლიური რისკი (Caprini {ctx.caprini_score} — ≥2 რისკ-ფაქტორი)'
+        )
+        ctx.amber_flags.append(
+            f'{vte_tier_lbl} — შეათანხმეთ ინდივიდუალური თრომბოპროფილაქტიკა ({vte_agents}) ქირურგთან.'
+        )
 
 
 def _eval_venous_arterial_and_vte(ctx, ceap):
     q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
     art_cfg = rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')
     gl_eff = ctx.gl_mmol if ctx.gl_mmol is not None else getattr(ctx, 'gl_mmol_sat', None)
+    hba1c_v = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
     bmi_eff = ctx.bmi if ctx.bmi is not None else getattr(ctx, 'bmi_sat', None)
-    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= 11.1))
+    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= 11.1) or (hba1c_v is not None and hba1c_v >= 6.5))
     ctx.needs_abi_check = q_filled and (
         bool(q.get('claudication'))
         or ceap == 'C6'
         or (ceap == 'C5' and (eff_dm or (age_eff or 0) >= 65))
     )
-    abi_eff = ctx.min_abi if ctx.min_abi is not None else getattr(ctx, 'min_comp_abi_sat', None)
+    abi_eff = min([v for v in (ctx.min_abi, getattr(ctx, 'min_comp_abi_sat', None)) if v is not None], default=None)
     if abi_eff is not None:
         if abi_eff < art_cfg['abi_stop']:
             sev_ven_isch = (
@@ -104,82 +154,51 @@ def _eval_venous_arterial_and_vte(ctx, ceap):
             )
         elif abi_eff <= art_cfg['abi_border']:
             ctx.amber_flags.append(f'სასაზღვრო გოჯ-მხრის ინდექსი (ABI {abi_eff}) — კომპრესიის ხარისხი შეათანხმეთ ქირურგთან.')
-    tp_eff = ctx.min_tp if ctx.min_tp is not None else getattr(ctx, 'min_tp_sat', None)
-    tbi_eff = ctx.min_tbi if ctx.min_tbi is not None else getattr(ctx, 'min_tbi_sat', None)
-    tp_is_stop = bool(tp_eff is not None and tp_eff < art_cfg['tp_stop'])
+    tp_eff = min([v for v in (ctx.min_tp, getattr(ctx, 'min_tp_sat', None)) if v is not None], default=None)
+    tbi_eff = min([v for v in (ctx.min_tbi, getattr(ctx, 'min_tbi_sat', None)) if v is not None], default=None)
+    tp_is_stop = bool((tp_eff is not None and tp_eff < art_cfg['tp_stop']) or (tbi_eff is not None and tbi_eff < art_cfg['tbi_stop']))
+    max_abi_disp = ctx.max_abi if ctx.max_abi is not None else getattr(ctx, 'max_abi_sat', None)
     if tp_is_stop:
+        tp_tbi_lbl = (
+            f'TP {tp_eff} mmHg < {art_cfg["tp_stop"]} mmHg'
+            if (tp_eff is not None and tp_eff < art_cfg['tp_stop'])
+            else f'TBI {tbi_eff} < {art_cfg["tbi_stop"]:.2f}'
+        )
         tp_ven_isch = (
-            f'კრიტიკულად დაბალი თითის წნევა (TP {tp_eff} mmHg < {art_cfg["tp_stop"]} mmHg) — მძიმე არტერიული იშემია, '
+            f'კრიტიკულად დაბალი თითის პერფუზია ({tp_tbi_lbl}) — მძიმე არტერიული იშემია, '
             'გეგმური ვენური ჩარევა და კომპრესია უკუნაჩვენებია (ESVS 2022)!'
         )
         ctx.red_flags.append(tp_ven_isch)
         ctx.hard_contraindications.append(tp_ven_isch)
-    elif tp_eff is not None and tp_eff < 50 and not ctx.abi_non_compressible:
+    elif tp_eff is not None and tp_eff < art_cfg['tp_red'] and not ctx.abi_non_compressible:
         ctx.red_flags.append(
-            f'დაბალი თითის წნევა (TP {tp_eff} mmHg < 50 mmHg) — არტერიული უკმარისობა, კომპრესიული ტრიკოტაჟი უკუნაჩვენებია!'
+            f'დაბალი თითის წნევა (TP {tp_eff} mmHg < {art_cfg["tp_red"]} mmHg) — არტერიული უკმარისობა, კომპრესიული ტრიკოტაჟი უკუნაჩვენებია!'
         )
-    elif tbi_eff is not None and tbi_eff < 0.50 and not ctx.abi_non_compressible:
+    elif tbi_eff is not None and tbi_eff < art_cfg['tbi_red'] and not ctx.abi_non_compressible:
         ctx.red_flags.append(
-            f'დაბალი თით-მხრის ინდექსი (TBI {tbi_eff} < 0.50) — არტერიული უკმარისობა, კომპრესიული ტრიკოტაჟი უკუნაჩვენებია!'
+            f'დაბალი თით-მხრის ინდექსი (TBI {tbi_eff} < {art_cfg["tbi_red"]:.2f}) — არტერიული უკმარისობა, კომპრესიული ტრიკოტაჟი უკუნაჩვენებია!'
         )
     if ctx.abi_non_compressible and not tp_is_stop:
-        if (tp_eff is not None and tp_eff < 50) or (tbi_eff is not None and tbi_eff < 0.50):
+        if (tp_eff is not None and tp_eff < art_cfg['tp_red']) or (tbi_eff is not None and tbi_eff < art_cfg['tbi_red']):
             ctx.red_flags.append(
-                f'არაკომპრესირებადი ABI ({ctx.max_abi}) + დაბალი Toe Pressure/TBI (TP {tp_eff if tp_eff is not None else "—"} / '
+                f'არაკომპრესირებადი ABI ({max_abi_disp}) + დაბალი Toe Pressure/TBI (TP {tp_eff if tp_eff is not None else "—"} / '
                 f'TBI {tbi_eff if tbi_eff is not None else "—"}) — არტერიული უკმარისობა, კომპრესიული ტრიკოტაჟი უკუნაჩვენებია!'
             )
         elif ctx.tbi_reduced_comp:
             ctx.amber_flags.append(
-                f'არაკომპრესირებადი არტერია (ABI {ctx.max_abi} > 1.40) + სასაზღვრო TP/TBI '
+                f'არაკომპრესირებადი არტერია (ABI {max_abi_disp} > 1.40) + სასაზღვრო TP/TBI '
                 f'(TP {ctx.min_tp if ctx.min_tp is not None else "—"} / TBI {ctx.min_tbi if ctx.min_tbi is not None else "—"}) — '
                 '2 კლასის ნაცვლად დასაშვებია მხოლოდ მსუბუქი I კლასის კომპრესია (<20 mmHg) ქირურგთან შეთანხმებით!'
             )
         elif not ctx.tbi_comp_safe:
             ctx.amber_flags.append(
-                f'არაკომპრესირებადი არტერია (ABI {ctx.max_abi} > 1.40) — 2 კლასის კომპრესიული წინდის დანიშვნამდე '
-                'სამიზნე კიდურზე სავალდებულოა Toe Pressure (≥60 mmHg) ან TBI (≥0.70)!'
+                f'არაკომპრესირებადი არტერია (ABI {max_abi_disp} > 1.40) — 2 კლასის კომპრესიული წინდის დანიშვნამდე '
+                f'სამიზნე კიდურზე სავალდებულოა Toe Pressure (≥{art_cfg["tp_comp_ok"]} mmHg) ან TBI (≥{art_cfg["tbi_comp_ok"]:.2f})!'
             )
-
-    high_vte = q_filled and (
-        bool(q.get('ven_dvt_history')) or bool(q.get('ven_thrombophilia'))
-        or bool(q.get('ven_cancer_immob')) or bool(q.get('ven_acute_svt'))
-        or ('hit_heparin' in ctx.allergy_chips)
-    )
-    mod_vte_count = sum([
-        bool((age_eff or 0) >= 60),
-        bool(bmi_eff is not None and bmi_eff >= 30),
-        bool(q_filled and q.get('ven_hormones')),
-        ctx.is_phleb,
-        bool(q_filled and ceap in ('C5', 'C6')),
-    ])
-    ctx.needs_vte_prophylaxis = high_vte or (q_filled and (mod_vte_count >= 2 or ctx.caprini_score >= rule_value('VEN_VTE_CAPRINI_PROPHYLAXIS')))
-    if ctx.needs_vte_prophylaxis and not s.get('vte_prophylaxis_planned'):
-        ven_severe_renal = ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 30)
-        has_hit = 'hit_heparin' in ctx.allergy_chips
-        if 'mech_valve' in ctx.cad_chips:
-            vte_agents = (
-                'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT + მექ. სარქველი — ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!)'
-                if has_hit else 'ვარფარინი (VKA) კარდიოლოგის სქემით — DOAC აკრძალულია!'
-            )
-        elif has_hit:
-            vte_agents = (
-                'IPC / არგატრობანი-ბივალირუდინი — HIT + CrCl<30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!'
-                if ven_severe_renal else
-                ('IPC / IV ბივალირუდინი — HIT + ღვიძლის ≥3x: ჰეპარინი, DOAC და ფონდაპარინუქსი არარეკომენდებულია!' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC — HIT: ჰეპარინი აკრძალულია!')
-            )
-        elif ven_severe_renal:
-            vte_agents = 'კანქვეშა UFH / დოზა-კორექტირებული LMWH (DOAC არა!)'
-        elif ctx.liver_3x:
-            vte_agents = 'LMWH / UFH კოაგულოგრამის კონტროლით (ღვიძლის ≥3x-ზე DOAC არა!)'
-        else:
-            vte_agents = 'LMWH / DOAC'
-        ctx.amber_flags.append(
-            f'მაღალი თრომბოემბოლიური რისკი (Caprini {ctx.caprini_score}) — შეათანხმეთ ინდივიდუალური თრომბოპროფილაქტიკა ({vte_agents}) ქირურგთან.'
-        )
+    _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff)
 
 
 def eval_venous(ctx):
-    from ..calculators import _s_raw, _sat_num
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
     ceap = q.get('ven_ceap') if q.get('ven_ceap') in ('C2', 'C3', 'C4', 'C5', 'C6') else 'C2'
     ven_dup = s.get('ven_duplex_status') or 'pending'
@@ -190,8 +209,9 @@ def eval_venous(ctx):
     lvef_v = _sat_num(_s_raw(s, 'lvef'), 5, 95)
     bnp_v = _sat_num(_s_raw(s, 'nt_probnp'), 1, 100000)
     gl_eff = ctx.gl_mmol if ctx.gl_mmol is not None else getattr(ctx, 'gl_mmol_sat', None)
+    hba1c_v = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
-    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= 11.1))
+    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= 11.1) or (hba1c_v is not None and hba1c_v >= 6.5))
     eff_cardiac = bool(q.get('cad') or ctx.cad_chips or q.get('recent_stent') or (lvef_v is not None and lvef_v < 40) or (bnp_v is not None and bnp_v >= 300))
     ctx.needs_wound_care = q_filled and (ceap == 'C6' or bool(q.get('ven_skin_infection')))
     ctx.needs_ecg_venous = (
@@ -212,18 +232,55 @@ def eval_venous(ctx):
         ctx.key_badge = f'{int(gsv_mm)} მმ'
 
 
-def eval_cross_pathway_and_urgency(ctx):
-    from ..calculators import _s_raw, _sat_num
-    patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
+def _eval_cross_pathway_urgency_flags(ctx, aaa_eff):
+    pathway, q, s = ctx.pathway, ctx.q, ctx.s
     hemo_cfg = rule_value('PAD_CLTI_HEMO_THRESHOLDS')
-    hba1c_x = _num(s.get('hba1c'), lo=3.0, hi=25.0)
+    # Distinguish hemodynamically unstable rupture suspect (SBP <90 or Shock Index >=1.0) from intact symptomatic AAA (ESVS 2024)
+    eff_sbp_pre = _valid_bilateral_sbp(s)
+    if eff_sbp_pre is None:
+        inv_pre = _inverted_bp_arms(s)
+        eff_sbp_pre = min((min(sv, dv) for sv, dv in inv_pre), default=None)
+    hr_pre = _sat_num(_s_raw(s, 'hr'), 15, 260)
+    si_pre = round(hr_pre / eff_sbp_pre, 2) if (hr_pre is not None and eff_sbp_pre is not None and eff_sbp_pre > 0) else None
+    hemodyn_unstable = bool((eff_sbp_pre is not None and eff_sbp_pre < 90) or (si_pre is not None and si_pre >= 1.0))
+    aaa_pain_active = bool(pathway == PreopPatient.Pathway.AAA_INFRA and q.get('aaa_pain'))
+    cea_cresc_active = bool(pathway == PreopPatient.Pathway.CEA and q.get('cea_crescendo'))
+    is_ali_urgent = (
+        pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
+        and q.get('abf_duration') == '< 2 კვირა'
+    )
+    ctx.is_rupture_suspect = bool(aaa_pain_active and hemodyn_unstable)
+    ctx.is_symp_aaa_intact = bool(aaa_pain_active and not hemodyn_unstable)
+    ctx.is_acute_emergency = bool(aaa_pain_active or cea_cresc_active or is_ali_urgent)
+    ctx.is_septic_or_mycotic_urgent = bool(
+        (pathway == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic')
+        or bool(q.get('abf_wet_infection'))
+    )
+    ctx.is_urgent_case = bool(
+        ctx.is_acute_emergency
+        or ctx.is_septic_or_mycotic_urgent
+        or is_ali_urgent
+        or (aaa_eff is not None and aaa_eff >= rule_value('AAA_GIANT_MM'))
+        or ctx.is_symp_cea
+        or ctx.is_clti_any
+        or (ctx.min_comp_abi_sat is not None and ctx.min_comp_abi_sat < hemo_cfg['abi_severe'])
+        or (ctx.min_tp_sat is not None and ctx.min_tp_sat < hemo_cfg['tp_severe'])
+        or (ctx.min_tbi_sat is not None and ctx.min_tbi_sat < hemo_cfg['tbi_severe'])
+        or (ctx.is_venous and (bool(q.get('ven_acute_svt')) or bool(q.get('ven_bleeding'))))
+        or (ctx.days > ctx.t_days and not ctx.is_venous and not ctx.is_on_hold and ctx.is_active_case)
+    )
+
+
+def eval_cross_pathway_and_urgency(ctx):
+    patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
+    hba1c_x = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     gl_eff = ctx.gl_mmol if ctx.gl_mmol is not None else getattr(ctx, 'gl_mmol_sat', None)
     eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= 11.1) or (hba1c_x is not None and hba1c_x >= 6.5))
 
     if (
         pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
         and ctx.is_clti_any and (eff_dm or ctx.on_dialysis)
-        and not ctx.abi_non_compressible
+        and not ctx.abi_non_compressible and not ctx.is_ali_acute
     ):
         ctx.needs_tbi_check = True
         ctx.reflex_orders.append({
@@ -256,7 +313,12 @@ def eval_cross_pathway_and_urgency(ctx):
             is_elective_claud = pathway in (
                 PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA,
             ) and not ctx.is_clti_any and not ctx.is_ali_acute
-            if (patient.op_subtype in ('evar', 'tbd')) or ctx.is_pta:
+            if ctx.is_ali_acute:
+                preg_art_msg = (
+                    'ორსულობა / შესაძლო ორსულობა მწვავე იშემიის (ALI) ფონზე — '
+                    'სასწრაფო მულტიდისციპლინური შეთანხმება მეან-გინეკოლოგთან და სისხლძარღვთა ქირურგთან (ნაყოფის დაცვით)!'
+                )
+            elif (patient.op_subtype in ('evar', 'tbd')) or ctx.is_pta:
                 preg_art_msg = (
                     'ორსულობა / შესაძლო ორსულობა რენტგენო-ფლუოროსკოპიულ ჩარევაზე (EVAR / PTA) — ნაყოფის დასხივებისა და იოდის კონტრასტის რისკი! '
                     'სავალდებულოა β-hCG ტესტი, მეან-გინეკოლოგის ჩართვა და გეგმური ჩარევის გადადება!'
@@ -275,33 +337,4 @@ def eval_cross_pathway_and_urgency(ctx):
                 'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე — ადგილობრივი/წნულის ანესთეზია საშიშია! '
                 'სავალდებულოა ანესთეზიოლოგის ჩართვა და ალტერნატიული გაუტკივარების შეთანხმება.'
             )
-    # Distinguish hemodynamically unstable rupture suspect (SBP <90 or Shock Index >=1.0) from intact symptomatic AAA (ESVS 2024)
-    eff_sbp_pre = _valid_bilateral_sbp(s)
-    hr_pre = _sat_num(_s_raw(s, 'hr'), 15, 260)
-    si_pre = round(hr_pre / eff_sbp_pre, 2) if (hr_pre is not None and eff_sbp_pre is not None and eff_sbp_pre > 0) else None
-    hemodyn_unstable = bool((eff_sbp_pre is not None and eff_sbp_pre < 90) or (si_pre is not None and si_pre >= 1.0))
-    aaa_pain_active = bool(pathway == PreopPatient.Pathway.AAA_INFRA and q.get('aaa_pain'))
-    is_ali_urgent = (
-        pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
-        and q.get('abf_duration') == '< 2 კვირა'
-    )
-    ctx.is_rupture_suspect = bool(aaa_pain_active and hemodyn_unstable)
-    ctx.is_symp_aaa_intact = bool(aaa_pain_active and not hemodyn_unstable)
-    ctx.is_acute_emergency = bool(bool(q.get('aaa_pain')) or bool(q.get('cea_crescendo')) or is_ali_urgent)
-    ctx.is_septic_or_mycotic_urgent = bool(
-        (pathway == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic')
-        or bool(q.get('abf_wet_infection'))
-    )
-    ctx.is_urgent_case = bool(
-        ctx.is_acute_emergency
-        or ctx.is_septic_or_mycotic_urgent
-        or is_ali_urgent
-        or (aaa_eff is not None and aaa_eff >= rule_value('AAA_GIANT_MM'))
-        or ctx.is_symp_cea
-        or ctx.is_clti_any
-        or (ctx.min_comp_abi_sat is not None and ctx.min_comp_abi_sat < hemo_cfg['abi_severe'])
-        or (ctx.min_tp_sat is not None and ctx.min_tp_sat < hemo_cfg['tp_severe'])
-        or (ctx.min_tbi_sat is not None and ctx.min_tbi_sat < hemo_cfg['tbi_severe'])
-        or (ctx.is_venous and (bool(q.get('ven_acute_svt')) or bool(q.get('ven_bleeding'))))
-        or (ctx.days > ctx.t_days and not ctx.is_venous and not ctx.is_on_hold and ctx.is_active_case)
-    )
+    _eval_cross_pathway_urgency_flags(ctx, aaa_eff)

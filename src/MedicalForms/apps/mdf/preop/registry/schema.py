@@ -1,7 +1,7 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.5'
+REGISTRY_VERSION = '1.2.6'
 REGISTRY_UPDATED_ON = '2026-11-26'
 
 STATUS_VERIFIED = 'source-verified'
@@ -78,6 +78,18 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.6',
+        'date': '2026-11-26',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-7 საბოლოო გამყარება: 0 S1/S2 დეფექტი, უსაფრთხო HTTP/UI პარიტეტი და რეესტრის სრული სიზუსტე',
+        'changes_ka': (
+            'დაიხურა ყველა დარჩენილი კრიტიკული უსაფრთხოების და ინვარიანტის დეფექტი: self_link როტაციის უსაფრთხო განბლოკვა ვერიფიკაციის გვერდის ავლის გარეშე, CEA სისხლჩაქცევის/rt-PA პრიორიტეტი HIT-სა და OAC-ზე, პაციენტის ახსნის ბარათში უწყვეტი წამლების გამოყოფა STOP სექციიდან, _tab_s2 ჰიპერნატრიემია/HFrEF/პოსტოპ-გეგმის სინქრონიზაცია, ახალი ექთნის UI-ში ჩადგმული ფორმებისა და ⓘ მოდალის გააქტიურება, და med_hold_agreed/someday:ready/stage2/sync=1/წარსული თარიღის ბარიერები.',
+            'გამყარდა კალკულატორებისა და მონოტონურობის ინვარიანტები: AAA რუპტურა ინვერტირებულ წნევაზე, ორმხრივი ვენური STOP და TBI <0.30 STOP, DoS INR >20 და VRIII ჰიპერგლიკემია, mg/dL >35 სატურაცია, ფიბრინოგენის იდემპოტენტურობა, CrCl სიმაღლის სატურაცია, 10**400 OverflowError / tuple NaN / unhashable დაცვა და ALI (<2 კვირა) გადაუდებელი ბაიპასი + ARISCAT +8.',
+            'გაფართოვდა თავისუფალი ტექსტის მედიკამენტებისა და ალერგიების დეტექცია (ასპირინი NSAID ალერგიის გარეშეც, მარევანი, რივაროქსაბანის კლაუზური ანალიზი, ომეპრაზოლი/ნექსიუმი, ქართული ალერგიის ბრენდები) და დაიხურა ფარმაკოლოგიური/ანამნეზის წინააღმდეგობები (უკუნაჩვენები OAC აღდგენა, პრასუგრელის დაუყოვნებლივი შეცვლა, ცილოსტაზოლის CrCl, PAD ასპირინი, ჰორმონები ღვიძლის >=3x/DVT-ზე).',
+            'რეესტრში დაემატა LAB_UNIT_AUTO_CONVERSION (STATUS_LOCAL), ყველა ადგილობრივი ზღვარი/პროქსი (VEN_VTE_CAPRINI_PROPHYLAXIS, ANES_AIRWAY_STOPBANG_ICU, SCORE_ASA_PHYSICAL_STATUS, VEN_ARTERIAL_ISCHEMIA_COMPRESSION, MED_CILOSTAZOL_BLACKBOX) პატიოსნად მონიშნულია STATUS_LOCAL-ად და ჩანაცვლდა ყველა ჰარდკოდებული ზღვარი.',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC 2022 · ASRA 5th Ed 2025 · CHEST 2022 · EHRA 2021 · ACC/AHA 2024 · CPOC 2021 · WHO Sign-In',
+    },
     {
         'version': '1.2.5',
         'date': '2026-11-26',

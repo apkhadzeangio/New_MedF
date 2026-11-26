@@ -1,11 +1,10 @@
 """Structured Georgian preoperative anamnesis generator and Self-Fill highlights extractor."""
 from ..board import person_name
 from ..models import PreopPatient
-from .utils import _int, _num, _str_list, chip_summary, is_self_filled_q
+from .utils import _int, _num, _str_list, cea_live_days_since_event, chip_summary, is_self_filled_q
 
 _SF_SIMPLE_FLAGS = (
     ('aaa_pain', 'urgent', 'მუცლის/წელის ტკივილი (AAA)!'),
-    ('cea_thrombolysis', 'urgent', 'თრომბოლიზისი ≤6 დღეში!'),
     ('cea_hoarseness', 'warn', 'ხმის ჩახლეჩა / დისფაგია (CEA)'),
     ('cea_prior_neck', 'warn', 'კისრის წინა ოპერაცია / დასხივება (CEA)'),
     ('abf_rest_pain', 'warn', 'მოსვენებითი იშემიური ტკივილი'),
@@ -51,6 +50,12 @@ def build_self_fill_highlights(q):
         items.append(('urgent', 'განმეორებითი TIA/სიმპტომი <48 სთ!'))
     elif q.get('cea_symp_event'):
         items.append(('warn', 'ნევროლოგიური სიმპტომი ანამნეზში'))
+    if q.get('cea_thrombolysis'):
+        ev_d = cea_live_days_since_event(q)
+        if ev_d is None or ev_d <= 6:
+            items.append(('urgent', 'თრომბოლიზისი ≤6 დღეში!'))
+        else:
+            items.append(('warn', 'თრომბოლიზისი ანამნეზში (>6 დღე)'))
     if q.get('ven_pregnant') or q.get('pregnant_possible'):
         items.append(('urgent', 'ორსულობა / შესაძლო ორსულობა / ლაქტაცია!'))
     if q.get('recent_stent'):
@@ -99,27 +104,30 @@ def build_self_fill_highlights(q):
 
 def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
     lines = []
-    side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა '}.get(patient.side, '')
+    side_s = patient.side if isinstance(patient.side, str) else ''
+    side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა '}.get(side_s, '')
     is_symp = bool(ev.get('is_symp_cea'))
     kind_word = 'სიმპტომური სტენოზის გამო' if is_symp else 'ასიმპტომური სტენოზის გამო'
     lines.append(f'{head_prefix}, დაგეგმილია {side_word}კაროტიდული ენდარტერექტომია ({kind_word}){surgeon_str}.')
 
+    live_ev_d = ev.get('days_since_ev')
+    extra_neuro = []
+    if q.get('cea_crescendo'):
+        extra_neuro.append('აღინიშნება მერყევი/განმეორებითი დეფიციტი ბოლო 24–48 სთ-ში!')
+    if q.get('cea_thrombolysis'):
+        if ev.get('active_thrombolysis_window') or live_ev_d is None or live_ev_d <= 6:
+            extra_neuro.append('ჩატარებულია თრომბოლიზისი ბოლო 6 დღეში!')
+        else:
+            extra_neuro.append('ანამნეზში ჩატარებულია თრომბოლიზისი (>6 დღის წინ)')
+    if q.get('cea_disabling_stroke'):
+        extra_neuro.append('ნარჩენი დეფიციტი mRS >= 3')
     if is_symp:
         ev_txt = chip_summary(q.get('cea_event_chips'), 'cea_event_chips', q.get('cea_event_text')) or 'TIA / ამავროზი / მცირე იშემიური ინსულტი'
-        live_ev_d = ev.get('days_since_ev')
         d_ago = f', ბოლო ეპიზოდი {live_ev_d} დღის წინ' if live_ev_d is not None else ''
-        extra_neuro = []
-        if q.get('cea_crescendo'):
-            extra_neuro.append('აღინიშნება მერყევი/განმეორებითი დეფიციტი ბოლო 24–48 სთ-ში!')
-        if q.get('cea_thrombolysis'):
-            if ev.get('active_thrombolysis_window') or live_ev_d is None or live_ev_d <= 6:
-                extra_neuro.append('ჩატარებულია თრომბოლიზისი ბოლო 6 დღეში!')
-            else:
-                extra_neuro.append('ანამნეზში ჩატარებულია თრომბოლიზისი (>6 დღის წინ)')
-        if q.get('cea_disabling_stroke'):
-            extra_neuro.append('ნარჩენი დეფიციტი mRS >= 3')
         extra_str = f" ({'; '.join(extra_neuro)})" if extra_neuro else ''
         lines.append(f'ნევროლოგიური სტატუსი: სიმპტომური ({ev_txt}{d_ago}){extra_str}.')
+    elif extra_neuro:
+        lines.append(f"ნევროლოგიური სტატუსი: საყურადღებოა ({'; '.join(extra_neuro)}).")
     else:
         lines.append('ნევროლოგიური სტატუსი: ასიმპტომურია, ბოლო 6 თვეში TIA-ს, ამავროზსა და ინსულტს უარყოფს.')
 
@@ -164,7 +172,8 @@ def _anam_abf(patient, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer
     sub_lbl = 'კრიტიკული იშემიის — CLTI გამო' if patient.op_subtype == PreopPatient.OpSubtype.ABF_CLTI else 'ლერიშის სინდრომის / მძიმე კოჭლობის გამო'
     lines.append(f'{head_prefix}, დაგეგმილია აორტო-ბიფემორალური შუნტირება ({sub_lbl}){surgeon_str}.')
 
-    claud_part = f"ხანგამოშვებითი კოჭლობა {q['abf_claud_m']} მ-ში" if q.get('abf_claud_m') is not None else 'ხანგამოშვებითი კოჭლობა'
+    claud_m_v = _int(q.get('abf_claud_m'), 0, 5000)
+    claud_part = f'ხანგამოშვებითი კოჭლობა {claud_m_v} მ-ში' if claud_m_v is not None else 'ხანგამოშვებითი კოჭლობა'
     if q.get('abf_buttock_pain'):
         claud_part += ' (დუნდულოებისა და ბარძაყების არეში — ლერიშის სინდრომი)'
     if q.get('abf_duration'):
@@ -188,9 +197,11 @@ def _anam_abf(patient, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer
     clamp_map = {'infrarenal': 'ინფრარენალური საკლამპე ზონა', 'juxtarenal_calcified': 'იუქსტარენალური ოკლუზია / მძიმე კალციფიკაცია (!)', 'pending': 'ზუსტდება'}
     out_map = {'patent': 'CFA/Profunda ორმხრივ გამავალია', 'profunda_stenosis': 'CFA/Profunda სტენოზი (პროფუნდოპლასტიკა)', 'poor_outflow': 'მძიმე დისტალური დაზიანება (!)', 'pending': 'ზუსტდება'}
     disc_str = 'DICOM დისკი ადგილზეა' if s.get('cta_disc') else 'DICOM დისკი მოსატანია'
+    abi_r_a = _num(s.get('abi_r'), 0.0, 3.0)
+    abi_l_a = _num(s.get('abi_l'), 0.0, 3.0)
     lines.append(
-        f"ჰემოდინამიკა და CTA: ABI R {s.get('abi_r') if s.get('abi_r') is not None else '—'} / "
-        f"L {s.get('abi_l') if s.get('abi_l') is not None else '—'}; "
+        f"ჰემოდინამიკა და CTA: ABI R {abi_r_a if abi_r_a is not None else '—'} / "
+        f"L {abi_l_a if abi_l_a is not None else '—'}; "
         f"აორტა — {clamp_map.get(s.get('abf_clamp_zone') or 'pending', 'ზუსტდება')}; "
         f"Outflow — {out_map.get(s.get('abf_outflow') or 'pending', 'ზუსტდება')} ({disc_str})."
     )
@@ -199,13 +210,15 @@ def _anam_abf(patient, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer
 
 def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
     lines = []
-    side_word = {'R': 'მარჯვენა ქვემო კიდურის ', 'L': 'მარცხენა ქვემო კიდურის ', 'B': 'ორმხრივი '}.get(patient.side, '')
+    side_s = patient.side if isinstance(patient.side, str) else ''
+    side_word = {'R': 'მარჯვენა ქვემო კიდურის ', 'L': 'მარცხენა ქვემო კიდურის ', 'B': 'ორმხრივი '}.get(side_s, '')
     is_clti = patient.op_subtype in (PreopPatient.OpSubtype.BYPASS_CLTI, PreopPatient.OpSubtype.PTA_CLTI)
     ind_lbl = 'კრიტიკული იშემიის — CLTI გამო' if is_clti else 'ხანგამოშვებითი კოჭლობის გამო'
     op_name = 'პერიფერიული არტერიული შუნტირება' if pathway == PreopPatient.Pathway.PAD_BYPASS else 'პერიფერიული ანგიოპლასტიკა / სტენტირება (PTA)'
     lines.append(f'{head_prefix}, დაგეგმილია {side_word}{op_name} ({ind_lbl}){surgeon_str}.')
 
-    claud_part = f"კოჭლობა {q['abf_claud_m']} მ-ში" if q.get('abf_claud_m') is not None else 'ხანგამოშვებითი კოჭლობა'
+    claud_m_p = _int(q.get('abf_claud_m'), 0, 5000)
+    claud_part = f'კოჭლობა {claud_m_p} მ-ში' if claud_m_p is not None else 'ხანგამოშვებითი კოჭლობა'
     if q.get('abf_duration'):
         claud_part += f", ხანგრძლივობა: {q['abf_duration']}"
         if q.get('abf_duration') == '< 2 კვირა':
@@ -223,7 +236,7 @@ def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
     if pathway == PreopPatient.Pathway.PAD_BYPASS:
         run_map = {'popliteal_patent': 'მუხლქვეშა არტერია გამავალია', 'tibial_single': 'წვივის არტერიაზე დისტალური მიმღები', 'desert_foot': 'არადამაკმაყოფილებელი კალაპოტი (!)', 'pending': 'ზუსტდება'}
         gsv_map = {'adequate': 'ვარგისია (≥3.0 მმ)', 'inadequate': 'უვარგისია (<3.0 მმ / ამოღებულია!)', 'pending': 'ზუსტდება'}
-        gsv_val = _num(s.get('pad_gsv_mm'), 0.5, 25.0)
+        gsv_val = _num(s.get('pad_gsv_mm'), 0.5, 30.0)
         gsv_stripped = 'vein_strip' in _str_list(q.get('vasc_chips'))
         gsv_eff_st = 'inadequate' if (gsv_stripped or (gsv_val is not None and gsv_val < 3.0)) else (s.get('pad_gsv_status') or 'pending')
         gsv_d = f' ({gsv_val} მმ)' if gsv_val is not None else ''
@@ -243,7 +256,8 @@ def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
 
 def _anam_venous(patient, ev, q, s, head_prefix, surgeon_str):
     lines = []
-    side_word = {'R': 'მარჯვენა ქვემო კიდურზე ', 'L': 'მარცხენა ქვემო კიდურზე ', 'B': 'ორივე ქვემო კიდურზე '}.get(patient.side, '')
+    side_s = patient.side if isinstance(patient.side, str) else ''
+    side_word = {'R': 'მარჯვენა ქვემო კიდურზე ', 'L': 'მარცხენა ქვემო კიდურზე ', 'B': 'ორივე ქვემო კიდურზე '}.get(side_s, '')
     anesth_tag = ev.get('effective_anesth_label') or (
         'ტუმესცენტური ანესთეზია' if patient.op_subtype == PreopPatient.OpSubtype.EVLA else 'სპინალური / ზოგადი ანესთეზია'
     )
@@ -298,6 +312,10 @@ def _anam_venous(patient, ev, q, s, head_prefix, surgeon_str):
         ven_notes.append(f'რეციდივული ვარიკოზი ({rec_txt})')
     if q.get('ven_hormones'):
         ven_notes.append('ჰორმონული პრეპარატები/კონტრაცეპტივი')
+    if q.get('ven_cancer_immob'):
+        ven_notes.append('ონკოლოგია / ხანგრძლივი იმობილიზაცია')
+    if q.get('ven_skin_infection'):
+        ven_notes.append('მწვავე კანის ინფექცია / წითელი ქარი (!)')
     from .utils import is_pregnancy_eligible
     if (q.get('ven_pregnant') or q.get('pregnant_possible')) and is_pregnancy_eligible(patient):
         ven_notes.append('ორსულობა / ლაქტაცია (!)')
@@ -372,9 +390,12 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
             c_det = '; '.join([x for x in ('კორონარული სტენტი <6 თვ.', c_det) if x])
         cad_head = 'გულის იშემიური დაავადება' if has_ihd_chip else 'კარდიოლოგიური პათოლოგია'
         comorb.append(f"{cad_head}{f' ({c_det})' if c_det else ''}")
+    hba1c_a = _num((ev.get('s') or {}).get('hba1c'), 3.0, 25.0)
     if q.get('dm') or q.get('dm_insulin'):
         dm_kind = 'ინსულინზე' if q.get('dm_insulin') else 'ტაბლეტებზე'
         comorb.append(f'შაქრიანი დიაბეტი ({dm_kind})')
+    elif hba1c_a is not None and hba1c_a >= 6.5:
+        comorb.append(f'არადიაგნოსტირებული შაქრიანი დიაბეტი (HbA1c {hba1c_a}%)')
     if q.get('on_dialysis'):
         comorb.append('პროგრამული დიალიზი')
     if q.get('pulm') or q.get('pulm_chips'):
@@ -386,6 +407,9 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
         comorb.append('ანამნეზში ინსულტი/TIA')
     if q.get('ulcer') or q.get('ulcer_active_symp'):
         comorb.append('წყლულოვანი დაავადება (აქტიური ჩივილით)' if q.get('ulcer_active_symp') else 'წყლულოვანი დაავადება ანამნეზში')
+    if q.get('active_infection') or q.get('inf_chips'):
+        inf_det = chip_summary(q.get('inf_chips'), 'inf_chips', q.get('infection_text'))
+        comorb.append(f"აქტიური ინფექციური კერა{f' ({inf_det})' if inf_det else ''} (!)")
     if q.get('smoker'):
         comorb.append('თამბაქოს მწეველი')
     lines.append(f"თანმხლები ფონი: {', '.join(comorb) if comorb else 'მნიშვნელოვანი ქრონიკული დაავადებების გარეშე'}.")

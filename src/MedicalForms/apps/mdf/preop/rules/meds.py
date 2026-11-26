@@ -117,7 +117,8 @@ def _eval_allergy_cied_and_med_hold(ctx):
 
 
 def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
-    q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
+    q, s = ctx.q, ctx.s
+    cilo_cfg = rule_value('MED_CILOSTAZOL_BLACKBOX')
     lvef_early = _sat_num(_s_raw(s, 'lvef'), 5, 95)
     bnp_early = _sat_num(_s_raw(s, 'nt_probnp'), 1, 100000)
     hr_eff = getattr(ctx, 'hr_sat', ctx.hr)
@@ -128,16 +129,21 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
     )
     cilostazol_contra = bool(
         cea_bleed
-        or ctx.chf_hyd_flag or (lvef_early is not None and lvef_early < 50)
-        or (bnp_early is not None and bnp_early >= 300) or ctx.on_dialysis
+        or ctx.chf_hyd_flag or (lvef_early is not None and lvef_early < cilo_cfg['lvef_min'])
+        or (bnp_early is not None and bnp_early >= cilo_cfg['bnp_max']) or ctx.on_dialysis
         or (ctx.eff_renal is not None and ctx.eff_renal <= cilo_min_crcl)
-        or ((s.get('ecg') or 'pending') == 'ischemia_arrhythmia') or (hr_eff is not None and hr_eff > 110)
+        or ((s.get('ecg') or 'pending') == 'ischemia_arrhythmia') or (hr_eff is not None and hr_eff > cilo_cfg['hr_max'])
         or ctx.liver_3x or bool(q.get('ulcer_active_symp')) or (s.get('gastro_result') == 'acute_ulcer')
         or bool(q.get('recent_stent')) or ctx.has_acs_stent_12m or repro_preg
     )
     if 'cilostazol' in ctx.med_chips and cilostazol_contra:
         ctx.red_flags.append(
             'ცილოსტაზოლი უკუნაჩვენებია გულის უკმარისობის / LVEF <50% / CrCl ≤25 / ღვიძლის ≥3x / სტენტის / წყლულის / ტაქიარითმიის / სისხლჩაქცევის დროს (FDA Black Box / EMA) — შეათანხმეთ მოხსნა!'
+        )
+    ven_dvt_set = set(q.get('ven_dvt_chips') or [])
+    if q.get('ven_hormones') and (ctx.liver_3x or ('vte_recent_3m' in ven_dvt_set) or (s.get('ven_duplex_status') == 'acute_dvt')):
+        ctx.red_flags.append(
+            'ჰორმონული/ესტროგენული პრეპარატი უკუნაჩვენებია ღვიძლის მძიმე დისფუნქციის (≥3x ULN) ან ახალი/მწვავე VTE (<3 თვე / DVT) ფონზე — დაუყოვნებლივ შეათანხმეთ შეწყვეტა ექიმთან!'
         )
     if ctx.on_dialysis and q.get('med_dabigatran'):
         ctx.red_flags.append(
@@ -161,7 +167,7 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
         ctx.red_flags.append(
             'ღვიძლის მძიმე დისფუნქცია (≥3x ULN) ანტიკოაგულანტის ფონზე: კოაგულოპათიის / Child-Pugh B–C დროს DOAC უკუნაჩვენებია (EHRA 2021) — გადაამოწმეთ სქემა!'
         )
-    if q_filled and ctx.has_afib and not ctx.has_full_oac:
+    if ctx.q_filled and ctx.has_afib and not ctx.has_full_oac:
         ctx.amber_flags.append(
             'ფიქსირდება მოციმციმე არითმია (AFib) პერორალური ანტიკოაგულაციის გარეშე — შეაფასეთ CHA2DS2-VA და ინსულტის პროფილაქტიკა კარდიოლოგთან!'
         )
@@ -415,6 +421,32 @@ def _eval_postop_voyager(ctx):
     ctx.post_antithrombotic_label = post_antithrombotic_label
 
 
+def _eval_elapsed_hold_window_alert(ctx):
+    from ..nurse_ui import _extract_hold_start_date
+    s = ctx.s
+    op_dt = _date(s.get('planned_surgery_date'))
+    if not op_dt or not ctx.is_active_case or ctx.hard_contraindications:
+        return
+    hold_rows = [
+        r for r in ctx.med_schedule
+        if r.get('hold_or_skip') and not r.get('contraindicated')
+        and not r.get('unstructured') and not r.get('acute_hold')
+    ]
+    if not hold_rows:
+        return
+    elapsed = op_dt < ctx.today
+    if not elapsed and not s.get('dos_med_hold_verified'):
+        for r in hold_rows:
+            st_dt = _extract_hold_start_date(r, op_dt)
+            if st_dt and st_dt < ctx.today:
+                elapsed = True
+                break
+    if elapsed:
+        ctx.red_flags.append(
+            'წამლის შეჩერების ფანჯარა უკვე გასულია — გადაამოწმეთ ოპერაციის თარიღი ან გადავადეთ ჩარევა ქირურგთან!'
+        )
+
+
 def _eval_stent_dapt_and_hold_alerts(ctx):
     patient, q, s = ctx.patient, ctx.q, ctx.s
     st_cfg = rule_value('MED_RECENT_STENT_DAPT')
@@ -479,6 +511,13 @@ def _eval_stent_dapt_and_hold_alerts(ctx):
             or ('cilostazol' in ctx.med_chips) or ('rivaroxaban_2_5' in ctx.med_chips)
             or ctx.ft_meds['unstructured_labels']
         )
+        has_core_asra_or_met = bool(
+            q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran')
+            or q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel')
+            or ('cilostazol' in ctx.med_chips) or ('rivaroxaban_2_5' in ctx.med_chips)
+            or q.get('sglt2') or q.get('glp1') or q.get('dm_insulin') or q.get('metformin')
+            or ctx.ft_meds['unstructured_labels']
+        )
         if (
             ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
             and not ctx.has_neuraxial_plan and not q.get('sglt2') and not q.get('glp1')
@@ -486,6 +525,10 @@ def _eval_stent_dapt_and_hold_alerts(ctx):
             and not has_red_med_row and not evla_vka_suprather and not has_evla_hold_only_drug
         ):
             ctx.amber_flags.append('პაციენტი იღებს ანტიკოაგულანტს / ანტიაგრეგანტს — დააზუსტეთ ქირურგთან (ESVS 2022-ით EVLA შესაძლებელია მოუხსნელადაც).')
+        elif ctx.has_neuraxial_plan and ctx.is_phleb and not has_core_asra_or_met:
+            ctx.amber_flags.append(
+                'ჰორმონული პრეპარატი / დაბალი კარდიორისკის ასპირინი — ფლებექტომიის წინ შეათანხმეთ მიღების/შეჩერების და თრომბოპროფილაქტიკის რეჟიმი ქირურგთან.'
+            )
         elif ctx.has_neuraxial_plan:
             proc_word = 'ეპიდურული / სპინალური ანესთეზიისა და ფლებექტომიის' if ctx.is_phleb else 'ეპიდურული / სპინალური ანესთეზიის'
             ctx.amber_flags.append(
@@ -494,6 +537,7 @@ def _eval_stent_dapt_and_hold_alerts(ctx):
             )
         else:
             ctx.amber_flags.append('პაციენტი იღებს ანტიკოაგულანტს / P2Y12 / SGLT2 / GLP-1 / ინსულინს / მეტფორმინს — შეათანხმეთ მიღების/შეჩერების დღე ქირურგთან.')
+    _eval_elapsed_hold_window_alert(ctx)
 
 
 def eval_meds_rules(ctx):

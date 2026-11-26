@@ -44,14 +44,15 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
         else:
             ctx.amber_flags.append(f'საბაზისო hs-cTn {ctn_d} ნგ/ლ (>ULN) — დაფიქსირებულია პოსტოპერაციული MINS შედარებისთვის; შეაფასოს კარდიოლოგმა.')
 
-    if ecg == 'afib_controlled' and hr_eff is not None and hr_eff > 110:
-        ctx.red_flags.append(f'მოციმციმე არითმია — ტაქისისტოლია (HR {ctx.hr if ctx.hr is not None else int(hr_eff)}/წთ > 110) — სავალდებულოა რიტმის/სიხშირის კონტროლი კარდიოლოგთან!')
+    hr_cfg = rule_value('VIT_HR_SPO2_METS')
+    if ecg == 'afib_controlled' and hr_eff is not None and hr_eff > hr_cfg['hr_hi']:
+        ctx.red_flags.append(f'მოციმციმე არითმია — ტაქისისტოლია (HR {ctx.hr if ctx.hr is not None else int(hr_eff)}/წთ > {hr_cfg["hr_hi"]}) — სავალდებულოა რიტმის/სიხშირის კონტროლი კარდიოლოგთან!')
     if (lvef_eff is not None and lvef_eff < cb['lvef_red']) or s.get('echo_valve_issue') or ecg == 'ischemia_arrhythmia':
         if ctx.cardio_cleared:
             ctx.amber_flags.append('კარდიორისკი (LVEF < 40% / სარქვლოვანი პათოლოგია / ეკგ) შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
         else:
             ctx.red_flags.append('კარდიოლოგიური Red Flag (LVEF < 40% / მძიმე სარქვლოვანი მანკი / მწვავე ეკგ ცვლილება) — აცნობეთ ქირურგსა და კარდიოლოგს!')
-    elif ecg == 'afib_controlled' and not (hr_eff is not None and hr_eff > 110):
+    elif ecg == 'afib_controlled' and not (hr_eff is not None and hr_eff > hr_cfg['hr_hi']):
         if ctx.cardio_cleared:
             ctx.amber_flags.append('ნორმოსისტოლური მოციმციმე არითმია — შეფასებულია და დაშვებულია კარდიოლოგის მიერ ✓')
         else:
@@ -72,9 +73,9 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
         or (ctn_eff is not None and ctn_eff >= cb['ctn_amb']) or bool(s.get('echo_valve_issue')) or ecg == 'ischemia_arrhythmia'
     )
     guideline_justifies_extra_cardio = (
-        guideline_justifies_cag or ctx.true_low_mets or (q_filled and bool(q.get('cad')))
+        guideline_justifies_cag or ctx.true_low_mets or (q_filled and bool(q.get('cad'))) or bool(ctx.cad_chips)
         or (lvef_eff is not None and lvef_eff < cb['lvef_amb']) or ctx.needs_cied or (bnp_eff is not None and bnp_eff >= cb['bnp_amb'])
-        or ecg == 'afib_controlled' or (hr_eff is not None and (hr_eff > 110 or hr_eff < 45))
+        or ecg == 'afib_controlled' or (hr_eff is not None and (hr_eff > hr_cfg['hr_hi'] or hr_eff < hr_cfg['hr_lo']))
         or (pathway not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS) and q_filled and bool(q.get('neuro')))
         or (not ctx.is_venous and (ctx.on_dialysis or (ctx.egfr is not None and ctx.egfr < ckd_cardio_thresh)))
         or (not ctx.is_venous and q_filled and bool(q.get('dm_insulin')))
@@ -94,7 +95,7 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
     mandatory_tte = bool(('hf' in ctx.cad_chips) or ctx.has_mech_valve or s.get('echo_valve_issue') or (bnp_eff is not None and bnp_eff >= cb['bnp_red']))
     ctx.cardiac_screen_done = (lvef is not None or (not mandatory_tte and nt_probnp is not None and nt_probnp < cb['bnp_amb']))
     spo2_eff = ctx.spo2 if ctx.spo2 is not None else getattr(ctx, 'spo2_sat', None)
-    ctx.needs_cxr = (q_filled and (bool(q.get('pulm')) or 'hf' in ctx.cad_chips or 'fever_resp' in ctx.inf_chip_set)) or (spo2_eff is not None and spo2_eff < 94)
+    ctx.needs_cxr = (q_filled and (bool(q.get('pulm')) or 'hf' in ctx.cad_chips or 'fever_resp' in ctx.inf_chip_set)) or (spo2_eff is not None and spo2_eff < hr_cfg['spo2_amb'])
 
 
 def _eval_stage1_completeness(ctx):
@@ -215,7 +216,7 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
         c_tag = f' (მაქს. კონტრასტი ≤ {ctx.max_contrast_ml} მლ)' if ctx.max_contrast_ml else ''
         na_eff = getattr(ctx, 'na_val_sat', ctx.na_val)
         if na_eff is not None and na_eff >= 150:
-            hyd_mode = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე!'
+            hyd_mode = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე!' + (' · HFrEF სითხის შეზღუდვით!' if ctx.chf_hyd_flag else '')
         elif ctx.chf_hyd_flag:
             hyd_mode = 'შეზღუდული ჰიდრატაცია (0.5 მლ/კგ/სთ — HFrEF!)'
         else:
@@ -230,7 +231,7 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
         tasks.append({'key': 'premed', 'label': 'იოდზე ალერგიის პრემედიკაციის სქემა (სტეროიდი + ანტიჰისტამინი)', 'done': bool(s.get('contrast_premed_done'))})
     if ctx.needs_cied:
         tasks.append({'key': 'cied', 'label': 'კარდიოსტიმულატორის / ICD შემოწმება (მაგნიტის რეჟიმი / ბიპოლარი)', 'done': ctx.cied_ok})
-    if ctx.needs_tbi_check:
+    if ctx.needs_tbi_check and not bypass_em:
         tbi_lbl = (
             'რეფლექს-დოპლერი (ABI > 1.40): თითის წნევა (Toe Pressure) / TBI'
             if ctx.abi_non_compressible
@@ -262,10 +263,11 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
     if ctx.is_venous and ctx.needs_vte_prophylaxis:
         ven_severe_renal_t = ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 30)
         has_hit = 'hit_heparin' in ctx.allergy_chips
+        arg_liv_t = ' (ღვიძლის ≥3x: არგატრობანი −75%!)' if ctx.liver_3x else ''
         if 'mech_valve' in ctx.cad_chips:
-            vte_lbl = 'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT!)' if has_hit else 'ვარფარინი (VKA) — DOAC აკრძალულია!'
+            vte_lbl = f'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT!){arg_liv_t}' if has_hit else 'ვარფარინი (VKA) — DOAC აკრძალულია!'
         elif has_hit:
-            vte_lbl = 'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!)' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
+            vte_lbl = f'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!){arg_liv_t}' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
         elif ven_severe_renal_t:
             vte_lbl = 'კანქვეშა UFH / დოზა-კორექტირებული LMWH (DOAC არა!)'
         elif ctx.liver_3x:
@@ -278,9 +280,10 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
     if ctx.needs_gastro and not bypass_em:
         tasks.append({'key': 'gastro', 'label': 'გასტროსკოპია (ეგდს)', 'done': ctx.gastro_res != 'pending'})
     if ctx.needs_ppi:
+        ft_keys = ctx.ft_meds.get('matched_keys') or set()
         ppi_t_lbl = (
             'გასტროპროტექცია (პანტოპრაზოლი 40 მგ — CYP2C19 უსაფრთხო)'
-            if (q.get('med_clopidogrel') or 'cilostazol' in ctx.med_chips)
+            if (q.get('med_clopidogrel') or 'cilostazol' in ctx.med_chips or 'clopidogrel' in ft_keys or 'cilostazol' in ft_keys)
             else 'გასტროპროტექცია (PPI: ომეპრაზოლი / პანტოპრაზოლი 40 მგ)'
         )
         tasks.append({'key': 'ppi', 'label': ppi_t_lbl, 'done': bool(s.get('ppi_started')) or ('ppi' in ctx.med_chips)})
@@ -345,7 +348,7 @@ def eval_cardiac_and_tasks(ctx):
             'done': ctx.s1_core_done,
         },
     ]
-    bypass_em = ctx.is_rupture_suspect
+    bypass_em = ctx.is_rupture_suspect or ctx.is_ali_acute
     bypass_sep = ctx.is_acute_emergency or ctx.is_septic_or_mycotic_urgent
     _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep)
     _build_dynamic_tasks_part2(ctx, tasks, bypass_em)

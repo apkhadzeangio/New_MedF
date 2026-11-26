@@ -148,7 +148,7 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
     def post(self, request, pk):
         from .. import evaluate
         from ..nurse_ui import med_schedule_signature
-        from .parsers import _invalidate_approval_if_needed
+        from .parsers import _invalidate_approval_if_needed, med_hold_agreement_block_reason
 
         patient = get_object_or_404(PreopPatient, pk=pk)
         action = request.POST.get('action') or 'called'
@@ -160,10 +160,7 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
             s = merged_studies(patient)
             uf = ['studies', 'updated_at', 'updated_by']
 
-            med_call_unsafe = (
-                any(u.get('key') in ('renal_drug_no_crcl', 'ambiguous_creat_unit') for u in (ev.get('unknown_state_flags') or ()))
-                or any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ()))
-            )
+            block_msg = med_hold_agreement_block_reason(ev, s)
             if action == 'clear':
                 s['nurse_med_called_at'] = ''
                 s['nurse_med_called_by'] = ''
@@ -171,10 +168,8 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
                 s['med_hold_agreed'] = False
                 _invalidate_approval_if_needed(patient, uf)
                 messages.info(request, 'დარეკვის მონიშვნა მოიხსნა.')
-            elif ev['clearance_seal']['code'] == 'stop' or ev['has_hard_contraindication']:
-                messages.error(request, 'STOP-სიგნალის დროს წამლების შეწყვეტა დაბლოკილია — ჯერ ქირურგს დაუკავშირდით!')
-            elif med_call_unsafe:
-                messages.error(request, 'წამლების გრაფიკი შეიცავს უკუნაჩვენებ, დაუზუსტებელ ან CrCl-ის გარეშე პრეპარატს — ჯერ შეათანხმეთ ექიმთან!')
+            elif block_msg:
+                messages.error(request, block_msg)
             else:
                 s['nurse_med_called_at'] = timezone.localtime().strftime('%d.%m.%Y %H:%M')
                 s['nurse_med_called_by'] = person_name(request.user)
@@ -215,8 +210,9 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
 
             old_dt = _date(s.get('planned_surgery_date'))
+            today = timezone.localdate()
             if action == 'shift_3d':
-                base = old_dt or timezone.localdate()
+                base = old_dt if (old_dt and old_dt >= today) else today
                 try:
                     new_dt = base + datetime.timedelta(days=3)
                 except OverflowError:
@@ -227,6 +223,9 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
 
             if not new_dt:
                 messages.error(request, 'აირჩიეთ ოპერაციის ახალი თარიღი.')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
+            if new_dt < today:
+                messages.error(request, 'წარსული თარიღი დაუშვებელია — აირჩიეთ დღევანდელი ან მომავალი თარიღი.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
 
             uf = ['studies', 'updated_at', 'updated_by']

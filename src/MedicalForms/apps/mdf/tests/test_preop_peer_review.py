@@ -162,7 +162,7 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
                 'med_warfarin': True, 'glp1': True, 'mets_ok': True,
             },
             studies={
-                'labs_date': today.isoformat(), 'spo2': 98,
+                'labs_date': today.isoformat(), 'bp_sys': 126, 'bp_dia': 78, 'hr': 72, 'spo2': 98,
                 'weight_kg': 62, 'height_cm': 170, 'creat': 135, 'creat_unit': 'umol',
                 'hb': 135, 'plt': 210, 'inr': 1.35, 'dos_inr': 1.35,
                 'anesthesia_plan': 'neuraxial', 'planned_surgery_date': '2026-12-15',

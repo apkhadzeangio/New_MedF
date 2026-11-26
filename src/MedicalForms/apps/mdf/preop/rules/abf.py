@@ -250,7 +250,12 @@ def eval_pad_bypass(ctx):
     _eval_bypass_conduit(ctx, is_clti)
     _eval_pad_bypass_side_and_hemo(ctx, is_clti, hemo_cfg, abi_norm_lo, abi_norm_hi)
 
-    if ctx.pad_gsv_mm is not None:
+    if 'vein_strip' in ctx.vasc_chips:
+        ctx.key_badge = 'GSV ამოღ.'
+        ctx.key_badge_urgent = True
+        if s.get('pad_gsv_status') == 'adequate':
+            ctx.amber_flags.append('წინააღმდეგობა: ანამნეზში მონიშნულია საჩინო ვენის ამოღება (vein_strip), ხოლო ექოზე — „ადეკვატური GSV“! გადაამოწმეთ კონდუიტის ვარგისიანობა.')
+    elif ctx.pad_gsv_mm is not None:
         ctx.key_badge = f'GSV {ctx.pad_gsv_mm}მმ'
         ctx.key_badge_urgent = bool(ctx.pad_gsv_mm < gsv_min or is_clti)
     elif ctx.min_comp_abi is not None:

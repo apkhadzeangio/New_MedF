@@ -231,7 +231,13 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
         pathway == PreopPatient.Pathway.CEA
         and (s.get('brain_imaging') == 'large_or_hemorrhage' or bool(ev.get('active_thrombolysis_window')))
     )
-    if 'hit_heparin' in allergy_chips:
+    if cea_bleed_board:
+        hit_cea_sfx = ' (ასევე HIT ანამნეზში — UFH/LMWH კატეგორიულად აკრძალულია!)' if 'hit_heparin' in allergy_chips else ''
+        task_candidates.append((
+            'VTE პროფილაქტიკა',
+            f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): მხოლოდ მექანიკური პროფილაქტიკა (IPC) — ფარმაკოლოგიური ანტიკოაგულაცია უკუნაჩვენებია თავის ტვინის სისხლჩაქცევის / rt-PA ≤6 დღის გამო!{hit_cea_sfx}",
+        ))
+    elif 'hit_heparin' in allergy_chips:
         has_mv = 'mech_valve' in (q.get('cad_chips') or [])
         liver_3x = s.get('liver_status') == '3x'
         sev_renal = bool(q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30))
@@ -253,21 +259,27 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
             f'HIT ანამნეზში! არაფრაქციული ჰეპარინი და LMWH აკრძალულია — არაჰეპარინული ანტიკოაგულაცია ({hit_board_agents})',
         ))
     elif ev.get('has_full_oac'):
-        task_candidates.append((
-            'VTE / ანტიკოაგულაცია:',
-            'VTE / ანტიკოაგულაცია: პაციენტი მუდმივ ანტიკოაგულანტზეა (OAC) — სრული ჰემოსტაზის შემდეგ განახლდეს OAC სქემა ქირურგთან შეთანხმებით (ორმაგი ანტიკოაგულაციის გარეშე!)',
-        ))
-    elif cea_bleed_board:
-        task_candidates.append((
-            'VTE პროფილაქტიკა',
-            f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): მხოლოდ მექანიკური პროფილაქტიკა (IPC) — ფარმაკოლოგიური ანტიკოაგულაცია უკუნაჩვენებია თავის ტვინის სისხლჩაქცევის / rt-PA ≤6 დღის გამო!",
-        ))
-    elif ev['caprini_score'] >= 3 or not ev['is_venous']:
-        vte_board_drug = (
-            'კანქვეშა UFH 5000 სე ×2–3 ან თირკმელზე კორექტირებული LMWH'
-            if (q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30))
-            else 'LMWH პროფილაქტიკური დოზით'
+        oac_contra_b = bool(
+            (q.get('med_dabigatran') and (q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30)))
+            or ((q.get('med_doac') or q.get('med_dabigatran')) and s.get('liver_status') == '3x')
         )
+        if oac_contra_b:
+            task_candidates.append((
+                'VTE / ანტიკოაგულაცია:',
+                'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!',
+            ))
+        else:
+            task_candidates.append((
+                'VTE / ანტიკოაგულაცია:',
+                'VTE / ანტიკოაგულაცია: პაციენტი მუდმივ ანტიკოაგულანტზეა (OAC) — სრული ჰემოსტაზის შემდეგ განახლდეს OAC სქემა ქირურგთან შეთანხმებით (ორმაგი ანტიკოაგულაციის გარეშე!)',
+            ))
+    elif ev['caprini_score'] >= 3 or not ev['is_venous']:
+        if s.get('liver_status') == '3x':
+            vte_board_drug = 'LMWH / UFH კოაგულოგრამის კონტროლით (ღვიძლის ≥3x-ზე DOAC არა!)'
+        elif q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30):
+            vte_board_drug = 'კანქვეშა UFH 5000 სე ×2–3 ან თირკმელზე კორექტირებული LMWH'
+        else:
+            vte_board_drug = 'LMWH პროფილაქტიკური დოზით'
         task_candidates.append((
             'VTE პროფილაქტიკა',
             f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): ადრეული მობილიზაცია + {vte_board_drug} ჰემოსტაზის შემდეგ",
@@ -300,13 +312,14 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
             'პროგრამული დიალიზი:',
             'პროგრამული დიალიზი: შეათანხმეთ დიალიზის სეანსი და საკონტროლო K+ ოპერაციამდე/შემდეგ (უჰეპარინო რეჟიმი)',
         ))
-    elif ev.get('max_contrast_ml') is not None or (eff_renal_board is not None and eff_renal_board < 60):
+    elif ev.get('needs_hydration'):
         contrast_sfx = f" (მაქს. კონტრასტი ≤ {ev['max_contrast_ml']} მლ)" if ev.get('max_contrast_ml') is not None else ''
         na_b = ev.get('na_val_sat')
         if na_b is None:
             na_b = _num(s.get('na'), 90, 200)
         if na_b is not None and na_b >= 150:
-            hyd_b = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე, ნელი ჰიპოტონური კორექცია'
+            hf_tail = ' · HFrEF სითხის შეზღუდვით!' if ev.get('chf_hyd_flag') else ''
+            hyd_b = f'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე, ნელი ჰიპოტონური კორექცია{hf_tail}'
         elif ev.get('chf_hyd_flag'):
             hyd_b = 'შეზღუდული იზოტონური ჰიდრატაცია (0.5 მლ/კგ/სთ — გულის უკმარისობა / LVEF <40%!)'
         else:
@@ -315,9 +328,14 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
             'ნეფროპროტექცია:',
             f'ნეფროპროტექცია: {hyd_b} + საკონტროლო კრეატინინი და K+ 24–48 სთ-ში{contrast_sfx}',
         ))
+    elif eff_renal_board is not None and eff_renal_board < 60:
+        task_candidates.append((
+            'ნეფროპროტექცია:',
+            'ნეფროპროტექცია (თირკმლის მონიტორინგი): საკონტროლო კრეატინინი და K+ 24–48 სთ-ში (ნეფროტოქსიკური წამლების თავიდან აცილება)',
+        ))
 
     if ev.get('needs_ppi') or q.get('ulcer'):
-        ppi_b = 'პანტოპრაზოლი 40 მგ (CYP2C19 უსაფრთხო)' if (q.get('med_clopidogrel') or 'cilostazol' in (q.get('med_chips') or [])) else 'ომეპრაზოლი / პანტოპრაზოლი (PPI)'
+        ppi_b = 'პანტოპრაზოლი 40 მგ (CYP2C19 უსაფრთხო)' if ev.get('cyp2c19_ppi_sensitive') else 'ომეპრაზოლი / პანტოპრაზოლი (PPI)'
         task_candidates.append((
             'გასტროპროტექცია:',
             f'გასტროპროტექცია: {ppi_b} ანტითრომბოზული თერაპიის ფონზე (ESC 2022 Class I)',

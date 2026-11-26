@@ -94,7 +94,8 @@ class StressR2FuzzerAndMonotonicityTests(SimpleTestCase):
         self.assertIsNone(ev_um['egfr'])
         self.assertNotEqual(ev_um['clearance_seal']['code'], 'go')
         ev_mg = evaluate(_go('open', s={'creat': 250, 'creat_unit': 'mgdl'}), today=TODAY)
-        self.assertIsNone(ev_mg['egfr'])
+        self.assertLessEqual(ev_mg['egfr'], 5)
+        self.assertTrue(ev_mg['has_blocking_unknown_state'])
         self.assertNotEqual(ev_mg['clearance_seal']['code'], 'go')
 
     def test_rf03_rf06_rf10_rf11_monotonicity_neuraxial_glucose_and_plt_units(self):

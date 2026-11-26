@@ -125,8 +125,8 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today
         ('bp_sys_l', 'bp_dia_l', 'წნევა (L)'),
         ('dos_bp_sys', 'dos_bp_dia', 'დილის წნევა'),
     ):
-        sv = _num(src[sk] if sk in src else (inv[sk] if sk in inv else s.get(sk)))
-        dv = _num(src[dk] if dk in src else (inv[dk] if dk in inv else s.get(dk)))
+        sv = _num(src[sk] if (sk in src and _has_raw(src[sk])) else (inv[sk] if (sk in inv and _has_raw(inv[sk])) else s.get(sk)))
+        dv = _num(src[dk] if (dk in src and _has_raw(src[dk])) else (inv[dk] if (dk in inv and _has_raw(inv[dk])) else s.get(dk)))
         if sv is not None and dv is not None and sv <= dv:
             bad.append(f'{lbl_bp} ინვერტირებულია ({int(sv)}/{int(dv)})')
     return bad
@@ -140,7 +140,8 @@ def _init_limb_hemodynamics(ctx):
     from ..calculators import _sat_num
     from ..registry import rule_value
     patient, pathway, s, q = ctx.patient, ctx.pathway, ctx.s, ctx.q
-    abi_noncomp_thresh = rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')['abi_noncomp']
+    art_cfg = rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')
+    abi_noncomp_thresh = art_cfg['abi_noncomp']
     abi_r = _num(s.get('abi_r'), lo=0.0, hi=3.0)
     abi_l = _num(s.get('abi_l'), lo=0.0, hi=3.0)
     tp_r = _int(s.get('tp_r'), lo=0, hi=400)
@@ -154,11 +155,12 @@ def _init_limb_hemodynamics(ctx):
     tbi_r_s = tbi_r if tbi_r is not None else _sat_num(_s_raw(s, 'tbi_r'), 0.0, 3.0)
     tbi_l_s = tbi_l if tbi_l is not None else _sat_num(_s_raw(s, 'tbi_l'), 0.0, 3.0)
 
+    side_s = patient.side if isinstance(patient.side, str) else ''
     unilateral_limb_pw = pathway in (PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA, PreopPatient.Pathway.VENOUS)
-    unilateral_specified = unilateral_limb_pw and patient.side in ('R', 'L')
-    if unilateral_limb_pw and patient.side == 'R':
+    unilateral_specified = unilateral_limb_pw and side_s in ('R', 'L')
+    if unilateral_limb_pw and side_s == 'R':
         scope_legs, contra_abi, contra_tp = ('R',), abi_l, tp_l
-    elif unilateral_limb_pw and patient.side == 'L':
+    elif unilateral_limb_pw and side_s == 'L':
         scope_legs, contra_abi, contra_tp = ('L',), abi_r, tp_r
     else:
         scope_legs, contra_abi, contra_tp = ('R', 'L'), None, None
@@ -181,20 +183,21 @@ def _init_limb_hemodynamics(ctx):
     eff_tbis_s = [leg_vals[lg]['tbi_s'] for lg in (scope_legs if unilateral_specified else ('R', 'L')) if leg_vals[lg]['tbi_s'] is not None]
 
     min_abi, max_abi = min(eff_abis, default=None), max(eff_abis, default=None)
+    max_abi_s = max(eff_abis_s, default=None)
     min_comp_abi = min([v for v in eff_abis if v <= abi_noncomp_thresh], default=None)
     min_comp_abi_s = min([v for v in eff_abis_s if v <= abi_noncomp_thresh], default=None)
     min_tp, min_tbi = min(eff_tps, default=None), min(eff_tbis, default=None)
     min_tp_s, min_tbi_s = min(eff_tps_s, default=None), min(eff_tbis_s, default=None)
 
-    nc_legs = [lg for lg in scope_legs if leg_vals[lg]['abi'] is not None and leg_vals[lg]['abi'] > abi_noncomp_thresh]
+    nc_legs = [lg for lg in scope_legs if leg_vals[lg]['abi_s'] is not None and leg_vals[lg]['abi_s'] > abi_noncomp_thresh]
     if not nc_legs and not unilateral_specified and not scoped_abis:
-        nc_legs = [lg for lg in ('R', 'L') if leg_vals[lg]['abi'] is not None and leg_vals[lg]['abi'] > abi_noncomp_thresh]
+        nc_legs = [lg for lg in ('R', 'L') if leg_vals[lg]['abi_s'] is not None and leg_vals[lg]['abi_s'] > abi_noncomp_thresh]
     abi_non_compressible = bool(nc_legs)
     if nc_legs:
         tbi_measured = all((leg_vals[lg]['tp'] is not None or leg_vals[lg]['tbi'] is not None) for lg in nc_legs)
         tbi_comp_safe = all(
-            ((leg_vals[lg]['tp'] is not None and leg_vals[lg]['tp'] >= 60)
-             or (leg_vals[lg]['tbi'] is not None and leg_vals[lg]['tbi'] >= 0.70))
+            ((leg_vals[lg]['tp'] is not None and leg_vals[lg]['tp'] >= art_cfg['tp_comp_ok'])
+             or (leg_vals[lg]['tbi'] is not None and leg_vals[lg]['tbi'] >= art_cfg['tbi_comp_ok']))
             for lg in nc_legs
         )
     else:
@@ -202,9 +205,9 @@ def _init_limb_hemodynamics(ctx):
         tbi_comp_safe = True
 
     compression_contra = bool(
-        (min_comp_abi_s is not None and min_comp_abi_s < 0.80)
-        or (min_tp_s is not None and min_tp_s < 50)
-        or (min_tbi_s is not None and min_tbi_s < 0.50)
+        (min_comp_abi_s is not None and min_comp_abi_s < art_cfg['abi_red'])
+        or (min_tp_s is not None and min_tp_s < art_cfg['tp_red'])
+        or (min_tbi_s is not None and min_tbi_s < art_cfg['tbi_red'])
     )
     tbi_reduced_comp = bool(abi_non_compressible and tbi_measured and not compression_contra and not tbi_comp_safe)
     caprini_score, caprini_tier, caprini_advice = calc_caprini(
@@ -216,7 +219,7 @@ def _init_limb_hemodynamics(ctx):
     ctx.abi_r, ctx.abi_l, ctx.tp_r, ctx.tp_l, ctx.tbi_r, ctx.tbi_l = abi_r, abi_l, tp_r, tp_l, tbi_r, tbi_l
     ctx.contra_abi, ctx.contra_tp = contra_abi, contra_tp
     ctx.scoped_abis, ctx.scoped_tps, ctx.scoped_tbis = scoped_abis, scoped_tps, scoped_tbis
-    ctx.min_abi, ctx.max_abi, ctx.min_comp_abi = min_abi, max_abi, min_comp_abi
+    ctx.min_abi, ctx.max_abi, ctx.max_abi_sat, ctx.min_comp_abi = min_abi, max_abi, max_abi_s, min_comp_abi
     ctx.min_comp_abi_sat, ctx.min_tp_sat, ctx.min_tbi_sat = min_comp_abi_s, min_tp_s, min_tbi_s
     ctx.min_tp, ctx.min_tbi = min_tp, min_tbi
     ctx.nc_legs, ctx.abi_non_compressible = nc_legs, abi_non_compressible
@@ -281,12 +284,13 @@ def _init_base_flags_and_pre_reflex(ctx):
             'რევასკულარიზაციის ჩვენება გადაამოწმეთ ქირურგთან!'
         )
 
-    if ctx.abi_non_compressible:
+    if ctx.abi_non_compressible and not ctx.is_ali_acute:
         ctx.needs_tbi_check = True
         nc_side_lbl = f" ({'/'.join(ctx.nc_legs)})" if ctx.nc_legs else ''
+        abi_disp = ctx.max_abi if ctx.max_abi is not None else ctx.max_abi_sat
         ctx.reflex_orders.append({
             'key': 'tbi',
-            'trigger': f'არაკომპრესირებადი არტერია{nc_side_lbl} (ABI {ctx.max_abi} > 1.40 — მონკებერგის კალციფიკაცია)',
+            'trigger': f'არაკომპრესირებადი არტერია{nc_side_lbl} (ABI {abi_disp} > 1.40 — მონკებერგის კალციფიკაცია)',
             'action': 'სამიზნე კიდურზე თითის წნევის (Toe Pressure, mmHg) ან თით-მხრის ინდექსის (TBI) განსაზღვრა რეალური პერფუზიის შესაფასებლად',
             'done': ctx.tbi_measured,
         })
@@ -321,6 +325,8 @@ def init_eval_context(patient, today=None):
     car_r, car_l = _int(s.get('carotid_r'), lo=0, hi=100), _int(s.get('carotid_l'), lo=0, hi=100)
     car_r_sat = _sat_num(_s_raw(s, 'carotid_r'), 0, 100)
     car_l_sat = _sat_num(_s_raw(s, 'carotid_l'), 0, 100)
+    car_r_si = int(round(car_r_sat)) if car_r_sat is not None else None
+    car_l_si = int(round(car_l_sat)) if car_l_sat is not None else None
     raw_s = patient.studies if isinstance(patient.studies, dict) else {}
     implausible_fields = _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=today, q=q)
     bmi_val = calc_bmi(s.get('weight_kg'), s.get('height_cm'))
@@ -375,9 +381,10 @@ def init_eval_context(patient, today=None):
         cta_months=cta_live_months_age(s, today=today),
         car_r=car_r,
         car_l=car_l,
-        car_r_sat=int(round(car_r_sat)) if car_r_sat is not None else None,
-        car_l_sat=int(round(car_l_sat)) if car_l_sat is not None else None,
+        car_r_sat=car_r_si,
+        car_l_sat=car_l_si,
         max_car=max([v for v in (car_r, car_l) if v is not None], default=None),
+        max_car_sat=max([v for v in (car_r_si, car_l_si) if v is not None], default=None),
     )
     if implausible_fields:
         ctx.red_flags.append(

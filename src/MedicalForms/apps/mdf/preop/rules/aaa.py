@@ -96,8 +96,9 @@ def eval_aaa(ctx):
         ctx.amber_flags.append(f'მომზადების მე-{ctx.days} დღე ({ctx.t_days} დღიდან) — დააჩქარეთ დარჩენილი კვლევები.')
 
     cta_max_m, cta_large_m, cta_large_mm = rule_value('AAA_CTA_STALE_MONTHS')
+    aaa_eff = ctx.aaa_mm if ctx.aaa_mm is not None else getattr(ctx, 'aaa_mm_sat', None)
     if ctx.cta_months is not None:
-        if ctx.cta_months > cta_max_m or (ctx.cta_months > cta_large_m and ctx.aaa_mm is not None and ctx.aaa_mm >= cta_large_mm):
+        if ctx.cta_months > cta_max_m or (ctx.cta_months > cta_large_m and aaa_eff is not None and aaa_eff >= cta_large_mm):
             ctx.red_flags.append(f'კტ-ანგიოგრაფია ხანდაზმულია ({ctx.cta_months} თვის წინანდელი) — შეათანხმეთ განმეორებითი CTA ქირურგთან.')
     if q_filled and not s.get('cta_disc'):
         ctx.amber_flags.append('აორტის კტ-ანგიოგრაფიის DICOM დისკი ჯერ არ არის მოტანილი / შემოწმებული.')

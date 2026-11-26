@@ -309,4 +309,119 @@
         cb.addEventListener('change', sync);
         sync();
     });
+
+    // Embedded classic tabs parity: smart branching sub-fields, self-fill copy, and rule citation modal
+    root.querySelectorAll('[data-toggle-sub]').forEach(function (sw) {
+        var sub = document.getElementById(sw.dataset.toggleSub);
+        if (!sub) return;
+        sw.querySelectorAll('input[type="radio"]').forEach(function (r) {
+            r.addEventListener('change', function () {
+                sub.hidden = (r.value !== '1' || !r.checked);
+            });
+        });
+    });
+
+    var swMets = document.getElementById('sw-mets');
+    var subMets = document.getElementById('sub-mets-limit');
+    if (swMets && subMets) {
+        swMets.querySelectorAll('input[type="radio"]').forEach(function (r) {
+            r.addEventListener('change', function () {
+                subMets.hidden = (r.value !== '0' || !r.checked);
+            });
+        });
+    }
+
+    [
+        ['chk-allergy-other', 'sub-allergy'],
+        ['chk-dm', 'sub-dm'],
+        ['chk-pulm', 'sub-pulm'],
+        ['chk-ulcer', 'sub-ulcer'],
+        ['chk-ven-rec', 'sub-ven-rec'],
+        ['chk-abf-vasc', 'sub-abf-vasc'],
+        ['chk-abf-abdo', 'sub-abf-abdo']
+    ].forEach(function (pair) {
+        var chk = document.getElementById(pair[0]);
+        var sub = document.getElementById(pair[1]);
+        if (chk && sub) {
+            chk.addEventListener('change', function () {
+                sub.hidden = !chk.checked;
+            });
+        }
+    });
+
+    var outSel = document.getElementById('sel-case-outcome');
+    var cancelWrap = document.getElementById('wrap-cancel-reasons');
+    if (outSel && cancelWrap) {
+        outSel.addEventListener('change', function () {
+            cancelWrap.hidden = (outSel.value.indexOf('cancelled_') !== 0);
+        });
+    }
+
+    var copyBtn = document.getElementById('btn-copy-self');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function () {
+            var fullUrl = window.location.origin + (copyBtn.dataset.selfPath || '');
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(fullUrl).then(function () {
+                    var orig = copyBtn.textContent;
+                    copyBtn.textContent = '✓ ბმული დაკოპირდა';
+                    setTimeout(function () { copyBtn.textContent = orig; }, 2200);
+                });
+            } else {
+                window.prompt('დააკოპირეთ ბმული პაციენტისთვის:', fullUrl);
+            }
+        });
+    }
+
+    var ruleDlg = document.getElementById('po-rule-modal');
+    var rulesDataEl = document.getElementById('po-rules-data');
+    if (ruleDlg && rulesDataEl) {
+        var rulesMap = {};
+        try { rulesMap = JSON.parse(rulesDataEl.textContent || '{}'); } catch (e) { rulesMap = {}; }
+        var closeRuleDlg = function () {
+            if (typeof ruleDlg.close === 'function' && ruleDlg.open) ruleDlg.close();
+            else ruleDlg.removeAttribute('open');
+        };
+        document.addEventListener('click', function (ev) {
+            var btn = ev.target.closest && ev.target.closest('.po-cite-btn');
+            if (!btn) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            var rid = btn.dataset.ruleId;
+            var meta = rid && rulesMap[rid];
+            if (!meta) return;
+            var setTxt = function (id, txt) {
+                var el = document.getElementById(id);
+                if (el) el.textContent = txt || '';
+            };
+            setTxt('po-rm-id', meta.id);
+            setTxt('po-rm-domain', meta.domain_label + ' · ' + meta.kind_label);
+            var stEl = document.getElementById('po-rm-status');
+            if (stEl) {
+                stEl.textContent = meta.status === 'local-decision' ? 'ადგილობრივი გადაწყვეტილება' : '✓ პირველწყაროთი დადასტურებული';
+                stEl.className = 'po-badge ' + (meta.status === 'local-decision' ? 'st-needs_doctor' : 'st-ready');
+            }
+            setTxt('po-rm-title', meta.title_ka);
+            setTxt('po-rm-desc', meta.description_ka);
+            setTxt('po-rm-source', meta.source + ' (' + meta.year + ') — ' + meta.section);
+            setTxt('po-rm-class', meta.class_level);
+            setTxt('po-rm-wording', meta.source_wording);
+            setTxt('po-rm-val', meta.value_label);
+            setTxt('po-rm-verified', meta.verified_on);
+            var linkEl = document.getElementById('po-rm-link');
+            if (linkEl) {
+                linkEl.href = (ruleDlg.dataset.catalogUrl || '/preop/rules/') + '#rule-' + encodeURIComponent(meta.id);
+            }
+            if (typeof ruleDlg.showModal === 'function') ruleDlg.showModal();
+            else ruleDlg.setAttribute('open', 'open');
+        });
+        ['po-rm-close', 'po-rm-ok'].forEach(function (id) {
+            var cBtn = document.getElementById(id);
+            if (cBtn) cBtn.addEventListener('click', closeRuleDlg);
+        });
+        ruleDlg.addEventListener('click', function (ev) {
+            if (ev.target === ruleDlg) closeRuleDlg();
+        });
+    }
 })();
+

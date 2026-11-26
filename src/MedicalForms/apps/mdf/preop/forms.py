@@ -124,6 +124,48 @@ def _apply_q_booleans_and_chips(post_data, q):
         q['ven_dvt_history'] = True
 
 
+def _parse_inv_field(post_data, target, key, parser, inv, keep_valid=False):
+    if key not in post_data:
+        return
+    raw_v = (post_data.get(key) or '').strip()
+    val = parser(raw_v)
+    if val is not None or not keep_valid:
+        target[key] = val
+    if raw_v and val is None:
+        inv[key] = clean_text(raw_v, 24)
+    else:
+        inv.pop(key, None)
+
+
+def _apply_q_numeric_studies(post_data, patient, s, inv, today):
+    _parse_inv_field(post_data, s, 'weight_kg', lambda r: _num(r, lo=25, hi=260), inv, keep_valid=True)
+    _parse_inv_field(post_data, s, 'height_cm', lambda r: _num(r, lo=100, hi=230), inv, keep_valid=True)
+    _parse_inv_field(post_data, s, 'aaa_mm', lambda r: _num(r, lo=10, hi=200), inv, keep_valid=False)
+    if 'cta_date' in post_data:
+        raw_cd = (post_data.get('cta_date') or '').strip()
+        cta_dt = _date(raw_cd)
+        if cta_dt and cta_dt <= today:
+            s['cta_date'] = cta_dt.isoformat()
+            s['cta_months'] = cta_live_months_age({'cta_date': s['cta_date']}, today=today)
+            inv.pop('cta_date', None)
+            inv.pop('cta_months', None)
+        else:
+            s['cta_date'] = ''
+            if raw_cd:
+                inv['cta_date'] = clean_text(raw_cd, 24)
+            else:
+                inv.pop('cta_date', None)
+            _parse_inv_field(post_data, s, 'cta_months', lambda r: _int(r, lo=0, hi=240), inv, keep_valid=False)
+    else:
+        _parse_inv_field(post_data, s, 'cta_months', lambda r: _int(r, lo=0, hi=240), inv, keep_valid=False)
+    if inv:
+        s['_invalid_inputs'] = inv
+    else:
+        s.pop('_invalid_inputs', None)
+    if 'cta_disc' in post_data or patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
+        s['cta_disc'] = post_data.get('cta_disc') in ('1', 'on', 'true')
+
+
 def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
     if post_data.get('cfs_level') in ('1_3', '4', '5_plus'):
         q['cfs_level'] = post_data.get('cfs_level')
@@ -162,11 +204,9 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
         q['cea_event_chips'] = []
         q['cea_crescendo'] = False
         q['cea_thrombolysis'] = False
-        q['cea_disabling_stroke'] = False
         inv.pop('cea_event_date', None)
 
-    if 'abf_claud_m' in post_data:
-        q['abf_claud_m'] = _int(post_data.get('abf_claud_m'), lo=0, hi=5000)
+    _parse_inv_field(post_data, q, 'abf_claud_m', lambda r: _int(r, lo=0, hi=5000), inv, keep_valid=False)
     if 'side' in post_data and post_data.get('side') in ('', 'R', 'L', 'B'):
         new_side = post_data.get('side')
         if new_side != patient.side:
@@ -182,44 +222,7 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
     if (q.get('allergy_text') or '').strip():
         q['allergy_other'] = True
 
-    if 'weight_kg' in post_data:
-        w = _num(post_data.get('weight_kg'), lo=25, hi=260)
-        if w is not None:
-            s['weight_kg'] = w
-    if 'height_cm' in post_data:
-        h = _num(post_data.get('height_cm'), lo=100, hi=230)
-        if h is not None:
-            s['height_cm'] = h
-    if 'aaa_mm' in post_data:
-        raw_aaa = (post_data.get('aaa_mm') or '').strip()
-        s['aaa_mm'] = _num(raw_aaa, lo=10, hi=200)
-        if raw_aaa and s['aaa_mm'] is None:
-            inv['aaa_mm'] = raw_aaa[:24]
-        else:
-            inv.pop('aaa_mm', None)
-    if 'cta_date' in post_data:
-        raw_cd = (post_data.get('cta_date') or '').strip()
-        cta_dt = _date(raw_cd)
-        if cta_dt and cta_dt <= today:
-            s['cta_date'] = cta_dt.isoformat()
-            s['cta_months'] = cta_live_months_age({'cta_date': s['cta_date']}, today=today)
-            inv.pop('cta_date', None)
-        else:
-            s['cta_date'] = ''
-            if raw_cd:
-                inv['cta_date'] = raw_cd[:24]
-            else:
-                inv.pop('cta_date', None)
-            if 'cta_months' in post_data:
-                s['cta_months'] = _int(post_data.get('cta_months'), lo=0, hi=240)
-    elif 'cta_months' in post_data:
-        s['cta_months'] = _int(post_data.get('cta_months'), lo=0, hi=240)
-    if inv:
-        s['_invalid_inputs'] = inv
-    else:
-        s.pop('_invalid_inputs', None)
-    if 'cta_disc' in post_data or patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
-        s['cta_disc'] = post_data.get('cta_disc') in ('1', 'on', 'true')
+    _apply_q_numeric_studies(post_data, patient, s, inv, today)
 
 
 def apply_questionnaire_post(post_data, patient, filled_by_label):
@@ -253,7 +256,7 @@ _SELF_FILL_COMMON_BOOLS = (
 )
 
 
-def _apply_sf_pathway_fields(post_data, pw, q, today):
+def _apply_sf_pathway_fields(post_data, pw, q, today, inv):
     if pw == PreopPatient.Pathway.AAA_INFRA:
         for f in ('aaa_pain', 'claudication', 'prev_abdo_surg'):
             q[f] = post_data.get(f) in ('1', 'on', 'true')
@@ -261,10 +264,17 @@ def _apply_sf_pathway_fields(post_data, pw, q, today):
         for f in ('cea_symp_event', 'cea_crescendo', 'cea_prior_neck', 'cea_hoarseness'):
             q[f] = post_data.get(f) in ('1', 'on', 'true')
         if q.get('cea_symp_event'):
-            ev_dt = _date(post_data.get('cea_event_date'))
-            if ev_dt and ev_dt <= today:
-                q['cea_event_date'] = ev_dt.isoformat()
-                q['cea_days_since_event'] = (today - ev_dt).days
+            raw_ev = (post_data.get('cea_event_date') or '').strip() if 'cea_event_date' in post_data else ''
+            ev_dt = _date(raw_ev) if raw_ev else None
+            if raw_ev:
+                if ev_dt and ev_dt <= today:
+                    q['cea_event_date'] = ev_dt.isoformat()
+                    q['cea_days_since_event'] = (today - ev_dt).days
+                    inv.pop('cea_event_date', None)
+                else:
+                    q['cea_event_date'] = ''
+                    q['cea_days_since_event'] = None
+                    inv['cea_event_date'] = clean_text(raw_ev, 24)
             elif 'cea_days_since_event' in post_data and post_data.get('cea_days_since_event'):
                 d_ev = _int(post_data.get('cea_days_since_event'), lo=0, hi=3650)
                 if d_ev is not None:
@@ -279,8 +289,7 @@ def _apply_sf_pathway_fields(post_data, pw, q, today):
         for opt_f in ('abf_prior_vasc', 'ic_bmt_3m', 'pta_cant_lie_flat'):
             if opt_f in post_data or (opt_f == 'pta_cant_lie_flat' and pw == PreopPatient.Pathway.PAD_PTA):
                 q[opt_f] = post_data.get(opt_f) in ('1', 'on', 'true')
-        if 'abf_claud_m' in post_data and post_data.get('abf_claud_m'):
-            q['abf_claud_m'] = _int(post_data.get('abf_claud_m'), lo=0, hi=5000)
+        _parse_inv_field(post_data, q, 'abf_claud_m', lambda r: _int(r, lo=0, hi=5000), inv, keep_valid=False)
         if 'abf_duration' in post_data and post_data.get('abf_duration'):
             q['abf_duration'] = clean_text(post_data.get('abf_duration'), 120).replace('\n', ' ')
     elif pw == PreopPatient.Pathway.VENOUS:
@@ -294,7 +303,7 @@ def _apply_sf_pathway_fields(post_data, pw, q, today):
             q['ven_ceap'] = post_data.get('ven_ceap')
 
 
-def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today):
+def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv):
     if hasattr(post_data, 'getlist'):
         self_chip_fields = ['cad_chips', 'med_chips', 'allergy_chips']
         if 'pulm_chips' in post_data:
@@ -336,8 +345,9 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today):
     if q.get('ven_dvt_chips'):
         q['ven_dvt_history'] = True
 
-    # Patient may fill an empty surgical side, NEVER overwrite an already-set surgeon side!
-    if not patient.side and 'side' in post_data and post_data.get('side') in ('R', 'L', 'B'):
+    # Patient may fill an empty surgical side, NEVER overwrite an already-set surgeon side (and never side='B' on CEA)!
+    valid_sf_sides = ('R', 'L') if pw == PreopPatient.Pathway.CEA else ('R', 'L', 'B')
+    if not patient.side and 'side' in post_data and post_data.get('side') in valid_sf_sides:
         patient.side = post_data.get('side')
 
     for tf, lim in (('other_meds', 400), ('allergy_text', 250)):
@@ -346,14 +356,12 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today):
     if (q.get('allergy_text') or '').strip():
         q['allergy_other'] = True
 
-    if 'weight_kg' in post_data:
-        w = _num(post_data.get('weight_kg'), lo=25, hi=260)
-        if w is not None:
-            s['weight_kg'] = w
-    if 'height_cm' in post_data:
-        h = _num(post_data.get('height_cm'), lo=100, hi=230)
-        if h is not None:
-            s['height_cm'] = h
+    _parse_inv_field(post_data, s, 'weight_kg', lambda r: _num(r, lo=25, hi=260), inv, keep_valid=True)
+    _parse_inv_field(post_data, s, 'height_cm', lambda r: _num(r, lo=100, hi=230), inv, keep_valid=True)
+    if inv:
+        s['_invalid_inputs'] = inv
+    else:
+        s.pop('_invalid_inputs', None)
 
     q['filled'] = True
     q['self_fill_submitted'] = True
@@ -389,7 +397,9 @@ def apply_self_fill_post(post_data, patient):
     elif q['mets_ok']:
         q['mets_limitation'] = 'cardiac'
 
-    _apply_sf_pathway_fields(post_data, pw, q, today)
-    _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today)
+    raw_inv = s.get('_invalid_inputs')
+    inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
+    _apply_sf_pathway_fields(post_data, pw, q, today, inv)
+    _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv)
     patient.questionnaire = q
     patient.studies = s

@@ -49,14 +49,17 @@ def _num(val, lo=None, hi=None):
     if val is None or val == '' or isinstance(val, (bool, list, tuple, dict, set)):
         return None
     if isinstance(val, (int, float)):
-        v = float(val)
+        try:
+            v = float(val)
+        except OverflowError:
+            return None
     else:
         s_val = str(val).strip().replace(',', '.')
         if not _ASCII_NUM_RE.match(s_val):
             return None
         try:
             v = float(s_val)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, OverflowError):
             return None
     if not math.isfinite(v):
         return None
@@ -91,7 +94,9 @@ def _date(val):
 
 def _resolve_pathway(patient):
     """Resolve canonical PreopPatient.Pathway even if op_subtype or pathway contains legacy/corrupt values."""
-    pw = PreopPatient.SUBTYPE_PATHWAY.get(patient.op_subtype, patient.pathway or PreopPatient.Pathway.AAA_INFRA)
+    sub = patient.op_subtype if isinstance(patient.op_subtype, str) else ''
+    raw_pw = patient.pathway if isinstance(patient.pathway, str) else ''
+    pw = PreopPatient.SUBTYPE_PATHWAY.get(sub, raw_pw or PreopPatient.Pathway.AAA_INFRA)
     return pw if pw in PreopPatient.Pathway.values else PreopPatient.Pathway.AAA_INFRA
 
 
@@ -180,7 +185,7 @@ def target_prep_days(patient, today=None):
     s = patient.studies if isinstance(patient.studies, dict) else {}
     q_filled = bool(q.get('filled'))
     if pw == PreopPatient.Pathway.CEA:
-        is_symp = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=True)
+        is_symp = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=False)
         return cfg['cea_symp'] if is_symp else cfg['elective_art']
     has_ali_q = (q.get('abf_duration') == '< 2 კვირა')
     has_clti_q = q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')))
@@ -288,7 +293,7 @@ def cta_live_months_age(s, today=None):
 def consent_url_for_preop(patient):
     """Return direct ConsentSheetView URL (with ?preop=<pk>) if a matching form exists, else filtered list."""
     from ..models import ConsentForm
-    pw = PreopPatient.SUBTYPE_PATHWAY.get(patient.op_subtype, patient.pathway)
+    pw = _resolve_pathway(patient)
     kw_map = {
         'cea': ('კაროტიდ', 'საძილე', 'ენდარტერექტომ'),
         'abf': ('ბიფემორ', 'ლერიშ', 'აორტო'),
@@ -314,12 +319,18 @@ def _str_list(val):
 def _strip_non_finite(obj):
     if isinstance(obj, float):
         return None if not math.isfinite(obj) else (0.0 if obj == 0 else obj)
+    if isinstance(obj, int) and not isinstance(obj, bool):
+        try:
+            float(obj)
+        except OverflowError:
+            return None
+        return obj
     if isinstance(obj, dict):
         return {
             dk: _strip_non_finite(dv) for dk, dv in obj.items()
             if not (isinstance(dv, float) and not math.isfinite(dv))
         }
-    if isinstance(obj, list):
+    if isinstance(obj, (list, tuple)):
         return [
             _strip_non_finite(x) for x in obj
             if not (isinstance(x, float) and not math.isfinite(x))
@@ -347,7 +358,12 @@ def _sanitize_merged_dict(defaults, raw_dict):
             data[k] = iv if iv is not None else dv
         else:
             if isinstance(rv, (int, float)) and not isinstance(rv, bool):
-                data[k] = (0.0 if (isinstance(rv, float) and rv == 0) else rv) if math.isfinite(rv) else None
+                try:
+                    rv_f = float(rv)
+                except OverflowError:
+                    data[k] = None
+                else:
+                    data[k] = (0.0 if (isinstance(rv, float) and rv == 0) else rv) if math.isfinite(rv_f) else None
             else:
                 data[k] = _num(rv)
     for k, rv in src.items():

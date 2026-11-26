@@ -151,6 +151,19 @@
             </div>
             {% endif %}
 
+            {% if not nw_med_script.stop_locked and nw_med_script.caution_rows %}
+            <div class="nw-med-group-lbl">ექიმთან შესათანხმებელი წამლები (თვითნებურად არ შეწყვიტოთ):</div>
+            <div class="d-flex flex-column gap-2 mb-3">
+                {% for mr in nw_med_script.caution_rows %}
+                <div class="nw-med-script-row tone-{{ mr.tone }}">
+                    <div class="nw-med-drug">{{ mr.drug }}</div>
+                    <div class="nw-med-spoken">{{ mr.spoken }}</div>
+                    <div class="nw-med-rule">{{ mr.rule }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
             {% if nw_med_script.keep_rows %}
             <div class="nw-med-group-lbl">წამლები, რომლებიც უნდა გააგრძელოს:</div>
             <div class="d-flex flex-column gap-2 mb-3">
@@ -507,7 +520,9 @@
         </summary>
         <div class="p-3">{% include "mdf/preop/_tab_doc.html" with tab="doc" %}</div>
     </details>
+{% include "mdf/preop/_rule_modal.html" %}
 </div>
+{{ page_rules_map|json_script:"po-rules-data" }}
 {% endblock %}
 
 {% block extra_scripts %}

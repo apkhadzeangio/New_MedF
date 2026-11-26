@@ -59,12 +59,16 @@ def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is
             s.get('pad_runoff_status') == 'desert_foot'
             or (s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
         ))
-        or (pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and not is_clti_or and eff_preg_or)
+        or (pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and not is_clti_or and not is_ali_or and eff_preg_or)
         or (uses_contrast_or and s.get('tsh_status') == 'hyperthyroid')
         or (is_venous and s.get('ven_duplex_status') in ('acute_dvt', 'deep_obstruction'))
         or (is_venous and eff_preg_or)
         or evla_lido_stop_or
-        or (is_venous and ((ev.get('min_abi') is not None and ev['min_abi'] < 0.60) or (ev.get('min_tp') is not None and ev['min_tp'] < 30)))
+        or (is_venous and (
+            (ev.get('min_abi') is not None and ev['min_abi'] < 0.60)
+            or (ev.get('min_tp') is not None and ev['min_tp'] < 30)
+            or (ev.get('min_tbi') is not None and ev['min_tbi'] < 0.30)
+        ))
     )
     oracles['hard_contraindication'].record(exp_hard_contra, ev['has_hard_contraindication'])
 
@@ -118,6 +122,7 @@ def _oracle_cardio_cxr_uti(oracles, patient, ev, q, s, pw, is_venous, open_aorti
             open_aortic
             or true_low_mets
             or bool(q.get('cad'))
+            or bool(cad_chips)
             or bool(q.get('recent_stent'))
             or bool(q.get('pacemaker'))
             or (lvef_n is not None and lvef_n < 50)

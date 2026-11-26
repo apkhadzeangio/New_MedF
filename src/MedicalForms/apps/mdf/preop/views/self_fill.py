@@ -66,6 +66,15 @@ class PreopSelfFillView(generic.View):
             return None
         return patient
 
+    @staticmethod
+    def _self_fill_lock_state(patient, q, s, outcome):
+        cur_nonce = str(s.get('self_fill_nonce') or '').strip()
+        reopened = bool(s.get('self_fill_reopened'))
+        sub_nonce = str(s.get('self_fill_submitted_nonce') if 'self_fill_submitted_nonce' in s else cur_nonce).strip()
+        submitted_once = is_self_filled_q(q) and not reopened and (sub_nonce == cur_nonce)
+        staff_locked = bool(patient.approved_at or (q.get('nurse_verified') and not reopened) or outcome != 'scheduled')
+        return cur_nonce, staff_locked, submitted_once
+
     def get(self, request, token):
         from .. import evaluate
 
@@ -73,8 +82,7 @@ class PreopSelfFillView(generic.View):
         if not patient:
             return render(request, self.template_name, {'invalid_link': True}, status=404)
         ev = evaluate(patient)
-        staff_locked = bool(patient.approved_at or ev['q'].get('nurse_verified') or ev['case_outcome'] != 'scheduled')
-        submitted_once = is_self_filled_q(ev['q'])
+        _, staff_locked, submitted_once = self._self_fill_lock_state(patient, ev['q'], ev['s'], ev['case_outcome'])
         is_done_screen = (request.GET.get('done') == '1') and submitted_once and not staff_locked
         locked = staff_locked or (submitted_once and not is_done_screen)
         emergency_symptom = bool(ev['q'].get('aaa_pain') or ev['q'].get('cea_crescendo')) if is_done_screen else False
@@ -111,13 +119,9 @@ class PreopSelfFillView(generic.View):
                 return render(request, self.template_name, {'invalid_link': True}, status=404)
             q_cur = merged_q(patient)
             s_cur = merged_studies(patient)
-            if (
-                patient.approved_at
-                or q_cur.get('nurse_verified')
-                or is_self_filled_q(q_cur)
-                or s_cur.get('self_fill_revoked')
-                or (s_cur.get('case_outcome_status') or 'scheduled') != 'scheduled'
-            ):
+            outcome = s_cur.get('case_outcome_status') or 'scheduled'
+            cur_nonce, staff_locked, submitted_once = self._self_fill_lock_state(patient, q_cur, s_cur, outcome)
+            if staff_locked or submitted_once or s_cur.get('self_fill_revoked'):
                 return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?locked=1')
             from .. import evaluate
             from ..nurse_ui import med_schedule_signature
@@ -137,7 +141,12 @@ class PreopSelfFillView(generic.View):
                     patient.phone = ph
                     uf.append('phone')
             apply_self_fill_post(request.POST, patient)
+            q_mut = merged_q(patient)
+            q_mut['nurse_verified'] = False
+            patient.questionnaire = q_mut
             s_mut = merged_studies(patient)
+            s_mut['self_fill_submitted_nonce'] = cur_nonce
+            s_mut['self_fill_reopened'] = False
             pid = _clean_person_id(request.POST.get('person_id'))
             if pid and not s_mut.get('person_id'):
                 s_mut['person_id'] = pid

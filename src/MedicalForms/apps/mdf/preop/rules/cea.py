@@ -154,7 +154,8 @@ def eval_cea(ctx):
     if q_filled and q.get('cea_neck_limited'):
         ctx.amber_flags.append('კისრის გაშლა მკვეთრად შეზღუდულია — საყურადღებოა საოპერაციო პოზიციონირებისა და ინტუბაციისთვის.')
 
-    ctx.needs_brain_ct = ctx.is_symp_cea or (q_filled and bool(q.get('neuro')))
+    has_cea_neuro_flags = bool(q.get('cea_thrombolysis') or q.get('cea_crescendo') or q.get('cea_disabling_stroke'))
+    ctx.needs_brain_ct = ctx.is_symp_cea or has_cea_neuro_flags or (q_filled and bool(q.get('neuro')))
     brain_im = s.get('brain_imaging') or 'pending'
     if brain_im == rule_value('CEA_BRAIN_HEMORRHAGE_STOP'):
         hem_msg = (
@@ -166,7 +167,7 @@ def eval_cea(ctx):
     if q_filled and not s.get('cta_disc'):
         ctx.amber_flags.append('კისრის/თავის ტვინის CTA/MRI DICOM დისკი ჯერ არ არის მოტანილი / შემოწმებული.')
 
-    ctx.needs_neuro = ctx.is_symp_cea or (q_filled and bool(q.get('neuro')))
+    ctx.needs_neuro = ctx.is_symp_cea or has_cea_neuro_flags or (q_filled and bool(q.get('neuro')))
     ctx.needs_laryngoscopy = q_filled and (bool(q.get('cea_prior_neck')) or bool(q.get('cea_hoarseness')))
     laryng_res = s.get('laryngoscopy_res') or 'pending'
     if laryng_res == 'palsy':

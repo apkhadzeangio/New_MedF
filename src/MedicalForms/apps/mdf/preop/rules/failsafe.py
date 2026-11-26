@@ -3,7 +3,10 @@ from ...models import PreopPatient
 from ..constants import STATUS_PROGRESS, STATUS_READY
 from ..utils import _date, _int
 
-_LAB_KEYS = ('hb', 'creat', 'inr', 'plt', 'wbc', 'glucose', 'k', 'na', 'albumin')
+_LAB_KEYS = (
+    'hb', 'creat', 'inr', 'plt', 'wbc', 'glucose', 'k', 'na', 'albumin',
+    'fibrinogen', 'hba1c', 'ldl', 'ferritin', 'tsat', 'nt_probnp', 'hs_ctn',
+)
 
 
 def _compute_score_completeness(ctx):
@@ -43,22 +46,23 @@ def _compute_score_completeness(ctx):
 
 def _collect_med_allergy_unknowns(ctx, add):
     patient, q, s = ctx.patient, ctx.q, ctx.s
+    sex_s = patient.sex if isinstance(patient.sex, str) else ''
     renal_oac = bool(q.get('med_doac') or q.get('med_dabigatran'))
-    renal_other = bool(q.get('metformin') or 'rivaroxaban_2_5' in ctx.med_chips)
+    renal_other = bool(q.get('metformin') or 'rivaroxaban_2_5' in ctx.med_chips or 'cilostazol' in ctx.med_chips)
     if not ctx.on_dialysis and (renal_oac or renal_other) and (ctx.crcl is None or ctx.creat_unit_ambiguous):
         miss_bits = []
         if s.get('creat') is None or ctx.creat_unit_ambiguous:
             miss_bits.append('კრეატინინი')
         if ctx.weight_num is None:
             miss_bits.append('წონა')
-        if _int(patient.age, lo=12, hi=120) is None or patient.sex not in ('M', 'F'):
+        if _int(patient.age, lo=12, hi=120) is None or sex_s not in ('M', 'F'):
             miss_bits.append('ასაკი/სქესი')
         miss_txt = ', '.join(miss_bits) or 'კლირენსი (CrCl)'
         target_fld = 'creat' if (s.get('creat') is None or ctx.creat_unit_ambiguous) else 'weight_kg'
         add(
             'renal_drug_no_crcl', 's1', target_fld,
             f'წამლის დოზირებისთვის აკლია: {miss_txt}',
-            'თირკმელ-დამოკიდებულ პრეპარატზე (DOAC / დაბიგატრანი / მეტფორმინი) CrCl-ის გარეშე შეჩერების საათებისა და უკუჩვენებების გადამოწმება შეუძლებელია.',
+            'თირკმელ-დამოკიდებულ პრეპარატზე (DOAC / დაბიგატრანი / მეტფორმინი / ცილოსტაზოლი) CrCl-ის გარეშე შეჩერების საათებისა და უკუჩვენებების გადამოწმება შეუძლებელია.',
             blocking=True,
         )
 
@@ -88,6 +92,8 @@ def _collect_med_allergy_unknowns(ctx, add):
 
 def _collect_demographics_and_vitals_unknowns(ctx, add):
     patient, pathway, s, q_filled = ctx.patient, ctx.pathway, ctx.s, ctx.q_filled
+    sex_s = patient.sex if isinstance(patient.sex, str) else ''
+    side_s = patient.side if isinstance(patient.side, str) else ''
     age_ok = _int(patient.age, lo=12, hi=120) is not None
     if getattr(ctx, 'implausible_fields', None):
         add(
@@ -113,7 +119,7 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
                 'შეყვანილია ლაბორატორიული შედეგები ვალიდური აღების თარიღის გარეშე — 14-დღიანი ვარგისიანობის გადამოწმება შეუძლებელია.',
                 blocking=True,
             )
-    if (not age_ok or patient.sex not in ('M', 'F')) and has_any_lab:
+    if (not age_ok or sex_s not in ('M', 'F')) and (q_filled or has_any_lab):
         add(
             'missing_demographics', 'header', 'age',
             'აკლია ან არასწორია ასაკი (12–120 წ.) / სქესი',
@@ -122,34 +128,26 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
         )
     if q_filled and pathway in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA, PreopPatient.Pathway.VENOUS):
         valid_sides = ('R', 'L') if pathway == PreopPatient.Pathway.CEA else ('R', 'L', 'B')
-        if patient.side not in valid_sides:
+        if side_s not in valid_sides:
             add(
                 'missing_surgical_side', 'header', 'side',
                 'საოპერაციო მხარე არ არის მითითებული',
                 'ლატერალიზებულ ოპერაციაზე მხარის (R / L) გარეშე შეუძლებელია იფსილატერალური სტენოზისა და ABI-ის გადამოწმება.',
                 blocking=True,
             )
-    if q_filled and has_any_lab:
-        if not ctx.is_venous:
-            miss_v = []
-            if ctx.spo2 is None:
-                miss_v.append('SpO2')
-            if ctx.eff_sys is None or ctx.eff_dia is None:
-                miss_v.append('არტერიული წნევა (BP)')
-            if ctx.hr is None:
-                miss_v.append('პულსი (HR)')
-            if miss_v:
-                add(
-                    'missing_core_vitals', 's1', 'spo2' if ctx.spo2 is None else 'bp_sys',
-                    f'აკლია საბაზისო ვიტალური პარამეტრები ({", ".join(miss_v)})',
-                    'საბაზისო წნევის, პულსისა და SpO2-ის გარეშე ჰემოდინამიკური რისკი და ARISCAT სრულად ვერ ფასდება.',
-                    blocking=True,
-                )
-        elif ctx.eff_sys is None and ctx.eff_dia is None and ctx.hr is None and ctx.spo2 is None:
+    if q_filled:
+        miss_v = []
+        if ctx.spo2 is None:
+            miss_v.append('SpO2')
+        if ctx.eff_sys is None or ctx.eff_dia is None:
+            miss_v.append('არტერიული წნევა (BP)')
+        if ctx.hr is None:
+            miss_v.append('პულსი (HR)')
+        if miss_v:
             add(
-                'missing_core_vitals', 's1', 'bp_sys',
-                'აკლია საბაზისო ვიტალური პარამეტრები (BP / HR / SpO2)',
-                'მიღების საბაზისო ვიტალური პარამეტრების გარეშე ოპერაციაზე GO დაშვება არ გაიცემა.',
+                'missing_core_vitals', 's1', 'spo2' if ctx.spo2 is None else 'bp_sys',
+                f'აკლია საბაზისო ვიტალური პარამეტრები ({", ".join(miss_v)})',
+                'საბაზისო წნევის, პულსისა და SpO2-ის გარეშე ჰემოდინამიკური რისკი სრულად ვერ ფასდება და GO დაშვება არ გაიცემა.',
                 blocking=True,
             )
 

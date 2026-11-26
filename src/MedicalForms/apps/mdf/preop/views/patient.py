@@ -67,6 +67,8 @@ from .parsers import (  # noqa: F401
     _parse_s2_fields_and_booleans,
     _parse_s2_notes_and_cardio,
     _set_num_field,
+    _set_planned_surgery_date_field,
+    med_hold_agreement_block_reason,
 )
 
 _DOS_CHECK_BOOLS = (
@@ -159,7 +161,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             if section == 'stage2':
                 ev_before = evaluate(patient)
                 self._save_stage2(request, patient)
-                _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
+                if request.POST.get('med_hold_agreed') not in ('1', 'on', 'true'):
+                    _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
                 messages.success(request, 'მომზადების გეგმა და კონსულტაციები შეინახა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
 
@@ -174,7 +177,43 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
 
+    @staticmethod
+    def _parse_header_demographics_and_dates(request, patient, s, today):
+        raw_inv = s.get('_invalid_inputs')
+        inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
+        age_in = _int(request.POST.get('age'), lo=1, hi=120)
+        if 'age' in request.POST:
+            raw_age = (request.POST.get('age') or '').strip()
+            if raw_age and age_in is None:
+                inv['age'] = clean_text(raw_age, 24)
+            else:
+                inv.pop('age', None)
+        if 'person_id' in request.POST:
+            s['person_id'] = _clean_person_id(request.POST.get('person_id'))
+        if 'birth_date' in request.POST:
+            raw_bd = (request.POST.get('birth_date') or '').strip()
+            bd = _date(raw_bd)
+            if raw_bd and (bd is None or bd > today):
+                s['birth_date'] = ''
+                inv['birth_date'] = raw_bd[:60]
+            else:
+                s['birth_date'] = bd.isoformat() if bd else ''
+                inv.pop('birth_date', None)
+            if age_in is None and bd and bd <= today:
+                age_in = _age_from_dob(bd)
+                inv.pop('age', None)
+        if inv:
+            s['_invalid_inputs'] = inv
+        else:
+            s.pop('_invalid_inputs', None)
+        if age_in is not None or 'age' in request.POST:
+            patient.age = age_in
+        if 'planned_surgery_date' in request.POST:
+            _set_planned_surgery_date_field(s, request.POST.get('planned_surgery_date'), today)
+
     def _save_header(self, request, patient):
+        from .. import evaluate
+
         s = merged_studies(patient)
         today = timezone.localdate()
         old_someday, old_side, old_sub = patient.someday_list, patient.side, patient.op_subtype
@@ -185,27 +224,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         name = clean_text(request.POST.get('patient_name'), 150).replace('\n', ' ')
         if name:
             patient.patient_name = name
-        age_in = _int(request.POST.get('age'), lo=1, hi=120)
-        if 'person_id' in request.POST:
-            s['person_id'] = _clean_person_id(request.POST.get('person_id'))
-        if 'birth_date' in request.POST:
-            raw_bd = (request.POST.get('birth_date') or '').strip()
-            bd = _date(raw_bd)
-            inv = dict(s.get('_invalid_inputs') or {})
-            if raw_bd and (bd is None or bd > today):
-                s['birth_date'] = ''
-                inv['birth_date'] = raw_bd[:60]
-            else:
-                s['birth_date'] = bd.isoformat() if bd else ''
-                inv.pop('birth_date', None)
-            s['_invalid_inputs'] = inv
-            if age_in is None and bd and bd <= today:
-                age_in = _age_from_dob(bd)
-        if age_in is not None or 'age' in request.POST:
-            patient.age = age_in
-        if 'planned_surgery_date' in request.POST:
-            op_d = _date(request.POST.get('planned_surgery_date'))
-            s['planned_surgery_date'] = op_d.isoformat() if op_d else ''
+        self._parse_header_demographics_and_dates(request, patient, s, today)
 
         if 'sex' in request.POST and (request.POST.get('sex') or '') in ('M', 'F', ''):
             patient.sex = request.POST.get('sex') or ''
@@ -224,6 +243,15 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             slot_kind = request.POST.get('slot_kind') or ''
             if slot_kind.startswith('someday:'):
                 key = slot_kind.split(':', 1)[1]
+                if key == PreopPatient.SomedayList.READY:
+                    ev_hdr = evaluate(patient)
+                    if (
+                        not patient.approved_at
+                        or ev_hdr['clearance_seal']['code'] == 'stop'
+                        or ev_hdr.get('has_hard_contraindication')
+                        or ev_hdr.get('has_blocking_unknown_state')
+                    ):
+                        key = old_someday or PreopPatient.SomedayList.CONF
                 patient.someday_list = key if key in PreopPatient.SomedayList.values else PreopPatient.SomedayList.CONF
                 patient.visit_date = None
             else:
@@ -247,6 +275,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         ]
         if s.get('planned_surgery_date') != old_op_dt:
             s['med_hold_agreed'] = False
+        inv_now = s.get('_invalid_inputs') or {}
         if patient.side != old_side or patient.op_subtype != old_sub:
             s['dos_site_marked'] = False
             s['alerts_ack_sig'] = ''
@@ -257,7 +286,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         elif (
             patient.age != old_age or patient.sex != old_sex
             or s.get('planned_surgery_date') != old_op_dt
-            or 'birth_date' in (s.get('_invalid_inputs') or {})
+            or 'birth_date' in inv_now
+            or 'age' in inv_now
+            or 'planned_surgery_date' in inv_now
         ):
             _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
         if new_pw != old_pw and new_pw in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
@@ -315,9 +346,18 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             request.POST, patient, s, cab_present,
             old_nurse_chips, old_nurse_chip_txt, old_cardio_chips, old_cardio_chip_txt,
         )
+        from ..nurse_ui import med_schedule_signature
+
         patient.studies = s
         ev_after = evaluate(patient)
-        if s.get('planned_surgery_date') != old_op_dt or ev_after['clearance_seal']['code'] == 'stop' or ev_after.get('has_hard_contraindication'):
+        had_valid_plan_before = bool(old_op_dt) and ev_before['clearance_seal']['code'] != 'stop'
+        plan_changed = (
+            s.get('planned_surgery_date') != old_op_dt
+            or med_schedule_signature(ev_before) != med_schedule_signature(ev_after)
+        )
+        if (had_valid_plan_before and plan_changed) or (
+            s.get('med_hold_agreed') and med_hold_agreement_block_reason(ev_after, s)
+        ):
             s['med_hold_agreed'] = False
             patient.studies = s
         patient.updated_by = request.user
@@ -508,21 +548,16 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
     def _save_self_link(self, request, patient):
         act = request.POST.get('action') or 'rotate'
-        q = merged_q(patient)
         s = merged_studies(patient)
         uf = ['studies', 'updated_at', 'updated_by']
         if act == 'revoke':
             s['self_fill_revoked'] = True
+            s['self_fill_reopened'] = False
             messages.info(request, 'პაციენტის თვითშევსების ბმული გაუქმდა.')
         else:
             s['self_fill_nonce'] = secrets.token_hex(4)
             s['self_fill_revoked'] = False
-            q['self_fill_submitted'] = False
-            q['self_filled'] = False
-            if q.get('filled_by') == 'პაციენტი (ბმულით)':
-                q['filled_by'] = ''
-            patient.questionnaire = q
-            uf.append('questionnaire')
+            s['self_fill_reopened'] = True
             messages.success(request, 'ახალი ერთჯერადი ბმული გენერირდა (წინა ბმული გაუქმდა).')
         patient.studies = s
         patient.updated_by = request.user

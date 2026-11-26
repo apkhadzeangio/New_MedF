@@ -87,6 +87,20 @@
         {% endif %}
     </section>
 
+    {% if not guide.stop_locked and guide.caution_meds %}
+    <section class="nw-card">
+        <h2 class="nw-card-title">ექიმთან შესათანხმებელი წამლები (თვითნებურად არ შეწყვიტოთ!)</h2>
+        <div class="d-flex flex-column gap-2">
+            {% for m in guide.caution_meds %}
+            <div class="nw-med-script-row tone-{{ m.tone }}">
+                <div class="nw-med-drug">{{ m.drug }}</div>
+                <div class="nw-med-spoken">{{ m.spoken }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
     <section class="nw-card">
         <h2 class="nw-card-title">4. რომელი წამალი აუცილებლად დალიოთ დილას (ყლუპი წყლით)</h2>
         {% if guide.keep_meds %}
