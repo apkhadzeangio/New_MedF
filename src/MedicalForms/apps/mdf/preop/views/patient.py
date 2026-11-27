@@ -50,6 +50,7 @@ from ..utils import (
     chip_summary,
     consent_url_for_preop,
     is_self_filled_q,
+    is_valid_birth_date,
     make_self_fill_token,
     merged_q,
     merged_studies,
@@ -68,6 +69,7 @@ from .parsers import (  # noqa: F401
     _parse_s2_notes_and_cardio,
     _set_num_field,
     _set_planned_surgery_date_field,
+    can_enter_ready_queue,
     med_hold_agreement_block_reason,
 )
 
@@ -193,15 +195,17 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         if 'birth_date' in request.POST:
             raw_bd = (request.POST.get('birth_date') or '').strip()
             bd = _date(raw_bd)
-            if raw_bd and (bd is None or bd > today):
+            if raw_bd and not is_valid_birth_date(bd, today=today):
                 s['birth_date'] = ''
                 inv['birth_date'] = raw_bd[:60]
             else:
                 s['birth_date'] = bd.isoformat() if bd else ''
                 inv.pop('birth_date', None)
-            if age_in is None and bd and bd <= today:
-                age_in = _age_from_dob(bd)
-                inv.pop('age', None)
+            if age_in is None and is_valid_birth_date(bd, today=today):
+                dob_age = _age_from_dob(bd)
+                if dob_age is not None:
+                    age_in = dob_age
+                    inv.pop('age', None)
         if inv:
             s['_invalid_inputs'] = inv
         else:
@@ -245,12 +249,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 key = slot_kind.split(':', 1)[1]
                 if key == PreopPatient.SomedayList.READY:
                     ev_hdr = evaluate(patient)
-                    if (
-                        not patient.approved_at
-                        or ev_hdr['clearance_seal']['code'] == 'stop'
-                        or ev_hdr.get('has_hard_contraindication')
-                        or ev_hdr.get('has_blocking_unknown_state')
-                    ):
+                    if not can_enter_ready_queue(patient, ev_hdr):
                         key = old_someday or PreopPatient.SomedayList.CONF
                 patient.someday_list = key if key in PreopPatient.SomedayList.values else PreopPatient.SomedayList.CONF
                 patient.visit_date = None
@@ -306,14 +305,21 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             'cad_chips', 'allergy_chips', 'allergy_text', 'ven_hormones',
         )
         old_meds = {k: merged_q(patient).get(k) for k in med_keys}
+        old_side = patient.side
         apply_questionnaire_post(request.POST, patient, person_name(request.user))
+        s = merged_studies(patient)
+        uf = ['questionnaire', 'studies', 'side', 'started_on', 'anamnesis', 'updated_at', 'updated_by']
         if {k: merged_q(patient).get(k) for k in med_keys} != old_meds:
-            s = merged_studies(patient)
             s['med_hold_agreed'] = False
-            patient.studies = s
+        if patient.side != old_side:
+            s['dos_site_marked'] = False
+            s['alerts_ack_sig'] = ''
+            patient.alerts_ack_at = None
+            patient.alerts_ack_by = None
+            uf.extend(['alerts_ack_at', 'alerts_ack_by'])
+        patient.studies = s
         patient.updated_by = request.user
         patient.anamnesis = ''
-        uf = ['questionnaire', 'studies', 'side', 'started_on', 'anamnesis', 'updated_at', 'updated_by']
         _invalidate_approval_if_needed(patient, uf)
         patient.save(update_fields=list(dict.fromkeys(uf)))
 
@@ -367,8 +373,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
     @staticmethod
     def _apply_dos_vqi_post(post, s, today, dos_check_keys, form_present, dos_partial):
         if 'planned_surgery_date' in post:
-            op_d = _date(post.get('planned_surgery_date'))
-            s['planned_surgery_date'] = op_d.isoformat() if op_d else ''
+            _set_planned_surgery_date_field(s, post.get('planned_surgery_date'), today)
         if 'operated_date' in post:
             done_d = _date(post.get('operated_date'))
             s['operated_date'] = done_d.isoformat() if (done_d and done_d <= today) else ''

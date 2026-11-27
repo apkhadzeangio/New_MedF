@@ -40,6 +40,8 @@ class PreopFileUploadView(LoginRequiredMixin, generic.View):
         elif not errors:
             messages.error(request, 'ფაილი არ არის არჩეული.')
         tab = request.POST.get('tab') or 's1'
+        if tab not in ('q', 's1', 's2', 'doc', 'dos'):
+            tab = 's1'
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + f'?tab={tab}#files')
 
 

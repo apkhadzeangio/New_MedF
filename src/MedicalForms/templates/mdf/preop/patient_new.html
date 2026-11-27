@@ -59,6 +59,28 @@
         </div>
     </section>
 
+    <!-- Active Clinical Alerts (persistent even after ack_alerts; collapsible when acknowledged and not STOP) -->
+    {% if red_flag_items or amber_flag_items %}
+    <details class="nw-section" id="nw-alerts-card" {% if ev.has_unacked_red or ev.clearance_seal.code == 'stop' or ev.has_hard_contraindication or red_flag_items and not ev.alerts_acked %}open{% endif %}>
+        <summary class="nw-section-head">
+            <h2 class="nw-section-title">აქტიური კლინიკური გაფრთხილებები{% if ev.alerts_acked and ev.clearance_seal.code != 'stop' %} (გაცნობილია ✓){% endif %}</h2>
+            <span class="nw-count-pill {% if red_flag_items %}red{% else %}amber{% endif %}">{{ red_flag_items|length }} წით. / {{ amber_flag_items|length }} ყვით.</span>
+        </summary>
+        <div class="p-3 d-flex flex-column gap-2">
+            {% for item in red_flag_items %}
+            <div class="nw-banner danger m-0">
+                <span><strong>წითელი სიგნალი:</strong> {{ item.text }}{% if item.rule %} <button type="button" class="po-cite-btn" data-rule-id="{{ item.rule.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ item.rule.source }}">ⓘ</button>{% endif %}</span>
+            </div>
+            {% endfor %}
+            {% for item in amber_flag_items %}
+            <div class="nw-banner warn m-0">
+                <span><strong>სიფრთხილე:</strong> {{ item.text }}{% if item.rule %} <button type="button" class="po-cite-btn" data-rule-id="{{ item.rule.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ item.rule.source }}">ⓘ</button>{% endif %}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </details>
+    {% endif %}
+
     <!-- B3: Automatic Postponement Recheck Banner -->
     {% if nw_postponement %}
     <section class="nw-card nw-postpone-card" id="nw-postpone-banner" role="alert">
@@ -178,7 +200,7 @@
 
             <div class="nw-row-actions">
                 {% if p.phone %}<a class="nw-btn soft" href="tel:{{ p.phone }}">დარეკვა: {{ p.phone }}</a>{% endif %}
-                {% if not nw_med_script.stop_locked %}
+                {% if not nw_med_script.stop_locked and ev.needs_med_hold %}
                 <form method="post" action="{% url 'preop-med-call' p.pk %}" class="m-0 flex-grow-1">
                     {% csrf_token %}
                     {% if nw_med_script.called_valid %}
@@ -231,6 +253,12 @@
             <button type="button" class="nw-btn js-sf-copy" data-via="copy" data-track-url="{% url 'preop-self-link-sent' p.pk %}"
                     data-copy-url="{{ nw_self_fill_abs }}" id="btn-sf-copy">ბმულის კოპირება</button>
             <a class="nw-btn soft" href="{{ self_fill_path }}" target="_blank" rel="noopener">გახსნა პლანშეტზე ↗</a>
+            <form method="post" class="m-0 d-flex gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="section" value="self_link">
+                <button type="submit" name="action" value="rotate" class="nw-btn soft">↻ ახალი ბმული</button>
+                <button type="submit" name="action" value="revoke" class="nw-btn soft">✕ გაუქმება</button>
+            </form>
         </div>
         {% else %}
         <form method="post" class="m-0">
@@ -381,7 +409,7 @@
     <!-- Full Clinical Sections (Expandable without losing any classic feature) -->
     <details class="nw-section" id="nw-sec-header" {% if not p.age or not p.sex or not p.side and ev.pathway != 'aaa_infra' and ev.pathway != 'abf' %}open{% endif %}>
         <summary class="nw-section-head">
-            <h2 class="nw-section-title">პირადი მონაცემები და საოპერაციო მხარე</h2>
+            <h2 class="nw-section-title">პირადი მონაცემები, ოპერაციის ტიპი და საოპერაციო მხარე</h2>
             <span class="nw-count-pill {% if p.age and p.sex %}green{% else %}amber{% endif %}">{% if p.age and p.sex %}{{ p.age }} წ.{% else %}შესავსებია{% endif %}</span>
         </summary>
         <div class="p-3">
@@ -392,6 +420,18 @@
                     <div class="nw-field">
                         <label for="nw-hdr-name">პაციენტი (გვარი, სახელი)</label>
                         <input type="text" id="nw-hdr-name" name="patient_name" value="{{ p.patient_name }}" required>
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-hdr-op">ოპერაციის ტიპი / გზა</label>
+                        <select id="nw-hdr-op" name="op_subtype">
+                            {% for grp_lbl, grp_items in op_subtype_groups %}
+                            <optgroup label="{{ grp_lbl }}">
+                                {% for ov, ol in grp_items %}
+                                <option value="{{ ov }}" {% if p.op_subtype == ov %}selected{% endif %}>{{ ol }}</option>
+                                {% endfor %}
+                            </optgroup>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="nw-field">
                         <label for="nw-hdr-age">ასაკი (წ.)</label>
@@ -414,6 +454,23 @@
                         </select>
                     </div>
                     <div class="nw-field">
+                        <label for="nw-hdr-phone">ტელეფონი</label>
+                        <input type="text" id="nw-hdr-phone" name="phone" value="{{ p.phone }}" placeholder="5XX XXX XXX">
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-hdr-surgeon">მკურნალი ქირურგი</label>
+                        <select id="nw-hdr-surgeon" name="surgeon">
+                            <option value="">აირჩიეთ...</option>
+                            {% for doc in doctors %}
+                            <option value="{{ doc.pk }}" {% if p.surgeon_id == doc.pk %}selected{% endif %}>{{ doc.display_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="nw-field">
+                        <label for="nw-hdr-visit">ვიზიტის თარიღი</label>
+                        <input type="date" id="nw-hdr-visit" name="visit_date" value="{{ p.visit_date|date:'Y-m-d' }}">
+                    </div>
+                    <div class="nw-field">
                         <label for="nw-hdr-pid">პირადი N (11 ციფრი)</label>
                         <input type="text" id="nw-hdr-pid" name="person_id" value="{{ ev.person_id }}" maxlength="11" inputmode="numeric" placeholder="010XXXXXXXX">
                     </div>
@@ -424,6 +481,16 @@
                 </div>
                 <button type="submit" class="nw-btn primary" style="width:100%">პირადი მონაცემების შენახვა</button>
             </form>
+            <div class="nw-row-actions mt-3 pt-2 border-top">
+                <form method="post" action="{% url 'preop-move' p.pk %}" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" name="action" value="archive" class="nw-btn soft">{% if p.archived %}არქივიდან დაბრუნება{% else %}არქივში გადატანა{% endif %}</button>
+                </form>
+                <form method="post" action="{% url 'preop-move' p.pk %}" class="m-0" onsubmit="return confirm('ნამდვილად წავშალოთ პაციენტის ბარათი?');">
+                    {% csrf_token %}
+                    <button type="submit" name="action" value="delete" class="nw-btn soft">წაშლა</button>
+                </form>
+            </div>
         </div>
     </details>
 
@@ -511,6 +578,14 @@
                 </div>
             </form>
         </div>
+    </details>
+
+    <details class="nw-section" id="nw-sec-vqi">
+        <summary class="nw-section-head">
+            <h2 class="nw-section-title">ოპერაციის სტატუსი, 30-დღიანი VQI რეესტრი და დაფაზე გადაყვანა</h2>
+            <span class="nw-count-pill blue">{{ ev.case_outcome_label|default:"VQI" }}</span>
+        </summary>
+        <div class="p-3">{% include "mdf/preop/_tab_dos.html" with tab="dos" %}</div>
     </details>
 
     <details class="nw-section" id="nw-sec-doc" {% if tab == 'doc' %}open{% endif %}>

@@ -211,8 +211,6 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
         new_side = post_data.get('side')
         if new_side != patient.side:
             s['dos_site_marked'] = False
-            patient.approved_at = None
-            patient.approved_by = None
             patient.anamnesis = ''
         patient.side = new_side
 
@@ -255,6 +253,22 @@ _SELF_FILL_COMMON_BOOLS = (
     'allergy_iodine', 'allergy_other', 'anesth_issue', 'smoker',
 )
 
+_SELF_FILL_PRESERVE_BOOLS = _SELF_FILL_COMMON_BOOLS + (
+    'dm_insulin', 'pacemaker', 'aaa_pain', 'claudication', 'prev_abdo_surg',
+    'cea_symp_event', 'cea_crescendo', 'cea_prior_neck', 'cea_hoarseness',
+    'abf_buttock_pain', 'abf_rest_pain', 'abf_ulcer', 'abf_wet_infection',
+    'abf_prior_vasc', 'ic_bmt_3m', 'pta_cant_lie_flat',
+    'ven_dvt_history', 'ven_thrombophilia', 'ven_acute_svt', 'ven_bleeding',
+    'ven_lidocaine_allergy', 'ven_skin_infection', 'ven_recurrent',
+    'ven_hormones', 'ven_cancer_immob', 'ven_pregnant',
+)
+
+_SELF_FILL_PRESERVE_CHIPS = (
+    'cad_chips', 'med_chips', 'allergy_chips', 'pulm_chips', 'inf_chips',
+    'abdo_chips', 'cea_event_chips', 'cea_neck_chips', 'ulcer_chips',
+    'vasc_chips', 'ven_dvt_chips', 'ven_rec_chips',
+)
+
 
 def _apply_sf_pathway_fields(post_data, pw, q, today, inv):
     if pw == PreopPatient.Pathway.AAA_INFRA:
@@ -262,7 +276,10 @@ def _apply_sf_pathway_fields(post_data, pw, q, today, inv):
             q[f] = post_data.get(f) in ('1', 'on', 'true')
     elif pw == PreopPatient.Pathway.CEA:
         for f in ('cea_symp_event', 'cea_crescendo', 'cea_prior_neck', 'cea_hoarseness'):
-            q[f] = post_data.get(f) in ('1', 'on', 'true')
+            if f == 'cea_symp_event' and q.get('cea_event_chips'):
+                q[f] = True
+            else:
+                q[f] = post_data.get(f) in ('1', 'on', 'true')
         if q.get('cea_symp_event'):
             raw_ev = (post_data.get('cea_event_date') or '').strip() if 'cea_event_date' in post_data else ''
             ev_dt = _date(raw_ev) if raw_ev else None
@@ -358,10 +375,6 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv):
 
     _parse_inv_field(post_data, s, 'weight_kg', lambda r: _num(r, lo=25, hi=260), inv, keep_valid=True)
     _parse_inv_field(post_data, s, 'height_cm', lambda r: _num(r, lo=100, hi=230), inv, keep_valid=True)
-    if inv:
-        s['_invalid_inputs'] = inv
-    else:
-        s.pop('_invalid_inputs', None)
 
     q['filled'] = True
     q['self_fill_submitted'] = True
@@ -373,9 +386,39 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv):
         patient.started_on = patient.visit_date or today
 
 
+def _preserve_prior_sf_risks(old_q, q):
+    """When a previously filled card is reopened via a blank bearer link, never silently wipe prior risk/med/allergy flags."""
+    for bf in _SELF_FILL_PRESERVE_BOOLS:
+        if old_q.get(bf):
+            q[bf] = True
+    if not old_q.get('mets_ok', True):
+        q['mets_ok'] = False
+        if old_q.get('mets_limitation') in ('cardiac', 'limb'):
+            q['mets_limitation'] = old_q['mets_limitation']
+    for cf in _SELF_FILL_PRESERVE_CHIPS:
+        old_c = old_q.get(cf) or []
+        if old_c:
+            q[cf] = sorted(set(old_c) | set(q.get(cf) or []))
+    for tf, lim in (('other_meds', 400), ('allergy_text', 250)):
+        old_t = (old_q.get(tf) or '').strip()
+        new_t = (q.get(tf) or '').strip()
+        if old_t and not new_t:
+            q[tf] = old_t
+        elif old_t and new_t and old_t.lower() not in new_t.lower():
+            q[tf] = f'{old_t}; {new_t}'[:lim]
+    for sk in ('abf_duration', 'cea_event_date', 'ven_ceap'):
+        if old_q.get(sk) and not q.get(sk):
+            q[sk] = old_q[sk]
+    for nk in ('cea_days_since_event', 'abf_claud_m'):
+        if old_q.get(nk) is not None and q.get(nk) is None:
+            q[nk] = old_q[nk]
+
+
 def apply_self_fill_post(post_data, patient):
     """Isolated patient Self-Fill parser: NEVER wipes nurse-entered fields (cta_disc, pacemaker, dm_insulin, etc.)."""
     q = merged_q(patient)
+    old_q = dict(q)
+    was_filled = bool(old_q.get('filled'))
     s = merged_studies(patient)
     today = timezone.localdate()
     pw = PreopPatient.SUBTYPE_PATHWAY.get(patient.op_subtype, patient.pathway)
@@ -399,7 +442,13 @@ def apply_self_fill_post(post_data, patient):
 
     raw_inv = s.get('_invalid_inputs')
     inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
-    _apply_sf_pathway_fields(post_data, pw, q, today, inv)
     _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv)
+    _apply_sf_pathway_fields(post_data, pw, q, today, inv)
+    if was_filled:
+        _preserve_prior_sf_risks(old_q, q)
+    if inv:
+        s['_invalid_inputs'] = inv
+    else:
+        s.pop('_invalid_inputs', None)
     patient.questionnaire = q
     patient.studies = s

@@ -11,18 +11,19 @@ def _eval_venous_lido_and_contra(ctx, ceap, ven_dup, gsv_mm):
     has_lido_allergy = bool(q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips)
     if patient.op_subtype == PreopPatient.OpSubtype.EVLA and ctx.weight_num is not None and not has_lido_allergy:
         ht_cm_lido = _num(s.get('height_cm'), lo=100, hi=230)
-        if ctx.bmi is not None and ctx.bmi >= 30 and ht_cm_lido is not None:
+        if ctx.bmi is not None and ctx.bmi >= lido_cfg['abw_bmi'] and ht_cm_lido is not None:
             ibw_lido = (45.5 if patient.sex == 'F' else 50.0) + 0.91 * max(0.0, ht_cm_lido - 152.4)
             dosing_wt_lido = min(ctx.weight_num, ibw_lido + 0.4 * max(0.0, ctx.weight_num - ibw_lido))
         else:
             dosing_wt_lido = ctx.weight_num
         _, chf_lido = _ihd_and_chf_flags(q, s)
         age_lido = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
+        ren_lido = ctx.eff_renal if ctx.eff_renal is not None else getattr(ctx, 'eff_renal_sat', None)
         reduced_lido_cl = bool(
             chf_lido
             or (s.get('liver_status') in ('2x', '3x'))
             or ('amiodarone' in ctx.med_chips)
-            or ((age_lido or 0) >= 80 and (ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 45)))
+            or ((age_lido or 0) >= lido_cfg['elder_age'] and (ctx.on_dialysis or (ren_lido is not None and ren_lido < lido_cfg['elder_renal'])))
         )
         if reduced_lido_cl:
             ctx.lidocaine_max_mg = min(lido_cfg['max_reduced'], int(round(dosing_wt_lido * lido_cfg['mg_per_kg'] * lido_cfg['reduced_factor'])))
@@ -58,7 +59,11 @@ def _eval_venous_lido_and_contra(ctx, ceap, ven_dup, gsv_mm):
             'სავალდებულოა ქირურგისა და ანესთეზიოლოგის ჩართვა.'
         )
         ctx.red_flags.append(lido_msg)
-        if patient.op_subtype == PreopPatient.OpSubtype.EVLA and (s.get('anesthesia_plan') in (None, '', 'auto', 'local')):
+        lido_plan = s.get('anesthesia_plan') or 'auto'
+        if (
+            (patient.op_subtype == PreopPatient.OpSubtype.EVLA and lido_plan in ('auto', 'local', 'plexus'))
+            or (patient.op_subtype == PreopPatient.OpSubtype.PHLEB and lido_plan in ('local', 'plexus'))
+        ):
             ctx.hard_contraindications.append(lido_msg)
     if q.get('ven_skin_infection'):
         ctx.red_flags.append('მწვავე კანის ინფექცია / წითელი ქარი / ჩირქოვანი ეგზემა პუნქციის/ჭრილობის ზონაში — საჭიროა წინასწარი სანაცია!')
@@ -81,22 +86,25 @@ def _eval_venous_lido_and_contra(ctx, ceap, ven_dup, gsv_mm):
 
 def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
     q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
+    vte_cfg = rule_value('VEN_VTE_CAPRINI_PROPHYLAXIS')
+    ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
     high_vte = q_filled and (
-        bool(q.get('ven_dvt_history')) or bool(q.get('ven_thrombophilia'))
+        bool(q.get('ven_dvt_history')) or bool(q.get('ven_dvt_chips'))
+        or bool(q.get('ven_thrombophilia'))
         or bool(q.get('ven_cancer_immob')) or bool(q.get('ven_acute_svt'))
         or ('hit_heparin' in ctx.allergy_chips)
     )
     mod_vte_count = sum([
-        bool((age_eff or 0) >= 60),
-        bool(bmi_eff is not None and bmi_eff >= 30),
+        bool((age_eff or 0) >= vte_cfg['mod_age']),
+        bool(bmi_eff is not None and bmi_eff >= vte_cfg['mod_bmi']),
         bool(q_filled and q.get('ven_hormones')),
         ctx.is_phleb,
         bool(q_filled and ceap in ('C5', 'C6')),
     ])
-    cap_thresh = rule_value('VEN_VTE_CAPRINI_PROPHYLAXIS')
+    cap_thresh = vte_cfg['caprini_high']
     ctx.needs_vte_prophylaxis = high_vte or (q_filled and (mod_vte_count >= 2 or ctx.caprini_score >= cap_thresh))
     if ctx.needs_vte_prophylaxis and not s.get('vte_prophylaxis_planned'):
-        ven_severe_renal = ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 30)
+        ven_severe_renal = ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < ren_red)
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv = ' (ღვიძლის ≥3x: არგატრობანი −75% / უპირატესია ბივალირუდინი!)' if ctx.liver_3x else ''
         if 'mech_valve' in ctx.cad_chips:
@@ -129,15 +137,17 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
 def _eval_venous_arterial_and_vte(ctx, ceap):
     q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
     art_cfg = rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')
+    gly_cfg = rule_value('GLY_GLUCOSE_HBA1C')
+    vte_cfg = rule_value('VEN_VTE_CAPRINI_PROPHYLAXIS')
     gl_eff = ctx.gl_mmol if ctx.gl_mmol is not None else getattr(ctx, 'gl_mmol_sat', None)
     hba1c_v = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
     bmi_eff = ctx.bmi if ctx.bmi is not None else getattr(ctx, 'bmi_sat', None)
-    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= 11.1) or (hba1c_v is not None and hba1c_v >= 6.5))
+    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo']) or (hba1c_v is not None and hba1c_v >= gly_cfg['hba1c_dm']))
     ctx.needs_abi_check = q_filled and (
         bool(q.get('claudication'))
         or ceap == 'C6'
-        or (ceap == 'C5' and (eff_dm or (age_eff or 0) >= 65))
+        or (ceap == 'C5' and (eff_dm or (age_eff or 0) >= vte_cfg['c5_abi_age']))
     )
     abi_eff = min([v for v in (ctx.min_abi, getattr(ctx, 'min_comp_abi_sat', None)) if v is not None], default=None)
     if abi_eff is not None:
@@ -200,6 +210,9 @@ def _eval_venous_arterial_and_vte(ctx, ceap):
 
 def eval_venous(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    gly_cfg = rule_value('GLY_GLUCOSE_HBA1C')
+    cb = rule_value('CARDIO_BIOMARKERS_ECHO')
+    vte_cfg = rule_value('VEN_VTE_CAPRINI_PROPHYLAXIS')
     ceap = q.get('ven_ceap') if q.get('ven_ceap') in ('C2', 'C3', 'C4', 'C5', 'C6') else 'C2'
     ven_dup = s.get('ven_duplex_status') or 'pending'
     gsv_mm = _num(s.get('ven_gsv_mm'), lo=1, hi=50)
@@ -211,12 +224,12 @@ def eval_venous(ctx):
     gl_eff = ctx.gl_mmol if ctx.gl_mmol is not None else getattr(ctx, 'gl_mmol_sat', None)
     hba1c_v = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
-    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= 11.1) or (hba1c_v is not None and hba1c_v >= 6.5))
-    eff_cardiac = bool(q.get('cad') or ctx.cad_chips or q.get('recent_stent') or (lvef_v is not None and lvef_v < 40) or (bnp_v is not None and bnp_v >= 300))
+    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo']) or (hba1c_v is not None and hba1c_v >= gly_cfg['hba1c_dm']))
+    eff_cardiac = bool(q.get('cad') or ctx.cad_chips or q.get('recent_stent') or (lvef_v is not None and lvef_v < cb['lvef_red']) or (bnp_v is not None and bnp_v >= cb['bnp_red']))
     ctx.needs_wound_care = q_filled and (ceap == 'C6' or bool(q.get('ven_skin_infection')))
     ctx.needs_ecg_venous = (
         ctx.is_phleb
-        or ((age_eff or 0) >= 50)
+        or ((age_eff or 0) >= vte_cfg['ecg_age'])
         or (q_filled and bool(q.get('htn')))
         or eff_cardiac or eff_dm
         or bool(s.get('irregular_hr'))
@@ -235,6 +248,7 @@ def eval_venous(ctx):
 def _eval_cross_pathway_urgency_flags(ctx, aaa_eff):
     pathway, q, s = ctx.pathway, ctx.q, ctx.s
     hemo_cfg = rule_value('PAD_CLTI_HEMO_THRESHOLDS')
+    hypo_cfg = rule_value('VIT_BP_HYPOTENSION_SHOCK')
     # Distinguish hemodynamically unstable rupture suspect (SBP <90 or Shock Index >=1.0) from intact symptomatic AAA (ESVS 2024)
     eff_sbp_pre = _valid_bilateral_sbp(s)
     if eff_sbp_pre is None:
@@ -242,7 +256,7 @@ def _eval_cross_pathway_urgency_flags(ctx, aaa_eff):
         eff_sbp_pre = min((min(sv, dv) for sv, dv in inv_pre), default=None)
     hr_pre = _sat_num(_s_raw(s, 'hr'), 15, 260)
     si_pre = round(hr_pre / eff_sbp_pre, 2) if (hr_pre is not None and eff_sbp_pre is not None and eff_sbp_pre > 0) else None
-    hemodyn_unstable = bool((eff_sbp_pre is not None and eff_sbp_pre < 90) or (si_pre is not None and si_pre >= 1.0))
+    hemodyn_unstable = bool((eff_sbp_pre is not None and eff_sbp_pre < hypo_cfg['red_sbp']) or (si_pre is not None and si_pre >= hypo_cfg['shock_idx']))
     aaa_pain_active = bool(pathway == PreopPatient.Pathway.AAA_INFRA and q.get('aaa_pain'))
     cea_cresc_active = bool(pathway == PreopPatient.Pathway.CEA and q.get('cea_crescendo'))
     is_ali_urgent = (
@@ -273,9 +287,10 @@ def _eval_cross_pathway_urgency_flags(ctx, aaa_eff):
 
 def eval_cross_pathway_and_urgency(ctx):
     patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
+    gly_cfg = rule_value('GLY_GLUCOSE_HBA1C')
     hba1c_x = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     gl_eff = ctx.gl_mmol if ctx.gl_mmol is not None else getattr(ctx, 'gl_mmol_sat', None)
-    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= 11.1) or (hba1c_x is not None and hba1c_x >= 6.5))
+    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo']) or (hba1c_x is not None and hba1c_x >= gly_cfg['hba1c_dm']))
 
     if (
         pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)

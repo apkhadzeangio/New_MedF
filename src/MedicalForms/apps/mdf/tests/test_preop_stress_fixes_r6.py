@@ -80,14 +80,15 @@ class PreopStressFixesRound6UnitTests(SimpleTestCase):
         ev_hf = evaluate(_go('open', q={'cad_chips': ['hf']}, s={'creat': 160, 'creat_unit': 'umol', 'lvef': 30}), today=TODAY)
         self.assertFalse(any('იზოტონური ჰიდრატაცია.' in a for a in ev_hf['amber_flags']))
 
-        # F-S1-03: EVLA + Warfarin INR=25 stays red/contraindicated and in stop_rows (never keep_rows)
+        # F-S1-03: EVLA + Warfarin INR=25 stays red/contraindicated and in caution_rows + urgent_rows (never keep_rows)
         p25 = _go('evla', q={'med_warfarin': True}, s={'inr': 25})
         ev25 = evaluate(p25, today=TODAY)
         w25 = next(r for r in ev25['med_schedule'] if 'ვარფარინ' in r['drug'])
         self.assertEqual(w25['tone'], 'red')
         self.assertTrue(w25.get('contraindicated'))
         sc25 = nurse_plan.build_phone_med_script(p25, ev25, TODAY)
-        self.assertTrue(any('ვარფარინ' in r['raw_drug'] for r in sc25['stop_rows']))
+        self.assertTrue(any('ვარფარინ' in r['raw_drug'] for r in sc25['caution_rows']))
+        self.assertTrue(any('ვარფარინ' in r['raw_drug'] for r in sc25['urgent_rows']))
         self.assertFalse(any('ვარფარინ' in r['raw_drug'] for r in sc25['keep_rows']))
 
         # F-S1-05: Symptomatic AAA HR=270 stays rupture suspect with MTP and permissive hypotension

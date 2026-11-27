@@ -12,6 +12,7 @@ from ...board import add_event, clean_text
 from ...models import BoardEntry, BoardPatient, PreopPatient
 from ..constants import _PREOP_MUTATION_LOCK, _sqlite_acquire_write_lock
 from ..meds import _effective_allergy_state
+from ..registry import rule_value
 from ..utils import _int, _num, merged_studies
 
 
@@ -82,7 +83,10 @@ def _upsert_board_patient(patient, user, ev, s, unit, bed, now):
         else (BoardPatient.ICU if ev['needs_icu_bed'] else BoardPatient.WARD)
     )
     bed_clean = clean_text(bed, 20).replace('\n', ' ')
-    diag_str = clean_text(patient.planned_operation_label, 255).replace('\n', ' ')
+    diag_raw = patient.planned_operation_label
+    if ev['pathway'] == PreopPatient.Pathway.CEA and ev.get('is_symp_cea'):
+        diag_raw = diag_raw.replace('ასიმპტომური', 'სიმპტომური')
+    diag_str = clean_text(diag_raw, 255).replace('\n', ' ')
     attending = patient.surgeon or user
 
     bp = resolve_board_patient(patient)
@@ -125,6 +129,7 @@ def _upsert_board_patient(patient, user, ev, s, unit, bed, now):
 
 
 def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board):
+    bp_arm_diff_lim = rule_value('VIT_BP_HYPOTENSION_SHOCK')['arm_diff']
     anesth_line_sfx = f" ({ev['anesth_lines_txt']})" if ev.get('anesth_lines_txt') else ''
     op_verb = (
         f"ჩატარდა ({ev['operated_date_ka']})" if (ev.get('case_outcome') == 'operated' and ev.get('operated_date_ka'))
@@ -136,8 +141,12 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
     vitals_labs = []
     bp_s = _int(s.get('bp_sys'), 30, 320)
     bp_d = _int(s.get('bp_dia'), 20, 220)
+    bp_sl = _int(s.get('bp_sys_l'), 30, 320)
+    bp_dl = _int(s.get('bp_dia_l'), 20, 220)
     if bp_s is not None and bp_d is not None and bp_s > bp_d:
         vitals_labs.append(f'BP {bp_s}/{bp_d} mmHg')
+    elif bp_sl is not None and bp_dl is not None and bp_sl > bp_dl:
+        vitals_labs.append(f'BP (L) {bp_sl}/{bp_dl} mmHg')
     if ev['hb_gl'] is not None:
         vitals_labs.append(f"Hb {ev['hb_gl']} გ/ლ")
     if ev.get('plt') is not None:
@@ -145,7 +154,9 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
     inr_b = _num(s.get('inr'), 0.4, 20.0)
     if inr_b is not None:
         vitals_labs.append(f'INR {inr_b}')
-    if ev['egfr'] is not None:
+    if ev.get('creat_unit_mismatch') or ev.get('creat_unit_ambiguous'):
+        vitals_labs.append('კრეატინინის ერთეული დასაზუსტებელია')
+    elif ev['egfr'] is not None:
         crcl_part = f" / CrCl {ev['crcl']}" if ev.get('crcl') is not None else ''
         vitals_labs.append(f"eGFR {ev['egfr']}{crcl_part}")
     if s.get('blood_group'):
@@ -171,19 +182,24 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
         safety_bits.append('HIT ანამნეზში (ჰეპარინი/LMWH აკრძალულია!)')
     if 'beta_lactam' in allergy_chips:
         safety_bits.append('მძიმე β-ლაქტამური ალერგია (ცეფაზოლინი არა!)')
+    elif 'penicillin_mild' in allergy_chips:
+        safety_bits.append('პენიცილინი (მსუბუქი გამონაყარი — ცეფაზოლინი დასაშვებია)')
+    if ev.get('has_vancomycin_allergy') or 'vancomycin' in allergy_chips:
+        safety_bits.append('ვანკომიცინზე ალერგია (არ გამოიყენოთ!)')
     if 'latex_chlorhex' in allergy_chips:
         safety_bits.append('ალერგია ლატექსზე / ქლორჰექსიდინზე!')
     if eff_iod_board:
         safety_bits.append('იოდი/კონტრასტზე ალერგია!')
     if 'nsaid' in allergy_chips:
         safety_bits.append('აასს / NSAID ალერგია (კეტოროლაკი/დექსკეტოპროფენი არა!)')
+    if 'clopidogrel_intol' in allergy_chips:
+        safety_bits.append('კლოპიდოგრელის აუტანლობა / ალერგია!')
     if q.get('ven_lidocaine_allergy') or 'lidocaine' in allergy_chips:
         safety_bits.append('ლიდოკაინზე ალერგია!')
     if (q.get('allergy_text') or '').strip():
         safety_bits.append(f"ალერგიის ჩანაწერი: {q['allergy_text']}")
-    if ev.get('bp_arm_diff') is not None and ev['bp_arm_diff'] >= 20:
-        bp_l = _int(s.get('bp_sys_l'), 30, 320)
-        higher_arm = 'მარჯვენა' if (bp_s or 0) >= (bp_l or 0) else 'მარცხენა'
+    if ev.get('bp_arm_diff') is not None and ev['bp_arm_diff'] >= bp_arm_diff_lim:
+        higher_arm = 'მარჯვენა' if (bp_s or 0) >= (bp_sl or 0) else 'მარცხენა'
         safety_bits.append(f"წნევის მონიტორინგი {higher_arm} მკლავზე (ΔBP {ev['bp_arm_diff']} mmHg)")
     if q.get('pacemaker'):
         cied_sfx = f" — {ev['cied_plan_label']}" if ev.get('cied_plan_label') else ''
@@ -203,6 +219,8 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
 
 
 def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
+    ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    cap_low_max = rule_value('SCORE_CAPRINI_VTE')['low_max']
     task_candidates = []
     board_statin_tail = '' if s.get('liver_status') == '3x' else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ)'
     if pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
@@ -213,7 +231,7 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
     elif pathway == PreopPatient.Pathway.CEA:
         task_candidates.append((
             'CEA პოსტოპ. ნევროლოგიური',
-            f"CEA პოსტოპ. ნევროლოგიური და წნევის მონიტორინგი (SBP <140–160 mmHg ჰიპერპერფუზიის პრევენციისთვის!) + {ev['surgical_brief']['postop_antithrombotic']}",
+            f"CEA პოსტოპ. ნევროლოგიური და წნევის მონიტორინგი (SBP <140–150 mmHg ჰიპერპერფუზიის პრევენციისთვის!) + {ev['surgical_brief']['postop_antithrombotic']}",
         ))
     elif pathway == PreopPatient.Pathway.AAA_INFRA:
         task_candidates.append((
@@ -240,7 +258,7 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
     elif 'hit_heparin' in allergy_chips:
         has_mv = 'mech_valve' in (q.get('cad_chips') or [])
         liver_3x = s.get('liver_status') == '3x'
-        sev_renal = bool(q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30))
+        sev_renal = bool(q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < ren_red))
         if has_mv:
             hit_board_agents = (
                 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე!) → ვარფარინი (VKA)'
@@ -258,25 +276,20 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
             'HIT ანამნეზში!',
             f'HIT ანამნეზში! არაფრაქციული ჰეპარინი და LMWH აკრძალულია — არაჰეპარინული ანტიკოაგულაცია ({hit_board_agents})',
         ))
+    elif ev.get('has_contra_oac'):
+        task_candidates.append((
+            'VTE / ანტიკოაგულაცია:',
+            'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!',
+        ))
     elif ev.get('has_full_oac'):
-        oac_contra_b = bool(
-            (q.get('med_dabigatran') and (q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30)))
-            or ((q.get('med_doac') or q.get('med_dabigatran')) and s.get('liver_status') == '3x')
-        )
-        if oac_contra_b:
-            task_candidates.append((
-                'VTE / ანტიკოაგულაცია:',
-                'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!',
-            ))
-        else:
-            task_candidates.append((
-                'VTE / ანტიკოაგულაცია:',
-                'VTE / ანტიკოაგულაცია: პაციენტი მუდმივ ანტიკოაგულანტზეა (OAC) — სრული ჰემოსტაზის შემდეგ განახლდეს OAC სქემა ქირურგთან შეთანხმებით (ორმაგი ანტიკოაგულაციის გარეშე!)',
-            ))
-    elif ev['caprini_score'] >= 3 or not ev['is_venous']:
+        task_candidates.append((
+            'VTE / ანტიკოაგულაცია:',
+            'VTE / ანტიკოაგულაცია: პაციენტი მუდმივ ანტიკოაგულანტზეა (OAC) — სრული ჰემოსტაზის შემდეგ განახლდეს OAC სქემა ქირურგთან შეთანხმებით (ორმაგი ანტიკოაგულაციის გარეშე!)',
+        ))
+    elif ev['caprini_score'] > cap_low_max or not ev['is_venous']:
         if s.get('liver_status') == '3x':
             vte_board_drug = 'LMWH / UFH კოაგულოგრამის კონტროლით (ღვიძლის ≥3x-ზე DOAC არა!)'
-        elif q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 30):
+        elif q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < ren_red):
             vte_board_drug = 'კანქვეშა UFH 5000 სე ×2–3 ან თირკმელზე კორექტირებული LMWH'
         else:
             vte_board_drug = 'LMWH პროფილაქტიკური დოზით'
@@ -289,17 +302,28 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
 
 
 def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board):
-    if 'beta_lactam' in allergy_chips:
+    gent_avoid = rule_value('ALLERGY_HIT_ABX_PROPHYLAXIS')['gentamicin_avoid_renal']
+    na_hi = rule_value('REN_ELECTROLYTES_K_NA')['na_hi']
+    hyd_egfr = rule_value('REN_CKD_NEPHRO_HYDRATION')['hydration']
+    abx_reg = (ev.get('surgical_brief') or {}).get('abx_regimen') or ''
+    if 'beta_lactam' in allergy_chips and 'არ ესაჭიროება' not in abx_reg:
         groin_abx_sfx = ''
         if pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
-            if q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < 45) or ev.get('open_aortic'):
+            if q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < gent_avoid) or ev.get('open_aortic'):
                 groin_abx_sfx = ' (+ აზტრეონამი / ციპროფლოქსაცინი — გენტამიცინი აკრძალულია!)'
             else:
                 groin_abx_sfx = ' (+ გენტამიცინი / აზტრეონამი საზარდულის მიდგომისას)'
-        task_candidates.append((
-            'მძიმე ბეტა-ლაქტამური ალერგია!',
-            f'მძიმე ბეტა-ლაქტამური ალერგია! ცეფაზოლინი უკუნაჩვენებია — პროფილაქტიკა ვანკომიცინით ან კლინდამიცინით (ვანკომიცინი მაქს. 2 გ){groin_abx_sfx}',
-        ))
+        if ev.get('has_vancomycin_allergy') or 'vancomycin' in allergy_chips:
+            abx_task_txt = (
+                f'მძიმე β-ლაქტამსა და ვანკომიცინზე ალერგია! ცეფაზოლინი და ვანკომიცინი აკრძალულია — '
+                f'პროფილაქტიკა კლინდამიცინით 900 მგ IV{groin_abx_sfx}'
+            )
+        else:
+            abx_task_txt = (
+                f'მძიმე ბეტა-ლაქტამური ალერგია! ცეფაზოლინი უკუნაჩვენებია — '
+                f'პროფილაქტიკა ვანკომიცინით ან კლინდამიცინით (ვანკომიცინი მაქს. 2 გ){groin_abx_sfx}'
+            )
+        task_candidates.append(('მძიმე ბეტა-ლაქტამური ალერგია!', abx_task_txt))
 
     if 'nsaid' in allergy_chips:
         task_candidates.append((
@@ -317,7 +341,7 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
         na_b = ev.get('na_val_sat')
         if na_b is None:
             na_b = _num(s.get('na'), 90, 200)
-        if na_b is not None and na_b >= 150:
+        if na_b is not None and na_b >= na_hi:
             hf_tail = ' · HFrEF სითხის შეზღუდვით!' if ev.get('chf_hyd_flag') else ''
             hyd_b = f'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე, ნელი ჰიპოტონური კორექცია{hf_tail}'
         elif ev.get('chf_hyd_flag'):
@@ -328,7 +352,7 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
             'ნეფროპროტექცია:',
             f'ნეფროპროტექცია: {hyd_b} + საკონტროლო კრეატინინი და K+ 24–48 სთ-ში{contrast_sfx}',
         ))
-    elif eff_renal_board is not None and eff_renal_board < 60:
+    elif eff_renal_board is not None and eff_renal_board < hyd_egfr:
         task_candidates.append((
             'ნეფროპროტექცია:',
             'ნეფროპროტექცია (თირკმლის მონიტორინგი): საკონტროლო კრეატინინი და K+ 24–48 სთ-ში (ნეფროტოქსიკური წამლების თავიდან აცილება)',

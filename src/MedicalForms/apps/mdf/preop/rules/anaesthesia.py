@@ -1,6 +1,6 @@
 """Structured anesthesiology (ASA, airway, STOP-Bang, wait guard, fasting), DoS WHO Sign-In, VQI & 2D triage."""
 from ...models import PreopPatient
-from ..calculators import build_surveillance_plan, normalize_glucose_mmol
+from ..calculators import _s_raw, _sat_gl_mmol, _sat_num, build_surveillance_plan, normalize_glucose_mmol
 from ..constants import (
     ANESTH_PLAN_CHOICES,
     CASE_OUTCOME_CHOICES,
@@ -78,7 +78,7 @@ def _eval_asa_airway_and_modality(ctx):
     sb_cfg = rule_value('ANES_AIRWAY_STOPBANG_ICU')
     age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
     ctx.effective_asa = f"ASA {ctx.asa_roman}{'-E' if (s.get('asa_emergency') or ctx.is_acute_emergency) else ''}"
-    if pathway == PreopPatient.Pathway.CEA and not ctx.is_symp_cea and (age_eff or 0) >= 80 and ctx.asa_roman == 'IV':
+    if pathway == PreopPatient.Pathway.CEA and not ctx.is_symp_cea and (age_eff or 0) >= sb_cfg['cea_asymp_futility_age'] and ctx.asa_roman == 'IV':
         ctx.red_flags.append(
             'ასიმპტომური CEA ≥80 წლის ASA IV პაციენტთან — ESVS 2023-ით 5-წლიანი სარგებელი საეჭვოა, '
             'გადაამოწმეთ კონსერვატიული მედიკამენტური ტაქტიკა (BMT) ქირურგთან!'
@@ -95,12 +95,12 @@ def _eval_asa_airway_and_modality(ctx):
     pulm_chip_set = set(q.get('pulm_chips') or [])
     eff_sys_sb = ctx.eff_sys if ctx.eff_sys is not None else getattr(ctx, 'eff_sys_sat', None)
     eff_dia_sb = ctx.eff_dia if ctx.eff_dia is not None else getattr(ctx, 'eff_dia_sat', None)
-    inv_htn_sb = any(dv >= 90 for _, dv in getattr(ctx, 'inv_bp_arms', ()))
-    has_htn_sb = bool(q_filled and q.get('htn')) or bool((eff_sys_sb is not None and eff_sys_sb >= 140) or (eff_dia_sb is not None and eff_dia_sb >= 90) or inv_htn_sb)
+    inv_htn_sb = any(dv >= sb_cfg['sb_dbp'] for _, dv in getattr(ctx, 'inv_bp_arms', ()))
+    has_htn_sb = bool(q_filled and q.get('htn')) or bool((eff_sys_sb is not None and eff_sys_sb >= sb_cfg['sb_sbp']) or (eff_dia_sb is not None and eff_dia_sb >= sb_cfg['sb_dbp']) or inv_htn_sb)
     bmi_eff = ctx.bmi if ctx.bmi is not None else getattr(ctx, 'bmi_sat', None)
     stop_bang_auto = sum([
-        bool(bmi_eff is not None and bmi_eff > 35),
-        bool((age_eff or 0) > 50),
+        bool(bmi_eff is not None and bmi_eff > sb_cfg['sb_bmi']),
+        bool((age_eff or 0) > sb_cfg['sb_age']),
         has_htn_sb,
         bool(patient.sex == 'M'),
     ]) + (3 if 'osa' in pulm_chip_set else 0)
@@ -121,17 +121,16 @@ def _eval_asa_airway_and_modality(ctx):
         ctx.open_aortic
         or pathway == PreopPatient.Pathway.CEA
         or ((pathway == PreopPatient.Pathway.AAA_INFRA and bool(q.get('aaa_pain'))) or has_glp1_any)
-        or (bmi_eff is not None and bmi_eff >= 40)
+        or (bmi_eff is not None and bmi_eff >= sb_cfg['ett_bmi'])
     )
     ctx.effective_anesth_label = _resolve_effective_anesth_label(ctx, lido_alg, needs_ett_airway)
     ctx.anesth_lines_txt = chip_summary(s.get('anesth_lines_chips'), 'anesth_lines_chips')
     cied_plan_raw = s.get('cied_plan') if s.get('cied_plan') in ('pending', 'bipolar_only', 'magnet_async', 'ep_reprogram') else 'pending'
     ctx.cied_plan_label = dict(CIED_PLAN_CHOICES).get(cied_plan_raw, '') if ctx.needs_cied and cied_plan_raw != 'pending' else ''
-    from ..calculators import _s_raw, _sat_num
     lvef_icu = ctx.lvef if ctx.lvef is not None else _sat_num(_s_raw(s, 'lvef'), 5, 95)
     ctx.needs_icu_bed = bool(
         ctx.open_aortic or ctx.asa_roman == 'IV'
-        or (lvef_icu is not None and lvef_icu < 40)
+        or (lvef_icu is not None and lvef_icu < sb_cfg['icu_lvef'])
         or (pathway == PreopPatient.Pathway.CEA and bool(q.get('cea_crescendo')))
         or bool(ctx.anesth_lines_set & {'art_line', 'cvc', 'epidural'})
     )
@@ -218,6 +217,8 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
         allergy_bits.append('β-ლაქტამი (ცეფაზოლინი არა!)')
     elif 'penicillin_mild' in ctx.allergy_chips:
         allergy_bits.append('პენიცილინი (მსუბუქი გამონაყარი — ცეფაზოლინი დასაშვებია)')
+    if getattr(ctx, 'has_vancomycin_allergy', False):
+        allergy_bits.append('ვანკომიცინი (არ გამოიყენოთ!)')
     if lido_alg:
         allergy_bits.append('ლიდოკაინი / ადგილობრივი ანესთეტიკი!')
     if 'latex_chlorhex' in ctx.allergy_chips:
@@ -309,7 +310,12 @@ def _build_dos_checks(ctx):
     if not (is_std_evla_no_abx or ctx.is_uncomplicated_pta_abx):
         wt_eff = getattr(ctx, 'weight_sat', ctx.weight_num)
         cefaz_dose = f'3 გ (≥{cefaz_3g_kg} კგ!)' if (wt_eff is not None and wt_eff >= cefaz_3g_kg) else '2 გ'
-        abx_hint = 'ვანკომიცინი / კლინდამიცინი (β-ლაქტამზე ალერგია!)' if 'beta_lactam' in ctx.allergy_chips else f'ცეფაზოლინი {cefaz_dose} (ჭრილობამდე ≤60 წთ)'
+        if 'beta_lactam' in ctx.allergy_chips and getattr(ctx, 'has_vancomycin_allergy', False):
+            abx_hint = 'კლინდამიცინი 900 მგ IV (β-ლაქტამსა და ვანკომიცინზე ალერგია!)'
+        elif 'beta_lactam' in ctx.allergy_chips:
+            abx_hint = 'ვანკომიცინი / კლინდამიცინი (β-ლაქტამზე ალერგია!)'
+        else:
+            abx_hint = f'ცეფაზოლინი {cefaz_dose} (ჭრილობამდე ≤60 წთ)'
         if ctx.unclarified_allergy_other:
             abx_hint += ' [დააზუსტეთ უცნობი ალერგია შეყვანამდე!]'
         dos_checks.append({'key': 'dos_abx_ready', 'label': f'ანტიბიოტიკოპროფილაქტიკა მზადაა: {abx_hint}', 'done': bool(s.get('dos_abx_ready'))})
@@ -342,6 +348,7 @@ def _eval_dos_and_vqi(ctx):
 
     dos_sys, dos_dia = _int(s.get('dos_bp_sys'), lo=40, hi=300), _int(s.get('dos_bp_dia'), lo=20, hi=200)
     dos_gl = normalize_glucose_mmol(s.get('dos_glucose'))
+    ctx.dos_gl_sat = dos_gl if dos_gl is not None else _sat_gl_mmol(_s_raw(s, 'dos_glucose'))
     dos_inr = _num(s.get('dos_inr'), lo=0.5, hi=15)
     dos_warnings = list(ctx.hard_contraindications)
 
@@ -410,6 +417,10 @@ def _eval_dos_and_vqi(ctx):
 
 def _eval_triage_and_passport_cautions(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    lvef_red = rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red']
+    fev1_red = rule_value('PULM_CXR_SPIROMETRY')['fev1_red']
+    aaa_high_mm = rule_value('AAA_CTA_STALE_MONTHS')[2]
+    cea_urg_pct = rule_value('CEA_STENOSIS_THRESHOLDS')['urgent_badge']
 
     if ctx.all_tasks_done and ctx.priority_flags:
         prio_set = set(ctx.priority_flags)
@@ -423,11 +434,11 @@ def _eval_triage_and_passport_cautions(ctx):
         passport_cautions.append(
             'კარდიო-სიფრთხილე (დაშვებულია ✓): მნიშვნელოვანი სარქვლოვანი პათოლოგია / AS — მოერიდეთ სწრაფ ვაზოდილატაციას/ჰიპოტენზიას (A-line, ვაზოპრესორი)!'
         )
-    if ctx.cardio_cleared and ctx.lvef is not None and ctx.lvef < 40:
+    if ctx.cardio_cleared and ctx.lvef is not None and ctx.lvef < lvef_red:
         passport_cautions.append(
             f'კარდიო-სიფრთხილე (დაშვებულია ✓): დაქვეითებული განდევნის ფრაქცია (LVEF {ctx.lvef}%) — ფრთხილი ინფუზია და ჰემოდინამიკური კონტროლი.'
         )
-    if ctx.anesth_cleared and ctx.spiro_fev1 is not None and ctx.spiro_fev1 < 50:
+    if ctx.anesth_cleared and ctx.spiro_fev1 is not None and ctx.spiro_fev1 < fev1_red:
         passport_cautions.append(
             f'პულმო-სიფრთხილე (დაშვებულია ✓): მძიმე სპირომეტრიული დარღვევა (FEV1 {ctx.spiro_fev1}%) — ფილტვ-დამზოგველი ვენტილაცია და პოსტოპ. მონიტორინგი.'
         )
@@ -446,8 +457,8 @@ def _eval_triage_and_passport_cautions(ctx):
     if ctx.is_urgent_case:
         priority_tier = 'urgent'
     elif (
-        (ctx.aaa_mm is not None and ctx.aaa_mm >= 65)
-        or (ctx.ipsi_car is not None and ctx.ipsi_car >= 90)
+        (ctx.aaa_mm is not None and ctx.aaa_mm >= aaa_high_mm)
+        or (ctx.ipsi_car is not None and ctx.ipsi_car >= cea_urg_pct)
         or (ctx.is_venous and q_filled and q.get('ven_ceap') == 'C6')
         or (not ctx.is_venous and not ctx.is_on_hold and ctx.is_active_case and ctx.days >= max(4, ctx.t_days - 1))
     ):

@@ -186,15 +186,7 @@
                     {% if ev.is_pta and q.filled %}
                     <div class="po-task-row {% if s.dapt_ready %}done{% endif %}">
                         <span>
-                            {% if s.post_antithrombotic_plan and s.post_antithrombotic_plan != 'auto' and ev.post_antithrombotic_label %}
                             <strong>ანტითრომბოზული გეგმა: {{ ev.post_antithrombotic_label }}</strong>
-                            {% elif ev.has_mech_valve %}
-                            <strong>მექანიკური სარქველი — ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი (DOAC / VOYAGER აკრძალულია!)</strong>
-                            {% elif ev.has_full_oac %}
-                            <strong>ანტითრომბოზული გეგმა OAC ფონზე: {% if 'clopidogrel_intol' in ev.eff_allergy_chips and 'nsaid' in ev.eff_allergy_chips %}OAC მონოთერაპია ან კონსილიუმი (ასპირინზე ალერგია + კლოპიდოგრელზე აუტანლობა!){% elif 'clopidogrel_intol' in ev.eff_allergy_chips %}OAC + ასპირინი (კლოპიდოგრელზე აუტანლობა — OAC + ტიკაგრელორი არა!){% else %}OAC + კლოპიდოგრელი (სამმაგი თერაპიის — OAC+ASA+P2Y12 — გარეშე!){% endif %}</strong>
-                            {% else %}
-                            <strong>{% if 'nsaid' in ev.eff_allergy_chips and 'clopidogrel_intol' in ev.eff_allergy_chips %}ალტერნატიული ანტიაგრეგანტული გეგმა (ასპირინზე ალერგია + კლოპიდოგრელზე აუტანლობა — კარდიოლოგთან შეთანხმებით!){% elif 'nsaid' in ev.eff_allergy_chips %}ანტიაგრეგანტული თერაპია — კლოპიდოგრელი (ასპირინზე/აასს-ზე ალერგია!){% elif 'clopidogrel_intol' in ev.eff_allergy_chips %}ორმაგი ანტიაგრეგანტული თერაპია — DAPT (ასპირინი + ტიკაგრელორი — კლოპიდოგრელზე აუტანლობა!){% else %}ორმაგი ანტიაგრეგანტული თერაპია — DAPT (ასპირინი + კლოპიდოგრელი / დატვირთვის დოზა){% endif %}</strong>
-                            {% endif %}
                         </span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="dapt_ready" value="1" {% if s.dapt_ready %}checked{% endif %}>დადასტურებულია / მზადაა ✓</label>
                     </div>

@@ -85,6 +85,12 @@ def _extract_hold_start_date(row, op_dt):
     """Infer the calendar date when a hold/skip medication action starts relative to op_dt."""
     if not op_dt or not row.get('hold_or_skip'):
         return None
+    mhd = row.get('mandatory_hold_days')
+    if mhd is not None:
+        try:
+            return op_dt - datetime.timedelta(days=int(mhd))
+        except (TypeError, ValueError, OverflowError):
+            return op_dt
     plan = str(row.get('date_plan') or '')
     m = _DATE_DM_RE.search(plan)
     if not m:
@@ -112,7 +118,10 @@ def _med_call_status(ev, today):
         return {'needs_call': False, 'urgent_call': False, 'called_valid': False, 'outdated_call': False, 'drugs': []}
     s = ev['s']
     op_dt = _date(s.get('planned_surgery_date'))
-    hold_rows = [r for r in ev['med_schedule'] if r.get('hold_or_skip')]
+    hold_rows = [
+        r for r in ev['med_schedule']
+        if r.get('hold_or_skip') and not r.get('reconcile_only') and not r.get('contraindicated') and not r.get('unstructured')
+    ]
     if not hold_rows:
         return {'needs_call': False, 'urgent_call': False, 'called_valid': False, 'outdated_call': False, 'drugs': []}
 
@@ -153,10 +162,11 @@ def self_fill_status_info(ev):
 
 
 def get_nurse_readiness_verdict(patient, ev):
-    """Single unmistakable 03:00 night-shift verdict: STOP / ექიმის ნახვა / მზადაა ✓ / აკლია N პუნქტი."""
+    """Single unmistakable 03:00 night-shift verdict: STOP / ექიმის ნახვა / მზადაა ✓ / პირობითი / აკლია N პუნქტი."""
     seal_code = ev['clearance_seal']['code']
     open_tasks = [t for t in ev['tasks'] if not t['done']]
     missing_cnt = max(len(ev['missing_items']), len(open_tasks))
+    stale_pending = bool(ev.get('needs_stale_labs') and not ev['s'].get('stale_labs_refreshed'))
     if seal_code == 'stop' or ev['has_hard_contraindication'] or ev['dos_hold_danger']:
         reason = (
             ev['dos_warnings'][0] if ev['dos_warnings']
@@ -178,7 +188,7 @@ def get_nurse_readiness_verdict(patient, ev):
             'detail': 'შეავსეთ კითხვარი ან გაუგზავნეთ ბმული პაციენტს',
             'missing_cnt': max(1, missing_cnt), 'rank': 2,
         }
-    if ev.get('has_blocking_unknown_state') or ev.get('neuraxial_hard_blocked') or ev.get('needs_stale_labs') or seal_code == 'pending':
+    if ev.get('has_blocking_unknown_state') or ev.get('neuraxial_hard_blocked') or stale_pending or seal_code == 'pending':
         miss_fields = {m.get('field') for m in ev['missing_items']}
         blk_all = [u for u in (ev.get('unknown_state_flags') or []) if u.get('blocking')]
         extra_blk = [u for u in blk_all if u.get('field') not in miss_fields]
@@ -189,6 +199,15 @@ def get_nurse_readiness_verdict(patient, ev):
             'badge': f'აკლია {total_cnt} პუნქტი',
             'detail': detail,
             'missing_cnt': total_cnt,
+            'rank': 2,
+        }
+    if seal_code == 'conditional' and open_tasks:
+        top_open = [t['label'] for t in open_tasks[:2]]
+        return {
+            'code': 'conditional',
+            'badge': f'პირობითი — აკლია {len(open_tasks)} დავალება',
+            'detail': ' · '.join(top_open),
+            'missing_cnt': len(open_tasks),
             'rank': 2,
         }
     if ev['status'] == STATUS_READY:
@@ -241,18 +260,21 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
         verdict = get_nurse_readiness_verdict(p, ev)
         med_call = _med_call_status(ev, today)
         sf_info = self_fill_status_info(ev)
+        pw = ev['pathway']
         has_acute = bool(
-            ev['q'].get('aaa_pain')
-            or ev['q'].get('cea_crescendo')
-            or ev['q'].get('abf_wet_infection')
-            or (ev['pathway'] in ('abf', 'pad_bypass', 'pad_pta') and ev['q'].get('abf_duration') == '< 2 კვირა')
+            (pw == 'aaa_infra' and ev['q'].get('aaa_pain'))
+            or (pw == 'cea' and ev['q'].get('cea_crescendo'))
+            or (pw in ('abf', 'pad_bypass', 'pad_pta') and (
+                ev['q'].get('abf_wet_infection') or ev['q'].get('abf_duration') == '< 2 კვირა'
+            ))
         )
+        stale_pending = bool(ev.get('needs_stale_labs') and not ev['s'].get('stale_labs_refreshed'))
 
         item = {
             'p': p,
             'ev': ev,
             'surgeon_name': person_name(p.surgeon),
-            'procedure_ka': PLAIN_SUBTYPE_KA.get(p.op_subtype, PLAIN_PATHWAY_KA.get(ev['pathway'], p.planned_operation_label)),
+            'procedure_ka': PLAIN_SUBTYPE_KA.get(p.op_subtype, PLAIN_PATHWAY_KA.get(pw, p.planned_operation_label)),
             'side_ka': PLAIN_SIDE_KA.get(p.side or '', ''),
             'op_date': op_dt,
             'op_label': _relative_op_label(op_dt, today),
@@ -262,7 +284,7 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
             'self_fill': sf_info,
             'dos_progress': f"{ev['dos_done_count']}/{ev['dos_total_count']}",
             'is_or_soon': bool(days_to_op is not None and 0 <= days_to_op <= 1),
-            'search_blob': f"{p.patient_name} {p.phone} {PLAIN_PATHWAY_KA.get(ev['pathway'], '')} {person_name(p.surgeon)}".lower(),
+            'search_blob': f"{p.patient_name} {p.phone} {PLAIN_PATHWAY_KA.get(pw, '')} {person_name(p.surgeon)}".lower(),
         }
         directory.append(item)
 
@@ -273,7 +295,7 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
             med_calls.append(item)
         if sf_info['code'] == 'returned':
             self_returned.append(item)
-        if not in_urgent and (ev['over_target_days'] or ev['needs_stale_labs'] or verdict['code'] in ('alert', 'pending')):
+        if not in_urgent and (ev['over_target_days'] or stale_pending or verdict['code'] in ('alert', 'pending', 'conditional')):
             missing_overdue.append(item)
 
     def _sort_key(it):
@@ -339,6 +361,8 @@ def plain_risk_badges(ev):
     renal_vals = [v for v in (ev.get('crcl'), ev.get('egfr')) if v is not None]
     if ev['q'].get('on_dialysis'):
         badges.append({'label': 'თირკმლის ფუნქცია', 'value': 'დიალიზი', 'tone': 'danger'})
+    elif ev.get('creat_unit_mismatch') or ev.get('creat_unit_ambiguous'):
+        badges.append({'label': 'თირკმლის გაფილტვრა', 'value': 'კრეატინინი: ერთეული დასაზუსტებელია', 'tone': 'danger'})
     elif renal_vals:
         r_min = min(renal_vals)
         r_tone = 'danger' if r_min < 30 else ('warn' if r_min < 60 else 'ok')

@@ -26,13 +26,14 @@ _RIVA_NON_DRUG_WORDS = frozenset({
     'მერე', 'მხოლოდ', 'only', 'daily', 'morning', 'evening', 'once', 'twice',
 })
 _ASPIRIN_FT_STEMS = (
-    'ასპირინ', 'კარდიომაგნ', 'კარდიო მაგნ', 'თრომბო-ას', 'თრომბოას', 'თრომბო ას',
-    'aspirin', 'cardioaspir', 'cardiomagn', 'trombo-ass', 'trombo ass', 'thrombo ass',
+    'ასპირინ', 'ასპიკარდ', 'კარდიომაგნ', 'კარდიო მაგნ', 'თრომბო-ას', 'თრომბოას', 'თრომბო ას',
+    'aspirin', 'aspicard', 'cardioaspir', 'cardiomagn', 'trombo-ass', 'trombo ass', 'thrombo ass',
 )
 _ASA_WORD_RE = re.compile(r'(?<![a-zა-ჰ])asa(?![a-zა-ჰ])')
 _OTHER_XA_DOAC_STEMS = (
     'ელიქვის', 'eliquis', 'აპიქსაბ', 'apixab', 'ედიქსან', 'ედოქსაბ', 'edoxab', 'ლიქსიან', 'lixiana',
 )
+_ALLERGY_NEGATION_WORDS = frozenset({'არა', 'უარყოფს', 'არაქვს', 'no', 'none', 'nil', 'nkda', 'nka'})
 
 
 def _riva_has_therapeutic_dose(low):
@@ -69,6 +70,20 @@ def _detect_freetext_allergies(text):
     if _HIT_WORD_RE.search(low):
         matched.add('hit_heparin')
     return matched
+
+
+def _has_unrecognized_allergy_clause(text):
+    """Return True if any comma/semicolon/conjunction clause in `allergy_text` matches no known allergy stem."""
+    if not isinstance(text, str) or not text.strip():
+        return False
+    for raw_clause in _RIVA_CLAUSE_SPLIT_RE.split(text.lower()):
+        cleaned = re.sub(r'[\s.,;:!?()\[\]"\'—–-]+', '', raw_clause)
+        if not cleaned or cleaned in _ALLERGY_NEGATION_WORDS:
+            continue
+        matched = any(any(st in raw_clause for st in stems) for _, stems in _FREETEXT_ALLERGY_STEMS)
+        if not matched and not _HIT_WORD_RE.search(raw_clause):
+            return True
+    return False
 
 
 def _effective_allergy_state(q):

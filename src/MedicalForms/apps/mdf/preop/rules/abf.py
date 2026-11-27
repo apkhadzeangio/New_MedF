@@ -88,8 +88,8 @@ def eval_abf(ctx):
         elif (
             not is_clti and abi_norm_lo < ctx.min_comp_abi <= abi_norm_hi
             and not ctx.abi_non_compressible
-            and not (ctx.min_tp is not None and ctx.min_tp < 60)
-            and not (ctx.min_tbi is not None and ctx.min_tbi < 0.70)
+            and not (ctx.min_tp is not None and ctx.min_tp < hemo_cfg['normal_tp'])
+            and not (ctx.min_tbi is not None and ctx.min_tbi < hemo_cfg['normal_tbi'])
         ):
             ctx.red_flags.append(
                 f'ფიქსირდება ნორმალური ABI ({ctx.min_comp_abi} — 0.91–1.40) ორივე კიდურზე კოჭლობის ფონზე — '
@@ -182,13 +182,13 @@ def _eval_pad_bypass_side_and_hemo(ctx, is_clti, hemo_cfg, abi_norm_lo, abi_norm
         t_tbi_byp = ctx.tbi_r if patient.side == 'R' else ctx.tbi_l
         t_normal_hemo = (
             t_abi_byp is not None and abi_norm_lo < t_abi_byp <= abi_norm_hi
-            and not (t_tp_byp is not None and t_tp_byp < 60)
-            and not (t_tbi_byp is not None and t_tbi_byp < 0.70)
+            and not (t_tp_byp is not None and t_tp_byp < hemo_cfg['normal_tp'])
+            and not (t_tbi_byp is not None and t_tbi_byp < hemo_cfg['normal_tbi'])
         )
-        if t_normal_hemo and (not is_clti or (ctx.contra_abi is not None and ctx.contra_abi < 0.60)):
+        if t_normal_hemo and (not is_clti or (ctx.contra_abi is not None and ctx.contra_abi < hemo_cfg['wrong_side_contra_abi'])):
             ctx.red_flags.append(
                 f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_byp} — 0.91–1.40)'
-                + (f', ხოლო კონტრალატერალურზე ABI {ctx.contra_abi}!' if ctx.contra_abi is not None and ctx.contra_abi < 0.60 else ' კოჭლობის ფონზე')
+                + (f', ხოლო კონტრალატერალურზე ABI {ctx.contra_abi}!' if ctx.contra_abi is not None and ctx.contra_abi < hemo_cfg['wrong_side_contra_abi'] else ' კოჭლობის ფონზე')
                 + ' — გადაამოწმეთ არჩეული მხარე (R/L) ან დატვირთვის შემდგომი პერფუზია ქირურგთან!'
             )
     if ctx.min_comp_abi is not None and ctx.min_comp_abi < hemo_cfg['abi_severe'] and not is_clti:

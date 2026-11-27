@@ -25,6 +25,7 @@ def _result_clinical_part(ctx):
         'neuraxial_hard_blocked': ctx.neuraxial_hard_blocked,
         'eff_allergy_latex': ('latex_chlorhex' in ctx.allergy_chips),
         'eff_allergy_iodine': ctx.eff_allergy_iodine,
+        'has_vancomycin_allergy': getattr(ctx, 'has_vancomycin_allergy', False),
         'active_thrombolysis_window': getattr(ctx, 'active_thrombolysis_window', False),
         'has_mech_valve': ctx.has_mech_valve,
         'na_val_sat': getattr(ctx, 'na_val_sat', None),
@@ -42,6 +43,8 @@ def _result_clinical_part(ctx):
         'open_aortic': ctx.open_aortic,
         'has_synthetic_implant': ctx.has_synthetic_implant,
         'has_full_oac': ctx.has_full_oac,
+        'has_contra_oac': getattr(ctx, 'has_contra_oac', False),
+        'has_elapsed_hold_window': getattr(ctx, 'has_elapsed_hold_window', False),
         'has_neuraxial_plan': ctx.has_neuraxial_plan,
         'has_hard_contraindication': ctx.has_hard_contraindication,
         'cea_high_surg_risk': ctx.cea_high_surg_risk,
@@ -97,10 +100,12 @@ def _result_clinical_part(ctx):
 
 
 def _result_flags_and_needs_part(ctx):
+    from ..registry import rule_value
+    hr_hi = rule_value('VIT_HR_SPO2_METS')['hr_hi']
     hr_eff = getattr(ctx, 'hr_sat', ctx.hr)
     ecg_display_label = (
-        'მოციმციმე არითმია — ტაქისისტოლია (HR > 110!)'
-        if (ctx.ecg == 'afib_controlled' and hr_eff is not None and hr_eff > 110)
+        f'მოციმციმე არითმია — ტაქისისტოლია (HR > {hr_hi}!)'
+        if (ctx.ecg == 'afib_controlled' and hr_eff is not None and hr_eff > hr_hi)
         else ECG_LABELS.get(ctx.ecg, ctx.ecg)
     )
     return {
@@ -151,6 +156,7 @@ def _result_flags_and_needs_part(ctx):
         'compression_contra': ctx.compression_contra,
         'tbi_reduced_comp': ctx.tbi_reduced_comp,
         'creat_unit_ambiguous': ctx.creat_unit_ambiguous,
+        'creat_unit_mismatch': getattr(ctx, 'creat_unit_mismatch', False),
         'bmi': ctx.bmi,
         'hb_gl': ctx.hb_gl,
         'wbc': ctx.wbc,

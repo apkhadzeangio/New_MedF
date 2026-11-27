@@ -7,10 +7,18 @@ from ...models import PreopPatient
 from ..calculators import (
     _parse_scr_mgdl,
     _s_raw,
+    _sat_age,
+    _sat_bmi_from,
+    _sat_crcl,
+    _sat_egfr,
+    _sat_gl_mmol,
+    _sat_hb_gl,
+    _sat_num,
     calc_bmi,
     calc_caprini,
     calc_crcl,
     calc_egfr,
+    is_creat_unit_mismatch,
     normalize_albumin_gl,
     normalize_glucose_mmol,
     normalize_hb_gl,
@@ -70,6 +78,7 @@ def _fmt_bad_val(lbl, raw):
 
 
 def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=None, q=None):
+    from ..utils import is_valid_birth_date
     src = raw_s if isinstance(raw_s, dict) else {}
     inv = src.get('_invalid_inputs') if isinstance(src.get('_invalid_inputs'), dict) else {}
     q_d = q if isinstance(q, dict) else {}
@@ -116,10 +125,23 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today
     ):
         if _has_raw(raw_val):
             dt_v = _date(raw_val)
-            if dt_v is None or (today and dt_v > today):
+            bad_dt = (not is_valid_birth_date(dt_v, today=today)) if dkey == 'birth_date' else (dt_v is None or (today and dt_v > today))
+            if bad_dt:
                 bad.append(_fmt_bad_val(dlbl, raw_val))
+                seen.add(dkey)
         elif dkey in inv and _has_raw(inv[dkey]):
             bad.append(_fmt_bad_val(dlbl, inv[dkey]))
+            seen.add(dkey)
+    extra_inv_labels = {
+        'planned_surgery_date': 'ოპერაციის თარიღი',
+        'labs_date': 'ანალიზების თარიღი',
+        'age': 'ასაკი',
+        'abf_claud_m': 'კოჭლობის მანძილი',
+    }
+    for ik, iv in inv.items():
+        if ik not in seen and _has_raw(iv):
+            bad.append(_fmt_bad_val(extra_inv_labels.get(ik, str(ik)), iv))
+            seen.add(ik)
     for sk, dk, lbl_bp in (
         ('bp_sys', 'bp_dia', 'წნევა (R)'),
         ('bp_sys_l', 'bp_dia_l', 'წნევა (L)'),
@@ -210,8 +232,9 @@ def _init_limb_hemodynamics(ctx):
         or (min_tbi_s is not None and min_tbi_s < art_cfg['tbi_red'])
     )
     tbi_reduced_comp = bool(abi_non_compressible and tbi_measured and not compression_contra and not tbi_comp_safe)
+    cap_renal = None if ctx.creat_unit_mismatch else ctx.eff_renal_sat
     caprini_score, caprini_tier, caprini_advice = calc_caprini(
-        patient, q, ctx.bmi_sat, today=ctx.today, eff_renal=ctx.eff_renal,
+        patient, q, ctx.bmi_sat, today=ctx.today, eff_renal=cap_renal,
         liver_status=s.get('liver_status') or 'normal',
         compression_contra=compression_contra,
     )
@@ -230,6 +253,8 @@ def _init_limb_hemodynamics(ctx):
 
 def _init_base_flags_and_pre_reflex(ctx):
     from ..calculators import _sat_num
+    from ..meds_freetext import _has_unrecognized_allergy_clause
+    from ..utils import is_symp_cea_patient
     q, s = ctx.q, ctx.s
     ctx.pad_gsv_mm = _num(s.get('pad_gsv_mm'), lo=0.5, hi=30)
     ctx.ldl_val = normalize_ldl_mmol(s.get('ldl'))
@@ -250,12 +275,17 @@ def _init_base_flags_and_pre_reflex(ctx):
 
     ctx.med_chips = set(q.get('med_chips') or [])
     ctx.cad_chips = set(q.get('cad_chips') or [])
+    structured_alg_chips = set(q.get('allergy_chips') or [])
+    if q.get('ven_lidocaine_allergy'):
+        structured_alg_chips.add('lidocaine')
     ctx.allergy_chips, ctx.eff_allergy_iodine, ctx.ft_allergy_matched = _effective_allergy_state(q)
-    ctx.ft_meds = _detect_freetext_high_risk_meds(q.get('other_meds') or '', q=q)
-    has_unmatched_allergy_text = (
-        bool((q.get('allergy_text') or '').strip())
-        and not ctx.ft_allergy_matched and not ctx.allergy_chips and not ctx.eff_allergy_iodine
+    ctx.has_vancomycin_allergy = 'vancomycin' in ctx.allergy_chips
+    ctx.unconfirmed_ft_allergies = (
+        ((ctx.ft_allergy_matched - {'iodine'}) - structured_alg_chips)
+        | ({'iodine'} if ('iodine' in ctx.ft_allergy_matched and not q.get('allergy_iodine')) else set())
     )
+    ctx.ft_meds = _detect_freetext_high_risk_meds(q.get('other_meds') or '', q=q)
+    has_unmatched_allergy_text = _has_unrecognized_allergy_clause(q.get('allergy_text') or '')
     ctx.unclarified_allergy_other = bool(
         (q.get('allergy_other') and not ctx.allergy_chips and not ctx.eff_allergy_iodine)
         or has_unmatched_allergy_text
@@ -268,8 +298,14 @@ def _init_base_flags_and_pre_reflex(ctx):
     )
     ctx.has_safe_aspirin = bool(q.get('med_aspirin') and 'nsaid' not in ctx.allergy_chips)
     ctx.has_safe_clopidogrel = bool(q.get('med_clopidogrel') and 'clopidogrel_intol' not in ctx.allergy_chips)
+    has_stroke_hx_ctx = bool(
+        q.get('neuro') or q.get('cea_symp_event') or q.get('cea_crescendo')
+        or q.get('cea_disabling_stroke') or q.get('cea_thrombolysis')
+        or (ctx.pathway == PreopPatient.Pathway.CEA and is_symp_cea_patient(ctx.patient, q=q, s=s, today=ctx.today, require_filled=False))
+    )
+    ctx.has_safe_prasugrel = bool(q.get('med_prasugrel') and not has_stroke_hx_ctx)
     ctx.has_antiplatelet = bool(
-        ctx.has_safe_aspirin or ctx.has_safe_clopidogrel or q.get('med_ticagrelor') or q.get('med_prasugrel')
+        ctx.has_safe_aspirin or ctx.has_safe_clopidogrel or q.get('med_ticagrelor') or ctx.has_safe_prasugrel
     )
     # Cilostazol is a vasodilator/PDE3 inhibitor, NOT an ESC/ESVS guideline substitute for antiplatelet therapy
     ctx.has_any_antithrombotic = bool(
@@ -306,7 +342,6 @@ def _init_base_flags_and_pre_reflex(ctx):
 
 
 def init_eval_context(patient, today=None):
-    from ..calculators import _sat_age, _sat_bmi_from, _sat_gl_mmol, _sat_hb_gl, _sat_num
     today = _date(today) or timezone.localdate()
     pathway = _resolve_pathway(patient)
     q = merged_q(patient)
@@ -317,8 +352,14 @@ def init_eval_context(patient, today=None):
     raw_creat = _s_raw(s, 'creat')
     raw_weight = _s_raw(s, 'weight_kg')
     _, creat_unit_ambiguous = _parse_scr_mgdl(raw_creat, creat_unit)
+    creat_unit_mismatch = (not on_dialysis) and is_creat_unit_mismatch(raw_creat, creat_unit)
     egfr = calc_egfr(raw_creat, patient.age, patient.sex or '', creat_unit, on_dialysis=on_dialysis)
     crcl = calc_crcl(
+        raw_creat, patient.age, patient.sex or '', raw_weight,
+        creat_unit, on_dialysis=on_dialysis, height_cm=s.get('height_cm'),
+    )
+    egfr_sat = egfr if egfr is not None else _sat_egfr(raw_creat, patient.age, patient.sex or '', creat_unit, on_dialysis=on_dialysis)
+    crcl_sat = crcl if crcl is not None else _sat_crcl(
         raw_creat, patient.age, patient.sex or '', raw_weight,
         creat_unit, on_dialysis=on_dialysis, height_cm=s.get('height_cm'),
     )
@@ -370,9 +411,13 @@ def init_eval_context(patient, today=None):
         on_dialysis=on_dialysis,
         creat_unit=creat_unit,
         creat_unit_ambiguous=creat_unit_ambiguous,
+        creat_unit_mismatch=creat_unit_mismatch,
         egfr=egfr,
         crcl=crcl,
+        egfr_sat=egfr_sat,
+        crcl_sat=crcl_sat,
         eff_renal=None if on_dialysis else min([v for v in (egfr, crcl) if v is not None], default=None),
+        eff_renal_sat=None if on_dialysis else min([v for v in (egfr_sat, crcl_sat) if v is not None], default=None),
         bmi=bmi_val,
         bmi_sat=bmi_sat,
         liver_3x=(s.get('liver_status') == '3x'),

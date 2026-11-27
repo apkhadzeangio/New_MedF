@@ -186,9 +186,27 @@ def med_hold_agreement_block_reason(ev, s):
         return 'პაციენტის კითხვარი დაუდასტურებელია ან CrCl/კრეატინინის ერთეული აკლია — წამლების გეგმა ჯერ გადაამოწმეთ!'
     if any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ())):
         return 'წამლების გრაფიკი შეიცავს უკუნაჩვენებ ან დაუზუსტებელ პრეპარატს — ჯერ შეათანხმეთ ექიმთან!'
+    if ev.get('has_elapsed_hold_window'):
+        return 'წამლის შეჩერების ფანჯარა უკვე ამოწურულია — შეათანხმეთ ქირურგთან ოპერაციის გადადება ან ტაქტიკა!'
     if any(r.get('hold_or_skip') for r in (ev.get('med_schedule') or ())) and not _date(s.get('planned_surgery_date')):
         return 'შესაჩერებელი წამლებისთვის ჯერ მიუთითეთ დაგეგმილი ოპერაციის თარიღი!'
     return ''
+
+
+def can_enter_ready_queue(patient, ev):
+    """Canonical readiness gate for moving a patient into someday:ready."""
+    s = ev.get('s') or {}
+    return bool(
+        patient.approved_at
+        and ev.get('workup_ready')
+        and ev['clearance_seal']['code'] != 'stop'
+        and not ev.get('has_hard_contraindication')
+        and not ev.get('has_blocking_unknown_state')
+        and not ev.get('dos_hold_danger')
+        and not ev.get('neuraxial_hard_blocked')
+        and not ev.get('has_unacked_red')
+        and not (ev.get('needs_stale_labs') and not s.get('stale_labs_refreshed'))
+    )
 
 
 def _parse_s1_flags_and_selects(post, patient, s):

@@ -167,15 +167,17 @@ class PreopPatient(models.Model):
 
     @property
     def diagnosis_text(self):
+        from ..preop.utils import _int
         s = self.studies if isinstance(self.studies, dict) else {}
         q = self.questionnaire if isinstance(self.questionnaire, dict) else {}
         if self.pathway == self.Pathway.CEA:
             side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა '}.get(self.side, '')
             symp_word = 'სიმპტომური ' if self.op_subtype == self.OpSubtype.CEA_SYMP else ''
-            pct = s.get('carotid_r') if self.side == 'R' else (
+            raw_pct = s.get('carotid_r') if self.side == 'R' else (
                 s.get('carotid_l') if self.side == 'L' else (s.get('carotid_r') or s.get('carotid_l'))
             )
-            pct_str = f' ({pct}%)' if pct is not None and pct != '' else ''
+            pct = _int(raw_pct, 0, 100)
+            pct_str = f' ({pct}%)' if pct is not None else ''
             return f'{side_word}შიგნითა საძილე არტერიის {symp_word}სტენოზი{pct_str}'
         if self.pathway == self.Pathway.ABF:
             stage = 'კრიტიკული იშემია (CLTI)' if self.op_subtype == self.OpSubtype.ABF_CLTI else 'ხანგამოშვებითი კოჭლობა'
@@ -190,9 +192,9 @@ class PreopPatient(models.Model):
             ceap = q.get('ven_ceap') or ''
             ceap_str = f' (CEAP {ceap})' if ceap else ''
             return f'{side_word}ქვემო კიდურების ვენების ვარიკოზული დაავადება{ceap_str}'
-        mm = s.get('aaa_mm')
+        mm = _int(s.get('aaa_mm'), 10, 200)
         base = 'მუცლის აორტის ინფრარენალური ანევრიზმა'
-        return f'{base} ({mm} მმ)' if mm else base
+        return f'{base} ({mm} მმ)' if mm is not None else base
 
 
 class PreopFile(models.Model):

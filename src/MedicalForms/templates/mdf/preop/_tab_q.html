@@ -89,7 +89,7 @@
                                 <label><input type="radio" name="cea_prior_neck" value="1" {% if q.cea_prior_neck %}checked{% endif %}>კი</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-cea-neck" {% if not q.cea_prior_neck %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-cea-neck" {% if not q.cea_prior_neck and not q.cea_neck_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.cea_neck_chips %}
                                 <label class="chip-check"><input type="checkbox" name="cea_neck_chips" value="{{ ck }}" {% if ck in q.cea_neck_chips %}checked{% endif %}>{{ cl }}</label>
@@ -117,7 +117,7 @@
                                 <label><input type="radio" name="active_infection" value="1" {% if q.active_infection %}checked{% endif %}>კი</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-inf" {% if not q.active_infection %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-inf" {% if not q.active_infection and not q.inf_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.inf_chips %}
                                 <label class="chip-check"><input type="checkbox" name="inf_chips" value="{{ ck }}" {% if ck in q.inf_chips %}checked{% endif %}>{{ cl }}</label>
@@ -196,7 +196,7 @@
                                 <label><input type="radio" name="abf_ulcer" value="1" {% if q.abf_ulcer %}checked{% endif %}>კი</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-abf-ulcer" {% if not q.abf_ulcer %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-abf-ulcer" {% if not q.abf_ulcer and not q.ulcer_chips and not q.abf_wet_infection %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.ulcer_chips %}
                                 <label class="chip-check"><input type="checkbox" name="ulcer_chips" value="{{ ck }}" {% if ck in q.ulcer_chips %}checked{% endif %}>{{ cl }}</label>
@@ -226,7 +226,7 @@
                                 {% endif %}
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-abf-vasc" {% if not q.abf_prior_vasc %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-abf-vasc" {% if not q.abf_prior_vasc and not q.vasc_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.vasc_chips %}
                                 <label class="chip-check"><input type="checkbox" name="vasc_chips" value="{{ ck }}" {% if ck in q.vasc_chips %}checked{% endif %}>{{ cl }}</label>
@@ -235,7 +235,7 @@
                             <input type="hidden" name="abf_prior_vasc_text" value="{{ q.abf_prior_vasc_text }}">
                         </div>
                         {% if ev.pathway == 'abf' %}
-                        <div class="po-q-sub" id="sub-abf-abdo" {% if not q.prev_abdo_surg %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-abf-abdo" {% if not q.prev_abdo_surg and not q.abdo_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.abdo_chips %}
                                 <label class="chip-check"><input type="checkbox" name="abdo_chips" value="{{ ck }}" {% if ck in q.abdo_chips %}checked{% endif %}>{{ cl }}</label>
@@ -254,7 +254,7 @@
                                 <label><input type="radio" name="active_infection" value="1" {% if q.active_infection %}checked{% endif %}>კი</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-inf" {% if not q.active_infection %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-inf" {% if not q.active_infection and not q.inf_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.inf_chips %}
                                 <label class="chip-check"><input type="checkbox" name="inf_chips" value="{{ ck }}" {% if ck in q.inf_chips %}checked{% endif %}>{{ cl }}</label>
@@ -307,7 +307,7 @@
                                 </label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-ven-dvt" {% if not q.ven_dvt_history %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-ven-dvt" {% if not q.ven_dvt_history and not q.ven_dvt_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.ven_dvt_chips %}
                                 <label class="chip-check"><input type="checkbox" name="ven_dvt_chips" value="{{ ck }}" {% if ck in q.ven_dvt_chips %}checked{% endif %}>{{ cl }}</label>
@@ -482,7 +482,7 @@
                                 <label><input type="radio" name="cad" value="1" {% if q.cad %}checked{% endif %}>კი</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-cad" {% if not q.cad %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-cad" {% if not q.cad and not q.cad_chips and not q.recent_stent %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.cad_chips %}
                                 <label class="chip-check"><input type="checkbox" name="cad_chips" value="{{ ck }}" {% if ck in q.cad_chips %}checked{% endif %}>{{ cl }}</label>
@@ -514,12 +514,12 @@
                                 <label class="chip-check"><input type="checkbox" name="ulcer" value="1" id="chk-ulcer" {% if q.ulcer %}checked{% endif %}>კუჭის/12-გოჯას წყლული (რთავს PPI-ს)</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-dm" {% if not q.dm %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-dm" {% if not q.dm and not q.metformin and not q.dm_insulin %}hidden{% endif %}>
                             <span class="small fw-semibold">დიაბეტის თერაპია:</span>
                             <label class="chip-check"><input type="checkbox" name="metformin" value="1" {% if q.metformin %}checked{% endif %}>მეტფორმინი</label>
                             <label class="chip-check"><input type="checkbox" name="dm_insulin" value="1" {% if q.dm_insulin %}checked{% endif %}>ინსულინზეა</label>
                         </div>
-                        <div class="po-q-sub" id="sub-pulm" {% if not q.pulm %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-pulm" {% if not q.pulm and not q.pulm_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.pulm_chips %}
                                 <label class="chip-check"><input type="checkbox" name="pulm_chips" value="{{ ck }}" {% if ck in q.pulm_chips %}checked{% endif %}>{{ cl }}</label>
@@ -527,7 +527,7 @@
                             </div>
                             <input type="hidden" name="pulm_detail" value="{{ q.pulm_detail }}">
                         </div>
-                        <div class="po-q-sub" id="sub-ulcer" {% if not q.ulcer %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-ulcer" {% if not q.ulcer and not q.ulcer_active_symp %}hidden{% endif %}>
                             <label class="chip-check" style="border-color:#FECDCA">
                                 <input type="checkbox" name="ulcer_active_symp" value="1" {% if q.ulcer_active_symp %}checked{% endif %}>ამჟამად აქტიური ეპიგასტრალური ტკივილი / მელენა / დისპეფსია (რთავს ეგდს-ს; სხვა შემთხვევაში საკმარისია PPI — ESC 2022)
                             </label>
@@ -563,10 +563,10 @@
                                 {% if not ev.is_venous %}
                                 <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="allergy_iodine" value="1" {% if q.allergy_iodine %}checked{% endif %}>ალერგია იოდზე / კონტრასტზე</label>
                                 {% endif %}
-                                <label class="chip-check"><input type="checkbox" name="allergy_other" value="1" id="chk-allergy-other" {% if q.allergy_other or q.allergy_text %}checked{% endif %}>წამლისმიერი ალერგია</label>
+                                <label class="chip-check"><input type="checkbox" name="allergy_other" value="1" id="chk-allergy-other" {% if q.allergy_other or q.allergy_text or q.allergy_chips %}checked{% endif %}>წამლისმიერი ალერგია</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-allergy" {% if not q.allergy_other and not q.allergy_text %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-allergy" {% if not q.allergy_other and not q.allergy_text and not q.allergy_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.allergy_chips %}
                                 <label class="chip-check" {% if ck == 'hit_heparin' %}style="border-color:#FECDCA"{% endif %}>

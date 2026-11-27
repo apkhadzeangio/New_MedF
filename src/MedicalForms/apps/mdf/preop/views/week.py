@@ -97,11 +97,13 @@ def _find_overdue_patients(all_non_archived, ev_by_id, pathway_filter, monday, s
             continue
         if pathway_filter != 'all' and ev['pathway'] != pathway_filter:
             continue
+        pw = ev['pathway']
         has_acute_red = bool(
-            ev['q'].get('aaa_pain')
-            or ev['q'].get('cea_crescendo')
-            or ev['q'].get('abf_wet_infection')
-            or (ev['pathway'] in ('abf', 'pad_bypass', 'pad_pta') and ev['q'].get('abf_duration') == '< 2 კვირა')
+            (pw == 'aaa_infra' and ev['q'].get('aaa_pain'))
+            or (pw == 'cea' and ev['q'].get('cea_crescendo'))
+            or (pw in ('abf', 'pad_bypass', 'pad_pta') and (
+                ev['q'].get('abf_wet_infection') or ev['q'].get('abf_duration') == '< 2 კვირა'
+            ))
         )
         off_week_acute = (
             has_acute_red
@@ -252,6 +254,8 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
                     imported = import_case_to_preop(case, existing)
                     if imported or side_changed:
                         s_sy = merged_studies(existing)
+                        if side_changed:
+                            s_sy['dos_site_marked'] = False
                         s_sy['med_hold_agreed'] = False
                         s_sy['alerts_ack_sig'] = ''
                         existing.studies = s_sy
@@ -394,16 +398,12 @@ class PreopMoveView(LoginRequiredMixin, generic.View):
                 if key not in PreopPatient.SomedayList.values or not key:
                     return JsonResponse({'error': 'bad_slot'}, status=400) if ajax else HttpResponseRedirect(reverse('preop'))
                 if key == PreopPatient.SomedayList.READY:
+                    from .parsers import can_enter_ready_queue
                     ev_mv = evaluate(patient)
-                    if (
-                        not patient.approved_at
-                        or ev_mv['clearance_seal']['code'] == 'stop'
-                        or ev_mv.get('has_hard_contraindication')
-                        or ev_mv.get('has_blocking_unknown_state')
-                    ):
+                    if not can_enter_ready_queue(patient, ev_mv):
                         if ajax:
                             return JsonResponse({'error': 'not_approved'}, status=400)
-                        messages.error(request, 'მზა სიაში გადატანა დასაშვებია მხოლოდ ქირურგის დადასტურების შემდეგ (STOP-ის გარეშე)!')
+                        messages.error(request, 'მზა სიაში გადატანა დასაშვებია მხოლოდ სრული მზაობისა და ქირურგის დადასტურების შემდეგ (STOP-ისა და ხანდაზმული ანალიზების გარეშე)!')
                         return HttpResponseRedirect(reverse('preop'))
                 patient.someday_list = key
                 patient.visit_date = None

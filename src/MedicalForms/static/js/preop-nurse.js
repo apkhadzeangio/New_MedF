@@ -52,13 +52,13 @@
         if (!isNaN(sbp) && !isNaN(dbp) && sbp <= dbp) {
             msgs.push('შეამოწმეთ წნევა: ზედა წნევა (' + sbp + ') უნდა იყოს ქვედაზე (' + dbp + ') მეტი!');
         }
-        if (!isNaN(wt) && (wt < 30 || wt > 250)) {
-            msgs.push('შეამოწმეთ წონა (' + wt + '): შეიყვანეთ კილოგრამებში (30–250 კგ).');
+        if (!isNaN(wt) && (wt < 25 || wt > 260)) {
+            msgs.push('შეამოწმეთ წონა (' + wt + '): შეიყვანეთ კილოგრამებში (25–260 კგ).');
         }
-        if (!isNaN(creat) && creat >= 15 && creat <= 35 && !cunit) {
+        if (!isNaN(creat) && creat > 15 && creat < 35 && !cunit) {
             msgs.push('კრეატინინი (' + creat + ') საეჭვოა ერთეულის გარეშე — აირჩიეთ µmol/L ან mg/dL.');
         }
-        if (!isNaN(hb) && (hb < 4 || (hb > 25 && hb < 40) || hb > 240)) {
+        if (!isNaN(hb) && (hb < 1 || (hb > 25 && hb < 40) || hb > 260)) {
             msgs.push('შეამოწმეთ ჰემოგლობინი (' + hb + ') — მიუთითეთ გ/ლ (მაგ. 130) ან გ/დლ (მაგ. 13,0).');
         }
 
@@ -122,8 +122,8 @@
         });
     });
 
-    // 4. Camera / Lab Photo Auto-Upload
-    document.querySelectorAll('.js-nw-auto-upload').forEach(function (inp) {
+    // 4. Camera / Lab Photo Auto-Upload (supports both Nurse Workspace and embedded classic Tab 2 uploader)
+    document.querySelectorAll('.js-nw-auto-upload, .js-auto-upload').forEach(function (inp) {
         inp.addEventListener('change', function () {
             if (inp.files && inp.files.length && inp.form) {
                 inp.form.submit();

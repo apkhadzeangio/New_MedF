@@ -151,12 +151,15 @@ class PreopSelfFillView(generic.View):
             if pid and not s_mut.get('person_id'):
                 s_mut['person_id'] = pid
             bd = _date(request.POST.get('birth_date'))
-            if bd and bd <= timezone.localdate() and not s_mut.get('birth_date'):
+            from ..utils import is_valid_birth_date
+            if bd and is_valid_birth_date(bd, today=timezone.localdate()) and not s_mut.get('birth_date'):
                 s_mut['birth_date'] = bd.isoformat()
                 if not patient.age:
-                    patient.age = _age_from_dob(bd)
-                    if 'age' not in uf:
-                        uf.append('age')
+                    dob_age = _age_from_dob(bd)
+                    if dob_age is not None:
+                        patient.age = dob_age
+                        if 'age' not in uf:
+                            uf.append('age')
             patient.studies = s_mut
             if ev_before is not None:
                 ev_after = evaluate(patient)

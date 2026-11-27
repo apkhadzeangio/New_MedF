@@ -51,11 +51,13 @@ def build_self_fill_highlights(q):
     elif q.get('cea_symp_event'):
         items.append(('warn', 'ნევროლოგიური სიმპტომი ანამნეზში'))
     if q.get('cea_thrombolysis'):
+        from .registry import rule_value
+        rtpa_d = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
         ev_d = cea_live_days_since_event(q)
-        if ev_d is None or ev_d <= 6:
-            items.append(('urgent', 'თრომბოლიზისი ≤6 დღეში!'))
+        if ev_d is None or ev_d <= rtpa_d:
+            items.append(('urgent', f'თრომბოლიზისი ≤{rtpa_d} დღეში!'))
         else:
-            items.append(('warn', 'თრომბოლიზისი ანამნეზში (>6 დღე)'))
+            items.append(('warn', f'თრომბოლიზისი ანამნეზში (>{rtpa_d} დღე)'))
     if q.get('ven_pregnant') or q.get('pregnant_possible'):
         items.append(('urgent', 'ორსულობა / შესაძლო ორსულობა / ლაქტაცია!'))
     if q.get('recent_stent'):
@@ -103,6 +105,8 @@ def build_self_fill_highlights(q):
 
 
 def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
+    from .registry import rule_value
+    rtpa_d = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
     lines = []
     side_s = patient.side if isinstance(patient.side, str) else ''
     side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა '}.get(side_s, '')
@@ -115,10 +119,10 @@ def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
     if q.get('cea_crescendo'):
         extra_neuro.append('აღინიშნება მერყევი/განმეორებითი დეფიციტი ბოლო 24–48 სთ-ში!')
     if q.get('cea_thrombolysis'):
-        if ev.get('active_thrombolysis_window') or live_ev_d is None or live_ev_d <= 6:
-            extra_neuro.append('ჩატარებულია თრომბოლიზისი ბოლო 6 დღეში!')
+        if ev.get('active_thrombolysis_window') or live_ev_d is None or live_ev_d <= rtpa_d:
+            extra_neuro.append(f'ჩატარებულია თრომბოლიზისი ბოლო {rtpa_d} დღეში!')
         else:
-            extra_neuro.append('ანამნეზში ჩატარებულია თრომბოლიზისი (>6 დღის წინ)')
+            extra_neuro.append(f'ანამნეზში ჩატარებულია თრომბოლიზისი (>{rtpa_d} დღის წინ)')
     if q.get('cea_disabling_stroke'):
         extra_neuro.append('ნარჩენი დეფიციტი mRS >= 3')
     if is_symp:
@@ -209,6 +213,8 @@ def _anam_abf(patient, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer
 
 
 def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
+    from .registry import rule_value
+    gsv_min = rule_value('PAD_GSV_MIN_MM')['gsv_min_mm']
     lines = []
     side_s = patient.side if isinstance(patient.side, str) else ''
     side_word = {'R': 'მარჯვენა ქვემო კიდურის ', 'L': 'მარცხენა ქვემო კიდურის ', 'B': 'ორმხრივი '}.get(side_s, '')
@@ -238,7 +244,7 @@ def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
         gsv_map = {'adequate': 'ვარგისია (≥3.0 მმ)', 'inadequate': 'უვარგისია (<3.0 მმ / ამოღებულია!)', 'pending': 'ზუსტდება'}
         gsv_val = _num(s.get('pad_gsv_mm'), 0.5, 30.0)
         gsv_stripped = 'vein_strip' in _str_list(q.get('vasc_chips'))
-        gsv_eff_st = 'inadequate' if (gsv_stripped or (gsv_val is not None and gsv_val < 3.0)) else (s.get('pad_gsv_status') or 'pending')
+        gsv_eff_st = 'inadequate' if (gsv_stripped or (gsv_val is not None and gsv_val < gsv_min)) else (s.get('pad_gsv_status') or 'pending')
         gsv_d = f' ({gsv_val} მმ)' if gsv_val is not None else ''
         lines.append(
             f"ანატომია და აუტოვენა: ABI R {abi_r_s} / L {abi_l_s}; "
@@ -370,6 +376,8 @@ def _anam_aaa(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt):
 
 
 def _anam_comorb_meds_allergy(pathway, ev, q):
+    from .registry import rule_value
+    hba1c_dm = rule_value('GLY_GLUCOSE_HBA1C')['hba1c_dm']
     lines = []
     if q.get('mets_ok', True):
         mets_str = 'დამაკმაყოფილებელი (>= 4 METs, ადის 2 სართულზე გაუჩერებლად)'
@@ -391,10 +399,10 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
         cad_head = 'გულის იშემიური დაავადება' if has_ihd_chip else 'კარდიოლოგიური პათოლოგია'
         comorb.append(f"{cad_head}{f' ({c_det})' if c_det else ''}")
     hba1c_a = _num((ev.get('s') or {}).get('hba1c'), 3.0, 25.0)
-    if q.get('dm') or q.get('dm_insulin'):
+    if q.get('dm') or q.get('dm_insulin') or q.get('metformin'):
         dm_kind = 'ინსულინზე' if q.get('dm_insulin') else 'ტაბლეტებზე'
         comorb.append(f'შაქრიანი დიაბეტი ({dm_kind})')
-    elif hba1c_a is not None and hba1c_a >= 6.5:
+    elif hba1c_a is not None and hba1c_a >= hba1c_dm:
         comorb.append(f'არადიაგნოსტირებული შაქრიანი დიაბეტი (HbA1c {hba1c_a}%)')
     if q.get('on_dialysis'):
         comorb.append('პროგრამული დიალიზი')
@@ -500,7 +508,9 @@ def _anam_anesth_labs(pathway, ev, q, s):
     inr_a = _num(s.get('inr'), 0.4, 20.0)
     if inr_a is not None:
         lab_bits.append(f'INR {inr_a}')
-    if ev['egfr'] is not None:
+    if ev.get('creat_unit_mismatch') or ev.get('creat_unit_ambiguous'):
+        lab_bits.append('კრეატინინის ერთეული დასაზუსტებელია')
+    elif ev['egfr'] is not None:
         crcl_part = f" (CrCl {ev['crcl']})" if ev.get('crcl') is not None else ''
         lab_bits.append(f"eGFR {ev['egfr']} მლ/წთ{crcl_part}")
     if ev.get('max_contrast_ml') is not None:

@@ -145,9 +145,17 @@ def _oracle_cardio_cxr_uti(oracles, patient, ev, q, s, pw, is_venous, open_aorti
         if isinstance(spo2_v, (int, float)) and not isinstance(spo2_v, bool) and spo2_v == spo2_v and abs(spo2_v) != float('inf')
         else None
     )
+    lvef_v = s.get('lvef')
+    lvef_n = (
+        max(5, min(95, int(round(lvef_v))))
+        if isinstance(lvef_v, (int, float)) and not isinstance(lvef_v, bool) and lvef_v == lvef_v and abs(lvef_v) != float('inf')
+        else None
+    )
     exp_cxr = bool(
         bool(q.get('pulm'))
+        or bool(q.get('pulm_chips'))
         or ('hf' in cad_chips)
+        or (lvef_n is not None and lvef_n < 40)
         or ('fever_resp' in inf_chips)
         or (spo2_n is not None and spo2_n < 94)
     )

@@ -73,7 +73,9 @@ def _collect_med_allergy_unknowns(ctx, add):
             'მონიშნულია „სხვა ალერგია“ ან შეყვანილია დაუზუსტებელი ალერგიის ტექსტი პრეპარატის/რეაქციის გადამოწმების გარეშე.',
             blocking=True,
         )
-    elif (q.get('allergy_text') or '').strip() and not q.get('allergy_other') and not (q.get('allergy_chips') or []):
+    elif getattr(ctx, 'unconfirmed_ft_allergies', None) or (
+        (q.get('allergy_text') or '').strip() and not q.get('allergy_other') and not (q.get('allergy_chips') or [])
+    ):
         add(
             'unconfirmed_freetext_allergy', 'q', 'allergy_text',
             'ალერგია მხოლოდ ტექსტშია — დაადასტურეთ ჩიპით',
@@ -152,9 +154,55 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
             )
 
 
+def _eval_pregnancy_unknowns(ctx, add):
+    from ..constants import STATUS_ALERT
+    from ..utils import _alerts_signature, is_pregnancy_eligible
+    patient, q, s = ctx.patient, ctx.q, ctx.s
+    if not is_pregnancy_eligible(patient):
+        return
+    preg_claimed = bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
+    if preg_claimed and bool(s.get('dos_bhcg_negative')):
+        ctx.red_flags.append(
+            'ორსულობაზე წინააღმდეგობა: კითხვარში მონიშნულია ორსულობა, ხოლო DoS ჩეკლისტში — უარყოფითი β-hCG! გადაამოწმეთ სტატუსი.'
+        )
+        ctx.current_sig = _alerts_signature(ctx.red_flags)
+        ctx.alerts_acked = bool(patient.alerts_ack_at and s.get('alerts_ack_sig') == ctx.current_sig)
+        ctx.has_unacked_red = bool(ctx.red_flags) and not ctx.alerts_acked
+        ctx.status = STATUS_ALERT
+        add(
+            'pregnancy_bhcg_contradiction', 'dos', 'dos_bhcg_negative',
+            'ორსულობაზე წინააღმდეგობა (კითხვარი vs β-hCG)',
+            'კითხვარში მონიშნულია ორსულობა, ხოლო DoS ჩეკლისტში — უარყოფითი β-hCG. გადაამოწმეთ და შეასწორეთ სტატუსი.',
+            blocking=True,
+        )
+        return
+    repro_female_risk = (
+        (
+            (patient.sex == 'F' and (
+                patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)
+                or ctx.is_pta or ctx.is_venous
+            ))
+            or preg_claimed
+        )
+        and not s.get('dos_bhcg_negative')
+    )
+    if not repro_female_risk:
+        return
+    is_acute_emergency_preg = preg_claimed and (
+        ctx.is_ali_acute or ctx.is_acute_emergency or ctx.is_rupture_suspect
+    )
+    if not is_acute_emergency_preg:
+        add(
+            'reproductive_pregnancy_unverified', 'dos', 'dos_bhcg_negative',
+            'ორსულობის გამორიცხვა დაუზუსტებელია (12–55 წ. ქალი)',
+            'ორსულობის სტატუსის დაზუსტების / უარყოფითი β-hCG-ის გარეშე ოპერაციაზე GO დაშვება არ გაიცემა.',
+            blocking=True,
+        )
+
+
 def eval_unknown_state_failsafe(ctx):
     """Detect clinically critical unknown/incomplete inputs and compute risk-score completeness."""
-    patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
     flags = []
 
     def add(key, tab, field, label, detail, blocking=False):
@@ -168,7 +216,7 @@ def eval_unknown_state_failsafe(ctx):
             'rule_id': 'WF_UNKNOWN_STATE_FAILSAFE',
         })
 
-    from ..utils import is_pregnancy_eligible, is_self_filled_q
+    from ..utils import is_self_filled_q
     is_unverified_sf = is_self_filled_q(q) and not q.get('nurse_verified')
     if is_unverified_sf:
         add(
@@ -198,24 +246,7 @@ def eval_unknown_state_failsafe(ctx):
                 blocking=False,
             )
 
-    repro_female_risk = (
-        is_pregnancy_eligible(patient)
-        and (
-            (patient.sex == 'F' and (
-                patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)
-                or ctx.is_pta or ctx.is_venous
-            ))
-            or bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
-        )
-        and not s.get('dos_bhcg_negative')
-    )
-    if repro_female_risk:
-        add(
-            'reproductive_pregnancy_unverified', 'dos', 'dos_bhcg_negative',
-            'ორსულობის გამორიცხვა დაუზუსტებელია (12–55 წ. ქალი)',
-            'ორსულობის სტატუსის დაზუსტების / უარყოფითი β-hCG-ის გარეშე ოპერაციაზე GO დაშვება არ გაიცემა.',
-            blocking=True,
-        )
+    _eval_pregnancy_unknowns(ctx, add)
 
     ctx.score_completeness = score_comp
     ctx.unknown_state_flags = flags

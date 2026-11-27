@@ -102,7 +102,7 @@ def _eval_cea_stenosis_and_imaging(ctx):
     if ipsi_car is not None:
         side_prefix = f'{patient.side} ' if side_known else ''
         ctx.key_badge = f'{side_prefix}{ipsi_car}%'
-        ctx.key_badge_urgent = bool(is_symp_cea or ipsi_car >= 90)
+        ctx.key_badge_urgent = bool(is_symp_cea or ipsi_car >= st_cfg['urgent_badge'])
         if side_known and ipsi_car >= occ_pct:
             occ_msg = (
                 'საოპერაციო მხარეს ICA-ს სრული ოკლუზია (100%) — CEA სრულ ქრონიკულ ოკლუზიაზე არ ტარდება! '
@@ -115,7 +115,7 @@ def _eval_cea_stenosis_and_imaging(ctx):
                 'ერთ-ერთ საძილე არტერიაზე ფიქსირდება 100% ოკლუზია — დაუყოვნებლივ მიუთითეთ დაგეგმილი CEA-ს მხარე (R ან L), '
                 'რომ გამოირიცხოს ოკლუზირებულ მხარეზე ჩარევა!'
             )
-        elif side_known and ipsi_car < st_cfg['symp_min'] and contra_car is not None and contra_car >= 70:
+        elif side_known and ipsi_car < st_cfg['symp_min'] and contra_car is not None and contra_car >= st_cfg['wrong_side_contra']:
             ctx.red_flags.append(
                 f'საოპერაციო მხარეს სტენოზი ({ipsi_car}%) < {st_cfg["symp_min"]}%, ხოლო კონტრალატერალურ მხარეს {contra_car}% — '
                 'შესაძლოა არასწორი მხარეა არჩეული (R/L)! სასწრაფოდ გადაამოწმეთ ქირურგთან.'

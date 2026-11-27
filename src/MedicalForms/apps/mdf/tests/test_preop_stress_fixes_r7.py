@@ -92,12 +92,13 @@ class Round7EngineAndInvariantsTests(SimpleTestCase):
         self.assertEqual(ev_i21['clearance_seal']['code'], 'stop')
         self.assertIn('ვიტამინი K', ev_i21['anesthetic_brief']['transfusion_pbm'])
 
-        # Fuzz A-S1-05: Explicit creat_unit='mgdl' > 35 saturates identically to umol/L (no Metformin downgrade)
+        # Fuzz A-S1-05 / R8 Fuzz A-S1-2: Explicit creat_unit='mgdl' > 35 never fabricates eGFR 1 while keeping Metformin/ASA failsafe
         q_m = {'metformin': True, 'dm': True}
         ev_u = evaluate(_go('evar', q=q_m, s={'creat': 3182.4, 'creat_unit': 'umol'}), today=TODAY)
         ev_g = evaluate(_go('evar', q=q_m, s={'creat': 36.0, 'creat_unit': 'mgdl'}), today=TODAY)
-        self.assertEqual(ev_g['egfr'], ev_u['egfr'])
-        self.assertEqual(ev_g['crcl'], ev_u['crcl'])
+        self.assertIsNone(ev_g['egfr'])
+        self.assertIsNone(ev_g['crcl'])
+        self.assertTrue(ev_g['creat_unit_mismatch'])
         self.assertEqual(ev_g['auto_asa'], ev_u['auto_asa'])
         met_g = next(r for r in ev_g['med_schedule'] if 'მეტფორმინ' in r['drug'])
         self.assertTrue(met_g['contraindicated'])
@@ -317,8 +318,8 @@ class Round7EngineAndInvariantsTests(SimpleTestCase):
         p_gsv26 = _go('bypass_clti', s={'pad_gsv_mm': 26.5})
         self.assertIn('26.5', generate_anamnesis(p_gsv26, evaluate(p_gsv26, today=TODAY)))
 
-        # Registry honesty (v1.2.6)
-        self.assertEqual(REGISTRY_VERSION, '1.2.6')
+        # Registry honesty (v1.2.6+)
+        self.assertGreaterEqual(tuple(int(x) for x in REGISTRY_VERSION.split('.')), (1, 2, 6))
         for rid in (
             'VEN_VTE_CAPRINI_PROPHYLAXIS', 'ANES_AIRWAY_STOPBANG_ICU',
             'SCORE_ASA_PHYSICAL_STATUS', 'VEN_ARTERIAL_ISCHEMIA_COMPRESSION',

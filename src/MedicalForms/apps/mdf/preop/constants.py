@@ -257,6 +257,7 @@ CHIP_CATALOGS = {
     'allergy_chips': (
         ('beta_lactam', 'პენიცილინი / ცეფაზოლინი (β-ლაქტამი)'),
         ('penicillin_mild', 'პენიცილინზე მსუბუქი გამონაყარი (არა-ანაფილაქსიური)'),
+        ('vancomycin', 'ვანკომიცინი'),
         ('hit_heparin', 'ჰეპარინი (HIT!)'),
         ('lidocaine', 'ლიდოკაინი / ნოვოკაინი'),
         ('nsaid', 'NSAID / ანალგინი'),
@@ -370,13 +371,18 @@ _FREETEXT_ALLERGY_STEMS = (
         'penicil', 'amoxi', 'augment', 'ampicil', 'cefazol', 'kefzol', 'ceftriax',
         'cefepim', 'meropenem', 'cephalosp', 'beta-lact', 'ოგმენტინ', 'ამოქსიკლავ', 'amoxiclav',
     )),
+    ('vancomycin', (
+        'ვანკომიც', 'vancomyc',
+    )),
     ('hit_heparin', (
         'ჰეპარინ', 'კლექსან', 'ფრაქსიპარ', 'ენოქსაპარ', 'ნადროპარ', 'ციბორ', 'ფრაგმინ',
         'heparin', 'clexane', 'fraxipar', 'enoxapar', 'nadropar', 'daltepar', 'bemipar', 'lovenox',
     )),
     ('lidocaine', (
         'ლიდოკაინ', 'ნოვოკაინ', 'ბუპივაკაინ', 'როპივაკაინ', 'არტიკაინ', 'ულტრაკაინ', 'უბისტეზინ',
+        'მარკაინ', 'ნაროპინ',
         'lidocain', 'novocain', 'bupivacain', 'ropivacain', 'articain', 'ultracain', 'ubistesin',
+        'marcain', 'naropin',
     )),
     ('latex_chlorhex', (
         'ლატექს', 'ქლორჰექს', 'latex', 'chlorhex',
@@ -386,11 +392,14 @@ _FREETEXT_ALLERGY_STEMS = (
         'iodin', 'contrast', 'omnipaque', 'ultravist', 'visipaque', 'betadin', 'povidon',
     )),
     ('nsaid', (
-        'ანალგინ', 'კეტოროლ', 'კეტონალ', 'დექსკეტო', 'დიკლოფენ', 'იბუპროფ', 'აასს', 'ასპირინ', 'ნიმესილ', 'ნიმესულ', 'მელოქსიკ',
-        'nsaid', 'ketorol', 'ketonal', 'dexketo', 'diclofen', 'ibuprof', 'analgin', 'aspirin', 'nimesil', 'nimesul',
+        'ანალგინ', 'კეტოროლ', 'კეტონალ', 'დექსკეტო', 'დექსალგინ', 'დიკლოფენ', 'იბუპროფ', 'აასს',
+        'ასპირინ', 'კარდიომაგნ', 'ასპიკარდ', 'თრომბო-ას', 'თრომბოას', 'ნიმესილ', 'ნიმესულ', 'მელოქსიკ',
+        'nsaid', 'ketorol', 'ketonal', 'dexketo', 'dexalgin', 'diclofen', 'ibuprof', 'analgin',
+        'aspirin', 'cardiomagn', 'aspicard', 'nimesil', 'nimesul',
     )),
     ('clopidogrel_intol', (
-        'კლოპიდოგ', 'პლავიქს', 'clopidog', 'plavix',
+        'კლოპიდოგ', 'პლავიქს', 'ზილტ', 'ტრომბექს', 'ლოპირელ', 'პლოგრილ', 'კლოპიდექს', 'ეგითრომბ',
+        'clopidog', 'plavix', 'zylt', 'trombex', 'lopirel', 'plogril', 'clopidex', 'egithromb',
     )),
 )
 _HIT_WORD_RE = re.compile(r'(?<![a-zA-Zა-ჰ])hit(?![a-zA-Zა-ჰ])', re.IGNORECASE)
@@ -398,7 +407,7 @@ _HIT_WORD_RE = re.compile(r'(?<![a-zA-Zა-ჰ])hit(?![a-zA-Zა-ჰ])', re.IGNO
 
 _FREETEXT_HIGH_RISK_MED_RULES = (
     ('warfarin', 'ვარფარინი / აცენოკუმაროლი (VKA)', True, (
-        'ვარფარინ', 'warfarin', 'კუმადინ', 'coumadin', 'მარევან', 'marevan',
+        'ვარფარინ', 'ვარფარექს', 'ვარფარეკს', 'warfarin', 'warfarex', 'კუმადინ', 'coumadin', 'მარევან', 'marevan',
         'სინკუმარ', 'სინტრომ', 'აცენოკუმარ', 'sintrom', 'acenocoumar', 'syncumar',
     )),
     ('doac', 'Xa-DOAC (ქსარელტო / ელიქვისი / ედიქსანი)', True, (
@@ -415,6 +424,7 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
     )),
     ('clopidogrel', 'კლოპიდოგრელი (პლავიქსი)', True, (
         'პლავიქს', 'plavix', 'კლოპიდოგ', 'clopidog', 'ზილტ', 'zylt', 'ტრომბექს', 'trombex',
+        'ლოპირელ', 'lopirel', 'პლოგრილ', 'plogril', 'კლოპიდექს', 'clopidex', 'ეგითრომბ', 'egithromb',
     )),
     ('ticagrelor', 'ტიკაგრელორი (ბრილინტა / ბრილიქი)', True, (
         'ბრილინტ', 'brilinta', 'ბრილიქ', 'brilique', 'ტიკაგრელ', 'ticagrel',
@@ -423,7 +433,8 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
     ('cilostazol', 'ცილოსტაზოლი (პლეტალი)', True, ('ცილოსტაზოლ', 'cilostazol', 'პლეტალ', 'pletal')),
     ('sglt2', 'SGLT2 ინჰიბიტორი (ჯარდიანსი / ფორსიგა / სტეგლატრო)', False, (
         'ჯარდიანს', 'jardiance', 'ფორსიგ', 'ფორქსიგ', 'forxiga', 'farxiga', 'სინჯარდ', 'synjardy',
-        'ქსიგდუო', 'xigduo', 'ინვოკან', 'invokana', 'ემპაგლიფ', 'empaglif',
+        'ქსიგდუო', 'xigduo', 'ვოკანამეტ', 'vokanamet', 'ინვოკამეტ', 'invokamet', 'სეგლურომეტ', 'segluromet',
+        'ინვოკან', 'invokana', 'ემპაგლიფ', 'empaglif',
         'დაპაგლიფ', 'dapaglif', 'ერტუგლიფ', 'ertuglif', 'სტეგლატრ', 'steglatro', 'კანაგლიფ', 'canaglif',
     )),
     ('glp1', 'GLP-1 აგონისტი (ოზემპიკი / მუნჯარო / საქსენდა)', False, (
@@ -439,7 +450,8 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
     )),
     ('metformin', 'მეტფორმინი (გლუკოფაჟი / სიოფორი)', False, (
         'მეტფორმინ', 'metformin', 'გლუკოფაჟ', 'glucophage', 'სიოფორ', 'siofor',
-        'სინჯარდ', 'synjardy', 'ქსიგდუო', 'xigduo', 'ვოკანამეტ', 'vokanamet', 'იანუმეტ', 'janumet',
+        'სინჯარდ', 'synjardy', 'ქსიგდუო', 'xigduo', 'ვოკანამეტ', 'vokanamet', 'ინვოკამეტ', 'invokamet',
+        'სეგლურომეტ', 'segluromet', 'იანუმეტ', 'janumet',
     )),
     ('steroid', 'სტეროიდი (პრედნიზოლონი / მედროლი)', False, (
         'პრედნიზოლ', 'prednisol', 'მედროლ', 'medrol', 'მეთილპრედ', 'methylpred', 'დექსამეტაზ', 'dexamethas',
@@ -449,6 +461,7 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
     )),
     ('omeprazole', 'ომეპრაზოლი / ეზომეპრაზოლი (CYP2C19)', False, (
         'ომეპრაზოლ', 'omeprazol', 'omez', 'ომეზ', 'ნექსიუმ', 'nexium', 'ეზომეპრაზ', 'esomepraz',
+        'ემანერ', 'emanera',
     )),
 )
 

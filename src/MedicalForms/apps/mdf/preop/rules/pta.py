@@ -40,15 +40,17 @@ def eval_pta(ctx):
         t_tbi_pta = ctx.tbi_r if patient.side == 'R' else ctx.tbi_l
         t_normal_hemo = (
             t_abi_pta is not None and abi_norm_lo < t_abi_pta <= abi_norm_hi
-            and not (t_tp_pta is not None and t_tp_pta < 60)
-            and not (t_tbi_pta is not None and t_tbi_pta < 0.70)
+            and not (t_tp_pta is not None and t_tp_pta < hemo_cfg['normal_tp'])
+            and not (t_tbi_pta is not None and t_tbi_pta < hemo_cfg['normal_tbi'])
         )
-        if t_normal_hemo and (not is_clti or (ctx.contra_abi is not None and ctx.contra_abi < 0.60)):
+        if t_normal_hemo and (not is_clti or (ctx.contra_abi is not None and ctx.contra_abi < hemo_cfg['wrong_side_contra_abi'])):
             ctx.red_flags.append(
                 f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_pta} — 0.91–1.40)'
-                + (f', ხოლო კონტრალატერალურზე ABI {ctx.contra_abi}!' if ctx.contra_abi is not None and ctx.contra_abi < 0.60 else ' კოჭლობის ფონზე')
+                + (f', ხოლო კონტრალატერალურზე ABI {ctx.contra_abi}!' if ctx.contra_abi is not None and ctx.contra_abi < hemo_cfg['wrong_side_contra_abi'] else ' კოჭლობის ფონზე')
                 + ' — გადაამოწმეთ არჩეული მხარე (R/L) ან ჩვენება ქირურგთან!'
             )
+    if ctx.min_comp_abi is not None and ctx.min_comp_abi < hemo_cfg['abi_severe'] and not is_clti:
+        ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < {hemo_cfg["abi_severe"]:.2f}) — შეესაბამება მძიმე იშემიას.')
     if patient.op_subtype == PreopPatient.OpSubtype.PTA_CLAUD and q_filled and (q.get('abf_rest_pain') or q.get('abf_ulcer')):
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
@@ -74,11 +76,11 @@ def eval_pta(ctx):
     if q_filled and q.get('pta_cant_lie_flat'):
         ctx.amber_flags.append('პაციენტს უჭირს ზურგზე გაუნძრევლად წოლა 60–90 წთ — ავტომატურად ჩაირთო ანესთეზიოლოგი (სედაციისთვის).')
     if 'clopidogrel_intol' in ctx.allergy_chips:
-        has_oac_pta = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
+        has_oac_pta = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran') or ('rivaroxaban_2_5' in ctx.med_chips))
         if has_oac_pta and 'nsaid' in ctx.allergy_chips:
-            alt_pta_txt = 'ინდივიდუალური რეჟიმი კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია — OAC + ტიკაგრელორი ESC Class III არ ინიშნება!)'
+            alt_pta_txt = 'ინდივიდუალური რეჟიმი კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია — OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III აკრძალულია!)'
         elif has_oac_pta:
-            alt_pta_txt = 'OAC + ასპირინი 75–100 მგ (OAC + ტიკაგრელორი ESC Class III სისხლდენის რისკის გამო არ ინიშნება!)'
+            alt_pta_txt = 'OAC / რივაროქსაბანი 2.5 მგ + ასპირინი 75–100 მგ (OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III სისხლდენის რისკის გამო აკრძალულია!)'
         else:
             alt_pta_txt = 'ალტერნატიული P2Y12 (ტიკაგრელორი)'
         ctx.red_flags.append(f'ანამნეზში კლოპიდოგრელის აუტანლობა — სტენტირებამდე შეათანხმეთ {alt_pta_txt} ქირურგთან!')

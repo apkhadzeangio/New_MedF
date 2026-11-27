@@ -72,12 +72,13 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
         or (lvef_eff is not None and lvef_eff < cb['lvef_red']) or (bnp_eff is not None and bnp_eff >= cb['bnp_red'])
         or (ctn_eff is not None and ctn_eff >= cb['ctn_amb']) or bool(s.get('echo_valve_issue')) or ecg == 'ischemia_arrhythmia'
     )
+    egfr_c = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'egfr_sat', ctx.egfr)
     guideline_justifies_extra_cardio = (
         guideline_justifies_cag or ctx.true_low_mets or (q_filled and bool(q.get('cad'))) or bool(ctx.cad_chips)
         or (lvef_eff is not None and lvef_eff < cb['lvef_amb']) or ctx.needs_cied or (bnp_eff is not None and bnp_eff >= cb['bnp_amb'])
         or ecg == 'afib_controlled' or (hr_eff is not None and (hr_eff > hr_cfg['hr_hi'] or hr_eff < hr_cfg['hr_lo']))
         or (pathway not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS) and q_filled and bool(q.get('neuro')))
-        or (not ctx.is_venous and (ctx.on_dialysis or (ctx.egfr is not None and ctx.egfr < ckd_cardio_thresh)))
+        or (not ctx.is_venous and (ctx.on_dialysis or (egfr_c is not None and egfr_c < ckd_cardio_thresh)))
         or (not ctx.is_venous and q_filled and bool(q.get('dm_insulin')))
     )
     cardio_non_compliant = False
@@ -95,7 +96,11 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
     mandatory_tte = bool(('hf' in ctx.cad_chips) or ctx.has_mech_valve or s.get('echo_valve_issue') or (bnp_eff is not None and bnp_eff >= cb['bnp_red']))
     ctx.cardiac_screen_done = (lvef is not None or (not mandatory_tte and nt_probnp is not None and nt_probnp < cb['bnp_amb']))
     spo2_eff = ctx.spo2 if ctx.spo2 is not None else getattr(ctx, 'spo2_sat', None)
-    ctx.needs_cxr = (q_filled and (bool(q.get('pulm')) or 'hf' in ctx.cad_chips or 'fever_resp' in ctx.inf_chip_set)) or (spo2_eff is not None and spo2_eff < hr_cfg['spo2_amb'])
+    ctx.needs_cxr = (
+        (q_filled and (bool(q.get('pulm')) or bool(q.get('pulm_chips')) or 'hf' in ctx.cad_chips or 'fever_resp' in ctx.inf_chip_set))
+        or (lvef_eff is not None and lvef_eff < cb['lvef_red'])
+        or (spo2_eff is not None and spo2_eff < hr_cfg['spo2_amb'])
+    )
 
 
 def _eval_stage1_completeness(ctx):
@@ -125,6 +130,8 @@ def _eval_stage1_completeness(ctx):
     ctx.renal_lab_present, ctx.target_limb_hemo_present = renal_lab_present, target_limb_hemo_present
 
     if ctx.is_venous:
+        ven_vte = rule_value('VEN_VTE_CAPRINI_PROPHYLAXIS')
+        hba1c_dm = rule_value('GLY_GLUCOSE_HBA1C')['hba1c_dm']
         is_lean_evla = (not ctx.is_phleb) and (not ctx.has_neuraxial_plan) and (ctx.anesth_plan_raw != 'general')
         ven_needs_creat = (
             ctx.is_phleb or ctx.has_neuraxial_plan
@@ -137,10 +144,11 @@ def _eval_stage1_completeness(ctx):
         ven_needs_gl = (
             (not is_lean_evla)
             or bool(q.get('dm') or q.get('dm_insulin') or q.get('metformin') or q.get('sglt2') or q.get('glp1'))
-            or (ctx.hba1c is not None and ctx.hba1c >= 6.5)
-            or (bmi_eff is not None and bmi_eff >= 30)
-            or ((age_eff or 0) >= 45)
+            or (ctx.hba1c is not None and ctx.hba1c >= hba1c_dm)
+            or (bmi_eff is not None and bmi_eff >= ven_vte['gl_screen_bmi'])
+            or ((age_eff or 0) >= ven_vte['gl_screen_age'])
         )
+        ctx.ven_needs_gl = ven_needs_gl
         ven_labs_ok = (
             ctx.hb_gl is not None and ctx.plt is not None
             and (not ven_needs_inr or ctx.inr is not None)
@@ -193,6 +201,9 @@ def _eval_stage1_completeness(ctx):
 
 def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
     pathway, s = ctx.pathway, ctx.s
+    ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    na_hi = rule_value('REN_ELECTROLYTES_K_NA')['na_hi']
+    eff_ren_t = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
     if ctx.needs_stale_labs:
         tasks.append({'key': 'stale_labs', 'label': 'რეფლექს-განახლება: ხანდაზმული ანალიზების (>14 დღე) გადაბარება', 'done': bool(s.get('stale_labs_refreshed'))})
     if ctx.needs_anemia_panel and not bypass_em:
@@ -204,7 +215,7 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
     if ctx.needs_endo_reflex and not bypass_em:
         tasks.append({'key': 'endo', 'label': 'რეფლექს-კონსულტაცია: ენდოკრინოლოგი (გლიკემიის კორექცია)', 'done': bool(s.get('endo_consult_done'))})
     if ctx.needs_nephro_panel and (ctx.on_dialysis or not bypass_em):
-        nephro_lean_t = ctx.is_venous or ctx.is_pta or bool(s.get('cta_disc')) or (ctx.eff_renal is not None and ctx.eff_renal >= 30)
+        nephro_lean_t = ctx.is_venous or ctx.is_pta or bool(s.get('cta_disc')) or (eff_ren_t is not None and eff_ren_t >= ren_red)
         n_lbl = (
             'დიალიზის გრაფიკი (უჰეპარინო სესია) და K+ შეთანხმება ნეფროლოგთან'
             if ctx.on_dialysis else
@@ -215,7 +226,7 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
     if ctx.needs_hydration and not ctx.is_rupture_suspect:
         c_tag = f' (მაქს. კონტრასტი ≤ {ctx.max_contrast_ml} მლ)' if ctx.max_contrast_ml else ''
         na_eff = getattr(ctx, 'na_val_sat', ctx.na_val)
-        if na_eff is not None and na_eff >= 150:
+        if na_eff is not None and na_eff >= na_hi:
             hyd_mode = 'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე!' + (' · HFrEF სითხის შეზღუდვით!' if ctx.chf_hyd_flag else '')
         elif ctx.chf_hyd_flag:
             hyd_mode = 'შეზღუდული ჰიდრატაცია (0.5 მლ/კგ/სთ — HFrEF!)'
@@ -258,10 +269,12 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
 
 def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
     patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
+    ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    eff_ren_t = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
     if (ctx.is_venous or pathway == PreopPatient.Pathway.AAA_INFRA) and ctx.needs_abi_check and not ctx.is_rupture_suspect:
         tasks.append({'key': 'abi', 'label': 'გოჯ-მხრის ინდექსი (ABI)', 'done': ctx.min_abi is not None})
     if ctx.is_venous and ctx.needs_vte_prophylaxis:
-        ven_severe_renal_t = ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < 30)
+        ven_severe_renal_t = ctx.on_dialysis or (eff_ren_t is not None and eff_ren_t < ren_red)
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv_t = ' (ღვიძლის ≥3x: არგატრობანი −75%!)' if ctx.liver_3x else ''
         if 'mech_valve' in ctx.cad_chips:
@@ -300,17 +313,20 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         )
         tasks.append({'key': 'comp', 'label': comp_lbl, 'done': bool(s.get('compression_ready')) and tbi_comp_ok})
     if ctx.is_pta and ctx.q_filled:
+        stent_p2y = getattr(ctx, 'stent_p2y12_lbl', ctx.alt_p2y12_lbl)
         if (s.get('post_antithrombotic_plan') not in (None, '', 'auto')) and ctx.post_antithrombotic_label:
             dapt_lbl = f'ანტითრომბოზული მზაობა: {ctx.post_antithrombotic_label}'
         elif ctx.has_mech_valve:
             dapt_lbl = 'ანტითრომბოზული სქემა მექ. სარქველზე: ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი (DOAC / VOYAGER აკრძალულია!)'
+        elif getattr(ctx, 'has_contra_oac', False):
+            dapt_lbl = f'უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა (+ ჩვენებისას {ctx.oac_partner_lbl}) კარდიოლოგ/ნეფროლოგთან!'
         elif ctx.has_full_oac:
             dapt_lbl = f'ანტითრომბოზული სქემა OAC ფონზე: ანტიკოაგულანტი + {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე!)'
         elif ctx.has_active_stent_dapt:
             if 'nsaid' in ctx.allergy_chips:
-                dapt_lbl = f'ახალი სტენტი + ასპირინზე ალერგია: {ctx.alt_p2y12_lbl} — კარდიოლოგის კონსილიუმი!'
+                dapt_lbl = f'ახალი სტენტი + ასპირინზე ალერგია: {stent_p2y} — კარდიოლოგის კონსილიუმი!'
             else:
-                dapt_lbl = f'უწყვეტი DAPT კორონარული სტენტისთვის ({ctx.alt_p2y12_lbl})'
+                dapt_lbl = f'უწყვეტი DAPT კორონარული სტენტისთვის (ასპირინი + {stent_p2y})'
         elif 'nsaid' in ctx.allergy_chips:
             dapt_lbl = f'ანტითრომბოზული მზაობა: {ctx.alt_p2y12_lbl} (ასპირინზე/აასს-ზე ალერგია!)'
         elif getattr(ctx, 'voyager_safe', False):

@@ -113,11 +113,21 @@ def _fmt_ka_date(val, short=False):
     return dt.strftime('%d.%m' if short else '%d.%m.%Y')
 
 
+def is_valid_birth_date(val, today=None):
+    """Return True iff `val` parses as a plausible birth date (year >= 1900, <= today, age <= 120)."""
+    dob = val if isinstance(val, datetime.date) else _date(val)
+    today = _date(today) or timezone.localdate()
+    if not dob or dob > today or dob.year < 1900:
+        return False
+    years = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    return 0 <= years <= 120
+
+
 def _age_from_dob(val, today=None):
     """Compute integer age (1..120) from ISO birth_date."""
     dob = val if isinstance(val, datetime.date) else _date(val)
     today = _date(today) or timezone.localdate()
-    if not dob or dob > today or dob.year < 1900:
+    if not is_valid_birth_date(dob, today=today):
         return None
     years = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
     return years if 1 <= years <= 120 else None
@@ -160,7 +170,7 @@ def make_self_fill_token(patient):
 
 
 def is_symp_cea_patient(patient, q=None, today=None, s=None, require_filled=True):
-    """Canonical 6-month symptomatic CEA determination shared across engine, meds, utils, and calculators."""
+    """Canonical 6-month symptomatic CEA determination (active crescendo TIA is ALWAYS symptomatic)."""
     if _resolve_pathway(patient) != PreopPatient.Pathway.CEA:
         return False
     from .registry import rule_value
@@ -168,6 +178,8 @@ def is_symp_cea_patient(patient, q=None, today=None, s=None, require_filled=True
     q_d = q if isinstance(q, dict) else (patient.questionnaire if isinstance(patient.questionnaire, dict) else {})
     s_d = s if isinstance(s, dict) else (patient.studies if isinstance(patient.studies, dict) else {})
     q_ok = bool(q_d.get('filled')) if require_filled else True
+    if q_ok and bool(q_d.get('cea_crescendo')):
+        return True
     days_ev = cea_live_days_since_event(q_d, today=today, s=s_d)
     symp_within_6m = (days_ev is None) or (days_ev <= symp_max_days)
     return bool(
@@ -275,18 +287,22 @@ def cea_live_days_since_event(q, today=None, s=None):
 
 
 def cta_live_months_age(s, today=None):
-    """Compute exact calendar-month CTA age from cta_date if present (rounding up once past exact anniversary), else static cta_months."""
+    """Compute calendar-month CTA age from cta_date (with end-of-month clamping), else static cta_months."""
+    import calendar
     if not isinstance(s, dict):
         return None
     today = _date(today) or timezone.localdate()
     cta_dt = _date(s.get('cta_date'))
     if cta_dt and cta_dt <= today:
         months = (today.year - cta_dt.year) * 12 + (today.month - cta_dt.month)
-        if today.day < cta_dt.day:
+        month_end = calendar.monthrange(today.year, today.month)[1]
+        anniv_day = min(cta_dt.day, month_end)
+        if today.day < anniv_day:
             months -= 1
-        elif months >= 1 and today.day > cta_dt.day:
+        elif months >= 1 and today.day > anniv_day:
             months += 1
-        return max(0, months)
+        day_months = (today - cta_dt).days // 30
+        return max(0, months, day_months)
     return _int(s.get('cta_months'), lo=0, hi=240)
 
 

@@ -70,27 +70,42 @@ def build_plain_georgian_missing_items(patient, ev, today):
     """Numbered plain-Georgian checklist of everything missing before surgeon approval."""
     items = []
     q = ev['q']
+    is_stop = bool(
+        ev['has_hard_contraindication']
+        or ev['clearance_seal']['code'] == 'stop'
+        or ev.get('dos_hold_danger')
+        or ev.get('solo_neuraxial_anatomic_mismatch')
+    )
 
-    if ev['has_hard_contraindication'] or ev['clearance_seal']['code'] == 'stop' or ev.get('dos_hold_danger'):
-        if ev.get('dos_warnings'):
-            for dw in ev['dos_warnings'][:4]:
-                items.append({
-                    'kind': 'stop', 'label': f'STOP — აცნობეთ ქირურგს: {dw}',
-                    'target_section': 'nw-sec-dos', 'target_input': '', 'action_label': 'დილის შემოწმება',
-                })
-        else:
-            reason = ev['red_flags'][0] if ev['red_flags'] else 'ოპერაციაზე დაშვება შეჩერებულია'
+    if is_stop:
+        if ev.get('solo_neuraxial_anatomic_mismatch'):
             items.append({
-                'kind': 'stop', 'label': f'STOP — აცნობეთ ქირურგს: {reason}',
+                'kind': 'stop',
+                'label': 'STOP — შეცვალეთ ანესთეზიის გეგმა: მარტო ნეირაქსიული ბლოკადა ამ ოპერაციისთვის ანატომიურად შეუსაბამოა!',
+                'target_section': 'nw-sec-s2', 'target_input': '', 'action_label': 'ანესთეზიის შეცვლა',
+            })
+        for dw in (ev.get('dos_warnings') or ()):
+            items.append({
+                'kind': 'stop', 'label': f'STOP — აცნობეთ ქირურგს: {dw}',
+                'target_section': 'nw-sec-dos', 'target_input': '', 'action_label': 'დილის შემოწმება',
+            })
+        for rf in (ev.get('red_flags') or ()):
+            items.append({
+                'kind': 'stop', 'label': f'STOP — აცნობეთ ქირურგს: {rf}',
+                'target_section': 'nw-sec-doc', 'target_input': '', 'action_label': 'ექიმის სექცია',
+            })
+        if not items:
+            items.append({
+                'kind': 'stop', 'label': 'STOP — აცნობეთ ქირურგს: ოპერაციაზე დაშვება შეჩერებულია',
                 'target_section': 'nw-sec-doc', 'target_input': '', 'action_label': 'ექიმის სექცია',
             })
     elif ev['has_unacked_red']:
-        for rf in ev['red_flags'][:3]:
+        for rf in (ev.get('red_flags') or ()):
             items.append({
                 'kind': 'alert', 'label': f'ექიმს უნდა ეცნობოს: {rf}',
                 'target_section': 'nw-sec-doc', 'target_input': '', 'action_label': 'ქირურგის ნახვა',
             })
-    if ev.get('neuraxial_hard_blocked') and not any(it['kind'] == 'stop' for it in items):
+    if ev.get('neuraxial_hard_blocked') and not ev.get('solo_neuraxial_anatomic_mismatch'):
         items.append({
             'kind': 'alert',
             'label': 'ანესთეზიის გეგმა შესაცვლელია: არჩეული ნეირაქსიული ბლოკადა უკუნაჩვენებია (ASRA 5th Ed)!',
@@ -146,7 +161,7 @@ def _spoken_med_phrase(row, op_ka):
 
 
 def build_phone_med_script(patient, ev, today):
-    """Build nurse phone-call medication-hold script with stop/continue groups and call-stamp state."""
+    """Build nurse phone-call medication-hold script with strict stop/caution/continue separation."""
     from django.utils import timezone
     today = _date(today) or timezone.localdate()
     s = ev['s']
@@ -159,13 +174,25 @@ def build_phone_med_script(patient, ev, today):
     for row in ev['med_schedule']:
         plain_drug = _DRUG_PLAIN_PREFIX.get(row['drug'], row['drug'])
         plan = (row.get('date_plan') or '').strip()
+        is_glp1_diet = ('GLP-1' in row['drug']) and ('დიეტა' in plan or 'დიეტა' in (row.get('rule') or ''))
+        is_non_stop_plan = any(
+            kw in plan for kw in ('შეიყვანეთ', 'არ მოხსნათ', 'შეათანხმეთ', 'დააზუსტეთ', 'VTE შეფასება')
+        )
+        is_contra_or_reconcile = bool(
+            row.get('contraindicated') or row.get('unstructured') or row.get('reconcile_only')
+        )
+        is_acute_or_contra = bool(row.get('acute_hold') or is_contra_or_reconcile)
         is_skip_text = ('გამოტოვეთ' in plan) or ('არ მიიღოთ' in plan)
-        is_hold = bool(row.get('hold_or_skip')) or is_skip_text
-        is_acute_or_contra = bool(row.get('acute_hold') or row.get('contraindicated') or row.get('unstructured'))
+        is_planned_stop = (
+            (bool(row.get('hold_or_skip')) or is_skip_text)
+            and not is_contra_or_reconcile
+            and not is_glp1_diet
+            and not is_non_stop_plan
+        )
         is_urgent = is_acute_or_contra or bool(row.get('tone') == 'red' and not stop_locked)
         spoken_txt = (
             'არ შეწყვიტოთ თვითნებურად — ოპერაცია შეჩერებულია (STOP)!'
-            if (stop_locked and is_hold and not is_acute_or_contra)
+            if (stop_locked and is_planned_stop and not is_acute_or_contra)
             else _spoken_med_phrase(row, op_ka)
         )
         entry = {
@@ -175,12 +202,12 @@ def build_phone_med_script(patient, ev, today):
             'rule': row['rule'],
             'tone': row['tone'],
             'date_plan': plan,
-            'hold_or_skip': is_hold,
+            'hold_or_skip': is_planned_stop,
             'urgent_contact': is_urgent,
         }
-        if is_hold or is_acute_or_contra:
+        if is_planned_stop:
             stop_rows.append(entry)
-        elif row.get('tone') in ('red', 'amber') or is_urgent:
+        elif is_acute_or_contra or is_glp1_diet or is_non_stop_plan or row.get('tone') in ('red', 'amber'):
             caution_rows.append(entry)
         else:
             keep_rows.append(entry)
@@ -320,6 +347,21 @@ _PATHWAY_EMERGENCY_SIGNS_KA = {
 }
 
 
+def _patient_2nd_person(entries):
+    out = []
+    for e in entries:
+        item = dict(e)
+        sp = item.get('spoken') or ''
+        sp = (
+            sp.replace('არ შეწყვიტოს! მიიღოს', 'არ შეწყვიტოთ! მიიღეთ')
+            .replace('ბოლო აბი მიიღოს:', 'ბოლო აბი მიიღეთ:')
+            .replace('აღარ მიიღოს', 'აღარ მიიღოთ')
+        )
+        item['spoken'] = sp
+        out.append(item)
+    return out
+
+
 def build_patient_plain_explanation(patient, ev, today):
     """Build plain-Georgian explanation card for the nurse to walk through with the patient."""
     from django.utils import timezone
@@ -330,8 +372,14 @@ def build_patient_plain_explanation(patient, ev, today):
     op_dt = _date(s.get('planned_surgery_date'))
     med_script = build_phone_med_script(patient, ev, today)
 
+    if med_script['stop_locked']:
+        first_arrival = 'ოპერაციის თარიღი დროებით შეჩერებულია (STOP) — ზუსტ თარიღს მკურნალი ექიმი შეგატყობინებთ.'
+    elif op_dt:
+        first_arrival = f'დაგეგმილი ოპერაციის თარიღი: {_fmt_ka_date(op_dt)}'
+    else:
+        first_arrival = 'ოპერაციის ზუსტ თარიღს მკურნალი ექიმი შეგატყობინებთ.'
     arrival_items = [
-        f'დაგეგმილი ოპერაციის თარიღი: {_fmt_ka_date(op_dt)}' if op_dt else 'ოპერაციის ზუსტ თარიღს მკურნალი ექიმი შეგატყობინებთ.',
+        first_arrival,
         'თან იქონიეთ პირადობის მოწმობა და ბოლო ანალიზების ფურცლები.',
     ]
     if pw in ('aaa_infra', 'cea', 'abf', 'pad_bypass'):
@@ -376,10 +424,10 @@ def build_patient_plain_explanation(patient, ev, today):
         'is_draft': is_draft,
         'arrival_items': arrival_items,
         'fasting_plain': fasting_plain,
-        'stop_meds': med_script['stop_rows'],
-        'caution_meds': med_script['caution_rows'],
-        'urgent_meds': med_script['urgent_rows'],
-        'keep_meds': med_script['keep_rows'],
+        'stop_meds': _patient_2nd_person(med_script['stop_rows']),
+        'caution_meds': _patient_2nd_person(med_script['caution_rows']),
+        'urgent_meds': _patient_2nd_person(med_script['urgent_rows']),
+        'keep_meds': _patient_2nd_person(med_script['keep_rows']),
         'stop_locked': med_script['stop_locked'],
         'emergency_sign': _PATHWAY_EMERGENCY_SIGNS_KA.get(pw, 'უეცარი ძლიერი ტკივილი, სიცხე ან სუნთქვის გაძნელება — დაუყოვნებლივ დარეკეთ კლინიკაში.'),
     }

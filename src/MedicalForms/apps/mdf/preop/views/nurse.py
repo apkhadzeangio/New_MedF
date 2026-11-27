@@ -69,7 +69,9 @@ class PreopNurseRegisterView(LoginRequiredMixin, generic.View):
             'F' if op_subtype in ('evla', 'phlebectomy') else 'M'
         )
         age = _int(request.POST.get('age'), lo=1, hi=120)
-        op_date = _date(request.POST.get('planned_surgery_date'))
+        raw_op_date = (request.POST.get('planned_surgery_date') or '').strip()
+        op_date = _date(raw_op_date)
+        today = timezone.localdate()
         surgeon_raw = request.POST.get('surgeon') or ''
         surg_id = _int(surgeon_raw, lo=1)
         surgeon = get_user_model().objects.filter(pk=surg_id).first() if surg_id is not None else None
@@ -79,7 +81,7 @@ class PreopNurseRegisterView(LoginRequiredMixin, generic.View):
         form_data = {
             'patient_name': name, 'phone': phone, 'op_subtype': op_subtype,
             'side': side, 'sex': sex, 'age': request.POST.get('age') or '',
-            'planned_surgery_date': op_date.isoformat() if op_date else '',
+            'planned_surgery_date': raw_op_date,
             'surgeon': surgeon_raw,
         }
         if not name:
@@ -90,8 +92,13 @@ class PreopNurseRegisterView(LoginRequiredMixin, generic.View):
                 self._ctx(form_data, 'საძილე არტერიის (CEA) ორმხრივი ერთდროული ოპერაცია დაუშვებელია — აირჩიეთ მარჯვენა ან მარცხენა მხარე.'),
                 status=400,
             )
+        if raw_op_date and (op_date is None or op_date < today):
+            return render(
+                request, self.template_name,
+                self._ctx(form_data, 'ოპერაციის თარიღი არ შეიძლება იყოს წარსული ან არასწორი — აირჩიეთ დღევანდელი ან მომავალი თარიღი.'),
+                status=400,
+            )
 
-        today = timezone.localdate()
         studies = {}
         if op_date:
             studies['planned_surgery_date'] = op_date.isoformat()
@@ -127,10 +134,14 @@ class PreopNurseSelfFillSentView(LoginRequiredMixin, generic.View):
             _sqlite_acquire_write_lock(patient.pk)
             patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
             s = merged_studies(patient)
+            if s.get('self_fill_revoked'):
+                if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                    return JsonResponse({'ok': False, 'error': 'revoked'}, status=400)
+                messages.error(request, 'ეს ბმული გაუქმებულია — ახალი ბმულის გასაგზავნად ჯერ დააჭირეთ „ახალი ბმული“.')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
             s['self_link_sent_at'] = timezone.localtime().strftime('%d.%m.%Y %H:%M')
             s['self_link_sent_via'] = via
             s['self_link_sent_by'] = person_name(request.user)
-            s['self_fill_revoked'] = False
             patient.studies = s
             patient.updated_by = request.user
             patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
@@ -168,6 +179,8 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
                 s['med_hold_agreed'] = False
                 _invalidate_approval_if_needed(patient, uf)
                 messages.info(request, 'დარეკვის მონიშვნა მოიხსნა.')
+            elif not ev.get('needs_med_hold'):
+                messages.info(request, 'ამ პაციენტს შესაჩერებელი წამლების გრაფიკი არ აქვს.')
             elif block_msg:
                 messages.error(request, block_msg)
             else:
@@ -242,6 +255,14 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                         patient.someday_list = PreopPatient.SomedayList.CONF
                         uf.append('someday_list')
             s['planned_surgery_date'] = new_dt.isoformat()
+            raw_inv = s.get('_invalid_inputs')
+            if isinstance(raw_inv, dict) and 'planned_surgery_date' in raw_inv:
+                inv = dict(raw_inv)
+                inv.pop('planned_surgery_date', None)
+                if inv:
+                    s['_invalid_inputs'] = inv
+                else:
+                    s.pop('_invalid_inputs', None)
             patient.studies = s
             ev_new = evaluate(patient)
             if s.get('nurse_med_called_sig') and s.get('nurse_med_called_sig') != med_schedule_signature(ev_new):
