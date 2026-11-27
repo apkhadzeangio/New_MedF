@@ -34,7 +34,7 @@ def resolve_board_patient(patient):
         other_preops = (
             PreopPatient.objects.filter(patient_name__iexact=patient.patient_name)
             .exclude(pk=patient.pk)
-            .values_list('studies', flat=True)[:30]
+            .values_list('studies', flat=True)
         )
         claimed_ids = {
             st.get('board_patient_id') for st in other_preops
@@ -83,9 +83,7 @@ def _upsert_board_patient(patient, user, ev, s, unit, bed, now):
         else (BoardPatient.ICU if ev['needs_icu_bed'] else BoardPatient.WARD)
     )
     bed_clean = clean_text(bed, 20).replace('\n', ' ')
-    diag_raw = patient.planned_operation_label
-    if ev['pathway'] == PreopPatient.Pathway.CEA and ev.get('is_symp_cea'):
-        diag_raw = diag_raw.replace('ასიმპტომური', 'სიმპტომური')
+    diag_raw = ev.get('effective_operation_label') or patient.planned_operation_label
     diag_str = clean_text(diag_raw, 255).replace('\n', ' ')
     attending = patient.surgeon or user
 
@@ -143,9 +141,13 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
     bp_d = _int(s.get('bp_dia'), 20, 220)
     bp_sl = _int(s.get('bp_sys_l'), 30, 320)
     bp_dl = _int(s.get('bp_dia_l'), 20, 220)
-    if bp_s is not None and bp_d is not None and bp_s > bp_d:
+    has_r_bp = bp_s is not None and bp_d is not None and bp_s > bp_d
+    has_l_bp = bp_sl is not None and bp_dl is not None and bp_sl > bp_dl
+    if has_r_bp and has_l_bp:
+        vitals_labs.append(f'BP {bp_s}/{bp_d} (L: {bp_sl}/{bp_dl}) mmHg')
+    elif has_r_bp:
         vitals_labs.append(f'BP {bp_s}/{bp_d} mmHg')
-    elif bp_sl is not None and bp_dl is not None and bp_sl > bp_dl:
+    elif has_l_bp:
         vitals_labs.append(f'BP (L) {bp_sl}/{bp_dl} mmHg')
     if ev['hb_gl'] is not None:
         vitals_labs.append(f"Hb {ev['hb_gl']} გ/ლ")
@@ -220,29 +222,45 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
     return clean_text('\n'.join(status_lines), 4000)
 
 
+_PATHWAY_PRIMARY_PREFIXES = (
+    'ანტითრომბოზული სქემა და სტატინი:',
+    'CEA პოსტოპ. ნევროლოგიური',
+    'პოსტოპ. ჰემოდინამიკის',
+    'ვენური პოსტოპ. რეჟიმი:',
+)
 _VTE_PREFIXES = ('VTE პროფილაქტიკა', 'HIT ანამნეზში!', 'VTE / ანტიკოაგულაცია:')
 _ABX_PREFIXES = ('მძიმე ბეტა-ლაქტამური ალერგია!', 'მძიმე β-ლაქტამსა')
-_NEPH_PREFIXES = ('ნეფროპროტექცია:', 'ნეფროპროტექცია (')
+_NEPH_PREFIXES = ('პროგრამული დიალიზი:', 'ნეფროპროტექცია:', 'ნეფროპროტექცია (')
+_ALL_MANAGED_PREFIXES = (
+    *_PATHWAY_PRIMARY_PREFIXES,
+    *_VTE_PREFIXES,
+    *_ABX_PREFIXES,
+    *_NEPH_PREFIXES,
+    'NSAID / აასს ალერგია!',
+    'გასტროპროტექცია:',
+    'კარდიოსტიმულატორი / ICD',
+    'გაწერისას VQI / მეთვალყურეობის გრაფიკი:',
+)
 
 
 def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
     cap_low_max = rule_value('SCORE_CAPRINI_VTE')['low_max']
     task_candidates = []
-    board_statin_tail = '' if s.get('liver_status') == '3x' else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ)'
+    board_statin_tail = '' if (s.get('liver_status') == '3x' or ev.get('eff_pregnant')) else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ)'
     if pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
         task_candidates.append((
-            'ანტითრომბოზული სქემა და სტატინი:',
+            _PATHWAY_PRIMARY_PREFIXES,
             f"ანტითრომბოზული სქემა და სტატინი: {ev['post_antithrombotic_label']}{board_statin_tail} + დისტალური პულსაციის/დოპლერ-მონიტორინგი",
         ))
     elif pathway == PreopPatient.Pathway.CEA:
         task_candidates.append((
-            'CEA პოსტოპ. ნევროლოგიური',
+            _PATHWAY_PRIMARY_PREFIXES,
             f"CEA პოსტოპ. ნევროლოგიური და წნევის მონიტორინგი (SBP <140–150 mmHg ჰიპერპერფუზიის პრევენციისთვის!) + {ev['surgical_brief']['postop_antithrombotic']}",
         ))
     elif pathway == PreopPatient.Pathway.AAA_INFRA:
         task_candidates.append((
-            'პოსტოპ. ჰემოდინამიკის',
+            _PATHWAY_PRIMARY_PREFIXES,
             f"პოსტოპ. ჰემოდინამიკის, დიურეზის და ქვემო კიდურების პულსაციის მონიტორინგი + {ev['surgical_brief']['postop_antithrombotic']} (ESVS 2024)",
         ))
     else:
@@ -255,7 +273,7 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
         else:
             comp_txt = 'ელასტიური კომპრესია პროტოკოლით'
         task_candidates.append((
-            'ვენური პოსტოპ. რეჟიმი:',
+            _PATHWAY_PRIMARY_PREFIXES,
             f'ვენური პოსტოპ. რეჟიმი: ადრეული აქტიური სიარული · {comp_txt}',
         ))
 
@@ -352,7 +370,7 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
 
     if q.get('on_dialysis'):
         task_candidates.append((
-            'პროგრამული დიალიზი:',
+            _NEPH_PREFIXES,
             'პროგრამული დიალიზი: შეათანხმეთ დიალიზის სეანსი და საკონტროლო K+ ოპერაციამდე/შემდეგ (უჰეპარინო რეჟიმი)',
         ))
     elif ev.get('needs_hydration'):
@@ -379,7 +397,11 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
 
     ft_med_keys = set(ev.get('ft_meds_keys') or ())
     has_ppi_now = ('ppi' in (q.get('med_chips') or ())) or ('omeprazole' in ft_med_keys)
-    if ev.get('needs_ppi') or q.get('ulcer') or (ev.get('cyp2c19_ppi_sensitive') and has_ppi_now):
+    if (
+        ev.get('needs_ppi') or q.get('ulcer') or q.get('ulcer_active_symp')
+        or s.get('gastro_result') == 'acute_ulcer'
+        or (ev.get('cyp2c19_ppi_sensitive') and has_ppi_now)
+    ):
         ppi_b = 'პანტოპრაზოლი 40 მგ (CYP2C19 უსაფრთხო)' if ev.get('cyp2c19_ppi_sensitive') else 'ომეპრაზოლი / პანტოპრაზოლი (PPI)'
         task_candidates.append((
             'გასტროპროტექცია:',
@@ -424,21 +446,35 @@ def _admit_preop_to_board_locked(patient, user, unit='', bed=''):
 
     task_candidates = _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board)
     existing_task_objs = list(BoardEntry.objects.filter(patient=bp, kind=BoardEntry.TASK).order_by('id'))
+    kept_open_ids = set()
     added_tasks = 0
     for prefix, t_raw in task_candidates:
         t_clean = clean_text(t_raw, 4000)
         if not t_clean:
             continue
-        matched = next((obj for obj in existing_task_objs if obj.text == t_clean or obj.text.startswith(prefix)), None)
-        if matched is None:
+        open_match = next(
+            (obj for obj in existing_task_objs if obj.done_at is None and obj.pk not in kept_open_ids and (obj.text == t_clean or obj.text.startswith(prefix))),
+            None,
+        )
+        if open_match is not None:
+            if open_match.text != t_clean:
+                open_match.text = t_clean
+                open_match.updated_by = user
+                open_match.updated_at = now
+                open_match.save(update_fields=['text', 'updated_by', 'updated_at'])
+            kept_open_ids.add(open_match.pk)
+        elif not any(obj.done_at is not None and obj.text == t_clean for obj in existing_task_objs):
             new_obj = BoardEntry.objects.create(patient=bp, kind=BoardEntry.TASK, text=t_clean, created_by=user, created_at=now)
             existing_task_objs.append(new_obj)
+            kept_open_ids.add(new_obj.pk)
             added_tasks += 1
-        elif matched.text != t_clean and matched.done_at is None:
-            matched.text = t_clean
-            matched.updated_by = user
-            matched.updated_at = now
-            matched.save(update_fields=['text', 'updated_by', 'updated_at'])
+
+    stale_open_ids = [
+        obj.pk for obj in existing_task_objs
+        if obj.done_at is None and obj.pk not in kept_open_ids and obj.text.startswith(_ALL_MANAGED_PREFIXES)
+    ]
+    if stale_open_ids:
+        BoardEntry.objects.filter(pk__in=stale_open_ids).delete()
 
     bp.save(update_fields=['updated_at'])
     s_mut = merged_studies(patient)

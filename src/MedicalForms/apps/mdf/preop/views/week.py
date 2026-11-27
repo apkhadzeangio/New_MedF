@@ -235,65 +235,82 @@ class PreopWeekView(LoginRequiredMixin, generic.TemplateView):
 
 
 class PreopCreateView(LoginRequiredMixin, generic.View):
-    """Inline 1-line Tweek add (POST) or 1-click transfer/re-sync from a Conference Case (GET/POST)."""
+    """Inline 1-line Tweek add (POST) or 1-click transfer/re-sync from a Conference Case (POST)."""
 
     def get(self, request):
-        from .parsers import _invalidate_approval_if_needed
-
         case_id_int = _int(request.GET.get('case'), lo=1)
         if case_id_int is not None:
             case = get_object_or_404(Case, pk=case_id_int)
             existing = PreopPatient.objects.filter(case=case, archived=False).first()
             if existing:
-                if request.GET.get('sync') == '1':
-                    op_sub, side = detect_case_preop(case)
-                    side_changed = False
-                    if not existing.side and side:
-                        existing.side = side
-                        side_changed = True
-                    imported = import_case_to_preop(case, existing)
-                    if imported or side_changed:
-                        s_sy = merged_studies(existing)
-                        if side_changed:
-                            s_sy['dos_site_marked'] = False
-                        s_sy['med_hold_agreed'] = False
-                        s_sy['alerts_ack_sig'] = ''
-                        existing.studies = s_sy
-                        existing.alerts_ack_at = None
-                        existing.alerts_ack_by = None
-                        uf = ['studies', 'alerts_ack_at', 'alerts_ack_by', 'updated_at', 'updated_by']
-                        if side_changed:
-                            uf.append('side')
-                        _invalidate_approval_if_needed(existing, uf, clear_anamnesis=True)
-                        existing.updated_by = request.user
-                        existing.save(update_fields=list(dict.fromkeys(uf)))
-                    messages.success(request, 'კონფერენციის ქეისიდან სტადირება და ანატომიური მონაცემები განახლდა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[existing.pk]))
-            op_sub, side = detect_case_preop(case)
-            p = PreopPatient.objects.create(
-                case=case,
-                patient_name=case.patient_name,
-                age=case.age,
-                sex=case.sex or 'M',
-                side=side,
-                op_subtype=op_sub,
-                surgeon=case.doctor or request.user,
-                someday_list=PreopPatient.SomedayList.CONF,
-                created_by=request.user,
-                updated_by=request.user,
-            )
-            import_case_to_preop(case, p)
-            messages.success(request, f'{p.patient_name} გადმოყვანილია წინასაოპერაციო სიაში.')
-            return HttpResponseRedirect(reverse('preop-patient', args=[p.pk]))
+            return HttpResponseRedirect(reverse('case', args=[case.pk]))
         return HttpResponseRedirect(reverse('preop'))
 
+    @staticmethod
+    def _transfer_or_sync_case(request, case_id_int):
+        from .parsers import _invalidate_approval_if_needed
+
+        case = get_object_or_404(Case, pk=case_id_int)
+        existing = PreopPatient.objects.filter(case=case, archived=False).first()
+        if existing:
+            if request.POST.get('sync') == '1':
+                op_sub, side = detect_case_preop(case)
+                side_changed = False
+                if not existing.side and side:
+                    existing.side = side
+                    side_changed = True
+                imported = import_case_to_preop(case, existing)
+                if imported or side_changed:
+                    s_sy = merged_studies(existing)
+                    if side_changed:
+                        s_sy['dos_site_marked'] = False
+                    s_sy['med_hold_agreed'] = False
+                    s_sy['alerts_ack_sig'] = ''
+                    existing.studies = s_sy
+                    existing.alerts_ack_at = None
+                    existing.alerts_ack_by = None
+                    uf = ['studies', 'alerts_ack_at', 'alerts_ack_by', 'updated_at', 'updated_by']
+                    if side_changed:
+                        uf.append('side')
+                    _invalidate_approval_if_needed(existing, uf, clear_anamnesis=True)
+                    existing.updated_by = request.user
+                    existing.save(update_fields=list(dict.fromkeys(uf)))
+                messages.success(request, 'კონფერენციის ქეისიდან სტადირება და ანატომიური მონაცემები განახლდა.')
+            return HttpResponseRedirect(reverse('preop-patient', args=[existing.pk]))
+
+        op_sub, side = detect_case_preop(case)
+        p = PreopPatient.objects.create(
+            case=case,
+            patient_name=case.patient_name,
+            age=case.age,
+            sex=case.sex or 'M',
+            side=side,
+            op_subtype=op_sub,
+            surgeon=case.doctor or request.user,
+            someday_list=PreopPatient.SomedayList.CONF,
+            created_by=request.user,
+            updated_by=request.user,
+        )
+        import_case_to_preop(case, p)
+        messages.success(request, f'{p.patient_name} გადმოყვანილია წინასაოპერაციო სიაში.')
+        return HttpResponseRedirect(reverse('preop-patient', args=[p.pk]))
+
     def post(self, request):
+        case_id_int = _int(request.POST.get('case'), lo=1)
+        if case_id_int is not None:
+            return self._transfer_or_sync_case(request, case_id_int)
+
         name = clean_text(request.POST.get('patient_name'), 150).replace('\n', ' ')
         slot = (request.POST.get('slot') or '').strip()
         op_subtype = request.POST.get('op_subtype') or PreopPatient.OpSubtype.OPEN
         if op_subtype not in PreopPatient.OpSubtype.values:
             op_subtype = PreopPatient.OpSubtype.OPEN
         side = request.POST.get('side') if request.POST.get('side') in ('R', 'L', 'B') else ''
+
+        if op_subtype in ('cea_symp', 'cea_asymp') and side == 'B':
+            messages.error(request, 'ერთდროული ორმხრივი CEA აკრძალულია (ESVS) — მიუთითეთ მარჯვენა ან მარცხენა მხარე!')
+            return HttpResponseRedirect(reverse('preop'))
 
         surgeon = None
         surg_id = _int(request.POST.get('surgeon'), lo=1)

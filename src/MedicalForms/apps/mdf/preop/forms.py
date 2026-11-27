@@ -87,10 +87,20 @@ _NURSE_Q_TEXT_LIMITS = (
 )
 
 
+_VENOUS_ONLY_Q_BOOLS = (
+    'ven_thrombophilia', 'ven_acute_svt', 'ven_bleeding',
+    'ven_lidocaine_allergy', 'ven_skin_infection', 'ven_recurrent',
+    'ven_hormones', 'ven_cancer_immob', 'ven_pregnant',
+)
+_VENOUS_ONLY_Q_CHIPS = ('ven_dvt_chips', 'ven_rec_chips')
+
+
 def _apply_q_booleans_and_chips(post_data, q, patient=None):
     is_ven = patient is not None and patient.pathway == PreopPatient.Pathway.VENOUS
     for f in _NURSE_Q_BOOL_FIELDS:
         if f == 'allergy_iodine' and is_ven and 'allergy_iodine_presented' not in post_data and 'allergy_iodine' not in post_data:
+            continue
+        if not is_ven and f in _VENOUS_ONLY_Q_BOOLS and f not in post_data:
             continue
         q[f] = post_data.get(f) in ('1', 'on', 'true')
     q['mets_ok'] = post_data.get('mets_ok', '1') != '0'
@@ -101,6 +111,8 @@ def _apply_q_booleans_and_chips(post_data, q, patient=None):
 
     if hasattr(post_data, 'getlist'):
         for chip_field in _NURSE_Q_CHIP_FIELDS:
+            if not is_ven and chip_field in _VENOUS_ONLY_Q_CHIPS and chip_field not in post_data:
+                continue
             valid_keys = CHIP_LABELS[chip_field]
             q[chip_field] = [k for k in post_data.getlist(chip_field) if k in valid_keys]
     if q.get('allergy_chips'):
@@ -358,7 +370,7 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv):
     ):
         if q.get(ch_k):
             q[parent_k] = True
-    if q.get('sglt2') or q.get('metformin'):
+    if q.get('metformin') or q.get('dm_insulin'):
         q['dm'] = True
     if q.get('recent_stent'):
         q['cad'] = True

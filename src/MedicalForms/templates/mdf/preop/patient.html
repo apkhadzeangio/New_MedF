@@ -11,7 +11,12 @@
         {% if p.case %}
         <div class="d-flex align-items-center gap-2">
             <a href="{% url 'case' p.case.pk %}" class="small">კონფერენციის ქეისი →</a>
-            <a href="{% url 'preop-new' %}?case={{ p.case.pk }}&amp;sync=1" class="small" title="ქეისიდან ახალი ანატომიური/ჰემოდინამიკური მონაცემების უსაფრთხო განახლება">↻ ქეისიდან განახლება</a>
+            <form method="post" action="{% url 'preop-new' %}" class="d-inline m-0">
+                {% csrf_token %}
+                <input type="hidden" name="case" value="{{ p.case.pk }}">
+                <input type="hidden" name="sync" value="1">
+                <button type="submit" class="btn btn-link btn-sm p-0 small align-baseline text-decoration-none" title="ქეისიდან ახალი ანატომიური/ჰემოდინამიკური მონაცემების უსაფრთხო განახლება">↻ ქეისიდან განახლება</button>
+            </form>
         </div>
         {% endif %}
     </div>

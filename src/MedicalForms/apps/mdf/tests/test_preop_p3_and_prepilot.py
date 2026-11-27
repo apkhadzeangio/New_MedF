@@ -531,7 +531,7 @@ class PreopPrePilotRefinementAndSimulationTests(PrivateMediaTest):
             proposal='მარჯვენა კაროტიდული ენდარტერექტომია (CEA)',
             created_by=self.user,
         )
-        r_create = self.client.get(reverse('preop-new') + f'?case={case.pk}')
+        r_create = self.client.post(reverse('preop-new'), {'case': case.pk})
         p = PreopPatient.objects.get(case=case)
         self.assertEqual(r_create.status_code, 302)
         self.assertEqual((p.op_subtype, p.side), ('cea_symp', 'R'))

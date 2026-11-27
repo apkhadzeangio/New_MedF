@@ -169,28 +169,35 @@ class PreopPatient(models.Model):
 
     @property
     def diagnosis_text(self):
-        from ..preop.utils import _int
+        from ..preop.utils import _int, is_symp_cea_patient
         s = self.studies if isinstance(self.studies, dict) else {}
         q = self.questionnaire if isinstance(self.questionnaire, dict) else {}
+        side_s = self.side if isinstance(self.side, str) else ''
         if self.pathway == self.Pathway.CEA:
-            side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა '}.get(self.side, '')
-            symp_word = 'სიმპტომური ' if self.op_subtype == self.OpSubtype.CEA_SYMP else ''
-            raw_pct = s.get('carotid_r') if self.side == 'R' else (
-                s.get('carotid_l') if self.side == 'L' else (s.get('carotid_r') or s.get('carotid_l'))
+            side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა '}.get(side_s, '')
+            is_symp = is_symp_cea_patient(self, q=q, s=s, require_filled=False)
+            symp_word = 'სიმპტომური ' if is_symp else ''
+            raw_pct = s.get('carotid_r') if side_s == 'R' else (
+                s.get('carotid_l') if side_s == 'L' else (s.get('carotid_r') or s.get('carotid_l'))
             )
             pct = _int(raw_pct, 0, 100)
             pct_str = f' ({pct}%)' if pct is not None else ''
             return f'{side_word}შიგნითა საძილე არტერიის {symp_word}სტენოზი{pct_str}'
+        clti_symp = bool(
+            q.get('abf_rest_pain') or q.get('abf_ulcer')
+            or q.get('ulcer_chips') or q.get('abf_wet_infection')
+        )
         if self.pathway == self.Pathway.ABF:
-            stage = 'კრიტიკული იშემია (CLTI)' if self.op_subtype == self.OpSubtype.ABF_CLTI else 'ხანგამოშვებითი კოჭლობა'
+            is_clti = self.op_subtype == self.OpSubtype.ABF_CLTI or clti_symp
+            stage = 'კრიტიკული იშემია (CLTI)' if is_clti else 'ხანგამოშვებითი კოჭლობა'
             return f'აორტო-ილიაკური ოკლუზიური დაავადება (ლერიშის სინდრომი), {stage}'
         if self.pathway in (self.Pathway.PAD_BYPASS, self.Pathway.PAD_PTA):
-            side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა ', 'B': 'ორმხრივი '}.get(self.side, '')
-            is_clti = self.op_subtype in (self.OpSubtype.BYPASS_CLTI, self.OpSubtype.PTA_CLTI)
+            side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა ', 'B': 'ორმხრივი '}.get(side_s, '')
+            is_clti = self.op_subtype in (self.OpSubtype.BYPASS_CLTI, self.OpSubtype.PTA_CLTI) or clti_symp
             stage = 'კრიტიკული იშემია (CLTI)' if is_clti else 'ხანგამოშვებითი კოჭლობა'
             return f'{side_word}ქვემო კიდურის არტერიების მაობლიტერირებელი ათეროსკლეროზი, {stage}'
         if self.pathway == self.Pathway.VENOUS:
-            side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა ', 'B': 'ორმხრივი '}.get(self.side, '')
+            side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა ', 'B': 'ორმხრივი '}.get(side_s, '')
             ceap = q.get('ven_ceap') or ''
             ceap_str = f' (CEAP {ceap})' if ceap else ''
             return f'{side_word}ქვემო კიდურების ვენების ვარიკოზული დაავადება{ceap_str}'

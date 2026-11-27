@@ -2,17 +2,51 @@
 from ..constants import CXR_LABELS, ECG_LABELS, PRIORITY_LABELS, STATUS_LABELS
 
 
-def _result_clinical_part(ctx):
-    base_op_lbl = ctx.patient.planned_operation_label
-    eff_op_lbl = (
-        base_op_lbl.replace('ასიმპტომური', 'სიმპტომური')
-        if (ctx.pathway == 'cea' and ctx.is_symp_cea and 'ასიმპტომური' in base_op_lbl)
-        else base_op_lbl
-    )
+def _effective_operation_label(ctx):
+    eff_op_lbl = ctx.patient.planned_operation_label
+    if ctx.pathway == 'cea':
+        if ctx.is_symp_cea and 'ასიმპტომური' in eff_op_lbl:
+            return eff_op_lbl.replace('ასიმპტომური', 'სიმპტომური')
+        if not ctx.is_symp_cea and 'სიმპტომური' in eff_op_lbl:
+            return eff_op_lbl.replace('სიმპტომური', 'ასიმპტომური (>180 დღე)')
+    elif ctx.pathway in ('abf', 'pad_bypass', 'pad_pta') and ctx.is_clti_any:
+        return eff_op_lbl.replace('ლერიშის სინდრომი', 'კრიტიკული იშემია (CLTI)').replace('კოჭლობა', 'CLTI')
+    return eff_op_lbl
+
+
+def _result_anesth_dos_part(ctx):
     return {
+        'auto_asa': ctx.auto_asa,
+        'asa_roman': ctx.asa_roman,
+        'effective_asa': ctx.effective_asa,
+        'mallampati_label': ctx.mallampati_label,
+        'difficult_airway_alert': ctx.difficult_airway_alert,
+        'stop_bang_auto': ctx.stop_bang_auto,
+        'effective_stop_bang': ctx.effective_stop_bang,
+        'stop_bang_label': ctx.stop_bang_label,
+        'effective_anesth_label': ctx.effective_anesth_label,
+        'anesth_lines_txt': ctx.anesth_lines_txt,
+        'cied_plan_label': ctx.cied_plan_label,
+        'needs_icu_bed': ctx.needs_icu_bed,
+        'is_self_filled': getattr(ctx, 'is_self_filled', False),
+        'has_glp1_any': getattr(ctx, 'has_glp1_any', False),
+        'fasting_instruction': ctx.fasting_instruction,
+        'surveillance_plan': ctx.surveillance_plan,
+        'dos_checks': ctx.dos_checks,
+        'dos_warnings': ctx.dos_warnings,
+        'dos_hold_danger': ctx.dos_hold_danger,
+        'dos_done_count': ctx.dos_done_count,
+        'dos_total_count': ctx.dos_total_count,
+        'dos_ready': ctx.dos_ready,
+        'dos_gl_mmol': ctx.dos_gl,
+    }
+
+
+def _result_clinical_part(ctx):
+    res = {
         'pathway': ctx.pathway,
         'pathway_short': ctx.pw_short,
-        'effective_operation_label': eff_op_lbl,
+        'effective_operation_label': _effective_operation_label(ctx),
         'side_badge': ctx.side_badge,
         'rcri': ctx.rcri,
         'vsg_cri': ctx.vsg_cri,
@@ -30,6 +64,11 @@ def _result_clinical_part(ctx):
         'anesthetic_brief': ctx.anesthetic_brief,
         'passport_cautions': ctx.passport_cautions,
         'neuraxial_hard_blocked': ctx.neuraxial_hard_blocked,
+        'solo_neuraxial_anatomic_mismatch': ctx.solo_neuraxial_anatomic_mismatch,
+        'eff_pregnant': getattr(ctx, 'eff_pregnant', False),
+        'is_clti_any': ctx.is_clti_any,
+        'is_evla_warfarin_only': getattr(ctx, 'is_evla_warfarin_only', False),
+        'hb_unit_ambiguous': getattr(ctx, 'hb_unit_ambiguous', False),
         'eff_allergy_latex': ('latex_chlorhex' in ctx.allergy_chips),
         'eff_allergy_iodine': ctx.eff_allergy_iodine,
         'has_vancomycin_allergy': getattr(ctx, 'has_vancomycin_allergy', False),
@@ -77,30 +116,9 @@ def _result_clinical_part(ctx):
         'planned_surgery_short': ctx.planned_surgery_short,
         'operated_date_ka': ctx.operated_date_ka,
         'allergy_summary': ctx.allergy_summary,
-        'auto_asa': ctx.auto_asa,
-        'asa_roman': ctx.asa_roman,
-        'effective_asa': ctx.effective_asa,
-        'mallampati_label': ctx.mallampati_label,
-        'difficult_airway_alert': ctx.difficult_airway_alert,
-        'stop_bang_auto': ctx.stop_bang_auto,
-        'effective_stop_bang': ctx.effective_stop_bang,
-        'stop_bang_label': ctx.stop_bang_label,
-        'effective_anesth_label': ctx.effective_anesth_label,
-        'anesth_lines_txt': ctx.anesth_lines_txt,
-        'cied_plan_label': ctx.cied_plan_label,
-        'needs_icu_bed': ctx.needs_icu_bed,
-        'is_self_filled': getattr(ctx, 'is_self_filled', False),
-        'has_glp1_any': getattr(ctx, 'has_glp1_any', False),
-        'fasting_instruction': ctx.fasting_instruction,
-        'surveillance_plan': ctx.surveillance_plan,
-        'dos_checks': ctx.dos_checks,
-        'dos_warnings': ctx.dos_warnings,
-        'dos_hold_danger': ctx.dos_hold_danger,
-        'dos_done_count': ctx.dos_done_count,
-        'dos_total_count': ctx.dos_total_count,
-        'dos_ready': ctx.dos_ready,
-        'dos_gl_mmol': ctx.dos_gl,
     }
+    res.update(_result_anesth_dos_part(ctx))
+    return res
 
 
 def _result_flags_and_needs_part(ctx):
@@ -112,18 +130,22 @@ def _result_flags_and_needs_part(ctx):
         if (ctx.ecg == 'afib_controlled' and hr_eff is not None and hr_eff > hr_hi)
         else ECG_LABELS.get(ctx.ecg, ctx.ecg)
     )
+    has_bad_med = any(r.get('contraindicated') or r.get('unstructured') for r in (ctx.med_schedule or ()))
     return {
         'status': ctx.status,
         'status_label': STATUS_LABELS[ctx.status],
+        'all_tasks_done': ctx.all_tasks_done,
         'workup_ready': bool(
             ctx.q_filled
-            and (ctx.patient.approved_at or ctx.all_tasks_done)
+            and ctx.all_tasks_done
             and not ctx.has_hard_contraindication
             and not ctx.dos_hold_danger
             and not ctx.neuraxial_hard_blocked
             and not ctx.solo_neuraxial_anatomic_mismatch
             and not ctx.has_unacked_red
             and not ctx.has_blocking_unknown_state
+            and not getattr(ctx, 'has_elapsed_hold_window', False)
+            and not has_bad_med
             and not (ctx.needs_stale_labs and not ctx.s.get('stale_labs_refreshed'))
         ),
         'priority_tier': ctx.priority_tier,

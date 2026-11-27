@@ -118,11 +118,15 @@ def _med_call_status(ev, today):
         return {'needs_call': False, 'urgent_call': False, 'called_valid': False, 'outdated_call': False, 'drugs': []}
     s = ev['s']
     op_dt = _date(s.get('planned_surgery_date'))
-    hold_rows = [
+    dated_hold_rows = [
         r for r in ev['med_schedule']
         if r.get('hold_or_skip') and not r.get('reconcile_only') and not r.get('contraindicated') and not r.get('unstructured')
     ]
-    if not hold_rows:
+    reconcile_rows = [
+        r for r in ev['med_schedule']
+        if r.get('hold_or_skip') and r.get('reconcile_only') and not r.get('contraindicated') and not r.get('unstructured')
+    ]
+    if not dated_hold_rows and not reconcile_rows:
         return {'needs_call': False, 'urgent_call': False, 'called_valid': False, 'outdated_call': False, 'drugs': []}
 
     cur_sig = med_schedule_signature(ev)
@@ -132,17 +136,22 @@ def _med_call_status(ev, today):
     outdated_call = bool(called_at and called_sig != cur_sig)
 
     due_drugs = []
-    urgent_call = outdated_call
-    for row in hold_rows:
-        start_dt = _extract_hold_start_date(row, op_dt)
+    due_soon = False
+    for row in (dated_hold_rows or reconcile_rows):
         due_drugs.append(row['drug'])
+    for row in dated_hold_rows:
+        start_dt = _extract_hold_start_date(row, op_dt)
         if start_dt and (start_dt - today).days <= 2 and op_dt and op_dt >= today:
-            urgent_call = True
+            due_soon = True
+    urgent_call = (not called_valid) and (
+        outdated_call
+        or (bool(dated_hold_rows) and (due_soon or bool(op_dt and 0 <= (op_dt - today).days <= 7)))
+    )
     if not op_dt and ev['needs_med_hold']:
         urgent_call = False
     return {
         'needs_call': not called_valid,
-        'urgent_call': (not called_valid) and (urgent_call or bool(op_dt and 0 <= (op_dt - today).days <= 7)),
+        'urgent_call': urgent_call,
         'called_valid': called_valid,
         'outdated_call': outdated_call,
         'drugs': due_drugs[:3],
@@ -243,9 +252,13 @@ def _relative_op_label(op_dt, today):
 
 def _plain_procedure_ka(patient, ev):
     pw = ev['pathway']
-    if pw == 'cea' and ev.get('is_symp_cea'):
-        return PLAIN_SUBTYPE_KA['cea_symp']
-    return PLAIN_SUBTYPE_KA.get(patient.op_subtype, PLAIN_PATHWAY_KA.get(pw, patient.planned_operation_label))
+    sub = patient.op_subtype
+    if pw == 'cea':
+        return PLAIN_SUBTYPE_KA['cea_symp'] if ev.get('is_symp_cea') else PLAIN_SUBTYPE_KA['cea_asymp']
+    if ev.get('is_clti_any'):
+        clti_upgrade = {'abf_claud': 'abf_clti', 'bypass_claud': 'bypass_clti', 'pta_claud': 'pta_clti'}
+        sub = clti_upgrade.get(sub, sub)
+    return PLAIN_SUBTYPE_KA.get(sub, PLAIN_PATHWAY_KA.get(pw, patient.planned_operation_label))
 
 
 def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
@@ -276,13 +289,14 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
             ))
         )
         stale_pending = bool(ev.get('needs_stale_labs') and not ev['s'].get('stale_labs_refreshed'))
+        side_s = p.side if isinstance(p.side, str) else ''
 
         item = {
             'p': p,
             'ev': ev,
             'surgeon_name': person_name(p.surgeon),
             'procedure_ka': _plain_procedure_ka(p, ev),
-            'side_ka': PLAIN_SIDE_KA.get(p.side or '', ''),
+            'side_ka': PLAIN_SIDE_KA.get(side_s, ''),
             'op_date': op_dt,
             'op_label': _relative_op_label(op_dt, today),
             'days_to_op': days_to_op,

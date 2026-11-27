@@ -74,14 +74,30 @@ def is_creat_unit_mismatch(creat, creat_unit=''):
     return (creat_unit == 'mgdl' and raw > ren_u['ambig_hi']) or (creat_unit == 'umol' and raw < ren_u['ambig_lo'])
 
 
+def _clean_num(v):
+    if v is None:
+        return None
+    iv = int(round(v))
+    return iv if abs(v - iv) < 1e-9 else v
+
+
+def is_hb_unit_ambiguous(hb):
+    """Return True when raw hemoglobin falls in the ambiguous 22.1–39.9 g/dL vs g/L zone."""
+    v = _num(hb)
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    return v is not None and u['hb_gdl_hi'] < v < u['hb_ambig_hi']
+
+
 def _sat_scr_mgdl(creat, creat_unit=''):
-    """Return scr_mgdl for risk scoring, saturating extreme >3000 umol/L or explicit mgdl >35 to worst-case renal failure."""
+    """Return scr_mgdl for risk scoring, saturating extreme >3000 umol/L (never unit-mismatched mg/dL)."""
+    if is_creat_unit_mismatch(creat, creat_unit):
+        return None
     ren_u = rule_value('SCORE_RENAL_CKDEPI_CG')
     scr, ambig = _parse_scr_mgdl(creat, creat_unit)
     if scr is not None:
         return scr
     raw = _num(creat)
-    if raw is not None and ((raw > 3000 and not ambig) or (creat_unit == 'mgdl' and raw > ren_u['ambig_hi'])):
+    if raw is not None and raw > 3000 and not ambig and creat_unit != 'mgdl':
         return 3000.0 / ren_u['umol_factor']
     return None
 
@@ -162,11 +178,11 @@ def calc_bmi(weight_kg, height_cm):
 
 def normalize_hb_gl(hb):
     """Return hemoglobin in g/L using registered LAB_UNIT_AUTO_CONVERSION bounds."""
-    v = _num(hb, lo=1, hi=260)
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    v = _num(hb, lo=u['hb_gdl_lo'], hi=260)
     if v is None:
         return None
-    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
-    return round(v * 10, 1) if u['hb_gdl_lo'] <= v <= u['hb_gdl_hi'] else v
+    return _clean_num(round(v * 10, 1) if u['hb_gdl_lo'] <= v <= u['hb_gdl_hi'] else v)
 
 
 def normalize_glucose_mmol(gl):
@@ -174,7 +190,7 @@ def normalize_glucose_mmol(gl):
     v = _num(gl, lo=0.5, hi=1000)
     if v is None:
         return None
-    return round(v / 18.0, 2) if v > rule_value('GLY_UNIT_CONVERSION_MGDL') else v
+    return _clean_num(round(v / 18.0, 2) if v > rule_value('GLY_UNIT_CONVERSION_MGDL') else v)
 
 
 def normalize_albumin_gl(alb):
@@ -183,7 +199,7 @@ def normalize_albumin_gl(alb):
     if v is None:
         return None
     u = rule_value('LAB_UNIT_AUTO_CONVERSION')
-    return round(v * 10, 1) if u['alb_gdl_lo'] <= v <= u['alb_gdl_hi'] else v
+    return _clean_num(round(v * 10, 1) if u['alb_gdl_lo'] <= v <= u['alb_gdl_hi'] else v)
 
 
 def normalize_fibrinogen_gl(fib):
@@ -191,7 +207,7 @@ def normalize_fibrinogen_gl(fib):
     v = _num(fib, lo=0.15, hi=1500)
     if v is None:
         return None
-    return round(v / 100.0, 2) if v > rule_value('LAB_UNIT_AUTO_CONVERSION')['fib_mgdl_gt'] else v
+    return _clean_num(round(v / 100.0, 2) if v > rule_value('LAB_UNIT_AUTO_CONVERSION')['fib_mgdl_gt'] else v)
 
 
 def normalize_ldl_mmol(ldl):
@@ -199,7 +215,7 @@ def normalize_ldl_mmol(ldl):
     v = _num(ldl, lo=0.2, hi=500)
     if v is None:
         return None
-    return round(v / 38.67, 2) if v > rule_value('LAB_UNIT_AUTO_CONVERSION')['ldl_mgdl_gt'] else v
+    return _clean_num(round(v / 38.67, 2) if v > rule_value('LAB_UNIT_AUTO_CONVERSION')['ldl_mgdl_gt'] else v)
 
 
 def calc_max_contrast_ml(egfr, on_dialysis=False):
@@ -316,7 +332,10 @@ def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
     return pts
 
 
-def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_liver, compression_contra, cea_bleed_block=False):
+def _caprini_tier_and_advice(
+    pts, has_mech_valve, has_hit, severe_renal, severe_liver, compression_contra,
+    cea_bleed_block=False, eff_pregnant=False,
+):
     cap_cfg = rule_value('SCORE_CAPRINI_VTE')
     comp_sfx = '' if compression_contra else ' + კომპრესია'
     comp_low = ' (კომპრესია უკუნაჩვენებია არტერიული უკმარისობის გამო!)' if compression_contra else ' + ელასტიური კომპრესია'
@@ -335,6 +354,13 @@ def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_
                 advice = f'მექანიკური სარქველი + CrCl/eGFR <30: IV UFH ხიდი aPTT კონტროლით და უვადო VKA (DOAC აკრძალულია!){comp_sfx}'
             else:
                 advice = f'მექანიკური სარქველი: ვარფარინის (VKA) აღდგენა ± LMWH ხიდი კარდიოლოგის სქემით (DOAC აკრძალულია!){comp_sfx}'
+        elif eff_pregnant:
+            if has_hit:
+                advice = f'მექანიკური პროფილაქტიკა (IPC) / არაჰეპარინული სქემა მეან-გინეკოლოგთან და ჰემატოლოგთან (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!){comp_sfx}'
+            elif severe_renal:
+                advice = f'ფარმაკოლოგიური პროფილაქტიკა: კანქვეშა UFH ან anti-Xa კონტროლირებადი LMWH (ორსულობა + CrCl<30 — DOAC უკუნაჩვენებია!){comp_sfx}'
+            else:
+                advice = f'ფარმაკოლოგიური პროფილაქტიკა (მხოლოდ LMWH / UFH 7–10 დღე — ორსულობაზე DOAC უკუნაჩვენებია!){comp_sfx}'
         elif has_hit:
             if severe_renal:
                 advice = f'მექანიკური თრომბოპროფილაქტიკა (IPC) / სტაციონარული {hit_dtis} (HIT + CrCl/eGFR <30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!){comp_sfx}'
@@ -356,6 +382,11 @@ def _caprini_tier_and_advice(pts, has_mech_valve, has_hit, severe_renal, severe_
             advice = f'მექანიკური სარქველი + HIT: {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}'
         elif has_mech_valve:
             advice = f'ადრეული მობილიზაცია{comp_sfx} + უვადო ვარფარინის (VKA) რეჟიმი (DOAC აკრძალულია!)'
+        elif eff_pregnant:
+            if has_hit:
+                advice = f'ადრეული მობილიზაცია{comp_sfx} + IPC (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!)'
+            else:
+                advice = f'ადრეული მობილიზაცია{comp_sfx} ± LMWH / UFH მეან-გინეკოლოგის შეფასებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
         elif has_hit:
             if severe_renal:
                 advice = f'ადრეული მობილიზაცია{comp_sfx} + IPC (HIT + CrCl/eGFR <30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!)'
@@ -394,19 +425,23 @@ def calc_caprini(patient, q, bmi=None, today=None, eff_renal=None, liver_status=
         s_cur.get('brain_imaging') == 'large_or_hemorrhage'
         or (bool(q_d.get('cea_thrombolysis')) and (cea_d is None or cea_d <= rtpa_d))
     )
+    eff_preg = is_pregnancy_eligible(patient) and bool(q_d.get('pregnant_possible') or q_d.get('ven_pregnant'))
     tier, advice = _caprini_tier_and_advice(
         pts, 'mech_valve' in cad_set, has_hit, severe_renal, severe_liver, compression_contra,
-        cea_bleed_block=cea_bleed_block,
+        cea_bleed_block=cea_bleed_block, eff_pregnant=eff_preg,
     )
     return pts, tier, advice
 
 
 def _sat_hb_gl(raw):
+    if is_hb_unit_ambiguous(raw):
+        return None
     hb_gl = normalize_hb_gl(raw)
     if hb_gl is not None:
         return hb_gl
     v = _num(raw)
-    return 0.5 if (v is not None and v < 1) else None
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    return 0.5 if (v is not None and v < u['hb_gdl_lo']) else None
 
 
 def _sat_fib_gl(raw):

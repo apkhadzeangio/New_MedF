@@ -36,7 +36,7 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'questionnaire', 'mets_ok': '1', 'htn': '1', 'dm': '1',
             'med_aspirin': '1', 'med_clopidogrel': '1', 'med_doac': '1',
-            'med_warfarin': '1', 'sglt2': '1', 'glp1': '1',
+            'sglt2': '1', 'glp1': '1',
             'med_chips': ['statin', 'acei_arb'], 'weight_kg': '84', 'height_cm': '175',
             'aaa_mm': '58', 'cta_months': '1', 'cta_disc': '1',
         })
@@ -61,11 +61,18 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
         self.assertIn('10.12', sched['ასპირინი (75–100 მგ)']['date_plan'])
         self.assertIn('05.12-დან', sched['კლოპიდოგრელი / P2Y12']['date_plan'])
         self.assertIn('08.12-დან', sched['DOAC (ქსარელტო / ელიქვისი)']['date_plan'])
-        self.assertIn('05.12-დან', sched['ვარფარინი']['date_plan'])
-        self.assertIn('INR კონტროლი 09.12', sched['ვარფარინი']['date_plan'])
         self.assertIn('07.12-დან', sched['SGLT2 (ჯარდიანსი / ფორსიგა)']['date_plan'])
         self.assertIn('03.12-დან', sched['GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)']['date_plan'])
         self.assertIn('09.12 თხევადი დიეტა', sched['GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)']['date_plan'])
+
+        # Verify Warfarin calendar dates separately (without duplicate DOAC)
+        p_vka = PreopPatient(
+            patient_name=p.patient_name, age=p.age, sex=p.sex, pathway=p.pathway, op_subtype=p.op_subtype,
+            questionnaire={**p.questionnaire, 'med_doac': False, 'med_warfarin': True}, studies=dict(p.studies),
+        )
+        sched_vka = {m['drug']: m for m in evaluate(p_vka, today=datetime.date(2026, 12, 1))['med_schedule']}
+        self.assertIn('05.12-დან', sched_vka['ვარფარინი']['date_plan'])
+        self.assertIn('INR კონტროლი 09.12', sched_vka['ვარფარინი']['date_plan'])
 
         # Switching anesthesia_plan to neuraxial shifts DOAC hold to 72h (07.12) and Clopidogrel to 7d (03.12)
         self.client.post(reverse('preop-patient', args=[p.pk]), {

@@ -189,6 +189,26 @@ def is_symp_cea_patient(patient, q=None, today=None, s=None, require_filled=True
     )
 
 
+def has_prior_stroke_or_tia(patient, q=None, s=None):
+    """Return True for any lifelong prior stroke/TIA history (including CEA >180d, event chips, or brain imaging)."""
+    q_d = q if isinstance(q, dict) else (patient.questionnaire if (patient and isinstance(patient.questionnaire, dict)) else {})
+    s_d = s if isinstance(s, dict) else (patient.studies if (patient and isinstance(patient.studies, dict)) else {})
+    raw_ev_d = q_d.get('cea_days_since_event')
+    has_ev_days = raw_ev_d is not None and str(raw_ev_d).strip() != ''
+    return bool(
+        q_d.get('neuro')
+        or q_d.get('cea_symp_event')
+        or q_d.get('cea_crescendo')
+        or q_d.get('cea_disabling_stroke')
+        or q_d.get('cea_thrombolysis')
+        or bool(_str_list(q_d.get('cea_event_chips')))
+        or bool((q_d.get('cea_event_date') or '').strip())
+        or has_ev_days
+        or (patient is not None and patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP)
+        or s_d.get('brain_imaging') == 'large_or_hemorrhage'
+    )
+
+
 def target_prep_days(patient, today=None):
     """Pathway-specific preoperative workup target limit (days), reading canonical WF_PREP_TARGET_DAYS registry."""
     from .registry import rule_value

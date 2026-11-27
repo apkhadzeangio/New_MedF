@@ -54,11 +54,11 @@
                         <div class="po-q-main">
                             <span class="po-q-text">2. ბოლო 6 თვეში ნევროლოგიური სიმპტომი (ამავროზი / მეტყველება / სისუსტე)? <small class="text-muted">(ESVS 14-დღიანი ფანჯარა)</small></span>
                             <div class="yn-switch" data-toggle-sub="sub-cea-symp">
-                                <label><input type="radio" name="cea_symp_event" value="0" {% if not q.cea_symp_event and p.op_subtype != 'cea_symp' %}checked{% endif %}>არა</label>
-                                <label><input type="radio" name="cea_symp_event" value="1" {% if q.cea_symp_event or p.op_subtype == 'cea_symp' %}checked{% endif %}>კი</label>
+                                <label><input type="radio" name="cea_symp_event" value="0" {% if not q.cea_symp_event and p.op_subtype != 'cea_symp' and not q.cea_crescendo and not q.cea_thrombolysis and not q.cea_event_chips %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="cea_symp_event" value="1" {% if q.cea_symp_event or p.op_subtype == 'cea_symp' or q.cea_crescendo or q.cea_thrombolysis or q.cea_event_chips %}checked{% endif %}>კი</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-cea-symp" {% if not q.cea_symp_event and p.op_subtype != 'cea_symp' %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-cea-symp" {% if not q.cea_symp_event and p.op_subtype != 'cea_symp' and not q.cea_crescendo and not q.cea_thrombolysis and not q.cea_event_chips %}hidden{% endif %}>
                             <div class="d-flex flex-wrap align-items-center gap-2">
                                 <span class="small fw-semibold">ეპიზოდის თარიღი:</span>
                                 <input type="date" name="cea_event_date" value="{{ q.cea_event_date }}" class="form-control form-control-sm" style="width:152px">
@@ -342,7 +342,7 @@
                                 <label class="chip-check"><input type="checkbox" name="ven_recurrent" value="1" id="chk-ven-rec" {% if q.ven_recurrent %}checked{% endif %}>რეციდივი (წინა ჩარევა)</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-ven-rec" {% if not q.ven_recurrent %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-ven-rec" {% if not q.ven_recurrent and not q.ven_rec_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.ven_rec_chips %}
                                 <label class="chip-check"><input type="checkbox" name="ven_rec_chips" value="{{ ck }}" {% if ck in q.ven_rec_chips %}checked{% endif %}>{{ cl }}</label>
@@ -402,7 +402,7 @@
                                 <label><input type="radio" name="prev_abdo_surg" value="1" {% if q.prev_abdo_surg %}checked{% endif %}>კი</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-abdo" {% if not q.prev_abdo_surg %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-abdo" {% if not q.prev_abdo_surg and not q.abdo_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.abdo_chips %}
                                 <label class="chip-check"><input type="checkbox" name="abdo_chips" value="{{ ck }}" {% if ck in q.abdo_chips %}checked{% endif %}>{{ cl }}</label>
@@ -433,7 +433,7 @@
                                 <label><input type="radio" name="active_infection" value="1" {% if q.active_infection %}checked{% endif %}>კი</label>
                             </div>
                         </div>
-                        <div class="po-q-sub" id="sub-inf" {% if not q.active_infection %}hidden{% endif %}>
+                        <div class="po-q-sub" id="sub-inf" {% if not q.active_infection and not q.inf_chips %}hidden{% endif %}>
                             <div class="po-chip-row">
                                 {% for ck, cl in chips.inf_chips %}
                                 <label class="chip-check"><input type="checkbox" name="inf_chips" value="{{ ck }}" {% if ck in q.inf_chips %}checked{% endif %}>{{ cl }}</label>

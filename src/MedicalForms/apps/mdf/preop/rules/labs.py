@@ -77,10 +77,7 @@ def eval_vitals_bp(ctx):
     ctx.spo2_sat = spo2 if spo2 is not None else _sat_num(_s_raw(s, 'spo2'), 30, 100)
     eff_sys_si = eff_sys if eff_sys is not None else eff_sys_sat
     shock_index = round(ctx.hr_sat / eff_sys_si, 2) if (ctx.hr_sat is not None and eff_sys_si is not None and eff_sys_si > 0) else None
-    inv_htn_arms = [
-        (sv, dv) for sv, dv in inv_arms
-        if max(sv, dv) >= htn_cfg['red_sbp'] or max(sv, dv) >= htn_cfg['red_dbp']
-    ]
+    inv_htn_arms = [(sv, dv) for sv, dv in inv_arms if sv >= htn_cfg['red_sbp'] or dv >= htn_cfg['red_dbp']]
     valid_severe_htn = bool((eff_sys_sat is not None and eff_sys_sat >= htn_cfg['red_sbp']) or (eff_dia_sat is not None and eff_dia_sat >= htn_cfg['red_dbp']))
     severe_htn = bool(valid_severe_htn or inv_htn_arms)
     ctx.hr, ctx.spo2, ctx.shock_index, ctx.severe_htn = hr, spo2, shock_index, severe_htn
@@ -95,7 +92,7 @@ def eval_vitals_bp(ctx):
             )
         else:
             ctx.red_flags.append(f'მაღალი არტერიული წნევა ({disp_s}/{disp_d} mmHg >= 180/110) — საჭიროა კორექცია ოპერაციამდე.')
-    elif not severe_htn and pathway == PreopPatient.Pathway.CEA and eff_dia and eff_dia > htn_cfg['cea_dia_amber']:
+    elif pathway == PreopPatient.Pathway.CEA and eff_dia and eff_dia > htn_cfg['cea_dia_amber']:
         ctx.amber_flags.append(
             f'მომატებული არტერიული წნევა CEA-ზე ({eff_sys or "?"}/{eff_dia} mmHg; DBP > 90 mmHg — ESVS 2023 Class IIa/C) — '
             'ცერებრული ჰიპერპერფუზიისა და კისრის ჰემატომის პრევენციისთვის საჭიროა კორექცია ოპერაციამდე.'
@@ -156,35 +153,30 @@ def _eval_hr_spo2_mets(ctx, hr_cfg, hr, spo2):
 def _eval_early_neuraxial_gate(ctx):
     patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
     raw_s = getattr(ctx, 'raw_s', None) or {}
-    asra_cfg = rule_value('ASRA_NEURAXIAL_COAG_GATE')
-    ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    asra_cfg, ren_red = rule_value('ASRA_NEURAXIAL_COAG_GATE'), rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    shock_lim, vka_hold_d = rule_value('VIT_BP_HYPOTENSION_SHOCK')['shock_idx'], rule_value('MED_WARFARIN_HOLD_DAYS')['hold_days']
     open_aortic = (pathway == PreopPatient.Pathway.ABF) or (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
-    ctx.open_aortic = open_aortic
-    ctx.open_major = open_aortic or ctx.is_pad_bypass
+    ctx.open_aortic, ctx.open_major = open_aortic, open_aortic or ctx.is_pad_bypass
     plt, inr, dos_inr_early = _parse_plt(s.get('plt')), _num(s.get('inr'), lo=0.4, hi=20.0), _num(s.get('dos_inr'), lo=0.5, hi=15)
     ctx.inr_sat = inr if inr is not None else _sat_num(_s_raw(s, 'inr'), 0.4, 20.0)
     ctx.dos_inr_sat = dos_inr_early if dos_inr_early is not None else _sat_num(_s_raw(s, 'dos_inr'), 0.5, 15.0)
     raw_dos_inr = raw_s['dos_inr'] if 'dos_inr' in raw_s else s.get('dos_inr')
     dos_inr_present = raw_dos_inr is not None and str(raw_dos_inr).strip() != ''
-    eff_inr_nx = dos_inr_early if dos_inr_present else inr
-    fib = normalize_fibrinogen_gl(s.get('fibrinogen'))
+    eff_inr_nx, fib = (dos_inr_early if dos_inr_present else inr), normalize_fibrinogen_gl(s.get('fibrinogen'))
     on_oral_anticoag = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
     ctx.plt, ctx.inr, ctx.eff_inr_nx, ctx.fib, ctx.on_oral_anticoag = plt, inr, eff_inr_nx, fib, on_oral_anticoag
-
     has_acs_stent_early = ('stent_6_12m' in ctx.cad_chips) and ('mi' in ctx.cad_chips)
     p2y12_cnt_early = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
-    asa_allergy_solo_p2y12 = (
-        'nsaid' in ctx.allergy_chips and p2y12_cnt_early >= 1
-        and (not ctx.is_venous or bool(q.get('cad')) or bool(ctx.cad_chips) or bool(q.get('neuro')))
-    )
+    asa_allergy_solo_p2y12 = 'nsaid' in ctx.allergy_chips and p2y12_cnt_early >= 1 and (not ctx.is_venous or bool(q.get('cad')) or bool(ctx.cad_chips) or bool(q.get('neuro')))
     uninterrupted_p2y12_early = (p2y12_cnt_early >= 1) and (
         bool(q.get('recent_stent')) or has_acs_stent_early or asa_allergy_solo_p2y12 or (p2y12_cnt_early >= 2)
         or (ctx.is_pta and bool(q.get('med_clopidogrel') or q.get('med_ticagrelor')))
         or (ctx.is_symp_cea and bool(q.get('med_clopidogrel') or q.get('med_ticagrelor')))
     )
+    op_dt_nx = _date(s.get('planned_surgery_date'))
     prewashout_vka = bool(q.get('med_warfarin') and not dos_inr_present)
-    hard_nx_reasons = []
-    inv_in = s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {}
+    prewashout_vka_plan = bool(prewashout_vka and eff_inr_nx is not None and asra_cfg['inr_max'] < eff_inr_nx <= 4.5 and (op_dt_nx is None or op_dt_nx > ctx.today))
+    hard_nx_reasons, inv_in = [], (s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {})
     def _has_bad(k, parsed):
         rv = raw_s[k] if k in raw_s else s.get(k)
         return parsed is None and ((rv is not None and str(rv).strip() != '') or k in inv_in)
@@ -219,35 +211,24 @@ def _eval_early_neuraxial_gate(ctx):
         hard_nx_reasons.append('მძიმე სარქვლოვანი მანკი / AS — სპინალური ბლოკადა საშიშია!')
     if getattr(ctx, 'bp_inverted', False):
         hard_nx_reasons.append('არტერიული წნევის ინვერტირებული ჩანაწერი (SBP ≤ DBP) — გადამოწმებამდე დაბლოკილია!')
-    raw_sbp_low = any(
-        (v := _num(_s_raw(raw_s, k) if _s_raw(raw_s, k) is not None else _s_raw(s, k))) is not None
-        and (v < 30 or (ctx.eff_sys is None and v < asra_cfg['sbp_min']))
-        for k in ('bp_sys', 'bp_sys_l')
-    )
+    raw_sbp_low = any((v := _num(_s_raw(raw_s, k) if _s_raw(raw_s, k) is not None else _s_raw(s, k))) is not None and (v < 30 or (ctx.eff_sys is None and v < asra_cfg['sbp_min'])) for k in ('bp_sys', 'bp_sys_l'))
     raw_hr_v = _num(_s_raw(raw_s, 'hr') if _s_raw(raw_s, 'hr') is not None else _s_raw(s, 'hr'))
-    if (ctx.eff_sys is not None and ctx.eff_sys < asra_cfg['sbp_min']) or raw_sbp_low or (ctx.shock_index is not None and ctx.shock_index >= 1.0) or (raw_hr_v is not None and (raw_hr_v > 260 or raw_hr_v < 15)):
+    if (ctx.eff_sys is not None and ctx.eff_sys < asra_cfg['sbp_min']) or raw_sbp_low or (ctx.shock_index is not None and ctx.shock_index >= shock_lim) or (raw_hr_v is not None and (raw_hr_v > 260 or raw_hr_v < 15)):
         hard_nx_reasons.append('ჰიპოტენზია / შოკი (SBP <95 ან SI ≥1.0) — სიმპათექტომია საშიშია!')
-
-    solo_neuraxial_anatomic_mismatch = (ctx.anesth_plan_raw == 'neuraxial') and (
-        pathway == PreopPatient.Pathway.CEA or (open_aortic and 'epidural' not in ctx.anesth_lines_set)
-    )
+    solo_neuraxial_anatomic_mismatch = (ctx.anesth_plan_raw == 'neuraxial') and (pathway == PreopPatient.Pathway.CEA or (open_aortic and 'epidural' not in ctx.anesth_lines_set))
     if solo_neuraxial_anatomic_mismatch:
-        ctx.red_flags.append(
-            'არჩეულია მხოლოდ სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ღია აორტის ოპერაციაზე — ანატომიურად შეუსაბამოა! '
-            'შეარჩიეთ ზოგადი ენდოტრაქეული ანესთეზია (± ეპიდურული ანალგეზია ღია აორტაზე) ან კისრის წნულის ბლოკადა.'
-        )
-
-    # Do not let pre-washout baseline warfarin INR suppress auto-spinal hold intervals on phlebectomy
+        ctx.red_flags.append('არჩეულია მხოლოდ სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ღია აორტის ოპერაციაზე — ანატომიურად შეუსაბამოა! შეარჩიეთ ზოგადი ენდოტრაქეული ანესთეზია (± ეპიდურული ანალგეზია ღია აორტაზე) ან კისრის წნულის ბლოკადა.')
     auto_nx_blockers = [r for r in hard_nx_reasons if not (prewashout_vka and r.startswith('INR '))]
+    explicit_nx_blockers = [r for r in hard_nx_reasons if not (prewashout_vka_plan and r.startswith('INR '))]
     ctx.hard_nx_reasons, ctx.auto_nx_blockers = hard_nx_reasons, auto_nx_blockers
     ctx.solo_neuraxial_anatomic_mismatch = solo_neuraxial_anatomic_mismatch
     ctx.auto_spinal_candidate = (ctx.anesth_plan_raw == 'auto') and (ctx.is_phleb or patient.op_subtype == 'evar' or ctx.is_pad_bypass)
     ctx.has_neuraxial_plan = ctx.explicit_neuraxial or ((ctx.anesth_plan_raw == 'auto') and ctx.is_phleb and not auto_nx_blockers)
-    ctx.neuraxial_hard_blocked = bool(ctx.explicit_neuraxial and (hard_nx_reasons or solo_neuraxial_anatomic_mismatch))
+    ctx.neuraxial_hard_blocked = bool(ctx.explicit_neuraxial and (explicit_nx_blockers or solo_neuraxial_anatomic_mismatch))
     if ctx.neuraxial_hard_blocked and not solo_neuraxial_anatomic_mismatch:
-        ctx.red_flags.append(
-            f"არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია ({', '.join(hard_nx_reasons)}) — სპინალური ჰემატომის / ანაფილაქსიის უმაღლესი რისკი! შეცვალეთ ანესთეზიის გეგმა (ASRA 5th Ed)!"
-        )
+        ctx.red_flags.append(f"არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია ({', '.join(explicit_nx_blockers)}) — სპინალური ჰემატომის / ანაფილაქსიის უმაღლესი რისკი! შეცვალეთ ანესთეზიის გეგმა (ASRA 5th Ed)!")
+    elif ctx.explicit_neuraxial and prewashout_vka_plan and not solo_neuraxial_anatomic_mismatch:
+        ctx.amber_flags.append(f'ვარფარინის საბაზისო INR ({eff_inr_nx}) > 1.4 — ნეირაქსიული / ეპიდურული ბლოკადისთვის სავალდებულოა {vka_hold_d}-დღიანი შეჩერება და ოპერაციის დილას საკონტროლო INR ≤ 1.4 (ASRA 5th Ed)!')
 
 
 def eval_hematology_coag(ctx):
@@ -305,7 +286,7 @@ def eval_hematology_coag(ctx):
     if wbc is not None and (wbc > coag_cfg['wbc_hi'] or wbc < coag_cfg['wbc_lo']):
         ctx.red_flags.append(f'ლეიკოციტების ცვლილება (WBC {wbc} x10^9/L) — გამოირიცხოს მწვავე ინფექცია ჩარევამდე!')
 
-    plt_eff = plt if plt is not None else (_sat_num(_s_raw(s, 'plt'), 1, 2500) if _num(_s_raw(s, 'plt')) is not None else None)
+    plt_eff = plt
     if plt_eff is not None:
         if plt_eff < coag_cfg['plt_red']:
             spinal_note = ' (სპინალური/ეპიდურული ჰემატომისა და სისხლდენის რისკი!)' if ctx.has_neuraxial_plan else ''
@@ -323,6 +304,7 @@ def eval_hematology_coag(ctx):
     is_evla_vka_ctx = (
         ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
         and not ctx.has_neuraxial_plan and bool(q.get('med_warfarin'))
+        and not (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips)
     )
     evla_vka_ok = (
         is_evla_vka_ctx and eff_inr and eff_inr <= coag_cfg['inr_evla']
@@ -351,7 +333,7 @@ def eval_renal_electrolytes(ctx):
     max_contrast_ml = calc_max_contrast_ml(eff_renal, on_dialysis=on_dialysis) if uses_contrast else None
     co2_angio_advised = bool(uses_contrast and not on_dialysis and eff_ren_risk is not None and eff_ren_risk < ren_cfg['red'])
     needs_nephro_panel = on_dialysis or (eff_ren_risk is not None and eff_ren_risk < ren_cfg['nephro'])
-    needs_hydration = (not on_dialysis) and (eff_ren_risk is not None and eff_ren_risk < ren_cfg['hydration']) and uses_contrast
+    needs_hydration = (not on_dialysis) and (not ctx.is_rupture_suspect) and (eff_ren_risk is not None and eff_ren_risk < ren_cfg['hydration']) and uses_contrast
     ctx.na_val, ctx.na_val_sat, ctx.chf_hyd_flag, ctx.uses_contrast = na_val, na_eff, chf_hyd_flag, uses_contrast
     ctx.max_contrast_ml, ctx.co2_angio_advised = max_contrast_ml, co2_angio_advised
     ctx.needs_nephro_panel, ctx.needs_hydration = needs_nephro_panel, needs_hydration

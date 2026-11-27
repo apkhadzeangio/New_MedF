@@ -314,8 +314,8 @@ VASCULAR_RULES = (
         section='WIfI Ischaemia Grading Table & ALI differentiation + ადგილობრივი მხარის შეუსაბამობის გარდი',
         class_level='ადგილობრივი პროტოკოლი (WIfI Class I + ადგილობრივი მხარის 0.60/60/0.70 ზღვრები)',
         source_wording='ABI <0.40, toe pressure <30 mmHg, or TBI <0.30 defines severe limb-threatening ischaemia (WIfI Grade 3); clinic locally screens wrong-side hemodynamics using normal TP >=60 / TBI >=0.70 and contralateral ABI <0.60.',
-        value={'abi_severe': 0.4, 'tp_severe': 30, 'tbi_severe': 0.3, 'normal_tp': 60, 'normal_tbi': 0.70, 'wrong_side_contra_abi': 0.60},
-        value_label='ABI < 0.40 · TP < 30 mmHg · TBI < 0.30 · კონტრ. < 0.60',
+        value={'abi_severe': 0.4, 'tp_severe': 30, 'tbi_severe': 0.3, 'normal_tp': 60, 'normal_tbi': 0.70, 'wrong_side_contra_abi': 0.60, 'ali_wait_days': 1},
+        value_label='ABI < 0.40 · TP < 30 mmHg · TBI < 0.30 · კონტრ. < 0.60 · ALI <= 1 დღე',
         status=STATUS_LOCAL,
         match_patterns=('კრიტიკულად დაბალი გოჯ-მხრის ინდექსი', 'კრიტიკულად დაბალი Toe Pressure', 'მონკებერგის კალციფიკაციისა', 'მოსვენებითი ტკივილი ან წყლული (CLTI)', 'სიმპტომების ხანგრძლივობა < 2 კვირა', 'მწვავე კიდურის იშემია (ALI)', 'WIfI Stage 5'),
     ),
@@ -474,7 +474,7 @@ VASCULAR_RULES = (
         value={'abi_stop': 0.60, 'abi_red': 0.80, 'abi_border': 0.90, 'tp_stop': 30, 'tbi_stop': 0.30, 'tp_red': 50, 'tbi_red': 0.50, 'tp_comp_ok': 60, 'tbi_comp_ok': 0.70, 'abi_noncomp': 1.40},
         value_label='STOP: ABI <0.60 / TP <30 / TBI <0.30 · წითელი: ABI <0.80 / TP <50 / TBI <0.50',
         status=STATUS_LOCAL,
-        match_patterns=('მძიმე არტერიული იშემია (ABI', 'არტერიული უკმარისობა (ABI', 'სასაზღვრო გოჯ-მხრის ინდექსი', 'კრიტიკულად დაბალი თითის პერფუზია', 'კრიტიკულად დაბალი თითის წნევა', 'კრიტიკულად დაბალი თით-მხრის ინდექსი', 'დაბალი თითის წნევა (TP', 'დაბალი თით-მხრის ინდექსი (TBI', 'არაკომპრესირებადი ABI', 'არაკომპრესირებადი არტერია'),
+        match_patterns=('მძიმე არტერიული იშემია (ABI', 'არტერიული უკმარისობა (ABI', 'სასაზღვრო გოჯ-მხრის ინდექსი', 'კრიტიკულად დაბალი თითის პერფუზია', 'კრიტიკულად დაბალი თითის წნევა', 'კრიტიკულად დაბალი თით-მხრის ინდექსი', 'დაბალი თითის წნევა (TP', 'დაბალი თით-მხრის ინდექსი (TBI', 'სასაზღვრო თითის პერფუზია', 'არაკომპრესირებადი ABI', 'არაკომპრესირებადი არტერია'),
     ),
     RuleEntry(
         id='VEN_LIDOCAINE_MAX_DOSE',
@@ -526,6 +526,7 @@ VASCULAR_RULES = (
             'მაღალი თრომბოემბოლიური რისკი (Caprini',
             'მომატებული/საშუალო თრომბოემბოლიური რისკი (Caprini',
             'ჰორმონული/ესტროგენული პრეპარატი უკუნაჩვენებია',
+            'ჰორმონული პრეპარატი',
         ),
     ),
 )

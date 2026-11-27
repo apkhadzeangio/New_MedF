@@ -90,9 +90,11 @@ def build_self_fill_highlights(q):
         fb = _SF_CHIP_FALLBACKS.get(key)
         if q.get(key) or (fb and q.get(fb)):
             items.append((lvl, label))
-    if q.get('abdo_chips') and not q.get('prev_abdo_surg'):
+    if q.get('prev_abdo_surg') or q.get('abdo_chips'):
         items.append(('info', 'მუცლის/საზარდულის წინა ოპერაციები'))
-    if q.get('ven_rec_chips') and not q.get('ven_recurrent'):
+    if q.get('abf_prior_vasc') or q.get('vasc_chips'):
+        items.append(('info', 'წინა სისხლძარღვოვანი ჩარევა'))
+    if q.get('ven_recurrent') or q.get('ven_rec_chips'):
         items.append(('info', 'რეციდივული ვარიკოზი'))
 
     med_chips = set(_str_list(q.get('med_chips')))
@@ -184,9 +186,10 @@ def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
     return lines
 
 
-def _anam_abf(patient, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer_txt):
+def _anam_abf(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer_txt):
     lines = []
-    sub_lbl = 'კრიტიკული იშემიის — CLTI გამო' if patient.op_subtype == PreopPatient.OpSubtype.ABF_CLTI else 'ლერიშის სინდრომის / მძიმე კოჭლობის გამო'
+    is_clti = bool(ev.get('is_clti_any') or patient.op_subtype == PreopPatient.OpSubtype.ABF_CLTI)
+    sub_lbl = 'კრიტიკული იშემიის — CLTI გამო' if is_clti else 'ლერიშის სინდრომის / მძიმე კოჭლობის გამო'
     lines.append(f'{head_prefix}, დაგეგმილია აორტო-ბიფემორალური შუნტირება ({sub_lbl}){surgeon_str}.')
 
     claud_m_v = _int(q.get('abf_claud_m'), 0, 5000)
@@ -225,13 +228,13 @@ def _anam_abf(patient, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer
     return lines
 
 
-def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
+def _anam_pad(patient, ev, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
     from .registry import rule_value
     gsv_min = rule_value('PAD_GSV_MIN_MM')['gsv_min_mm']
     lines = []
     side_s = patient.side if isinstance(patient.side, str) else ''
     side_word = {'R': 'მარჯვენა ქვემო კიდურის ', 'L': 'მარცხენა ქვემო კიდურის ', 'B': 'ორმხრივი '}.get(side_s, '')
-    is_clti = patient.op_subtype in (PreopPatient.OpSubtype.BYPASS_CLTI, PreopPatient.OpSubtype.PTA_CLTI)
+    is_clti = bool(ev.get('is_clti_any') or patient.op_subtype in (PreopPatient.OpSubtype.BYPASS_CLTI, PreopPatient.OpSubtype.PTA_CLTI))
     ind_lbl = 'კრიტიკული იშემიის — CLTI გამო' if is_clti else 'ხანგამოშვებითი კოჭლობის გამო'
     op_name = 'პერიფერიული არტერიული შუნტირება' if pathway == PreopPatient.Pathway.PAD_BYPASS else 'პერიფერიული ანგიოპლასტიკა / სტენტირება (PTA)'
     lines.append(f'{head_prefix}, დაგეგმილია {side_word}{op_name} ({ind_lbl}){surgeon_str}.')
@@ -586,9 +589,9 @@ def generate_anamnesis(patient, ev=None):
     if pathway == PreopPatient.Pathway.CEA:
         lines = _anam_cea(patient, ev, q, s, head_prefix, surgeon_str)
     elif pathway == PreopPatient.Pathway.ABF:
-        lines = _anam_abf(patient, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer_txt)
+        lines = _anam_abf(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer_txt)
     elif pathway in (PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
-        lines = _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt)
+        lines = _anam_pad(patient, ev, pathway, q, s, head_prefix, surgeon_str, ulcer_txt)
     elif pathway == PreopPatient.Pathway.VENOUS:
         lines = _anam_venous(patient, ev, q, s, head_prefix, surgeon_str)
     else:

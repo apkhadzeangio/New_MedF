@@ -123,10 +123,6 @@ class PreopSelfFillView(generic.View):
             cur_nonce, staff_locked, submitted_once = self._self_fill_lock_state(patient, q_cur, s_cur, outcome)
             if staff_locked or submitted_once or s_cur.get('self_fill_revoked'):
                 return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?locked=1')
-            from .. import evaluate
-            from ..nurse_ui import med_schedule_signature
-
-            ev_before = evaluate(patient) if s_cur.get('med_hold_agreed') else None
             uf = ['questionnaire', 'studies', 'side', 'started_on', 'updated_at']
             age_posted = _int(request.POST.get('age'), lo=12, hi=120) if request.POST.get('age') else None
             if age_posted and not patient.age:
@@ -160,19 +156,9 @@ class PreopSelfFillView(generic.View):
                         patient.age = dob_age
                         if 'age' not in uf:
                             uf.append('age')
+            if s_mut.get('med_hold_agreed') or s_mut.get('med_hold_agreed_date'):
+                s_mut['med_hold_agreed'] = False
+                s_mut['med_hold_agreed_date'] = ''
             patient.studies = s_mut
-            if ev_before is not None:
-                ev_after = evaluate(patient)
-                if (
-                    med_schedule_signature(ev_before) != med_schedule_signature(ev_after)
-                    or ev_after['clearance_seal']['code'] == 'stop'
-                    or ev_after.get('has_hard_contraindication')
-                    or (
-                        ev_after['alerts_sig'] != ev_before['alerts_sig']
-                        and (ev_after.get('has_unacked_red') or ev_after.get('dos_hold_danger'))
-                    )
-                ):
-                    s_mut['med_hold_agreed'] = False
-                    patient.studies = s_mut
             patient.save(update_fields=uf)
         return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?done=1')

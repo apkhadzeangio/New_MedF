@@ -175,7 +175,8 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
                     f'AAA ({aaa_eff_w} მმ): დაგეგმილი ოპერაციის მოლოდინი {wait_to_op} დღეა (UK NVR / ESVS სამიზნე ≤8 კვირა / 56 დღე).'
                 )
         elif getattr(ctx, 'is_ali_acute', False):
-            if wait_to_op > 1:
+            ali_wait_lim = rule_value('PAD_CLTI_HEMO_THRESHOLDS')['ali_wait_days']
+            if wait_to_op > ali_wait_lim:
                 ctx.amber_flags.append(
                     f'მწვავე კიდურის იშემია (ALI): დაგეგმილი ოპერაცია ({ctx.planned_surgery_ka}) დაშორებულია {wait_to_op} დღით (>24 სთ) — სასწრაფო რევასკულარიზაციის აუცილებლობა, კიდურის დაკარგვის უმაღლესი რისკი!'
                 )
@@ -209,7 +210,10 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
             'სუფთა გამჭვირვალე წყალი დასაშვებია ოპერაციამდე 2 საათით ადრე (დილის დაშვებული წამლები — ყლუპი წყლით).'
         )
     ctx.surveillance_plan = build_surveillance_plan(patient)
+    ctx.allergy_summary = _build_allergy_summary(ctx, q, lido_alg)
 
+
+def _build_allergy_summary(ctx, q, lido_alg):
     allergy_bits = []
     if 'hit_heparin' in ctx.allergy_chips:
         allergy_bits.append('HIT — ჰეპარინი/LMWH აკრძალულია!')
@@ -235,7 +239,7 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
         allergy_bits.append(raw_alg_txt)
     elif not raw_alg_txt and (q.get('allergy_other') or ctx.unclarified_allergy_other) and not allergy_bits:
         allergy_bits.append('მედიკამენტური ალერგია (დასაზუსტებელია!)')
-    ctx.allergy_summary = '; '.join(allergy_bits)
+    return '; '.join(allergy_bits)
 
 
 def _build_dos_checks(ctx):
@@ -379,7 +383,9 @@ def _eval_dos_and_vqi(ctx):
     is_evla_warfarin_only = (
         ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
         and not ctx.has_neuraxial_plan and bool(q.get('med_warfarin'))
+        and not (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips)
     )
+    ctx.is_evla_warfarin_only = is_evla_warfarin_only
     inr_lim = dos_cfg['inr_evla'] if is_evla_warfarin_only else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
     inr_eff_dos = ctx.inr if ctx.inr is not None else getattr(ctx, 'inr_sat', None)
     dos_inr_eff = dos_inr if dos_inr is not None else getattr(ctx, 'dos_inr_sat', None)
@@ -398,7 +404,7 @@ def _eval_dos_and_vqi(ctx):
     ctx.dos_checks, ctx.dos_warnings, ctx.dos_gl = dos_checks, dos_warnings, dos_gl
     ctx.has_hard_contraindication = bool(ctx.hard_contraindications)
     ctx.dos_hold_danger = bool(dos_warnings)
-    if ctx.dos_hold_danger or ctx.has_hard_contraindication or ctx.solo_neuraxial_anatomic_mismatch:
+    if ctx.dos_hold_danger or ctx.has_hard_contraindication or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch:
         ctx.is_local_evla_fasting = False
         if ctx.has_glp1_any:
             ctx.fasting_instruction = 'STOP — ოპერაცია დაბლოკილია! 24-საათიანი თხევადი დიეტა და GLP-1 რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!'

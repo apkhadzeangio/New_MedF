@@ -118,6 +118,13 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
             'მიუთითეთ კრეატინინის ერთეული (µmol/L ან mg/dL) — ერთეულის გარეშე eGFR/CrCl ვერ ფასდება და GO ბეჭედი დაბლოკილია.',
             blocking=True,
         )
+    if getattr(ctx, 'hb_unit_ambiguous', False):
+        add(
+            'ambiguous_hb_unit', 's1', 'hb',
+            'ჰემოგლობინის ერთეული დაუზუსტებელია (22.1–39.9 შუალედი)',
+            'მიუთითეთ ჰემოგლობინი გ/ლ (მაგ. 130) ან გ/დლ (მაგ. 13.0) ფორმატში — დაზუსტებამდე GO ბეჭედი დაბლოკილია.',
+            blocking=True,
+        )
     has_any_lab = any(s.get(k) is not None for k in _LAB_KEYS)
     if has_any_lab:
         labs_dt = _date(s.get('labs_date'))

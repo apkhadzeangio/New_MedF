@@ -352,10 +352,15 @@ class Round9ClinicalEngineTests(SimpleTestCase):
         self.assertIn('5.5–10.0', ev_dm_aaa['anesthetic_brief']['glycemic_target'])
 
         # Combos A-S2-8: STOP-locked routine reconcile_only meds MUST NOT enter urgent_meds
-        p_stp = _go('evla', sex='F', age=30, q={'pregnant_possible': True, 'med_doac': True, 'glp1': True, 'ven_hormones': True})
+        p_stp = _go('evla', sex='F', age=65, q={'med_doac': True, 'glp1': True, 'ven_hormones': True}, s={'abi_r': 0.50})
         guide = nurse_plan.build_patient_plain_explanation(p_stp, evaluate(p_stp, today=TODAY), TODAY)
         self.assertTrue(guide['stop_locked'])
         self.assertEqual(guide['urgent_meds'], [])
+        # Pregnancy + DOAC IS genuinely contraindicated (Round-10 Combos A-S1-1) -> DOAC enters urgent_meds, glp1/hormones stay out
+        p_preg_stp = _go('evla', sex='F', age=30, q={'pregnant_possible': True, 'med_doac': True, 'glp1': True, 'ven_hormones': True})
+        guide_p = nurse_plan.build_patient_plain_explanation(p_preg_stp, evaluate(p_preg_stp, today=TODAY), TODAY)
+        self.assertTrue(guide_p['stop_locked'])
+        self.assertEqual([m['raw_drug'] for m in guide_p['urgent_meds']], ['DOAC (ქსარელტო / ელიქვისი)'])
 
         # Combos A-S2-9: Hb 22.1..39.9 emits explicit unit-clarification alert on server
         ev_hb23 = evaluate(_go('open', s={'hb': 23}), today=TODAY)

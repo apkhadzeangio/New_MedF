@@ -296,6 +296,22 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
         if new_pw != old_pw and new_pw in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
             s['carotid_symp'] = False
+        if old_pw == PreopPatient.Pathway.VENOUS and new_pw != PreopPatient.Pathway.VENOUS:
+            q_mig = merged_q(patient)
+            q_changed = False
+            if q_mig.get('ven_pregnant') and not q_mig.get('pregnant_possible'):
+                q_mig['pregnant_possible'] = True
+                q_changed = True
+            if q_mig.get('ven_lidocaine_allergy'):
+                ach = list(q_mig.get('allergy_chips') or [])
+                if 'lidocaine' not in ach:
+                    ach.append('lidocaine')
+                    q_mig['allergy_chips'] = ach
+                    q_mig['allergy_other'] = True
+                    q_changed = True
+            if q_changed:
+                patient.questionnaire = q_mig
+                uf.append('questionnaire')
 
         patient.studies = s
         if patient.someday_list == PreopPatient.SomedayList.READY and not can_enter_ready_queue(patient, evaluate(patient)):
@@ -441,6 +457,11 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         self._apply_dos_vqi_post(request.POST, s, today, dos_check_keys, form_present, dos_partial)
 
         if action == 'complete_and_board':
+            patient.studies = s
+            ev_cur = evaluate(patient)
+            if ev_cur.get('has_hard_contraindication') or ev_cur['clearance_seal']['code'] == 'stop' or ev_cur.get('dos_hold_danger'):
+                messages.error(request, 'STOP-სიგნალის ან ოპერაციის დილის კრიტიკული ბლოკირების ფონზე ოპერაციის დასრულება და დაფაზე გადაყვანა დაბლოკილია!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
             s['case_outcome_status'] = 'operated'
             if not s.get('operated_date'):
                 s['operated_date'] = today.isoformat()
@@ -472,6 +493,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['med_hold_agreed'] = False
             s['med_hold_agreed_date'] = ''
             _invalidate_approval_if_needed(patient, uf)
+        out_st = s.get('case_outcome_status') or ''
+        if out_st.startswith('cancelled_') or out_st == 'deferred':
+            _invalidate_approval_if_needed(patient, uf)
         patient.studies = s
         patient.updated_by = request.user
         ev_after = evaluate(patient)
@@ -496,7 +520,6 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             request.user.is_superuser
             or request.user.is_staff
             or hasattr(request.user, 'profile')
-            or patient.surgeon_id is None
             or patient.surgeon_id == request.user.pk
         )
         if action in ('approve', 'unapprove') and not can_approve_signoff:
@@ -532,16 +555,18 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 or ev.get('dos_hold_danger')
                 or ev.get('neuraxial_hard_blocked')
                 or ev.get('has_blocking_unknown_state')
+                or ev.get('has_elapsed_hold_window')
+                or any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ()))
                 or (ev.get('needs_stale_labs') and not s.get('stale_labs_refreshed'))
             ):
-                messages.error(request, 'აბსოლუტური უკუჩვენების, STOP-სიგნალის, ხანდაზმული ანალიზების, ნეირაქსიული ბლოკირების ან შეუვსებელი კრიტიკული მონაცემის გამო დადასტურება დაბლოკილია!')
+                messages.error(request, 'აბსოლუტური უკუჩვენების, STOP-სიგნალის, ხანდაზმული ანალიზების, ნეირაქსიული/მედიკამენტური ბლოკირების ან შეუვსებელი კრიტიკული მონაცემის გამო დადასტურება დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
             s['alerts_ack_sig'] = ev['alerts_sig']
             if ev.get('red_flags'):
                 patient.alerts_ack_at = timezone.now()
                 patient.alerts_ack_by = request.user
                 uf.extend(['alerts_ack_at', 'alerts_ack_by'])
-            if request.POST.get('move_ready') == '1':
+            if request.POST.get('move_ready') == '1' and ev.get('all_tasks_done'):
                 _update_hold_pause(s, patient.someday_list, PreopPatient.SomedayList.READY, started_on=patient.started_on)
                 patient.someday_list = PreopPatient.SomedayList.READY
                 patient.visit_date = None
@@ -578,6 +603,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['self_fill_nonce'] = secrets.token_hex(4)
             s['self_fill_revoked'] = False
             s['self_fill_reopened'] = True
+            s['self_link_sent_at'] = ''
+            s['self_link_sent_via'] = ''
+            s['self_link_sent_by'] = ''
             messages.success(request, 'ახალი ერთჯერადი ბმული გენერირდა (წინა ბმული გაუქმდა).')
         patient.studies = s
         patient.updated_by = request.user

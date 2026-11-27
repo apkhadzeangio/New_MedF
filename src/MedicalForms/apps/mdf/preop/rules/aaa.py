@@ -92,7 +92,7 @@ def eval_aaa(ctx):
         msg = f'გახანგრძლივებული წინასაოპერაციო მომზადება: გავიდა {ctx.days} დღე (სამიზნე ლიმიტი: {ctx.t_days} დღე) — რუპტურის რისკი!'
         ctx.red_flags.append(msg)
         ctx.priority_flags.append(msg)
-    elif ctx.days in (5, 6) and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
+    elif max(1, ctx.t_days - 2) <= ctx.days < ctx.t_days and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
         ctx.amber_flags.append(f'მომზადების მე-{ctx.days} დღე ({ctx.t_days} დღიდან) — დააჩქარეთ დარჩენილი კვლევები.')
 
     cta_max_m, cta_large_m, cta_large_mm = rule_value('AAA_CTA_STALE_MONTHS')
@@ -111,7 +111,7 @@ def eval_aaa(ctx):
         ctx.amber_flags.append('თანმხლები თეძოს არტერიის ანევრიზმა CTA-ზე — დასაგეგმია შიგნითა თეძოს არტერიის (IIA) შენარჩუნება.')
     if s.get('aaa_renal_vein_anom'):
         ctx.amber_flags.append('CTA-ზე რეტროაორტული მარცხენა თირკმლის ვენა / ცხენისებრი თირკმელი — საყურადღებოა აორტის ყელის დისექციისა და კლამპირებისას!')
-    if q_filled and q.get('aaa_pedal_pulse') == 'reduced':
+    if q_filled and q.get('aaa_pedal_pulse') == 'reduced' and not getattr(ctx, 'is_rup_pre', False):
         ctx.needs_abi_check = True
         ctx.reflex_orders.append({
             'key': 'aaa_abi',

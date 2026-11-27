@@ -113,6 +113,9 @@ class PreopVignettesView(LoginRequiredMixin, generic.View):
         })
 
     def post(self, request):
+        if not (request.user.is_superuser or request.user.is_staff or hasattr(request.user, 'profile')):
+            messages.error(request, 'ვინიეტების დადასტურების უფლება აქვს მხოლოდ ექიმს!')
+            return HttpResponseRedirect(reverse('preop-vignettes'))
         vid = (request.POST.get('vignette_id') or '').strip()
         if vid not in VIGNETTES_BY_ID:
             messages.error(request, 'მითითებული ვინიეტა ვერ მოიძებნა.')

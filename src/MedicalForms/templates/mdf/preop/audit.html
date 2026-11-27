@@ -117,7 +117,7 @@
                 <div class="tw-row-main">
                     <div class="tw-row-top">
                         <span class="tw-pname">{{ p.patient_name }}</span>
-                        <span class="tw-mm">{{ p.planned_operation_label }}</span>
+                        <span class="tw-mm">{{ p.ev.effective_operation_label }}</span>
                         <span class="tw-mm">{{ p.ev.effective_asa }}</span>
                         {% if p.ev.operated_date_ka %}<span class="small text-muted">· ოპ: {{ p.ev.operated_date_ka }}</span>{% endif %}
                     </div>
@@ -158,7 +158,7 @@
                 <div class="tw-row-main">
                     <div class="tw-row-top">
                         <span class="tw-pname">{{ p.patient_name }}</span>
-                        <span class="tw-mm">{{ p.planned_operation_label }}</span>
+                        <span class="tw-mm">{{ p.ev.effective_operation_label }}</span>
                         {% if p.ev.key_badge %}<span class="tw-mm {% if p.ev.key_badge_urgent %}giant{% endif %}">{{ p.ev.key_badge }}</span>{% endif %}
                         <span class="small text-muted">· {{ p.cardiologist|default:"ლიკა ინჯია" }} → <strong>{{ p.get_cardio_decision_display }}</strong></span>
                     </div>

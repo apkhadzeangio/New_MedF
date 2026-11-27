@@ -6,6 +6,7 @@ from .utils import _date, _fmt_ka_date, is_self_filled_q
 _DRUG_PLAIN_PREFIX = {
     'SGLT2 (ჯარდიანსი / ფორსიგა)': 'შაქრის წამალი — ჯარდიანსი / ფორსიგა (SGLT2)',
     'DOAC (ქსარელტო / ელიქვისი)': 'სისხლის გამათხელებელი — ქსარელტო / ელიქვისი (DOAC)',
+    'ქსარელტო 2.5 მგ x2': 'სისხლის გამათხელებელი — რივაროქსაბანი (დაბალი დოზა)',
     'დაბიგატრანი (პრადაქსა)': 'სისხლის გამათხელებელი — პრადაქსა (დაბიგატრანი)',
     'ვარფარინი': 'სისხლის გამათხელებელი — ვარფარინი',
     'კლოპიდოგრელი / P2Y12': 'თრომბის საწინააღმდეგო — კლოპიდოგრელი (პლავიქსი)',
@@ -365,12 +366,20 @@ def _plain_undated_patient_med(item):
         return 'ოპერაციამდე 24 საათით ადრე დაგჭირდებათ მხოლოდ სუფთა თხევადი დიეტა; ზუსტ დღეს ექიმი შეგატყობინებთ თარიღის დანიშვნის შემდეგ.'
     if 'ვარფარინ' in raw_d:
         return 'ოპერაციის თარიღის დანიშვნის შემდეგ ექიმი მოგცემთ წამლის დროებით შეჩერების ზუსტ დღეს და გეტყვით, დაგჭირდებათ თუ არა დროებითი ნემსები.'
-    if 'DOAC' in raw_d or 'დაბიგატრან' in raw_d or 'რივაროქსაბან' in raw_d:
+    if 'DOAC' in raw_d or 'დაბიგატრან' in raw_d or 'რივაროქსაბან' in raw_d or 'ქსარელტო 2.5' in raw_d:
         return 'ოპერაციის თარიღის დანიშვნის შემდეგ ექიმი მოგცემთ წამლის დროებით შეჩერების ზუსტ დღეს თირკმლის ანალიზის მიხედვით — თვითნებურად არ შეწყვიტოთ!'
     if 'SGLT2' in raw_d:
         return 'ოპერაციამდე 3–4 დღით ადრე დროებით შესაჩერებელია — ზუსტ დღეს ექიმი შეგატყობინებთ თარიღის დანიშვნის შემდეგ.'
     if 'მეტფორმინ' in raw_d:
         return 'ოპერაციის დილას დროებით გამოსატოვებელია ან დასაზუსტებელია თირკმლის ანალიზის მიხედვით — ზუსტ წესს ექიმი გეტყვით.'
+    if 'ინსულინ' in raw_d:
+        return 'ოპერაციის წინა საღამოსა და დილის ინსულინის ზუსტ დოზას ექიმი/ენდოკრინოლოგი შეგითანხმებთ — თვითნებურად სრულად არ შეწყვიტოთ!'
+    if 'სტატინ' in raw_d:
+        return 'ამ წამლის მიღების წესი შეათანხმეთ ექიმთან ღვიძლის ანალიზის მიხედვით.'
+    if 'ACEi' in raw_d or 'პრილი' in raw_d:
+        return 'ოპერაციის დილას წნევის ამ წამლის მიღების ან გამოტოვების წესს ექიმი დაგიზუსტებთ.'
+    if 'ჰორმონ' in raw_d:
+        return 'ჰორმონული წამლის გამო ოპერაციის წინ თრომბის პრევენციის წესი შეათანხმეთ ექიმთან.'
     if item.get('hold_or_skip'):
         return 'ოპერაციის თარიღის დანიშვნის შემდეგ ექიმი მოგცემთ ამ წამლის დროებით შეჩერების ზუსტ დღეს — თვითნებურად არ შეწყვიტოთ!'
     if item.get('tone') == 'ok':
@@ -378,15 +387,18 @@ def _plain_undated_patient_med(item):
     return 'ამ წამლის მიღების ან დროებით შეჩერების წესი შეათანხმეთ მკურნალ ექიმთან — თვითნებურად არ შეწყვიტოთ!'
 
 
+_CLINICIAN_JARGON_TOKENS = (
+    'EHRA', 'PAUSE', 'CrCl', 'Multi-Society', 'ESAIC', 'ESVS', 'ESC', 'ASRA',
+    'D+1', 'LMWH', 'VKA', 'DKA', 'NPH', 'POISE-3', 'HFpEF', 'ULN', 'VTE შეფასება',
+)
+
+
 def _patient_2nd_person(entries):
     out = []
     for e in entries:
-        item = dict(e)
-        sp = item.get('spoken') or ''
-        if not (item.get('date_plan') or '').strip() and any(
-            k in sp for k in ('EHRA', 'PAUSE', 'CrCl', 'Multi-Society', 'ESAIC', 'ESVS', 'ESC', 'ASRA', 'D+1', 'LMWH', 'VKA')
-        ):
-            sp = _plain_undated_patient_med(item)
+        sp = e.get('spoken') or ''
+        if not (e.get('date_plan') or '').strip() and any(k in sp for k in _CLINICIAN_JARGON_TOKENS):
+            sp = _plain_undated_patient_med(e)
         sp = (
             sp.replace('არ შეწყვიტოს! მიიღოს', 'არ შეწყვიტოთ! მიიღეთ')
             .replace('ბოლო აბი მიიღოს:', 'ბოლო აბი მიიღეთ:')
@@ -397,9 +409,22 @@ def _patient_2nd_person(entries):
             .replace('LMWH', 'დროებითი ნემსი')
             .replace('D+1', 'ოპერაციის მეორე დღიდან')
             .replace('CrCl', 'თირკმლის მაჩვენებლით')
+            .replace('VTE შეფასება', 'თრომბის რისკის შეფასება ექიმთან')
+            .replace('ეუგლიკემიური DKA', 'სისხლში მჟავიანობის (კეტოაციდოზის)')
+            .replace('DKA', 'კეტოაციდოზის')
+            .replace('NPH', 'საშუალო ხანგრძლივობის ინსულინი')
+            .replace('POISE-3', 'ექიმის სქემით')
+            .replace('HFpEF', 'გულის სტაბილურ ფონზე')
+            .replace('ULN', 'ნორმის ზედა ზღვარზე')
         )
-        item['spoken'] = sp
-        out.append(item)
+        out.append({
+            'drug': e['drug'],
+            'raw_drug': e['raw_drug'],
+            'spoken': sp,
+            'tone': e['tone'],
+            'hold_or_skip': e['hold_or_skip'],
+            'urgent_contact': e['urgent_contact'],
+        })
     return out
 
 
@@ -427,7 +452,7 @@ def build_patient_plain_explanation(patient, ev, today):
         arrival_items.append('აუცილებლად წამოიღეთ კტ-ანგიოგრაფიის (CTA) დისკი და დასკვნა.')
     if pw == 'venous' and not ev.get('compression_contra'):
         arrival_items.append('თან იქონიეთ ექიმის შერჩეული კომპრესიული წინდა (თუ დანიშნულია).')
-    if q.get('pulm') or 'osa' in (q.get('pulm_chips') or []):
+    if q.get('pulm') or bool(q.get('pulm_chips')):
         arrival_items.append('წამოიღეთ თქვენი ყოველდღიური ინჰალატორი ან ძილის აპარატი (CPAP).')
 
     anesth_plan = s.get('anesthesia_plan') or 'auto'

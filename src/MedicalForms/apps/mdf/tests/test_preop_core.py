@@ -26,11 +26,11 @@ class PreopTests(PrivateMediaTest):
 
         # 1-click transfer from a Conference Case -> Someday "conf" list (no duplicate on second click)
         case = self.make_case(patient_name='ბერიძე გიორგი', age=69, sex='M', decision='EVAR')
-        r1 = self.client.get(reverse('preop-new'), {'case': case.pk})
+        r1 = self.client.post(reverse('preop-new'), {'case': case.pk})
         p = PreopPatient.objects.get(case=case)
         self.assertRedirects(r1, reverse('preop-patient', args=[p.pk]))
         self.assertEqual((p.op_subtype, p.someday_list), ('evar', 'conf'))
-        r2 = self.client.get(reverse('preop-new'), {'case': case.pk})
+        r2 = self.client.post(reverse('preop-new'), {'case': case.pk})
         self.assertEqual(PreopPatient.objects.filter(case=case).count(), 1)
         self.assertRedirects(r2, reverse('preop-patient', args=[p.pk]))
 
@@ -234,7 +234,7 @@ class PreopCeaAndAbfTests(PrivateMediaTest):
             diagnosis='მარჯვენა შიგნითა საძილე არტერიის სიმპტომური სტენოზი (TIA)',
             decision='კაროტიდული ენდარტერექტომია',
         )
-        r = self.client.get(reverse('preop-new'), {'case': case.pk})
+        r = self.client.post(reverse('preop-new'), {'case': case.pk})
         p = PreopPatient.objects.get(case=case)
         self.assertRedirects(r, reverse('preop-patient', args=[p.pk]))
         self.assertEqual((p.pathway, p.op_subtype, p.side), ('cea', 'cea_symp', 'R'))
@@ -330,7 +330,7 @@ class PreopCeaAndAbfTests(PrivateMediaTest):
             diagnosis='ლერიშის სინდრომი, ქვემო კიდურების კრიტიკული იშემია (CLTI)',
             decision='აორტო-ბიფემორალური შუნტირება',
         )
-        self.client.get(reverse('preop-new'), {'case': case.pk})
+        self.client.post(reverse('preop-new'), {'case': case.pk})
         p = PreopPatient.objects.get(case=case)
         self.assertEqual((p.pathway, p.op_subtype), ('abf', 'abf_clti'))
         self.assertEqual(evaluate(p)['target_days'], 7)
@@ -587,7 +587,7 @@ class PreopVenousTests(PrivateMediaTest):
             diagnosis='მარჯვენა ქვემო კიდურის ვენების ვარიკოზული დაავადება',
             decision='კომბინირებული ფლებექტომია',
         )
-        self.client.get(reverse('preop-new'), {'case': case.pk})
+        self.client.post(reverse('preop-new'), {'case': case.pk})
         p = PreopPatient.objects.get(case=case)
         self.assertEqual((p.pathway, p.op_subtype, p.side), ('venous', 'phlebectomy', 'R'))
 

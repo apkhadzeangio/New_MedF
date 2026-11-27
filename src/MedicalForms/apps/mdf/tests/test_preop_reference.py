@@ -349,8 +349,11 @@ class TrackA3FourBugFixesRegressionTests(TestCase):
         self.assertNotIn('dos_bhcg_negative', [c['key'] for c in evaluate(_pt(PreopPatient.OpSubtype.EVAR, age=60, sex='F', q={'filled': True}), today=REF_TODAY)['dos_checks']])
         self.assertNotIn('dos_bhcg_negative', [c['key'] for c in evaluate(_pt(PreopPatient.OpSubtype.EVAR, age=38, sex='M', q={'filled': True}), today=REF_TODAY)['dos_checks']])
 
-        # Self-fill auto-promotes sglt2/metformin -> dm=True and recent_stent -> cad=True
+        # Self-fill auto-promotes metformin -> dm=True and recent_stent -> cad=True (non-DM HFrEF/CKD SGLT2 does NOT fabricate dm=True)
         p_sf = _pt(PreopPatient.OpSubtype.BYPASS_CLTI, age=64, sex='M')
-        apply_self_fill_post({'sglt2': '1', 'recent_stent': '1'}, p_sf)
+        apply_self_fill_post({'metformin': '1', 'recent_stent': '1'}, p_sf)
         self.assertTrue(p_sf.questionnaire['dm'])
         self.assertTrue(p_sf.questionnaire['cad'])
+        p_sf_hf = _pt(PreopPatient.OpSubtype.BYPASS_CLTI, age=64, sex='M')
+        apply_self_fill_post({'sglt2': '1'}, p_sf_hf)
+        self.assertFalse(p_sf_hf.questionnaire.get('dm'))

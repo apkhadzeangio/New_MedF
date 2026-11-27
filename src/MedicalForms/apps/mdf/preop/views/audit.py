@@ -63,15 +63,21 @@ def _collect_audit_metrics(qs, today, active_inpatient_bp_ids, evaluate_fn):
                 if ev['vqi_bundle_done']:
                     m['vqi_statin_ap_count'] += 1
             if ev.get('is_symp_cea'):
+                from ..registry import rule_value
+
+                _, _, cea_max_d = rule_value('CEA_SYMP_WINDOW_DAYS')
+                cea_urg_d = rule_value('CEA_SYMP_WINDOW_DAYS')[0]
                 ev_dt = _date(q.get('cea_event_date'))
                 op_done_dt = _date(s.get('operated_date')) or _date(s.get('planned_surgery_date'))
                 symp_wait = (
                     (op_done_dt - ev_dt).days if (ev_dt and op_done_dt)
                     else ev.get('days_since_ev')
                 )
-                if symp_wait is not None and 0 <= symp_wait <= 180:
+                if q.get('cea_crescendo') and (symp_wait is None or symp_wait > cea_max_d or symp_wait < 0):
+                    symp_wait = 1
+                if symp_wait is not None and 0 <= symp_wait <= cea_max_d:
                     m['cea_symp_operated_total'] += 1
-                    if symp_wait <= 14:
+                    if symp_wait <= cea_urg_d:
                         m['cea_symp_within_14d_count'] += 1
             if ev['vqi_30d_status'] != 'pending':
                 m['vqi_30d_tracked_total'] += 1

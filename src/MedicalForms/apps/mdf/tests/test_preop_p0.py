@@ -305,8 +305,13 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
         self.assertTrue(ev_u['creat_unit_ambiguous'])
         self.assertIsNone(ev_u['egfr'])
         self.assertFalse(ev_u['s1_core_done'])
-        self.assertTrue(any('Hb 29 გ/ლ < 100' in rf for rf in ev_u['red_flags']))
+        self.assertTrue(ev_u['hb_unit_ambiguous'])
+        self.assertIsNone(ev_u['hb_gl'])
+        self.assertTrue(any('ჰემოგლობინის ერთეული' in f for f in ev_u['red_flags'] + ev_u['amber_flags']))
         self.assertTrue(any('კრიტიკული გლიკემია (გლუკოზა 34 მმოლ/ლ)' in rf for rf in ev_u['red_flags']))
+        p_u.studies['hb'] = 8.5
+        ev_anem = evaluate(p_u, today=today)
+        self.assertTrue(any('Hb 85 გ/ლ < 100' in rf for rf in ev_anem['red_flags']))
 
         # Clarifying creat_unit='mgdl' resolves ambiguity and computes severe renal failure eGFR (<15)
         self.client.post(reverse('preop-patient', args=[p_u.pk]), {
@@ -404,7 +409,7 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
         )
         ds.file.save('dop.pdf', ContentFile(b'%PDF-1.4 test'), save=True)
 
-        self.client.get(reverse('preop-new'), {'case': c_imp.pk})
+        self.client.post(reverse('preop-new'), {'case': c_imp.pk})
         p_imp = PreopPatient.objects.get(case=c_imp)
         self.assertEqual(p_imp.op_subtype, 'bypass_clti')
         q_imp = merged_q(p_imp)

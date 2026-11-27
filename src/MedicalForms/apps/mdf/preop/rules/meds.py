@@ -4,7 +4,7 @@ from ..calculators import _s_raw, _sat_num
 from ..constants import POST_ANTITHROMBOTIC_CHOICES
 from ..meds import build_med_schedule
 from ..registry import rule_value
-from ..utils import _date, is_pregnancy_eligible
+from ..utils import _date, has_prior_stroke_or_tia, is_pregnancy_eligible
 
 
 def _eval_allergies_and_cied(ctx):
@@ -102,7 +102,7 @@ def _eval_allergy_cied_and_med_hold(ctx):
         ctx.is_phleb and q.get('med_aspirin')
         and any('ასპირინი' in r.get('drug', '') and r.get('hold_or_skip') for r in ctx.med_schedule)
     )
-    has_red_or_contra_med = any(r.get('contraindicated') or r.get('tone') == 'red' for r in ctx.med_schedule)
+    has_red_or_contra_med = any(r.get('contraindicated') or r.get('tone') == 'red' or r.get('hold_or_skip') for r in ctx.med_schedule)
     ctx.needs_med_hold = (q_filled or has_crit_q_meds) and (
         clop_needs_hold or bool(q.get('med_ticagrelor') and not ctx.is_pta) or bool(q.get('med_prasugrel'))
         or bool(q.get('med_doac')) or bool(q.get('med_dabigatran')) or bool(q.get('med_warfarin'))
@@ -129,17 +129,12 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
     doac_low = rule_value('MED_DOAC_HOLD_INTERVALS')['crcl_low']
     dabi_low = rule_value('MED_DABIGATRAN_HOLD_INTERVALS')['crcl_low']
     eff_ren_c = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
-    lvef_early = _sat_num(_s_raw(s, 'lvef'), 5, 95)
-    bnp_early = _sat_num(_s_raw(s, 'nt_probnp'), 1, 100000)
+    lvef_early, bnp_early = _sat_num(_s_raw(s, 'lvef'), 5, 95), _sat_num(_s_raw(s, 'nt_probnp'), 1, 100000)
     hr_eff = getattr(ctx, 'hr_sat', ctx.hr)
     repro_preg = is_pregnancy_eligible(ctx.patient) and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
-    cea_bleed = bool(
-        ctx.pathway == PreopPatient.Pathway.CEA
-        and (s.get('brain_imaging') == 'large_or_hemorrhage' or getattr(ctx, 'active_thrombolysis_window', False))
-    )
+    cea_bleed = bool(ctx.pathway == PreopPatient.Pathway.CEA and (s.get('brain_imaging') == 'large_or_hemorrhage' or getattr(ctx, 'active_thrombolysis_window', False)))
     cilostazol_contra = bool(
-        cea_bleed
-        or ctx.chf_hyd_flag or (lvef_early is not None and lvef_early < cilo_cfg['lvef_min'])
+        cea_bleed or ctx.chf_hyd_flag or (lvef_early is not None and lvef_early < cilo_cfg['lvef_min'])
         or (bnp_early is not None and bnp_early >= cilo_cfg['bnp_max']) or ctx.on_dialysis
         or (eff_ren_c is not None and eff_ren_c <= cilo_min_crcl)
         or ((s.get('ecg') or 'pending') == 'ischemia_arrhythmia') or (hr_eff is not None and hr_eff > cilo_cfg['hr_max'])
@@ -147,50 +142,36 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
         or bool(q.get('recent_stent')) or ctx.has_acs_stent_12m or repro_preg
     )
     if 'cilostazol' in ctx.med_chips and cilostazol_contra:
-        ctx.red_flags.append(
-            'ცილოსტაზოლი უკუნაჩვენებია გულის უკმარისობის / LVEF <50% / CrCl ≤25 / ღვიძლის ≥3x / სტენტის / წყლულის / ტაქიარითმიის / სისხლჩაქცევის დროს (FDA Black Box / EMA) — შეათანხმეთ მოხსნა!'
-        )
+        ctx.red_flags.append('ცილოსტაზოლი უკუნაჩვენებია გულის უკმარისობის / LVEF <50% / CrCl ≤25 / ღვიძლის ≥3x / სტენტის / წყლულის / ტაქიარითმიის / სისხლჩაქცევის დროს (FDA Black Box / EMA) — შეათანხმეთ მოხსნა!')
     ven_dvt_set = set(q.get('ven_dvt_chips') or [])
     if q.get('ven_hormones') and (ctx.liver_3x or ('vte_recent_3m' in ven_dvt_set) or (s.get('ven_duplex_status') == 'acute_dvt')):
-        ctx.red_flags.append(
-            'ჰორმონული/ესტროგენული პრეპარატი უკუნაჩვენებია ღვიძლის მძიმე დისფუნქციის (≥3x ULN) ან ახალი/მწვავე VTE (<3 თვე / DVT) ფონზე — დაუყოვნებლივ შეათანხმეთ შეწყვეტა ექიმთან!'
-        )
+        ctx.red_flags.append('ჰორმონული/ესტროგენული პრეპარატი უკუნაჩვენებია ღვიძლის მძიმე დისფუნქციის (≥3x ULN) ან ახალი/მწვავე VTE (<3 თვე / DVT) ფონზე — დაუყოვნებლივ შეათანხმეთ შეწყვეტა ექიმთან!')
     if ctx.on_dialysis and q.get('med_dabigatran'):
-        ctx.red_flags.append(
-            'დაბიგატრანი (პრადაქსა) უკუნაჩვენებია პროგრამული დიალიზის ფონზე (EHRA 2021) — '
-            'სავალდებულოა შეჩერება, თრომბინის დროის (TT) კონტროლი და კარდიოლოგ/ნეფროლოგის კონსილიუმი!'
-        )
+        ctx.red_flags.append('დაბიგატრანი (პრადაქსა) უკუნაჩვენებია პროგრამული დიალიზის ფონზე (EHRA 2021) — სავალდებულოა შეჩერება, თრომბინის დროის (TT) კონტროლი და კარდიოლოგ/ნეფროლოგის კონსილიუმი!')
     elif eff_ren_c is not None and eff_ren_c < dabi_low and q.get('med_dabigatran'):
-        ctx.red_flags.append(
-            'დაბიგატრანი (პრადაქსა) CrCl <30 ფონზე უკუნაჩვენებია (EMA / EHRA 2021) — '
-            'სავალდებულოა შეჩერება ≥120 სთ, თრომბინის დროის (TT) კონტროლი და კარდიოლოგ/ნეფროლოგთან ჩანაცვლება!'
-        )
+        ctx.red_flags.append('დაბიგატრანი (პრადაქსა) CrCl <30 ფონზე უკუნაჩვენებია (EMA / EHRA 2021) — სავალდებულოა შეჩერება ≥120 სთ, თრომბინის დროის (TT) კონტროლი და კარდიოლოგ/ნეფროლოგთან ჩანაცვლება!')
     if ctx.on_dialysis and q.get('med_doac'):
-        ctx.red_flags.append(
-            'DOAC პროგრამული დიალიზის ფონზე — პრეპარატის აკუმულაციისა და სისხლდენის მაღალი რისკი (EHRA 2021): '
-            'სავალდებულოა ≥96–120 სთ შეჩერება, ანტი-Xa კონტროლი და ნეფროლოგ/ქირურგის კონსილიუმი!'
-        )
+        ctx.red_flags.append('DOAC პროგრამული დიალიზის ფონზე — პრეპარატის აკუმულაციისა და სისხლდენის მაღალი რისკი (EHRA 2021): სავალდებულოა ≥96–120 სთ შეჩერება, ანტი-Xa კონტროლი და ნეფროლოგ/ქირურგის კონსილიუმი!')
     elif eff_ren_c is not None and eff_ren_c < doac_low and q.get('med_doac'):
-        ctx.red_flags.append(
-            'DOAC (CrCl <30) ფონზე პრეპარატის აკუმულაციისა და სისხლდენის მაღალი რისკი (EHRA 2021): '
-            'სავალდებულოა ≥96 სთ შეჩერება, ნეირაქსიული ბლოკადის აკრძალვა და ნეფროლოგ/ქირურგის კონსილიუმი!'
-        )
+        ctx.red_flags.append('DOAC (CrCl <30) ფონზე პრეპარატის აკუმულაციისა და სისხლდენის მაღალი რისკი (EHRA 2021): სავალდებულოა ≥96 სთ შეჩერება, ნეირაქსიული ბლოკადის აკრძალვა და ნეფროლოგ/ქირურგის კონსილიუმი!')
     if 'rivaroxaban_2_5' in ctx.med_chips and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < voy_min_egfr)):
-        ctx.red_flags.append(
-            f'რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) უკუნაჩვენებია/საშიშია თირკმლის მძიმე უკმარისობისას (CrCl/eGFR <{voy_min_egfr} ან დიალიზი) — გადაამოწმეთ სქემა!'
-        )
+        ctx.red_flags.append(f'რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) უკუნაჩვენებია/საშიშია თირკმლის მძიმე უკმარისობისას (CrCl/eGFR <{voy_min_egfr} ან დიალიზი) — გადაამოწმეთ სქემა!')
     if 'rivaroxaban_2_5' in ctx.med_chips and 'nsaid' in ctx.allergy_chips:
-        ctx.red_flags.append(
-            'რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) მოითხოვს ასპირინთან კომბინაციას, მაგრამ პაციენტს აქვს ასპირინზე / აასს-ზე ალერგია — დაუყოვნებლივ შეცვალეთ სქემა ქირურგთან!'
-        )
+        ctx.red_flags.append('რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) მოითხოვს ასპირინთან კომბინაციას, მაგრამ პაციენტს აქვს ასპირინზე / აასს-ზე ალერგია — დაუყოვნებლივ შეცვალეთ სქემა ქირურგთან!')
+    if 'rivaroxaban_2_5' in ctx.med_chips and (q.get('ulcer_active_symp') or s.get('gastro_result') == 'acute_ulcer'):
+        ctx.red_flags.append('რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) აბსოლუტურად უკუნაჩვენებია აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის დროს — შეწყვიტეთ დაუყოვნებლივ და შეათანხმეთ ქირურგთან!')
+    if 'rivaroxaban_2_5' in ctx.med_chips and getattr(ctx, 'has_prior_stroke_tia', False):
+        ctx.red_flags.append('რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) უკუნაჩვენებია გადატანილი ინსულტის / TIA-ს ანამნეზში (ქალასშიდა სისხლდენის რისკი) — გადაამოწმეთ სქემის შეცვლა ქირურგთან!')
+    if repro_preg and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips):
+        ctx.red_flags.append('ორსულობის დროს DOAC / დაბიგატრანი / რივაროქსაბანი 2.5 მგ აბსოლუტურად უკუნაჩვენებია (პლაცენტური გადასვლა / ნაყოფის რისკი) — დაუყოვნებლივ შეცვალეთ LMWH/UFH-ით მეან-გინეკოლოგთან!')
+    if repro_preg and 'statin' in ctx.med_chips:
+        ctx.red_flags.append('ორსულობის დროს სტატინი უკუნაჩვენებია (ტერატოგენული რისკი) — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ექიმთან!')
+    if repro_preg and 'acei_arb' in ctx.med_chips:
+        ctx.red_flags.append('ორსულობის დროს ACEi / ARB (პრილი/სარტანი) აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!')
     if ctx.liver_3x and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips):
-        ctx.red_flags.append(
-            'ღვიძლის მძიმე დისფუნქცია (≥3x ULN) ანტიკოაგულანტის ფონზე: კოაგულოპათიის / Child-Pugh B–C დროს DOAC უკუნაჩვენებია (EHRA 2021) — გადაამოწმეთ სქემა!'
-        )
+        ctx.red_flags.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN) ანტიკოაგულანტის ფონზე: კოაგულოპათიის / Child-Pugh B–C დროს DOAC უკუნაჩვენებია (EHRA 2021) — გადაამოწმეთ სქემა!')
     if ctx.q_filled and ctx.has_afib and not ctx.has_full_oac:
-        ctx.amber_flags.append(
-            'ფიქსირდება მოციმციმე არითმია (AFib) პერორალური ანტიკოაგულაციის გარეშე — შეაფასეთ CHA2DS2-VA და ინსულტის პროფილაქტიკა კარდიოლოგთან!'
-        )
+        ctx.amber_flags.append('ფიქსირდება მოციმციმე არითმია (AFib) პერორალური ანტიკოაგულაციის გარეშე — შეაფასეთ CHA2DS2-VA და ინსულტის პროფილაქტიკა კარდიოლოგთან!')
 
 
 def _eval_antithrombotic_conflicts(ctx):
@@ -217,13 +198,21 @@ def _eval_antithrombotic_conflicts(ctx):
         + (1 if q.get('med_aspirin') else 0)
         + (1 if 'cilostazol' in ctx.med_chips else 0)
     )
+    has_prior_stroke_tia = bool(ctx.is_symp_cea or has_prior_stroke_or_tia(ctx.patient, q=q, s=s))
+    ctx.has_prior_stroke_tia = has_prior_stroke_tia
+    eff_preg_m = bool(getattr(ctx, 'eff_pregnant', False))
     eff_ren_c = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
     ctx.has_contra_oac = bool(
         oac_count >= 2
         or (has_mech_valve and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips))
+        or (eff_preg_m and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips))
         or (q.get('med_dabigatran') and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < dabi_low) or ctx.liver_3x))
         or (q.get('med_doac') and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < doac_low) or ctx.liver_3x))
-        or ('rivaroxaban_2_5' in ctx.med_chips and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < voy_min_egfr) or ctx.liver_3x or 'nsaid' in ctx.allergy_chips))
+        or ('rivaroxaban_2_5' in ctx.med_chips and (
+            ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < voy_min_egfr) or ctx.liver_3x
+            or 'nsaid' in ctx.allergy_chips or bool(q.get('ulcer_active_symp'))
+            or s.get('gastro_result') == 'acute_ulcer' or has_prior_stroke_tia
+        ))
     )
     ctx.has_mech_valve, ctx.has_acs_stent_12m, ctx.has_afib = has_mech_valve, has_acs_stent_12m, has_afib
     ctx.p2y12_count, ctx.has_full_oac = p2y12_count, ctx.on_oral_anticoag
@@ -254,12 +243,6 @@ def _eval_antithrombotic_conflicts(ctx):
             'პაციენტი იღებს პერორალურ ანტიკოაგულანტს (OAC / რივაროქსაბანი 2.5 მგ) ტიკაგრელორთან ან პრასუგრელთან ერთად (ESC Class III — სისხლდენის უმაღლესი რისკი)! '
             f'შეათანხმეთ დე-ესკალაცია {deesc_opt} კარდიოლოგთან!'
         )
-    has_prior_stroke_tia = bool(
-        q.get('neuro') or ctx.is_symp_cea or q.get('cea_symp_event') or q.get('cea_crescendo')
-        or q.get('cea_disabling_stroke') or q.get('cea_thrombolysis')
-        or s.get('brain_imaging') == 'large_or_hemorrhage'
-    )
-    ctx.has_prior_stroke_tia = has_prior_stroke_tia
     if q.get('med_prasugrel') and has_prior_stroke_tia:
         ctx.red_flags.append(
             'პრასუგრელი აბსოლუტურად უკუნაჩვენებია გადატანილი ინსულტის / TIA-ს ანამნეზში (FDA Boxed Warning — ქალასშიდა სისხლჩაქცევის რისკი)! '
@@ -335,8 +318,15 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
         ctx.red_flags.append(
             'პაციენტი მუდმივ პერორალურ ანტიკოაგულანტზეა (OAC) — პოსტოპ. მონო-ანტიაგრეგანტზე (SAPT) ჩამოქვეითება ანტიკოაგულაციის გარეშე საშიშია! შეარჩიეთ OAC + მონო-ანტიაგრეგანტი.'
         )
+        if getattr(ctx, 'has_contra_oac', False) and not ctx.has_mech_valve:
+            return f'უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულანტი + {oac_partner_lbl} კონსილიუმით!'
         return f'SAPT უკუნაჩვენებია OAC-ზე! შეცვალეთ: OAC + {oac_partner_lbl}'
     if (post_at_raw in ('voyager', 'dapt') and ctx.has_full_oac) or (post_at_raw == 'dapt' and 'rivaroxaban_2_5' in ctx.med_chips):
+        if getattr(ctx, 'has_contra_oac', False) and not ctx.has_mech_valve:
+            ctx.red_flags.append(
+                'არჩეულია პოსტოპ. VOYAGER / DAPT, მაგრამ მიმდინარე OAC უკუნაჩვენებია (თირკმლის/ღვიძლის/ორსულობის/დუბლირების გამო) — უკუნაჩვენები OAC არ განაახლოთ, შეარჩიეთ უსაფრთხო სქემა კონსილიუმით!'
+            )
+            return f'უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულანტი + {oac_partner_lbl} კონსილიუმით!'
         if 'rivaroxaban_2_5' in ctx.med_chips and not ctx.has_full_oac:
             ctx.red_flags.append(
                 'არჩეულია პოსტოპ. DAPT პაციენტთან, რომელიც იღებს რივაროქსაბან 2.5 მგ ×2-ს — სამმაგი თერაპიისა და რივაროქსაბანი 2.5 + ტიკაგრელორის სისხლდენის მაღალი რისკი (ESC Class III)! '
@@ -349,7 +339,7 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
         return f'არჩეული სქემა უკუნაჩვენებია OAC-ზე (სამმაგი თერაპია)! შეცვალეთ: OAC + {oac_partner_lbl}'
     if post_at_raw == 'voyager' and not voyager_safe:
         ctx.red_flags.append(
-            'პოსტოპ. VOYAGER PAD (რივაროქსაბანი 2.5 მგ ×2) უკუნაჩვენებია/საშიშია (დიალიზი, CrCl/eGFR უცნობი ან დაბალი, მექ. სარქველი, AFib, სტენტი/DAPT, ინსულტი, წყლული, ღვიძლის 3x ან ასპირინზე ალერგია) — შეარჩიეთ ალტერნატივა!'
+            'პოსტოპ. VOYAGER PAD (რივაროქსაბანი 2.5 მგ ×2) უკუნაჩვენებია/საშიშია (დიალიზი, CrCl/eGFR უცნობი ან დაბალი, მექ. სარქველი, AFib, სტენტი/DAPT, ინსულტი, წყლული, ორსულობა, ღვიძლის 3x ან ასპირინზე ალერგია) — შეარჩიეთ ალტერნატივა!'
         )
         if has_active_stent_dapt:
             if asa_allergy:
@@ -425,7 +415,8 @@ def _eval_postop_voyager(ctx):
         and not ctx.on_dialysis
         and not q.get('ulcer_active_symp')
         and (s.get('gastro_result') != 'acute_ulcer')
-        and not q.get('neuro')
+        and not getattr(ctx, 'has_prior_stroke_tia', False)
+        and not getattr(ctx, 'eff_pregnant', False)
         and not ctx.liver_3x
         and not ctx.has_full_oac
         and not ctx.has_mech_valve

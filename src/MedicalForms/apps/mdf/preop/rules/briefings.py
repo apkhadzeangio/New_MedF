@@ -196,17 +196,16 @@ def _eval_missing_s2_and_clearance_seal(ctx):
     }.get(side_s, 'აორტა / ცენტრალური' if pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF) else 'მხარე დასაზუსტებელია')
 
     stale_pending = bool(ctx.needs_stale_labs and not ctx.s.get('stale_labs_refreshed'))
-    if ctx.has_hard_contraindication or ctx.dos_hold_danger or ctx.solo_neuraxial_anatomic_mismatch:
+    if ctx.has_hard_contraindication or ctx.dos_hold_danger or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch:
         ctx.clearance_seal = {
             'code': 'stop', 'badge': 'STOP — დაშვება დაბლოკილია',
-            'detail': 'ფიქსირდება აბსოლუტური კლინიკური უკუჩვენება ან საოპერაციო დილის საშიში მაჩვენებელი!',
+            'detail': (
+                'არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია (ASRA 5th Ed) — შეცვალეთ გაუტკივარების მეთოდი!'
+                if (ctx.neuraxial_hard_blocked and not ctx.has_hard_contraindication and not ctx.dos_hold_danger)
+                else 'ფიქსირდება აბსოლუტური კლინიკური უკუჩვენება ან საოპერაციო დილის საშიში მაჩვენებელი!'
+            ),
         }
         _apply_stop_lock_to_med_schedule(ctx.med_schedule)
-    elif ctx.neuraxial_hard_blocked:
-        ctx.clearance_seal = {
-            'code': 'pending', 'badge': 'მომზადების პროცესში — ანესთეზიის გეგმა შესაცვლელია!',
-            'detail': 'არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია (ASRA 5th Ed) — შეცვალეთ გაუტკივარების მეთოდი.',
-        }
     elif is_self_filled and not q.get('nurse_verified'):
         ctx.clearance_seal = {
             'code': 'pending', 'badge': 'მომზადების პროცესში — სავალდებულოა ექთნის ვერიფიკაცია!',
@@ -415,7 +414,7 @@ def _build_surgical_brief(ctx):
     elif ctx.eff_allergy_iodine and not ctx.is_venous:
         contrast_plan = 'იოდზე ალერგია — სავალდებულო პრემედიკაცია (სტეროიდი + H1-ბლოკატორი) კონტრასტის გამოყენებისას!'
 
-    statin_tail = '' if ctx.liver_3x else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ — ESVS Class I)'
+    statin_tail = '' if (ctx.liver_3x or getattr(ctx, 'eff_pregnant', False)) else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ — ESVS Class I)'
     if ctx.is_pta:
         pause_oac_win = '~24 სთ-ში'
     elif has_hit:
@@ -555,7 +554,7 @@ def _build_anesthetic_disposition(ctx, sb_cfg, cb_cfg, ren_hyd):
     if not ctx.is_venous and (
         ctx.open_aortic
         or ((patient.op_subtype == 'evar' or ctx.is_pad_bypass) and mins_cv_risk)
-        or ctx.rcri['score'] >= 2
+        or ctx.rcri['score'] >= sb_cfg['mins_rcri']
         or (bnp_mins is not None and bnp_mins >= cb_cfg['bnp_amb'])
         or (ctn_mins is not None and ctn_mins >= cb_cfg['ctn_amb'])
     ):

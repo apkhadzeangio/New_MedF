@@ -194,7 +194,7 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
             diagnosis='ქვემო კიდურის კრიტიკული იშემია, მოსვენებითი ტკივილი',
             proposal='ბარძაყ-მუხლქვეშა აუტოვენური შუნტირება',
         )
-        self.client.get(reverse('preop-new'), {'case': c_byp.pk})
+        self.client.post(reverse('preop-new'), {'case': c_byp.pk})
         byp = PreopPatient.objects.get(case=c_byp)
         self.assertEqual((byp.pathway, byp.op_subtype), ('pad_bypass', 'bypass_clti'))
 
@@ -238,7 +238,7 @@ class PreopReflexZeroTextAndPeripheralTests(PrivateMediaTest):
             diagnosis='ქვემო კიდურის არტერიების ათეროსკლეროზი, კოჭლობა',
             proposal='ზედაპირული ბარძაყის არტერიის ბალონური ანგიოპლასტიკა და სტენტირება (PTA)',
         )
-        self.client.get(reverse('preop-new'), {'case': c_pta.pk})
+        self.client.post(reverse('preop-new'), {'case': c_pta.pk})
         pta = PreopPatient.objects.get(case=c_pta)
         self.assertEqual((pta.pathway, pta.op_subtype), ('pad_pta', 'pta_claud'))
 

@@ -5,6 +5,7 @@ from ...board import clean_text
 from ...models import PreopPatient
 from ..calculators import normalize_fibrinogen_gl, normalize_ldl_mmol
 from ..constants import CHIP_LABELS
+from ..registry import rule_value
 from ..utils import _date, _int, _num, chip_summary, cta_live_months_age
 
 _S1_NUM_FIELDS = (
@@ -17,7 +18,7 @@ _S1_NUM_FIELDS = (
     ('bp_sys_l', 30, 320), ('bp_dia_l', 20, 220),
     ('hr', 15, 260), ('spo2', 30, 100),
     ('weight_kg', 25, 260), ('height_cm', 100, 230),
-    ('hb', 1, 260), ('inr', 0.4, 20),
+    ('hb', 3.5, 260), ('inr', 0.4, 20),
     ('creat', 0.1, 3000), ('k', 1.0, 12.0), ('na', 95, 190),
     ('glucose', 0.5, 1000), ('hba1c', 3, 25),
     ('ferritin', 1, 5000), ('tsat', 1, 100),
@@ -159,7 +160,7 @@ def _parse_s1_numbers_and_dates(post, s, today):
             old_ld = s.get('labs_date') or ''
             s['labs_date'] = ld.isoformat()
             inv.pop('labs_date', None)
-            if s['labs_date'] != old_ld or (today - ld).days <= 14:
+            if s['labs_date'] != old_ld or (today - ld).days <= rule_value('INF_STALE_LABS_DAYS'):
                 s['stale_labs_refreshed'] = False
         else:
             s['labs_date'] = ''

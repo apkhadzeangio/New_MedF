@@ -452,7 +452,7 @@ class PreopStressFixesRound6HTTPTests(TestCase):
         self.assertFalse(p_sf.studies.get('med_hold_agreed'))
 
         # Combos S1-7: med-call clear invalidates approved_at & someday_list
-        p_cl = self._create('open', q={'med_doac': True})
+        p_cl = self._create('open', q={'med_doac': True}, s={'ppi_started': True})
         self.client.post(reverse('preop-patient', args=[p_cl.pk]), {'section': 'signoff', 'action': 'approve', 'move_ready': '1'})
         p_cl.refresh_from_db()
         self.assertIsNotNone(p_cl.approved_at)

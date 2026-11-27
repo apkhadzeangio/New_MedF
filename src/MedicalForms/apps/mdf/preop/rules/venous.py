@@ -113,6 +113,11 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
                 f'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT + მექ. სარქველი — ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!){arg_liv}'
                 if has_hit else 'ვარფარინი (VKA) კარდიოლოგის სქემით — DOAC აკრძალულია!'
             )
+        elif getattr(ctx, 'eff_pregnant', False):
+            vte_agents = (
+                'IPC / არაჰეპარინული სქემა მეან-გინეკოლოგთან და ჰემატოლოგთან (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!)'
+                if has_hit else 'LMWH / UFH მეან-გინეკოლოგთან შეთანხმებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
+            )
         elif has_hit:
             vte_agents = (
                 f'IPC / არგატრობანი-ბივალირუდინი — HIT + CrCl<30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!{arg_liv}'
@@ -206,6 +211,11 @@ def _eval_venous_arterial_and_vte(ctx, ceap):
                 f'არაკომპრესირებადი არტერია (ABI {max_abi_disp} > 1.40) — 2 კლასის კომპრესიული წინდის დანიშვნამდე '
                 f'სამიზნე კიდურზე სავალდებულოა Toe Pressure (≥{art_cfg["tp_comp_ok"]} mmHg) ან TBI (≥{art_cfg["tbi_comp_ok"]:.2f})!'
             )
+    elif not tp_is_stop and not ctx.compression_contra and ctx.tbi_reduced_comp:
+        ctx.amber_flags.append(
+            f'სასაზღვრო თითის პერფუზია (TP {ctx.min_tp if ctx.min_tp is not None else "—"} / TBI {ctx.min_tbi if ctx.min_tbi is not None else "—"}) — '
+            '2 კლასის ნაცვლად დასაშვებია მხოლოდ მსუბუქი I კლასის კომპრესია (<20 mmHg) ქირურგთან შეთანხმებით!'
+        )
     _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff)
 
 
@@ -346,13 +356,14 @@ def eval_cross_pathway_and_urgency(ctx):
                 ctx.hard_contraindications.append(preg_art_msg)
 
     if not ctx.is_venous and (bool(q.get('ven_lidocaine_allergy')) or 'lidocaine' in ctx.allergy_chips):
-        if (
-            ctx.is_pta or patient.op_subtype in ('evar', 'tbd')
-            or s.get('anesthesia_plan') in ('local', 'plexus', 'neuraxial')
-            or ('epidural' in ctx.anesth_lines_set)
-        ):
-            ctx.red_flags.append(
-                'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე — ადგილობრივი/წნულის/ნეირაქსიული ანესთეზია საშიშია! '
-                'სავალდებულოა ანესთეზიოლოგის ჩართვა და ალტერნატიული გაუტკივარების შეთანხმება.'
+        anesth_p = s.get('anesthesia_plan') or 'auto'
+        la_active_plan = (anesth_p in ('local', 'plexus')) or (ctx.is_pta and anesth_p == 'auto')
+        if la_active_plan or (patient.op_subtype in ('evar', 'tbd') and anesth_p == 'auto') or anesth_p == 'neuraxial' or ('epidural' in ctx.anesth_lines_set):
+            la_msg = (
+                'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე — ადგილობრივი/წნულის/ნეირაქსიული ანესთეზია საშიშია (ანაფილაქსიის რისკი)! '
+                'სავალდებულოა ანესთეზიოლოგის ჩართვა და ზოგად ანესთეზიაზე გადაყვანა.'
             )
+            ctx.red_flags.append(la_msg)
+            if la_active_plan:
+                ctx.hard_contraindications.append(la_msg)
     _eval_cross_pathway_urgency_flags(ctx, aaa_eff)

@@ -383,7 +383,7 @@ class Round8HttpBoardPassportAndUiTests(TestCase):
 
         case_s = Case.objects.create(doctor=self.doc, patient_name='SideSync', age=65, sex='M', side='L', diagnosis='ქვემო კიდურის ათეროსკლეროზი')
         p_ss = self._create('bypass_claud', case=case_s, side='', s={'dos_site_marked': True})
-        c_doc.get(reverse('preop-new') + f'?case={case_s.pk}&sync=1')
+        c_doc.post(reverse('preop-new'), {'case': case_s.pk, 'sync': '1'})
         p_ss.refresh_from_db()
         self.assertFalse(p_ss.studies.get('dos_site_marked'))
 

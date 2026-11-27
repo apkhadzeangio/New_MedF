@@ -112,6 +112,9 @@ class PreopRulesView(LoginRequiredMixin, generic.View):
         })
 
     def post(self, request):
+        if not (request.user.is_superuser or request.user.is_staff or hasattr(request.user, 'profile')):
+            messages.error(request, 'კლინიკური წესების ხელმოწერის უფლება აქვს მხოლოდ ექიმს!')
+            return HttpResponseRedirect(reverse('preop-rules'))
         rule_id = (request.POST.get('rule_id') or '').strip()
         if rule_id not in RULES_BY_ID:
             messages.error(request, 'მითითებული კლინიკური წესი რეესტრში ვერ მოიძებნა.')

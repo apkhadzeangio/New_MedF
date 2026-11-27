@@ -279,6 +279,8 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         arg_liv_t = ' (ღვიძლის ≥3x: არგატრობანი −75%!)' if ctx.liver_3x else ''
         if 'mech_valve' in ctx.cad_chips:
             vte_lbl = f'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT!){arg_liv_t}' if has_hit else 'ვარფარინი (VKA) — DOAC აკრძალულია!'
+        elif getattr(ctx, 'eff_pregnant', False):
+            vte_lbl = 'IPC / არაჰეპარინული სქემა (ორსულობა + HIT — DOAC და ჰეპარინი არა!)' if has_hit else 'LMWH / UFH (ორსულობაზე DOAC არა!)'
         elif has_hit:
             vte_lbl = f'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!){arg_liv_t}' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
         elif ven_severe_renal_t:
@@ -307,10 +309,12 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         tasks.append({'key': 'wound', 'label': w_lbl, 'done': bool(s.get('wound_care_done'))})
     if ctx.is_venous and not ctx.compression_contra:
         tbi_comp_ok = (not ctx.abi_non_compressible) or ctx.tbi_comp_safe or ctx.tbi_reduced_comp
-        comp_lbl = (
-            'მსუბუქი I კლასის კომპრესიული წინდის (<20 mmHg) შერჩევა (სასაზღვრო TP/TBI)'
-            if ctx.tbi_reduced_comp else '2 კლასის კომპრესიული წინდის / გეტრის ზომის შერჩევა'
-        )
+        if ctx.tbi_reduced_comp:
+            comp_lbl = 'მსუბუქი I კლასის კომპრესიული წინდის (<20 mmHg) შერჩევა (სასაზღვრო TP/TBI)'
+        elif ctx.abi_non_compressible and not ctx.tbi_comp_safe:
+            comp_lbl = 'კომპრესიამდე სავალდებულოა TP/TBI შეფასება (არაკომპრესირებადი ABI >1.40!)'
+        else:
+            comp_lbl = '2 კლასის კომპრესიული წინდის / გეტრის ზომის შერჩევა'
         tasks.append({'key': 'comp', 'label': comp_lbl, 'done': bool(s.get('compression_ready')) and tbi_comp_ok})
     if ctx.is_pta and ctx.q_filled:
         stent_p2y = getattr(ctx, 'stent_p2y12_lbl', ctx.alt_p2y12_lbl)

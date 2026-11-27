@@ -19,6 +19,7 @@ from ..calculators import (
     calc_crcl,
     calc_egfr,
     is_creat_unit_mismatch,
+    is_hb_unit_ambiguous,
     normalize_albumin_gl,
     normalize_glucose_mmol,
     normalize_hb_gl,
@@ -33,6 +34,8 @@ from ..utils import (
     _num,
     _resolve_pathway,
     cta_live_months_age,
+    has_prior_stroke_or_tia,
+    is_pregnancy_eligible,
     merged_q,
     merged_studies,
     prep_days_elapsed,
@@ -44,7 +47,7 @@ _IMPLAUSIBLE_SPEC = (
     ('bp_sys_l', 'SBP (L)', 30, 320), ('bp_dia_l', 'DBP (L)', 20, 220),
     ('hr', 'HR', 15, 260), ('spo2', 'SpO2', 30, 100),
     ('weight_kg', 'წონა', 25, 260), ('height_cm', 'სიმაღლე', 100, 230),
-    ('hb', 'Hb', 1, 260), ('inr', 'INR', 0.4, 20.0),
+    ('hb', 'Hb', 3.5, 260), ('inr', 'INR', 0.4, 20.0),
     ('k', 'K+', 1.0, 12.0), ('na', 'Na+', 95, 190),
     ('glucose', 'გლუკოზა', 0.5, 1000), ('hba1c', 'HbA1c', 3.0, 25.0),
     ('albumin', 'ალბუმინი', 0.5, 80), ('ldl', 'LDL', 0.2, 500),
@@ -217,9 +220,9 @@ def _init_limb_hemodynamics(ctx):
     abi_non_compressible = bool(nc_legs)
     if nc_legs:
         tbi_measured = all((leg_vals[lg]['tp'] is not None or leg_vals[lg]['tbi'] is not None) for lg in nc_legs)
-        tbi_comp_safe = all(
-            ((leg_vals[lg]['tp'] is not None and leg_vals[lg]['tp'] >= art_cfg['tp_comp_ok'])
-             or (leg_vals[lg]['tbi'] is not None and leg_vals[lg]['tbi'] >= art_cfg['tbi_comp_ok']))
+        tbi_comp_safe = tbi_measured and all(
+            (leg_vals[lg]['tp'] is None or leg_vals[lg]['tp'] >= art_cfg['tp_comp_ok'])
+            and (leg_vals[lg]['tbi'] is None or leg_vals[lg]['tbi'] >= art_cfg['tbi_comp_ok'])
             for lg in nc_legs
         )
     else:
@@ -231,7 +234,14 @@ def _init_limb_hemodynamics(ctx):
         or (min_tp_s is not None and min_tp_s < art_cfg['tp_red'])
         or (min_tbi_s is not None and min_tbi_s < art_cfg['tbi_red'])
     )
-    tbi_reduced_comp = bool(abi_non_compressible and tbi_measured and not compression_contra and not tbi_comp_safe)
+    any_border_tp_tbi = bool(
+        (min_tp_s is not None and art_cfg['tp_red'] <= min_tp_s < art_cfg['tp_comp_ok'])
+        or (min_tbi_s is not None and art_cfg['tbi_red'] <= min_tbi_s < art_cfg['tbi_comp_ok'])
+    )
+    tbi_reduced_comp = bool(
+        (not compression_contra)
+        and ((abi_non_compressible and tbi_measured and not tbi_comp_safe) or any_border_tp_tbi)
+    )
     cap_renal = None if ctx.creat_unit_mismatch else ctx.eff_renal_sat
     caprini_score, caprini_tier, caprini_advice = calc_caprini(
         patient, q, ctx.bmi_sat, today=ctx.today, eff_renal=cap_renal,
@@ -254,13 +264,13 @@ def _init_limb_hemodynamics(ctx):
 def _init_base_flags_and_pre_reflex(ctx):
     from ..calculators import _inverted_bp_arms, _sat_num, _valid_bilateral_sbp
     from ..meds_freetext import _has_unrecognized_allergy_clause
-    from ..utils import is_symp_cea_patient
     q, s = ctx.q, ctx.s
     ctx.pad_gsv_mm = _num(s.get('pad_gsv_mm'), lo=0.5, hi=30)
     ctx.ldl_val = normalize_ldl_mmol(s.get('ldl'))
     ctx.weight_num = _num(s.get('weight_kg'), lo=25, hi=260)
     ctx.weight_sat = _sat_num(_s_raw(s, 'weight_kg'), 25, 260)
     ctx.has_known_dm = bool(q.get('dm') or q.get('dm_insulin') or q.get('metformin'))
+    ctx.eff_pregnant = bool(is_pregnancy_eligible(ctx.patient) and (q.get('pregnant_possible') or q.get('ven_pregnant')))
     ctx.is_ali_acute = bool(
         ctx.pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
         and q.get('abf_duration') == '< 2 კვირა'
@@ -275,6 +285,7 @@ def _init_base_flags_and_pre_reflex(ctx):
         ctx.pathway == PreopPatient.Pathway.AAA_INFRA and q.get('aaa_pain')
         and ((sbp_pre_c is not None and sbp_pre_c < hypo_cfg_c['red_sbp']) or (si_pre_c is not None and si_pre_c >= hypo_cfg_c['shock_idx']))
     )
+    ctx.is_rup_pre = is_rup_pre
 
     ctx.ipsi_car, ctx.contra_car, ctx.is_symp_cea, ctx.is_clti_any = None, None, False, False
     ctx.days_since_ev = None
@@ -309,12 +320,7 @@ def _init_base_flags_and_pre_reflex(ctx):
     )
     ctx.has_safe_aspirin = bool(q.get('med_aspirin') and 'nsaid' not in ctx.allergy_chips)
     ctx.has_safe_clopidogrel = bool(q.get('med_clopidogrel') and 'clopidogrel_intol' not in ctx.allergy_chips)
-    has_stroke_hx_ctx = bool(
-        q.get('neuro') or q.get('cea_symp_event') or q.get('cea_crescendo')
-        or q.get('cea_disabling_stroke') or q.get('cea_thrombolysis')
-        or (ctx.pathway == PreopPatient.Pathway.CEA and is_symp_cea_patient(ctx.patient, q=q, s=s, today=ctx.today, require_filled=False))
-    )
-    ctx.has_safe_prasugrel = bool(q.get('med_prasugrel') and not has_stroke_hx_ctx)
+    ctx.has_safe_prasugrel = bool(q.get('med_prasugrel') and not has_prior_stroke_or_tia(ctx.patient, q=q, s=s))
     ctx.has_antiplatelet = bool(
         ctx.has_safe_aspirin or ctx.has_safe_clopidogrel or q.get('med_ticagrelor') or ctx.has_safe_prasugrel
     )
@@ -325,7 +331,9 @@ def _init_base_flags_and_pre_reflex(ctx):
         or q.get('med_warfarin') or ('rivaroxaban_2_5' in ctx.med_chips)
     )
 
-    if s.get('case_wifi_unsalvageable'):
+    if s.get('case_wifi_unsalvageable') and ctx.pathway in (
+        PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA,
+    ):
         ctx.red_flags.append(
             'კონფერენციის სტადირებით WIfI Stage 5 (კიდური გადარჩენადი არ არის) — '
             'რევასკულარიზაციის ჩვენება გადაამოწმეთ ქირურგთან!'
@@ -352,12 +360,7 @@ def _init_base_flags_and_pre_reflex(ctx):
         )
 
 
-def init_eval_context(patient, today=None):
-    today = _date(today) or timezone.localdate()
-    pathway = _resolve_pathway(patient)
-    q = merged_q(patient)
-    s = merged_studies(patient)
-    case_outcome = s.get('case_outcome_status') if s.get('case_outcome_status') in dict(CASE_OUTCOME_CHOICES) else 'scheduled'
+def _compute_core_metrics(patient, q, s, today):
     on_dialysis = bool(q.get('on_dialysis'))
     creat_unit = s.get('creat_unit') or ''
     raw_creat = _s_raw(s, 'creat')
@@ -382,16 +385,38 @@ def init_eval_context(patient, today=None):
     raw_s = patient.studies if isinstance(patient.studies, dict) else {}
     implausible_fields = _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=today, q=q)
     bmi_val = calc_bmi(s.get('weight_kg'), s.get('height_cm'))
-    bmi_sat = _sat_bmi_from(bmi_val, s)
+    hb_unit_ambiguous = is_hb_unit_ambiguous(_s_raw(s, 'hb'))
     age_val = _int(patient.age, lo=1, hi=120)
-    age_sat = age_val if age_val is not None else (_sat_age(patient.age) if _num(patient.age) is not None else None)
     aaa_mm = _num(s.get('aaa_mm'), lo=10, hi=200)
-    aaa_mm_sat = aaa_mm if aaa_mm is not None else _sat_num(_s_raw(s, 'aaa_mm'), 10, 200)
+    return {
+        'raw_s': raw_s, 'raw_creat': raw_creat, 'on_dialysis': on_dialysis,
+        'creat_unit': creat_unit, 'creat_unit_ambiguous': creat_unit_ambiguous, 'creat_unit_mismatch': creat_unit_mismatch,
+        'egfr': egfr, 'crcl': crcl, 'egfr_sat': egfr_sat, 'crcl_sat': crcl_sat,
+        'eff_renal': None if on_dialysis else min([v for v in (egfr, crcl) if v is not None], default=None),
+        'eff_renal_sat': None if on_dialysis else min([v for v in (egfr_sat, crcl_sat) if v is not None], default=None),
+        'car_r': car_r, 'car_l': car_l, 'car_r_sat': car_r_si, 'car_l_sat': car_l_si,
+        'max_car': max([v for v in (car_r, car_l) if v is not None], default=None),
+        'max_car_sat': max([v for v in (car_r_si, car_l_si) if v is not None], default=None),
+        'implausible_fields': implausible_fields,
+        'bmi': bmi_val, 'bmi_sat': _sat_bmi_from(bmi_val, s),
+        'age': age_val,
+        'age_sat': age_val if age_val is not None else (_sat_age(patient.age) if _num(patient.age) is not None else None),
+        'aaa_mm': aaa_mm, 'aaa_mm_sat': aaa_mm if aaa_mm is not None else _sat_num(_s_raw(s, 'aaa_mm'), 10, 200),
+        'hb_unit_ambiguous': hb_unit_ambiguous,
+        'hb_gl': None if hb_unit_ambiguous else normalize_hb_gl(s.get('hb')),
+        'hb_gl_sat': None if hb_unit_ambiguous else _sat_hb_gl(_s_raw(s, 'hb')),
+    }
 
+
+def init_eval_context(patient, today=None):
+    today = _date(today) or timezone.localdate()
+    pathway = _resolve_pathway(patient)
+    q = merged_q(patient)
+    s = merged_studies(patient)
+    case_outcome = s.get('case_outcome_status') if s.get('case_outcome_status') in dict(CASE_OUTCOME_CHOICES) else 'scheduled'
+    m = _compute_core_metrics(patient, q, s, today)
     ctx = EvalContext(
         patient=patient,
-        age=age_val,
-        age_sat=age_sat,
         today=today,
         pathway=pathway,
         is_venous=(pathway == PreopPatient.Pathway.VENOUS),
@@ -401,8 +426,6 @@ def init_eval_context(patient, today=None):
         is_on_hold=(patient.someday_list == PreopPatient.SomedayList.HOLD),
         q=q,
         s=s,
-        raw_s=raw_s,
-        raw_creat=raw_creat,
         wbc=None,
         q_filled=bool(q.get('filled')),
         case_outcome=case_outcome,
@@ -414,38 +437,16 @@ def init_eval_context(patient, today=None):
         reflex_orders=[],
         priority_flags=[],
         hard_contraindications=[],
-        implausible_fields=implausible_fields,
-        hb_gl=normalize_hb_gl(s.get('hb')),
-        hb_gl_sat=_sat_hb_gl(_s_raw(s, 'hb')),
         gl_mmol=normalize_glucose_mmol(s.get('glucose')),
         gl_mmol_sat=_sat_gl_mmol(_s_raw(s, 'glucose')),
         alb_gl=normalize_albumin_gl(s.get('albumin')),
-        on_dialysis=on_dialysis,
-        creat_unit=creat_unit,
-        creat_unit_ambiguous=creat_unit_ambiguous,
-        creat_unit_mismatch=creat_unit_mismatch,
-        egfr=egfr,
-        crcl=crcl,
-        egfr_sat=egfr_sat,
-        crcl_sat=crcl_sat,
-        eff_renal=None if on_dialysis else min([v for v in (egfr, crcl) if v is not None], default=None),
-        eff_renal_sat=None if on_dialysis else min([v for v in (egfr_sat, crcl_sat) if v is not None], default=None),
-        bmi=bmi_val,
-        bmi_sat=bmi_sat,
         liver_3x=(s.get('liver_status') == '3x'),
-        aaa_mm=aaa_mm,
-        aaa_mm_sat=aaa_mm_sat,
         cta_months=cta_live_months_age(s, today=today),
-        car_r=car_r,
-        car_l=car_l,
-        car_r_sat=car_r_si,
-        car_l_sat=car_l_si,
-        max_car=max([v for v in (car_r, car_l) if v is not None], default=None),
-        max_car_sat=max([v for v in (car_r_si, car_l_si) if v is not None], default=None),
+        **m,
     )
-    if implausible_fields:
+    if m['implausible_fields']:
         ctx.red_flags.append(
-            f'შეყვანილია დაუშვებელი / დიაპაზონს გარეთა მნიშვნელობა ({", ".join(implausible_fields[:4])}) — '
+            f'შეყვანილია დაუშვებელი / დიაპაზონს გარეთა მნიშვნელობა ({", ".join(m["implausible_fields"][:4])}) — '
             'გადაამოწმეთ ლაბორატორიული ერთეული და მაჩვენებლები!'
         )
     _init_limb_hemodynamics(ctx)

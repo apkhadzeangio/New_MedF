@@ -174,7 +174,7 @@ SCORES_AND_WORKFLOW_RULES = (
             'stop_bang_high': 5, 'stop_bang_int': 3,
             'sb_sbp': 140, 'sb_dbp': 90, 'sb_bmi': 35, 'sb_age': 50,
             'ett_bmi': 40, 'icu_lvef': 40,
-            'mins_age': 65, 'delirium_age': 75, 'cea_asymp_futility_age': 80,
+            'mins_age': 65, 'mins_rcri': 2, 'delirium_age': 75, 'cea_asymp_futility_age': 80,
         },
         value_label='Mallampati IV · STOP-Bang პროქსი · ICU/MINS/დელირიუმი',
         status=STATUS_LOCAL,

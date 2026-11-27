@@ -39,7 +39,7 @@ class _Confusion:
 def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is_pta):
     is_clti_or = (
         patient.op_subtype in (PreopPatient.OpSubtype.ABF_CLTI, PreopPatient.OpSubtype.BYPASS_CLTI, PreopPatient.OpSubtype.PTA_CLTI)
-        or bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))
+        or bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')) or bool(q.get('abf_wet_infection'))
     )
     is_ali_or = bool(q.get('abf_duration') == '< 2 კვირა')
     preg_bio_or = (patient.sex != 'M') and not (patient.sex == 'F' and patient.age is not None and patient.age > 55)
@@ -47,13 +47,17 @@ def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is
     uses_contrast_or = (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)) or is_pta
     lido_plan_or = s.get('anesthesia_plan') or 'auto'
     lido_lines_or = set(_safe_list(s.get('anesth_lines_chips')))
-    evla_lido_stop_or = (
-        is_venous
-        and (bool(q.get('ven_lidocaine_allergy')) or 'lidocaine' in (ev.get('eff_allergy_chips') or ()))
-        and (
-            (patient.op_subtype == PreopPatient.OpSubtype.EVLA and lido_plan_or in ('auto', 'local', 'plexus', 'neuraxial'))
-            or (patient.op_subtype == PreopPatient.OpSubtype.PHLEB and lido_plan_or in ('local', 'plexus', 'neuraxial'))
-            or ('epidural' in lido_lines_or)
+    has_lido_alg_or = bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in (ev.get('eff_allergy_chips') or ()))
+    evla_lido_stop_or = has_lido_alg_or and (
+        (
+            is_venous and (
+                (patient.op_subtype == PreopPatient.OpSubtype.EVLA and lido_plan_or in ('auto', 'local', 'plexus', 'neuraxial'))
+                or (patient.op_subtype == PreopPatient.OpSubtype.PHLEB and lido_plan_or in ('local', 'plexus', 'neuraxial'))
+                or ('epidural' in lido_lines_or)
+            )
+        )
+        or (
+            not is_venous and (lido_plan_or in ('local', 'plexus') or (is_pta and lido_plan_or == 'auto'))
         )
     )
     exp_hard_contra = bool(

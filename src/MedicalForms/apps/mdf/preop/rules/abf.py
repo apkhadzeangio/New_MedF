@@ -46,7 +46,10 @@ def eval_abf(ctx):
     abi_norm_lo, abi_norm_hi = rule_value('PAD_IC_BMT_3M')
     ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
     is_clti = (patient.op_subtype == PreopPatient.OpSubtype.ABF_CLTI) or (
-        q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')) or bool(q.get('ulcer_chips')))
+        q_filled and (
+            bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))
+            or bool(q.get('ulcer_chips')) or bool(q.get('abf_wet_infection'))
+        )
     )
     ctx.is_clti_any = is_clti
     _eval_abf_clinical(ctx, is_clti)
@@ -117,9 +120,9 @@ def eval_abf(ctx):
         else:
             ap_rec = 'ასპირინი ან კლოპიდოგრელი'
         ctx.amber_flags.append(f'პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I: {ap_rec}).')
-    if q_filled and not ctx.has_statin and not ctx.liver_3x:
+    if q_filled and not ctx.has_statin and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I: მაღალი ინტენსივობის სტატინი).')
-    if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
+    if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — განიხილეთ ლიპიდდამწევი თერაპიის გაძლიერება (ESVS 2024).')
 
     ctx.needs_wound_care = bool(q.get('abf_wet_infection') or q.get('abf_groin_issue')) or (q_filled and bool(q.get('abf_ulcer') or q.get('ulcer_chips')))
@@ -231,7 +234,10 @@ def eval_pad_bypass(ctx):
     gsv_min = rule_value('PAD_GSV_MIN_MM')['gsv_min_mm']
     ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
     is_clti = (patient.op_subtype == PreopPatient.OpSubtype.BYPASS_CLTI) or (
-        q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')) or bool(q.get('ulcer_chips')))
+        q_filled and (
+            bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))
+            or bool(q.get('ulcer_chips')) or bool(q.get('abf_wet_infection'))
+        )
     )
     ctx.is_clti_any = is_clti
     if patient.side == 'B':
@@ -288,8 +294,8 @@ def eval_pad_bypass(ctx):
         ctx.amber_flags.append('ქვემო კიდურების ანგიოგრაფიის / CTA DICOM დისკი ჯერ არ არის მოტანილი.')
     if q_filled and not ctx.has_any_antithrombotic:
         ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I).')
-    if q_filled and not ctx.has_statin and not ctx.liver_3x:
+    if q_filled and not ctx.has_statin and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I).')
-    if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
+    if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — განიხილეთ სტატინის ინტენსიფიკაცია ± ეზეტიმიბი.')
     ctx.needs_wound_care = bool(q.get('abf_wet_infection') or q.get('abf_groin_issue')) or (q_filled and bool(q.get('abf_ulcer') or q.get('ulcer_chips')))

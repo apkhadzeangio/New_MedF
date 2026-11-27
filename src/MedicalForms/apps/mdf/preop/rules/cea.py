@@ -228,7 +228,7 @@ def eval_cea(ctx):
                 'ანტიაგრეგანტული თერაპია სავალდებულოა ინსულტის პრევენციისთვის — აცნობეთ ქირურგს.'
             )
     ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
-    if q_filled and not ctx.has_statin and not ctx.liver_3x:
+    if q_filled and not ctx.has_statin and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინის მიღება (ESVS 2023 Class I: CEA-ს წინ ნაჩვენებია მაღალი ინტენსივობის სტატინი).')
-    if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
+    if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — ESVS 2023/ESC სამიზნისთვის განიხილეთ სტატინის მაქსიმალური დოზა ± ეზეტიმიბი.')

@@ -9,7 +9,10 @@ def eval_pta(ctx):
     abi_norm_lo, abi_norm_hi = rule_value('PAD_IC_BMT_3M')
     ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
     is_clti = (patient.op_subtype == PreopPatient.OpSubtype.PTA_CLTI) or (
-        q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')) or bool(q.get('ulcer_chips')))
+        q_filled and (
+            bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))
+            or bool(q.get('ulcer_chips')) or bool(q.get('abf_wet_infection'))
+        )
     )
     ctx.is_clti_any = is_clti
     if q_filled and patient.side not in ('R', 'L', 'B'):
@@ -65,6 +68,11 @@ def eval_pta(ctx):
             'ხანგამოშვებითი კოჭლობა (ESVS 2024 Class I): ინვაზიურ ჩარევამდე რეკომენდებულია ≥3 თვიანი ოპტიმალური მედიკამენტური თერაპია (BMT) და სავარჯიშო თერაპია (SET).'
         )
 
+    _eval_pta_access_and_meds(ctx, is_clti, hemo_cfg, ldl_target)
+
+
+def _eval_pta_access_and_meds(ctx, is_clti, hemo_cfg, ldl_target):
+    q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
     if s.get('pta_access_site') == 'cfa_calcified_scar':
         if ctx.on_dialysis:
             ctx.amber_flags.append(
@@ -76,7 +84,13 @@ def eval_pta(ctx):
     if q_filled and q.get('pta_cant_lie_flat'):
         ctx.amber_flags.append('პაციენტს უჭირს ზურგზე გაუნძრევლად წოლა 60–90 წთ — ავტომატურად ჩაირთო ანესთეზიოლოგი (სედაციისთვის).')
     if 'clopidogrel_intol' in ctx.allergy_chips:
-        has_oac_pta = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran') or ('rivaroxaban_2_5' in ctx.med_chips) or s.get('post_antithrombotic_plan') in ('voyager', 'voyager_pad'))
+        ft_keys = ctx.ft_meds.get('matched_keys') or set()
+        has_oac_pta = bool(
+            q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran')
+            or ('rivaroxaban_2_5' in ctx.med_chips)
+            or s.get('post_antithrombotic_plan') in ('voyager', 'voyager_pad', 'oac_sapt')
+            or bool(ft_keys & {'warfarin', 'doac', 'dabigatran', 'rivaroxaban_2_5'})
+        )
         if has_oac_pta and 'nsaid' in ctx.allergy_chips:
             alt_pta_txt = 'ინდივიდუალური რეჟიმი კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია — OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III აკრძალულია!)'
         elif has_oac_pta:
@@ -86,9 +100,9 @@ def eval_pta(ctx):
         ctx.red_flags.append(f'ანამნეზში კლოპიდოგრელის აუტანლობა — სტენტირებამდე შეათანხმეთ {alt_pta_txt} ქირურგთან!')
     if q_filled and not ctx.has_any_antithrombotic:
         ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს PTA/სტენტირებამდე (ESVS 2024 Class I).')
-    if q_filled and not ctx.has_statin and not ctx.liver_3x:
+    if q_filled and not ctx.has_statin and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I).')
-    if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x:
+    if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — განიხილეთ სტატინის ინტენსიფიკაცია ± ეზეტიმიბი.')
 
     if ctx.min_comp_abi is not None:

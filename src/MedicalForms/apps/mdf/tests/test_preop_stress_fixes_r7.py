@@ -99,7 +99,9 @@ class Round7EngineAndInvariantsTests(SimpleTestCase):
         self.assertIsNone(ev_g['egfr'])
         self.assertIsNone(ev_g['crcl'])
         self.assertTrue(ev_g['creat_unit_mismatch'])
-        self.assertEqual(ev_g['auto_asa'], ev_u['auto_asa'])
+        self.assertEqual(ev_u['auto_asa'], 'IV')
+        self.assertNotEqual(ev_g['auto_asa'], 'IV')
+        self.assertFalse(ev_g['needs_icu_bed'])
         met_g = next(r for r in ev_g['med_schedule'] if 'მეტფორმინ' in r['drug'])
         self.assertTrue(met_g['contraindicated'])
         self.assertTrue(ev_g['has_blocking_unknown_state'])
@@ -406,7 +408,7 @@ class Round7HttpAndTemplateTests(TestCase):
             'bypass_claud', case=case_obj, approved_at=timezone.now(), approved_by=self.doc,
             someday_list=PreopPatient.SomedayList.READY, anamnesis='Old anamnesis',
         )
-        c_doc.get(reverse('preop-new') + f'?case={case_obj.pk}&sync=1')
+        c_doc.post(reverse('preop-new'), {'case': case_obj.pk, 'sync': '1'})
         p_sy.refresh_from_db()
         self.assertIsNone(p_sy.approved_at)
         self.assertNotEqual(p_sy.someday_list, PreopPatient.SomedayList.READY)

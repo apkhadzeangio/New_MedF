@@ -56,7 +56,7 @@ PHARM_VIGNETTES = (
         op_subtype=_OP.BYPASS_CLTI, age=67, sex='M', side='R',
         q=(('filled', True), ('cad', True), ('recent_stent', True), ('med_aspirin', True), ('med_clopidogrel', True), ('mets_ok', True)),
         s=(('anesthesia_plan', 'neuraxial'), ('plt', 220), ('inr', 1.0), ('abi_r', 0.40), ('planned_surgery_date', VIGNETTE_OP_DATE)),
-        expected_seal='pending',
+        expected_seal='stop',
         must_red=('ნეირაქსი',),
         must_med_terms=('აკრძალულია',),
     ),
@@ -82,7 +82,7 @@ PHARM_VIGNETTES = (
         op_subtype=_OP.BYPASS_CLTI, age=69, sex='M', side='R',
         q=(('filled', True), ('mets_ok', True)),
         s=(('anesthesia_plan', 'neuraxial'), ('fibrinogen', 1.2), ('plt', 210), ('inr', 1.05), ('abi_r', 0.42)),
-        expected_seal='pending',
+        expected_seal='stop',
         must_red=('ფიბრინოგენი',),
     ),
     ClinicalVignette(

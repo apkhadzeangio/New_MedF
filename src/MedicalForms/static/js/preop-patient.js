@@ -186,7 +186,7 @@
             ctrl.classList.remove('lv-warn', 'lv-crit');
             var raw = (ctrl.value || '').trim();
             if (!raw) { hint.hidden = true; return; }
-            var num = parseFloat(raw);
+            var num = parseFloat(raw.replace(/,/g, '.'));
             if (!isFinite(num)) { hint.hidden = true; return; }
             var res = evalFn(num);
             if (!res) { hint.hidden = true; return; }
@@ -203,6 +203,8 @@
 
     document.querySelectorAll('input[name="hb"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
+            if (v < 3.5 || v > 260) return { level: 'crit', msg: 'დაუჯერებელი Hb (' + v + ') — გადაამოწმეთ მნიშვნელობა და ერთეული!' };
+            if (v > 22.0 && v < 40.0) return { level: 'crit', msg: 'საეჭვო Hb ერთეული (' + v + ') — მიუთითეთ გ/ლ (40–260) ან გ/დლ (3.5–22.0)!' };
             if (v >= 3.5 && v <= 22.0) {
                 var gl = Math.round(v * 100) / 10;
                 return { level: gl < 100 ? 'crit' : (gl < 115 ? 'warn' : 'info'), msg: '≈ ' + gl + ' გ/ლ' + (gl < 100 ? ' (მძიმე ანემია!)' : (gl < 115 ? ' (ანემიის რეფლექსი)' : '')) };
@@ -222,7 +224,7 @@
     document.querySelectorAll('input[name="inr"], input[name="dos_inr"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
             if (v > 1.5) return { level: 'crit', msg: 'მაღალი INR (>1.5 — სისხლდენის რისკი)!' };
-            if (v > 1.4) return { level: 'warn', msg: 'INR > 1.4 (ASRA ნეირაქსიული ბლოკადის ზღვარი ≤ 1.4)' };
+            if (v > 1.35) return { level: 'warn', msg: 'მომატებული INR (>1.35 — სისხლდენის/ASRA ნეირაქსიული ზღვარი ≤ 1.4)' };
             return null;
         });
     });
@@ -240,6 +242,9 @@
         attachLiveGuard(el, function (v) {
             var u = unitSel ? unitSel.value : '';
             if (!u && v > 15 && v < 35) return { level: 'crit', msg: 'აირჩიეთ ერთეული (მკმოლ/ლ თუ მგ/დლ)!' };
+            if ((u === 'umol' && v < 15) || (u === 'mgdl' && v > 35)) {
+                return { level: 'crit', msg: 'კრეატინინის მნიშვნელობა და არჩეული ერთეული არ ემთხვევა!' };
+            }
             var mgdl = u === 'mgdl' ? v : (u === 'umol' ? v / 88.4 : (v <= 15 ? v : v / 88.4));
             if (mgdl > 2.0) return { level: 'crit', msg: 'მაღალი კრეატინინი (RCRI +1 / ნეფროლოგი)!' };
             if (mgdl >= 1.4) return { level: 'warn', msg: 'დაქვეითებული თირკმლის ფუნქცია' };
