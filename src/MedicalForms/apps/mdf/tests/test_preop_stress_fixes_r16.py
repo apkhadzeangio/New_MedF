@@ -225,7 +225,7 @@ console.log(JSON.stringify({
 
         # 3. HIT + free-text heparin/LMWH, liver_3x + free-text statin, GI bleed + free-text AT under STOP lock
         ev_hit = evaluate(_mk('open', q={'allergy_chips': ['hit_heparin'], 'other_meds': 'კლექსანი 40მგ'}), today=TODAY)
-        hit_row = next(r for r in ev_hit['med_schedule'] if 'დასაზუსტებელი წამალი' in r['drug'])
+        hit_row = next(r for r in ev_hit['med_schedule'] if 'პარენტერული' in r['drug'])
         self.assertTrue(hit_row['contraindicated'])
         self.assertFalse(hit_row['hold_or_skip'])
         self.assertIn('HIT', hit_row['date_plan'])
@@ -348,7 +348,7 @@ console.log(JSON.stringify({
         self.assertLess(len(generate_anamnesis(p_fuzz, ev_f)), 5000)
 
         # 5. GI-bleed antiplatelet-block amber attribution + NSAID jargon scrub + registry version
-        self.assertEqual(REGISTRY_VERSION, '1.2.16')
+        self.assertEqual(REGISTRY_VERSION, '1.2.17')
         self.assertEqual(len(RULES_BY_ID), 83)
         ev_gi_ap = evaluate(_mk('pta_clti', q={'ulcer_active_symp': True}), today=TODAY)
         gi_amb = next(a for a in ev_gi_ap['amber_flags'] if 'ანტიაგრეგანტის დაწყება დაბლოკილია' in a)

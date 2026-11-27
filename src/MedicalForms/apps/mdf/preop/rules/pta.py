@@ -49,7 +49,7 @@ def eval_pta(ctx):
         )
         if t_normal_hemo and (not is_clti or (ctx.contra_abi is not None and ctx.contra_abi < hemo_cfg['wrong_side_contra_abi'])):
             ctx.red_flags.append(
-                f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_pta} — 0.91–1.40)'
+                f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_pta} — {abi_norm_lo + 0.01:.2f}–{abi_norm_hi:.2f})'
                 + (f', ხოლო კონტრალატერალურზე ABI {ctx.contra_abi}!' if ctx.contra_abi is not None and ctx.contra_abi < hemo_cfg['wrong_side_contra_abi'] else ' კოჭლობის ფონზე')
                 + ' — გადაამოწმეთ არჩეული მხარე (R/L) ან ჩვენება ქირურგთან!'
             )
@@ -59,8 +59,9 @@ def eval_pta(ctx):
     if patient.op_subtype == PreopPatient.OpSubtype.PTA_CLAUD and q_filled and (
         q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips') or q.get('abf_wet_infection')
     ):
+        clti_d = rule_value('WF_PREP_TARGET_DAYS')['aaa_clti']
         ctx.amber_flags.append(
-            'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
+            f'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე ({clti_d}-დღიანი რეჟიმი).'
         )
     if q.get('abf_duration') == '< 2 კვირა':
         ctx.red_flags.append(

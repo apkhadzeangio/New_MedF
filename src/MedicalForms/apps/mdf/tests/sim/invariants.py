@@ -233,6 +233,7 @@ def _check_dosing_vitals_and_scores(patient, ev, q, s, pw, q_filled, allergy_chi
         wt_f is not None and 120.0 <= wt_f <= 260.0
         and 'beta_lactam' not in allergy_chips
         and not (pw == PreopPatient.Pathway.VENOUS and patient.op_subtype == PreopPatient.OpSubtype.EVLA)
+        and not (pw == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic')
     ):
         if '3 გ' not in ev['surgical_brief']['abx_regimen']:
             violations.append('INV-14_OBESE_120KG_NOT_GIVEN_CEFAZOLIN_3G')

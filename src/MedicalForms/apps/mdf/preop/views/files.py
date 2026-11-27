@@ -17,9 +17,12 @@ class PreopFileUploadView(LoginRequiredMixin, generic.View):
     """Upload one or more photos or PDF reports to a preoperative patient card."""
 
     def post(self, request, pk):
+        from ..utils import merged_studies
+
         patient = get_object_or_404(PreopPatient, pk=pk)
-        if patient.archived:
-            messages.error(request, 'დაარქივებულ ბარათზე ფაილის ატვირთვა დაბლოკილია!')
+        cur_out = merged_studies(patient).get('case_outcome_status') or 'scheduled'
+        if patient.archived or cur_out in ('operated', 'deferred', 'cancelled_logistics', 'cancelled_medical'):
+            messages.error(request, 'დაარქივებულ ან არააქტიურ (ნაოპერაციებ/გადადებულ/გაუქმებულ) ბარათზე ფაილის ატვირთვა დაბლოკილია!')
             return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
         category = request.POST.get('category') or PreopFile.Category.LABS
         caption = request.POST.get('caption') or ''
@@ -89,11 +92,11 @@ class PreopFileDeleteView(LoginRequiredMixin, generic.View):
         is_audit_protected = (
             patient.archived
             or bool(patient.approved_at)
-            or s_del.get('case_outcome_status') == 'operated'
+            or s_del.get('case_outcome_status') in ('operated', 'deferred', 'cancelled_logistics', 'cancelled_medical')
             or bool(s_del.get('board_patient_id'))
         )
         if is_audit_protected and not (request.user.is_superuser or request.user.is_staff):
-            messages.error(request, 'დადასტურებული, ნაოპერაციები, დაფაზე გადაყვანილი ან არქივირებული პაციენტის დოკუმენტის წაშლა შეზღუდულია.')
+            messages.error(request, 'დადასტურებული, არააქტიური (ნაოპერაციები/გადადებული/გაუქმებული), დაფაზე გადაყვანილი ან არქივირებული პაციენტის დოკუმენტის წაშლა შეზღუდულია.')
             return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1#files')
         if not is_doctor_user(request.user) and rec.created_by_id != request.user.pk:
             messages.error(request, 'სხვა თანამშრომლის ატვირთული ფაილის წაშლა შეუძლია მხოლოდ ექიმს ან ადმინისტრატორს.')

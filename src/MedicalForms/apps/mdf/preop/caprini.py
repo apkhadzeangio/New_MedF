@@ -2,7 +2,7 @@
 from ..models import PreopPatient
 from .meds_freetext import _effective_allergy_state
 from .registry import rule_value
-from .utils import _num, _resolve_pathway, _str_list, cea_live_days_since_event, is_pregnancy_eligible
+from .utils import _has_raw_scalar, _num, _resolve_pathway, _str_list, cea_live_days_since_event, is_pregnancy_eligible
 
 
 def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
@@ -113,6 +113,8 @@ def _caprini_tier_and_advice(
             advice = f'მხოლოდ მექანიკური პროფილაქტიკა (IPC{comp_sfx}) — აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის ფონზე ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!{hit_gi_sfx}'
         elif has_mech_valve and eff_pregnant:
             advice = preg_mv_txt
+        elif has_full_oac and is_evla_vka:
+            advice = oac_vte_txt
         elif has_mech_valve:
             advice = (
                 f'მექანიკური სარქველი + HIT: სტაციონარული {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}' if has_hit else (
@@ -152,6 +154,8 @@ def _caprini_tier_and_advice(
             advice = f'მხოლოდ ადრეული მობილიზაცია + IPC{comp_sfx} (აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!){hit_gi_sfx}'
         elif has_mech_valve and eff_pregnant:
             advice = preg_mv_txt
+        elif has_full_oac and is_evla_vka:
+            advice = oac_vte_txt
         elif has_mech_valve:
             advice = f'მექანიკური სარქველი + HIT: {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}' if has_hit else f'ადრეული მობილიზაცია{comp_sfx} + უვადო ვარფარინის (VKA) რეჟიმი (DOAC აკრძალულია!)'
         elif eff_pregnant:
@@ -173,7 +177,7 @@ def _caprini_tier_and_advice(
         elif severe_renal and severe_liver:
             advice = f'ადრეული მობილიზაცია{comp_sfx} + IPC ± კანქვეშა UFH კოაგულოგრამის კონტროლით (CrCl/eGFR <{ren_red} + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი აკრძალულია, LMWH კუმულირდება!)'
         elif severe_renal:
-            advice = f'ადრეული მობილიზაცია{comp_sfx} ± კანქვეშა UFH / დოზა-კორექტირებული LMWH (CrCl/eGFR <{ren_red}: DOAC არა!)'
+            advice = f'ადრეული მობილიზაცია{comp_sfx} ± კანქვეშა UFH 5000 სე ×2–3 (LMWH კუმულირდება — მხოლოდ anti-Xa კონტროლით! CrCl/eGFR <{ren_red}: DOAC არა!)'
         elif severe_liver:
             advice = f'ადრეული მობილიზაცია{comp_sfx} ± LMWH ქირურგის შეფასებით (ღვიძლის ≥3x-ზე DOAC არა!)'
         else:
@@ -198,16 +202,19 @@ def _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver, activ
     raw_s = patient.studies if isinstance(patient.studies, dict) else {}
     inv_in = s_cur.get('_invalid_inputs') if isinstance(s_cur.get('_invalid_inputs'), dict) else {}
     raw_dos_inr = s_cur['dos_inr'] if ('dos_inr' in s_cur and s_cur['dos_inr'] is not None) else (inv_in['dos_inr'] if 'dos_inr' in inv_in else raw_s.get('dos_inr'))
-    dos_inr_pres = (raw_dos_inr is not None and str(raw_dos_inr).strip() != '') or ('dos_inr' in inv_in)
+    dos_inr_pres = _has_raw_scalar(raw_dos_inr) or ('dos_inr' in inv_in)
     dos_inr_v = _num(raw_dos_inr, 0.5, 15.0)
     dos_inr_bad = dos_inr_pres and dos_inr_v is None
     inr_c = dos_inr_v if dos_inr_pres else _num(s_cur.get('inr'), 0.4, 20.0)
     evla_max_inr = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
+    mech_inr_min = rule_value('MED_MECH_VALVE_SAFETY')
+    has_mv_c = 'mech_valve' in set(_str_list(q_d.get('cad_chips')))
+    evla_subther_mv = bool(has_mv_c and inr_c is not None and inr_c < mech_inr_min)
     has_nx_plan = (s_cur.get('anesthesia_plan') or 'auto') == 'neuraxial' or ('epidural' in _str_list(s_cur.get('anesth_lines_chips')))
     is_evla_vka = bool(
         patient.op_subtype == PreopPatient.OpSubtype.EVLA
         and not has_nx_plan and not active_gi_bleed and not eff_preg
-        and q_d.get('med_warfarin') and oac_cnt == 1 and not severe_liver and not dos_inr_bad
+        and q_d.get('med_warfarin') and oac_cnt == 1 and not severe_liver and not dos_inr_bad and not evla_subther_mv
         and (inr_c is None or inr_c <= evla_max_inr)
     )
     ft_doac = bool(ft_unstruct & {'doac', 'dabigatran'}) and not ft_m.get('has_ft_riva_low')

@@ -44,8 +44,9 @@ def _eval_abf_clinical(ctx, is_clti):
     if patient.op_subtype == PreopPatient.OpSubtype.ABF_CLAUD and q_filled and (
         q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips') or q.get('abf_wet_infection')
     ):
+        clti_d = rule_value('WF_PREP_TARGET_DAYS')['aaa_clti']
         ctx.amber_flags.append(
-            'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
+            f'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე ({clti_d}-დღიანი რეჟიმი).'
         )
     if q.get('abf_duration') == '< 2 კვირა':
         ctx.red_flags.append(
@@ -260,8 +261,9 @@ def _eval_pad_bypass_side_and_hemo(ctx, is_clti, hemo_cfg, abi_norm_lo, abi_norm
     if patient.op_subtype == PreopPatient.OpSubtype.BYPASS_CLAUD and q_filled and (
         q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips') or q.get('abf_wet_infection')
     ):
+        clti_d = rule_value('WF_PREP_TARGET_DAYS')['aaa_clti']
         ctx.amber_flags.append(
-            'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
+            f'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე ({clti_d}-დღიანი რეჟიმი).'
         )
     if q.get('abf_duration') == '< 2 კვირა':
         ctx.red_flags.append(
@@ -304,7 +306,7 @@ def eval_pad_bypass(ctx):
 
     runoff = s.get('pad_runoff_status') or 'pending'
     if runoff == 'desert_foot':
-        if not is_clti and not ctx.is_ali_acute:
+        if not is_clti and not ctx.is_ali_acute and rule_value('PAD_PROSTHETIC_IC_STOP'):
             df_msg = (
                 'ხანგამოშვებითი კოჭლობის (IC) დროს Desert foot კალაპოტზე ინფრაინგვინალური შუნტირება '
                 'უკუნაჩვენებია (ESVS 2024 Class III — თრომბოზისა და კიდურის დაკარგვის რისკი)! გადაამოწმეთ ჩვენება ქირურგთან!'

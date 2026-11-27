@@ -148,7 +148,9 @@ def _result_flags_and_needs_part(ctx):
         'all_tasks_done': ctx.all_tasks_done,
         'has_bad_med': has_bad_med,
         'workup_ready': bool(
-            ctx.q_filled
+            ctx.is_active_case
+            and not ctx.patient.archived
+            and ctx.q_filled
             and ctx.all_tasks_done
             and not ctx.has_hard_contraindication
             and not ctx.dos_hold_danger

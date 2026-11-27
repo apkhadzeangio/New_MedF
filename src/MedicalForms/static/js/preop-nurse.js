@@ -6,7 +6,7 @@
         return inp ? inp.value : '';
     }
 
-    var STRICT_NUM_RE = /^[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)$/;
+    var STRICT_NUM_RE = /^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$/;
     function parseNum(raw) {
         if (raw === null || raw === undefined) return NaN;
         var s = String(raw).trim();
@@ -116,7 +116,7 @@
         } else if (!isNaN(hb) && (hb < 3.5 || (hb > 22 && hb < 35) || hb > 260)) {
             msgs.push('შეამოწმეთ ჰემოგლობინი (' + hb + ') — მიუთითეთ გ/ლ (35–260) ან გ/დლ (3,5–22,0).');
         } else if (!isNaN(hb)) {
-            var hbGl = hb <= 22 ? Math.round(hb * 100) / 10 : hb;
+            var hbGl = hb <= 22 ? Math.round(hb * 100000) / 10000 : hb;
             if (hbGl < 100) msgs.push('მძიმე ანემია (Hb ' + hbGl + ' გ/ლ < 100) — აცნობეთ ექიმს!');
             else if (hbGl < 115) msgs.push('ანემია (Hb ' + hbGl + ' გ/ლ < 115 — ჩაირთვება რკინის პანელი).');
         }
@@ -289,7 +289,7 @@
         attachFldGuard(el, function (v) {
             if (v < 3.5 || v > 260) return { level: 'crit', msg: 'დაუჯერებელი Hb (' + v + ') — გადაამოწმეთ მნიშვნელობა და ერთეული!' };
             if (v > 22.0 && v < 35.0) return { level: 'crit', msg: 'საეჭვო Hb ერთეული (' + v + ') — მიუთითეთ გ/ლ (35–260) ან გ/დლ (3.5–22.0)!' };
-            var gl = v <= 22.0 ? Math.round(v * 100) / 10 : v;
+            var gl = v <= 22.0 ? Math.round(v * 100000) / 10000 : v;
             if (gl < 100) return { level: 'crit', msg: 'მძიმე ანემია (' + gl + ' გ/ლ < 100)!' };
             if (gl < 115) return { level: 'warn', msg: 'ანემია (' + gl + ' გ/ლ < 115 — ჩაირთვება ფერიტინი/TSAT)' };
             return null;
@@ -392,7 +392,7 @@
     document.querySelectorAll('input[name="albumin"]').forEach(function (el) {
         attachFldGuard(el, function (v) {
             if (v < 0.5 || v > 80) return { level: 'crit', msg: 'დაუჯერებელი ალბუმინი (' + v + ')!' };
-            var gl = (v >= 0.5 && v <= 7.5) ? Math.round(v * 100) / 10 : v;
+            var gl = (v >= 0.5 && v <= 7.5) ? Math.round(v * 100000) / 10000 : v;
             if (gl < 30) return { level: 'crit', msg: 'მძიმე ჰიპოალბუმინემია (' + gl + ' გ/ლ < 30)!' };
             if (gl < 35) return { level: 'warn', msg: 'დაქვეითებული ალბუმინი (' + gl + ' გ/ლ < 35)' };
             return null;
@@ -436,7 +436,7 @@
     document.querySelectorAll('input[name="fibrinogen"]').forEach(function (el) {
         attachFldGuard(el, function (v) {
             if (v < 0.15 || v > 1500) return { level: 'crit', msg: 'დაუჯერებელი ფიბრინოგენი (' + v + ')!' };
-            var gl = v > 15 ? Math.round((v / 100.0) * 100) / 100 : v;
+            var gl = v > 15 ? Math.round((v / 100.0) * 10000) / 10000 : v;
             if (gl < 1.5) return { level: 'crit', msg: 'მძიმე ჰიპოფიბრინოგენემია (' + gl + ' გ/ლ < 1.5)!' };
             if (gl < 1.8) return { level: 'warn', msg: 'დაბალი ფიბრინოგენი (' + gl + ' გ/ლ < 1.8)' };
             return null;

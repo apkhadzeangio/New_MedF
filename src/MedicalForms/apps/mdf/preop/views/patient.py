@@ -133,6 +133,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             if patient.archived:
                 messages.error(request, 'ბარათი დაარქივებულია — რედაქტირება და მოქმედებები დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
+            cur_outcome = merged_studies(patient).get('case_outcome_status') or 'scheduled'
+            if cur_outcome in ('operated', 'deferred', 'cancelled_logistics', 'cancelled_medical') and section != 'dos_vqi':
+                messages.error(request, 'არააქტიურ (ნაოპერაციებ/გადადებულ/გაუქმებულ) ბარათზე წინასაოპერაციო მონაცემების შეცვლა დაბლოკილია — რედაქტირებისთვის ჯერ გადართეთ სტატუსი „დაგეგმილზე“.')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
 
             if section == 'header':
                 ev_before = evaluate(patient)
@@ -184,11 +188,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 had_s2_err, inv_s2 = self._save_stage2(request, patient)
                 if request.POST.get('med_hold_agreed') not in ('1', 'on', 'true'):
                     _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
-                if not had_s2_err:
-                    if inv_s2 == 'ready_demoted':
-                        messages.warning(request, 'მომზადების გეგმა შეინახა, თუმცა ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
-                    else:
-                        messages.success(request, 'მომზადების გეგმა და კონსულტაციები შეინახა.')
+                if inv_s2 == 'ready_demoted':
+                    messages.warning(request, 'მომზადების გეგმა შეინახა, თუმცა ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
+                elif not had_s2_err:
+                    messages.success(request, 'მომზადების გეგმა და კონსულტაციები შეინახა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
 
             if section == 'signoff':
@@ -334,11 +337,12 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
     @staticmethod
     def _migrate_header_pathway_flags(patient, old_pw, new_pw, s, uf):
+        q_mig = merged_q(patient)
+        q_changed = False
         if old_pw == PreopPatient.Pathway.VENOUS and new_pw != PreopPatient.Pathway.VENOUS:
-            q_mig = merged_q(patient)
-            q_changed = False
-            if q_mig.get('ven_pregnant') and not q_mig.get('pregnant_possible'):
+            if q_mig.get('ven_pregnant'):
                 q_mig['pregnant_possible'] = True
+                q_mig['ven_pregnant'] = False
                 q_changed = True
             if q_mig.get('ven_lidocaine_allergy'):
                 ach = list(q_mig.get('allergy_chips') or [])
@@ -346,10 +350,21 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                     ach.append('lidocaine')
                     q_mig['allergy_chips'] = ach
                     q_mig['allergy_other'] = True
-                    q_changed = True
-            if q_changed:
-                patient.questionnaire = q_mig
-                uf.append('questionnaire')
+                q_mig['ven_lidocaine_allergy'] = False
+                q_changed = True
+        elif old_pw != PreopPatient.Pathway.VENOUS and new_pw == PreopPatient.Pathway.VENOUS:
+            if q_mig.get('pregnant_possible'):
+                q_mig['ven_pregnant'] = True
+                q_mig['pregnant_possible'] = False
+                q_changed = True
+        car_pws = (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS)
+        if old_pw in car_pws and new_pw not in car_pws and s.get('carotid_symp'):
+            q_mig['neuro'] = True
+            s['carotid_symp'] = False
+            q_changed = True
+        if q_changed:
+            patient.questionnaire = q_mig
+            uf.append('questionnaire')
 
     def _save_questionnaire(self, request, patient):
         med_keys = (
@@ -584,6 +599,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         action = request.POST.get('action') or 'save_anamnesis'
         if action in ('approve', 'unapprove', 'ack_alerts') and not is_doctor_user(request.user):
             messages.error(request, 'ოპერაციაზე დასტურის/მოხსნის და გაფრთხილებების დადასტურების უფლება აქვს მხოლოდ მკურნალ ქირურგს ან ექიმს!')
+            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
+        if action in ('save_anamnesis', 'regenerate') and patient.approved_at and not is_doctor_user(request.user):
+            messages.error(request, 'ქირურგის მიერ დადასტურებულ ბარათზე ანამნეზის შეცვლის უფლება აქვს მხოლოდ ექიმს!')
             return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
 
         uf = ['updated_at', 'updated_by']

@@ -24,9 +24,22 @@ from .constants import (
 _NONFINITE_STRS = frozenset({'nan', '+nan', '-nan', 'inf', '+inf', '-inf', 'infinity', '+infinity', '-infinity'})
 
 
+def _has_raw_scalar(val):
+    """Return True if val is a non-empty raw scalar input without invoking str() on huge ints."""
+    if val is None or val == '':
+        return False
+    if isinstance(val, (bool, int, float)):
+        return True
+    if isinstance(val, str):
+        return val.strip() != ''
+    return bool(val)
+
+
 def _safe_display_str(val, max_len=160, default=''):
-    """Safely format arbitrary text/values for display: reject containers/NaN/Inf and bound length."""
+    """Safely format arbitrary text/values for display: reject containers/NaN/Inf/huge ints and bound length."""
     if val is None or isinstance(val, (bool, dict, list, tuple, set)):
+        return default
+    if isinstance(val, int) and abs(val) > 10**12:
         return default
     if isinstance(val, float) and not math.isfinite(val):
         return default
@@ -166,7 +179,9 @@ def _date(val):
         return val.date()
     if isinstance(val, datetime.date):
         return val
-    raw = str(val or '').strip()
+    if not isinstance(val, str):
+        return None
+    raw = val.strip()
     if not raw:
         return None
     try:
@@ -188,7 +203,11 @@ def _resolve_pathway(patient):
 
 def _clean_person_id(val):
     """Return ASCII digits-only Georgian Personal ID (up to 11 digits)."""
-    return re.sub(r'[^0-9]', '', str(val or ''))[:11]
+    if val is None or isinstance(val, (bool, dict, list, tuple, set)):
+        return ''
+    if isinstance(val, int) and abs(val) > 10**15:
+        return ''
+    return re.sub(r'[^0-9]', '', str(val))[:11]
 
 
 def _fmt_ka_date(val, short=False):
@@ -482,9 +501,12 @@ _BOUNDED_STR_KEYS = {
 }
 
 
+_SAN_INV_TRACK_KEYS = frozenset({'dos_inr', 'inr', 'plt', 'fibrinogen'})
+
+
 def _sanitize_merged_dict(defaults, raw_dict):
     """Merge JSON payload against typed defaults, stripping NaN/Inf, huge ints, and unbounded display strings."""
-    data = {}
+    data, san_inv = {}, {}
     src = raw_dict if isinstance(raw_dict, dict) else {}
     for k, dv in defaults.items():
         if k not in src:
@@ -527,11 +549,15 @@ def _sanitize_merged_dict(defaults, raw_dict):
                     data[k] = int(dec_v) if dec_v == int(dec_v) else float(dec_v)
             else:
                 data[k] = _num(rv)
+            if k in _SAN_INV_TRACK_KEYS and data[k] is None and _has_raw_scalar(rv):
+                san_inv[k] = _safe_display_str(rv, max_len=24, default='invalid')
     for k, rv in src.items():
         if k not in data:
             if isinstance(rv, float) and not math.isfinite(rv):
                 continue
             data[k] = _strip_non_finite(rv)
+    if san_inv:
+        data['_sanitized_invalid'] = san_inv
     return data
 
 

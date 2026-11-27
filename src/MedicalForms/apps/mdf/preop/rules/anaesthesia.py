@@ -1,6 +1,13 @@
 """Structured anesthesiology (ASA, airway, STOP-Bang, wait guard, fasting), DoS WHO Sign-In, VQI & 2D triage."""
 from ...models import PreopPatient
-from ..calculators import _s_raw, _sat_gl_mmol, _sat_num, build_surveillance_plan, normalize_glucose_mmol
+from ..calculators import (
+    _s_raw,
+    _sat_gl_mmol,
+    _sat_num,
+    build_surveillance_plan,
+    normalize_fibrinogen_gl,
+    normalize_glucose_mmol,
+)
 from ..constants import (
     ANESTH_PLAN_CHOICES,
     CASE_OUTCOME_CHOICES,
@@ -18,16 +25,132 @@ from ..utils import (
     _clean_person_id,
     _date,
     _fmt_ka_date,
+    _has_raw_scalar,
     _num,
     chip_summary,
+    has_prior_stroke_or_tia,
     is_pregnancy_eligible,
+    parse_plt_k,
 )
+
+
+def _eval_anatomic_anesth_mismatch(ctx, open_aortic, hard_nx_reasons, prewashout_vka_plan):
+    patient, pathway = ctx.patient, ctx.pathway
+    open_aortic_non_ga = open_aortic and (ctx.anesth_plan_raw in ('local', 'plexus'))
+    evla_nx_mismatch = (patient.op_subtype == PreopPatient.OpSubtype.EVLA) and (ctx.anesth_plan_raw == 'neuraxial')
+    epi_anatomic_mismatch = ('epidural' in ctx.anesth_lines_set) and (pathway == PreopPatient.Pathway.CEA or patient.op_subtype == PreopPatient.OpSubtype.EVLA)
+    solo_mismatch = ((ctx.anesth_plan_raw == 'neuraxial') and (pathway == PreopPatient.Pathway.CEA or open_aortic)) or evla_nx_mismatch or epi_anatomic_mismatch or open_aortic_non_ga
+    auto_nx_blockers = [r for r in hard_nx_reasons if not (prewashout_vka_plan and r.startswith('INR '))]
+    explicit_nx_blockers = list(auto_nx_blockers)
+    if solo_mismatch:
+        if open_aortic_non_ga:
+            ctx.red_flags.append('არჩეული ადგილობრივი / წნულის გაუტკივარება ღია აორტის ოპერაციაზე ანატომიურად შეუსაბამოა! სავალდებულოა ზოგადი ენდოტრაქეული ანესთეზია (± ეპიდურული ანალგეზია).')
+        elif evla_nx_mismatch or (epi_anatomic_mismatch and ctx.anesth_plan_raw != 'neuraxial'):
+            ctx.red_flags.append('არჩეულია სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ლაზერული აბლაციის (EVLA) ოპერაციაზე — ანატომიურად შეუსაბამოა! მოხსენით ეპიდურული/სპინალური გეგმა.')
+        elif explicit_nx_blockers:
+            ctx.red_flags.append('არჩეულია მხოლოდ სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ღია აორტის ოპერაციაზე — ანატომიურად შეუსაბამოა (ASRA-თი ეპიდურული ანალგეზიაც უკუნაჩვენებია)! შეარჩიეთ ზოგადი ენდოტრაქეული ანესთეზია ან კისრის წნულის ბლოკადა.')
+        else:
+            ctx.red_flags.append('არჩეულია მხოლოდ სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ღია აორტის ოპერაციაზე — ანატომიურად შეუსაბამოა! შეარჩიეთ ზოგადი ენდოტრაქეული ანესთეზია (± ეპიდურული ანალგეზია ღია აორტაზე) ან კისრის წნულის ბლოკადა.')
+    ctx.hard_nx_reasons, ctx.auto_nx_blockers, ctx.explicit_nx_blockers = hard_nx_reasons, auto_nx_blockers, explicit_nx_blockers
+    ctx.solo_neuraxial_anatomic_mismatch = solo_mismatch
+    ctx.auto_spinal_candidate = (ctx.anesth_plan_raw == 'auto') and (ctx.is_phleb or patient.op_subtype == 'evar' or ctx.is_pad_bypass)
+    ctx.has_neuraxial_plan = ctx.explicit_neuraxial or ((ctx.anesth_plan_raw == 'auto') and ctx.is_phleb and not auto_nx_blockers)
+    ctx.neuraxial_hard_blocked = bool(ctx.explicit_neuraxial and (explicit_nx_blockers or solo_mismatch))
+    if ctx.explicit_neuraxial and explicit_nx_blockers:
+        ctx.red_flags.append(f"არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია ({', '.join(explicit_nx_blockers)}) — სპინალური ჰემატომის / ანაფილაქსიის უმაღლესი რისკი! შეცვალეთ ანესთეზიის გეგმა (ASRA 5th Ed)!")
+
+
+def _eval_early_neuraxial_gate(ctx):
+    patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
+    raw_s = getattr(ctx, 'raw_s', None) or {}
+    asra_cfg, ren_red = rule_value('ASRA_NEURAXIAL_COAG_GATE'), rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    doac_low, dabi_low = rule_value('MED_DOAC_HOLD_INTERVALS')['crcl_low'], rule_value('MED_DABIGATRAN_HOLD_INTERVALS')['crcl_low']
+    shock_lim, vka_hold_d = rule_value('VIT_BP_HYPOTENSION_SHOCK')['shock_idx'], rule_value('MED_WARFARIN_HOLD_DAYS')['hold_days']
+    open_aortic = (pathway == PreopPatient.Pathway.ABF) or (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
+    ctx.open_aortic, ctx.open_major = open_aortic, open_aortic or ctx.is_pad_bypass
+    plt, inr, dos_inr_early = parse_plt_k(s.get('plt')), _num(s.get('inr'), lo=0.4, hi=20.0), _num(s.get('dos_inr'), lo=0.5, hi=15)
+    ctx.inr_sat = inr if inr is not None else _sat_num(_s_raw(s, 'inr'), 0.4, 20.0)
+    ctx.dos_inr_sat = dos_inr_early if dos_inr_early is not None else _sat_num(_s_raw(s, 'dos_inr'), 0.5, 15.0)
+    raw_dos_inr = raw_s['dos_inr'] if 'dos_inr' in raw_s else s.get('dos_inr')
+    dos_inr_present = _has_raw_scalar(raw_dos_inr)
+    eff_inr_nx, fib = (dos_inr_early if dos_inr_present else inr), normalize_fibrinogen_gl(s.get('fibrinogen'))
+    on_oral_anticoag = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
+    ctx.plt, ctx.inr, ctx.eff_inr_nx, ctx.fib, ctx.on_oral_anticoag = plt, inr, eff_inr_nx, fib, on_oral_anticoag
+    ft_m = ctx.ft_meds.get('matched_keys') or set()
+    has_acs_stent_early = ('stent_6_12m' in ctx.cad_chips) and ('mi' in ctx.cad_chips)
+    p2y12_cnt_early = sum([
+        bool(q.get('med_clopidogrel') or 'clopidogrel' in ft_m),
+        bool(q.get('med_ticagrelor') or 'ticagrelor' in ft_m),
+        bool(q.get('med_prasugrel') or 'prasugrel' in ft_m),
+    ])
+    asa_allergy_solo_p2y12 = 'nsaid' in ctx.allergy_chips and p2y12_cnt_early >= 1 and (
+        not ctx.is_venous or bool(q.get('cad')) or bool(ctx.cad_chips) or has_prior_stroke_or_tia(patient, q=q, s=s, today=ctx.today)
+    )
+    has_clop_or_tica = bool(q.get('med_clopidogrel') or q.get('med_ticagrelor') or ('clopidogrel' in ft_m) or ('ticagrelor' in ft_m))
+    uninterrupted_p2y12_early = (p2y12_cnt_early >= 1) and (
+        bool(q.get('recent_stent')) or has_acs_stent_early or asa_allergy_solo_p2y12 or (p2y12_cnt_early >= 2)
+        or (ctx.is_pta and has_clop_or_tica) or (ctx.is_symp_cea and has_clop_or_tica)
+    )
+    op_dt_nx = _date(s.get('planned_surgery_date'))
+    prewashout_vka = bool(q.get('med_warfarin') and not dos_inr_present)
+    prewashout_vka_plan = bool(prewashout_vka and eff_inr_nx is not None and asra_cfg['inr_max'] < eff_inr_nx <= asra_cfg['vka_prewashout_inr_max'] and (op_dt_nx is None or op_dt_nx > ctx.today))
+    hard_nx_reasons, inv_in = [], (s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {})
+    def _has_bad(k, parsed):
+        rv = raw_s[k] if k in raw_s else s.get(k)
+        return parsed is None and (_has_raw_scalar(rv) or k in inv_in)
+    if _has_bad('dos_inr', dos_inr_early):
+        hard_nx_reasons.append('ოპერაციის დილის INR დაუშვებელია')
+    elif not dos_inr_present and _has_bad('inr', inr):
+        hard_nx_reasons.append('INR დაუშვებელია')
+    if _has_bad('plt', plt):
+        hard_nx_reasons.append('PLT დაუშვებელია')
+    if _has_bad('fibrinogen', fib):
+        hard_nx_reasons.append('ფიბრინოგენი დაუშვებელია')
+    if plt is not None and plt < asra_cfg['plt_min']:
+        hard_nx_reasons.append(f'PLT {plt} < {asra_cfg["plt_min"]}')
+    if eff_inr_nx is not None and eff_inr_nx > asra_cfg['inr_max']:
+        hard_nx_reasons.append(f'INR {eff_inr_nx} > {asra_cfg["inr_max"]}')
+    if fib is not None and fib < asra_cfg['fib_min']:
+        hard_nx_reasons.append(f'ფიბრინოგენი {fib} < {asra_cfg["fib_min"]} გ/ლ')
+    if s.get('aptt_prolonged'):
+        hard_nx_reasons.append('APTT გახანგრძლივებულია')
+    if uninterrupted_p2y12_early:
+        hard_nx_reasons.append('უწყვეტი P2Y12/DAPT — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
+    if ctx.ft_meds.get('unstructured_antithrombotic') or bool(ft_m & {'parenteral_oac', 'parenteral_dti'}):
+        hard_nx_reasons.append('დაუზუსტებელი ან პარენტერული ანტიკოაგულანტი/ანტიაგრეგანტი ტექსტში (other_meds)')
+    if 'hit_heparin' in ctx.allergy_chips and (not ctx.is_venous or 'mech_valve' in ctx.cad_chips):
+        hard_nx_reasons.append('HIT არტერიულ/მექ. სარქვლის ოპერაციაზე (IV DTI) — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
+    eff_ren_nx = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
+    doac_nx_lims = [lim for cond, lim in ((q.get('med_doac'), doac_low), (q.get('med_dabigatran'), dabi_low), ('rivaroxaban_2_5' in ctx.med_chips, ren_red)) if cond]
+    if doac_nx_lims and (ctx.on_dialysis or (eff_ren_nx is not None and eff_ren_nx < max(doac_nx_lims))):
+        hard_nx_reasons.append(f'CrCl/eGFR < {max(doac_nx_lims)} ანტიკოაგულანტზე — ნეირაქსიული ბლოკადა მოერიდეთ!')
+    if bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in ctx.allergy_chips):
+        hard_nx_reasons.append('ადგილობრივ ანესთეტიკზე (ლიდოკაინი/მარკაინი/ბუპივაკაინი) ალერგია — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
+    if bool(s.get('echo_valve_issue')):
+        hard_nx_reasons.append('მძიმე სარქვლოვანი მანკი / AS — სპინალური ბლოკადა საშიშია!')
+    if getattr(ctx, 'bp_inverted', False):
+        hard_nx_reasons.append('არტერიული წნევის ინვერტირებული ჩანაწერი (SBP ≤ DBP) — გადამოწმებამდე დაბლოკილია!')
+    raw_sbp_low = any((v := _num(_s_raw(raw_s, k) if _s_raw(raw_s, k) is not None else _s_raw(s, k))) is not None and (v < 30 or (ctx.eff_sys is None and v < asra_cfg['sbp_min'])) for k in ('bp_sys', 'bp_sys_l'))
+    raw_hr_v = _num(_s_raw(raw_s, 'hr') if _s_raw(raw_s, 'hr') is not None else _s_raw(s, 'hr'))
+    if (ctx.eff_sys is not None and ctx.eff_sys < asra_cfg['sbp_min']) or raw_sbp_low or (ctx.shock_index is not None and ctx.shock_index >= shock_lim) or (raw_hr_v is not None and (raw_hr_v > 260 or raw_hr_v < 15)):
+        hard_nx_reasons.append(f'ჰიპოტენზია / შოკი (SBP <{asra_cfg["sbp_min"]} ან SI ≥{shock_lim}) — სიმპათექტომია საშიშია!')
+    _eval_anatomic_anesth_mismatch(ctx, open_aortic, hard_nx_reasons, prewashout_vka_plan)
+    if ctx.explicit_neuraxial and prewashout_vka_plan and not ctx.explicit_nx_blockers and not ctx.solo_neuraxial_anatomic_mismatch:
+        ctx.amber_flags.append(f'ვარფარინის ფონზე დაგეგმილია ნეირაქსიული / ეპიდურული ბლოკადა (INR {eff_inr_nx} > {asra_cfg["inr_max"]}) — სავალდებულოა {vka_hold_d}-დღიანი შეჩერება და ოპერაციის დილას საკონტროლო INR ≤ {asra_cfg["inr_max"]} (ASRA 5th Ed)!')
 
 
 def _resolve_effective_anesth_label(ctx, lido_alg, needs_ett_airway):
     patient, pathway, q, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.q_filled
     anesth_plan_raw = ctx.anesth_plan_raw
+    if ctx.open_aortic and anesth_plan_raw in ('local', 'plexus'):
+        return 'ზოგადი ენდოტრაქეული ანესთეზია (არჩეული ადგილობრივი/წნულის გაუტკივარება უკუნაჩვენებია — შესაცვლელია!)'
     if ctx.neuraxial_hard_blocked:
+        if patient.op_subtype == PreopPatient.OpSubtype.EVLA:
+            return (
+                'ანესთეზიოლოგთან შესათანხმებელი (ლიდოკაინზე ალერგია და ნეირაქსიული უკუნაჩვენებია!)'
+                if lido_alg else
+                'ადგილობრივი / ტუმესცენტური ანესთეზია (არჩეული ნეირაქსიული უკუნაჩვენებია — შესაცვლელია!)'
+            )
         return 'ზოგადი ანესთეზია (არჩეული ნეირაქსიული უკუნაჩვენებია — შესაცვლელია!)'
     if lido_alg and (anesth_plan_raw in ('local', 'plexus') or (anesth_plan_raw == 'auto' and (patient.op_subtype == PreopPatient.OpSubtype.EVLA or ctx.is_pta))):
         return 'ანესთეზიოლოგთან შესათანხმებელი (ლიდოკაინზე ალერგია!)'
@@ -81,7 +204,8 @@ def _eval_asa_airway_and_modality(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
     sb_cfg = rule_value('ANES_AIRWAY_STOPBANG_ICU')
     age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
-    ctx.effective_asa = f"ASA {ctx.asa_roman}{'-E' if (s.get('asa_emergency') or ctx.is_acute_emergency) else ''}"
+    is_mycotic_aaa = (pathway == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic')
+    ctx.effective_asa = f"ASA {ctx.asa_roman}{'-E' if (s.get('asa_emergency') or ctx.is_acute_emergency or is_mycotic_aaa) else ''}"
     fut_age = sb_cfg['cea_asymp_futility_age']
     if pathway == PreopPatient.Pathway.CEA and not ctx.is_symp_cea and (age_eff or 0) >= fut_age and ctx.asa_roman == 'IV':
         ctx.red_flags.append(
@@ -109,15 +233,20 @@ def _eval_asa_airway_and_modality(ctx):
         has_htn_sb,
         bool(patient.sex == 'M'),
     ]) + (3 if 'osa' in pulm_chip_set else 0)
-    auto_sb_tier = 'high' if ('osa' in pulm_chip_set or stop_bang_auto >= sb_cfg['stop_bang_high']) else ('intermediate' if stop_bang_auto >= sb_cfg['stop_bang_int'] else 'low')
+    sb_int, sb_hi = sb_cfg['stop_bang_int'], sb_cfg['stop_bang_high']
+    auto_sb_tier = 'high' if ('osa' in pulm_chip_set or stop_bang_auto >= sb_hi) else ('intermediate' if stop_bang_auto >= sb_int else 'low')
     sb_raw = s.get('stop_bang_risk') if s.get('stop_bang_risk') in ('auto', 'low', 'intermediate', 'high') else 'auto'
     effective_stop_bang = auto_sb_tier if sb_raw == 'auto' else sb_raw
     ctx.stop_bang_auto = stop_bang_auto
     ctx.effective_stop_bang = effective_stop_bang
-    ctx.stop_bang_label = {'low': 'დაბალი (0–2)', 'intermediate': 'საშუალო (3–4)', 'high': 'მაღალი OSA რისკი (≥5)'}[effective_stop_bang]
+    ctx.stop_bang_label = {
+        'low': f'დაბალი (0–{max(0, sb_int - 1)})',
+        'intermediate': f'საშუალო ({sb_int}–{max(sb_int, sb_hi - 1)})',
+        'high': f'მაღალი OSA რისკი (≥{sb_hi})',
+    }[effective_stop_bang]
     if effective_stop_bang == 'high' and (not ctx.is_venous or ctx.is_phleb):
         ctx.amber_flags.append(
-            'მაღალი ობსტრუქციული ძილის აპნოეს რისკი (STOP-Bang ≥5 / OSA) — ოპიოიდების დაზოგვა, პოსტოპ. პულსოქსიმეტრია და CPAP მზადყოფნა.'
+            f'მაღალი ობსტრუქციული ძილის აპნოეს რისკი (STOP-Bang ≥{sb_hi} / OSA) — ოპიოიდების დაზოგვა, პოსტოპ. პულსოქსიმეტრია და CPAP მზადყოფნა.'
         )
 
     lido_alg = bool(q.get('ven_lidocaine_allergy') or 'lidocaine' in ctx.allergy_chips)
@@ -158,6 +287,7 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
         ref_start = _date(patient.started_on) or _date(patient.visit_date) or ctx.today
         wait_to_op = (op_dt - ref_start).days
         aaa_eff_w = ctx.aaa_mm if ctx.aaa_mm is not None else getattr(ctx, 'aaa_mm_sat', None)
+        is_mycotic_w = s.get('aaa_morphology') == 'inflammatory_mycotic'
         is_high_risk_aaa = (s.get('aaa_morphology') in ('saccular', 'inflammatory_mycotic', 'rapid_growth')) or bool(q.get('aaa_pain'))
         if pathway == PreopPatient.Pathway.CEA and ctx.is_symp_cea:
             ev_dt = _date(q.get('cea_event_date'))
@@ -173,11 +303,15 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
         elif pathway == PreopPatient.Pathway.AAA_INFRA and (aaa_eff_w is not None or is_high_risk_aaa):
             min_aaa_thresh = rule_value('AAA_FEMALE_MIN_MM') if patient.sex == 'F' else rule_value('AAA_MALE_MIN_MM')
             aaa_lbl_w = f'{aaa_eff_w} მმ' if aaa_eff_w is not None else ('სიმპტომური' if q.get('aaa_pain') else 'საკულარული/მიკოზური')
-            if aaa_eff_w is not None and aaa_eff_w >= rule_value('AAA_GIANT_MM') and wait_to_op > aaa_wait_giant:
+            if is_mycotic_w and wait_to_op > 7:
+                ctx.amber_flags.append(
+                    f'მიკოზური / ინფიცირებული AAA ({aaa_lbl_w}): დაგეგმილი ოპერაციის მოლოდინი {wait_to_op} დღეა (>7 დღე — სეფსისისა და რუპტურის მაღალი რისკი, სასწრაფო ოპერაცია + IV ანტიბიოტიკოთერაპია)!'
+                )
+            elif aaa_eff_w is not None and aaa_eff_w >= rule_value('AAA_GIANT_MM') and wait_to_op > aaa_wait_giant:
                 ctx.amber_flags.append(
                     f'გიგანტური AAA ({aaa_eff_w} მმ): დაგეგმილი ოპერაციის თარიღი ({ctx.planned_surgery_ka}) დაშორებულია {wait_to_op} დღით (>{aaa_wait_giant} დღე — მაღალი რუპტურის რისკი)!'
                 )
-            elif ((aaa_eff_w is not None and aaa_eff_w >= min_aaa_thresh) or is_high_risk_aaa) and wait_to_op > aaa_wait_std:
+            elif not is_mycotic_w and ((aaa_eff_w is not None and aaa_eff_w >= min_aaa_thresh) or is_high_risk_aaa) and wait_to_op > aaa_wait_std:
                 ctx.amber_flags.append(
                     f'AAA ({aaa_lbl_w}): დაგეგმილი ოპერაციის მოლოდინი {wait_to_op} დღეა (UK NVR / ESVS სამიზნე ≤8 კვირა / {aaa_wait_std} დღე).'
                 )
@@ -300,8 +434,13 @@ def _build_dos_checks(ctx):
         dos_checks.append({'key': 'dos_latex_free_or', 'label': f'ულატექსო საოპერაციო გარემო (ხელთათმანები/კათეტერი) და {ant_lbl} მზადაა', 'done': bool(s.get('dos_latex_free_or'))})
     preg_claimed = bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
     exempt_bhcg = preg_claimed and (ctx.is_ali_acute or ctx.is_acute_emergency or ctx.is_rupture_suspect or getattr(ctx, 'is_urgent_preg', False))
-    needs_bhcg = is_pregnancy_eligible(patient) and not exempt_bhcg and (
-        preg_claimed or (patient.sex == 'F' and (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD) or ctx.is_pta or ctx.is_venous))
+    needs_bhcg = (
+        (preg_claimed and bool(s.get('dos_bhcg_negative')))
+        or (
+            is_pregnancy_eligible(patient) and not exempt_bhcg and (
+                preg_claimed or (patient.sex == 'F' and (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD) or ctx.is_pta or ctx.is_venous))
+            )
+        )
     )
     if needs_bhcg:
         dos_checks.append({'key': 'dos_bhcg_negative', 'label': f'ორსულობის გამორიცხვა (β-hCG უარყოფითია) — ფლუოროსკოპიის/კონტრასტის/ვენური ჩარევის უსაფრთხოება ({preg_lo}–{preg_hi} წ. ქალი)', 'done': bool(s.get('dos_bhcg_negative'))})
@@ -360,9 +499,9 @@ def _eval_dos_and_vqi(ctx):
         ('dos_inr', dos_inr, 'ოპერაციის დილის INR'),
     ):
         raw_v = raw_s[raw_k] if raw_k in raw_s else s.get(raw_k)
-        if (raw_v is None or str(raw_v).strip() == '') and raw_k in inv_in:
+        if not _has_raw_scalar(raw_v) and raw_k in inv_in:
             raw_v = inv_in[raw_k]
-        if raw_v is not None and str(raw_v).strip() != '' and parsed_v is None:
+        if _has_raw_scalar(raw_v) and parsed_v is None:
             if raw_k == 'dos_inr':
                 dos_inr_bad = True
             dos_warnings.append(f'{_fmt_bad_val(lbl, raw_v)} — კრიტიკულად დაუშვებელია, გადაამოწმეთ მაჩვენებელი საოპერაციოში შეყვანამდე!')
@@ -382,14 +521,19 @@ def _eval_dos_and_vqi(ctx):
         ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
         and not ctx.has_neuraxial_plan and bool(q.get('med_warfarin'))
         and not getattr(ctx, 'eff_pregnant', False) and not getattr(ctx, 'active_gi_bleed', False) and not ctx.liver_3x
-        and not (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips or getattr(ctx, 'has_ft_full_oac', False))
+        and not (
+            q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips
+            or getattr(ctx, 'has_ft_full_oac', False) or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))
+        )
     )
     evla_inr_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
+    mech_inr_min = rule_value('MED_MECH_VALVE_SAFETY')
     inr_lim = evla_inr_max if evla_vka_elig else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
     inr_eff_dos = ctx.inr if ctx.inr is not None else getattr(ctx, 'inr_sat', None)
     dos_inr_eff = dos_inr if dos_inr is not None else getattr(ctx, 'dos_inr_sat', None)
     eff_inr_check = dos_inr_eff if dos_inr_eff is not None else inr_eff_dos
-    ctx.is_evla_warfarin_only = bool(evla_vka_elig and not dos_inr_bad and (eff_inr_check is None or eff_inr_check <= evla_inr_max))
+    evla_subther_mv = bool(ctx.has_mech_valve and eff_inr_check is not None and eff_inr_check < mech_inr_min)
+    ctx.is_evla_warfarin_only = bool(evla_vka_elig and not dos_inr_bad and not evla_subther_mv and (eff_inr_check is None or eff_inr_check <= evla_inr_max))
     any_dos_ticked = any(c['done'] for c in dos_checks if c.get('key') != 'icu_bed_booked')
     if dos_inr_eff is not None:
         if dos_inr_eff > inr_lim:
@@ -428,6 +572,7 @@ def _eval_triage_and_passport_cautions(ctx):
     fev1_red = rule_value('PULM_CXR_SPIROMETRY')['fev1_red']
     aaa_high_mm = rule_value('AAA_CTA_STALE_MONTHS')[2]
     cea_urg_pct = rule_value('CEA_STENOSIS_THRESHOLDS')['urgent_badge']
+    cea_win_d = rule_value('CEA_SYMP_WINDOW_DAYS')[0]
 
     if ctx.all_tasks_done and ctx.priority_flags:
         prio_set = set(ctx.priority_flags)
@@ -455,7 +600,7 @@ def _eval_triage_and_passport_cautions(ctx):
         if af not in passport_cautions and any(
             kw in af for kw in (
                 'ასიმეტრია', 'სასაზღვრო ჰიპოტენზია', 'ვიწრო პულსური', 'STOP-Bang',
-                '14-დღიან ფანჯარას', 'რუპტურის რისკი', 'კიდურის დაკარგვის', 'NT-proBNP', 'Mallampati IV',
+                f'{cea_win_d}-დღიან ფანჯარას', 'რუპტურის რისკი', 'კიდურის დაკარგვის', 'NT-proBNP', 'Mallampati IV',
             )
         ):
             passport_cautions.append(af)

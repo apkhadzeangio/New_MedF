@@ -251,9 +251,16 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
         from .parsers import _invalidate_approval_if_needed, is_doctor_user
 
         case = get_object_or_404(Case, pk=case_id_int)
-        existing = PreopPatient.objects.filter(case=case, archived=False).first()
+        existing = PreopPatient.objects.filter(case=case).order_by('archived', '-id').first()
         if existing:
+            if existing.archived:
+                messages.error(request, 'ამ ქეისის წინასაოპერაციო ბარათი დაარქივებულია — სინქრონიზაცია და დუბლიკატის შექმნა დაბლოკილია!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[existing.pk]))
             if request.POST.get('sync') == '1':
+                cur_out = merged_studies(existing).get('case_outcome_status') or 'scheduled'
+                if cur_out in ('operated', 'deferred', 'cancelled_logistics', 'cancelled_medical'):
+                    messages.error(request, 'არააქტიურ (ნაოპერაციებ/გადადებულ/გაუქმებულ) ბარათზე კონფერენციის ქეისიდან სინქრონიზაცია დაბლოკილია!')
+                    return HttpResponseRedirect(reverse('preop-patient', args=[existing.pk]))
                 op_sub, side = detect_case_preop(case)
                 if existing.pathway == PreopPatient.Pathway.CEA and side == 'B':
                     side = ''

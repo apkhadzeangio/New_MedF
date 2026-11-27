@@ -215,7 +215,8 @@ class PreopStressFixesR17EngineTests(TestCase):
         p_mig = _mk('bypass_clti', q={'neuro': False, 'med_prasugrel': True}, s={'carotid_symp': True})
         s_m = dict(p_mig.studies)
         PreopPatientView._migrate_header_pathway_flags(p_mig, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA, s_m, [])
-        self.assertTrue(s_m.get('carotid_symp'))
+        self.assertTrue(p_mig.questionnaire.get('neuro'))
+        self.assertFalse(s_m.get('carotid_symp'))
         ev_ven_p = evaluate(_mk('phlebectomy', q={'neuro': False, 'med_prasugrel': True}, s={'carotid_symp': True}), today=TODAY)
         self.assertTrue(ev_ven_p['med_schedule'][0].get('contraindicated'))
         ev_cl = evaluate(_mk('phlebectomy', q={'neuro': False, 'cea_event_date': '2026-01-15', 'allergy_chips': ['nsaid'], 'med_clopidogrel': True}), today=TODAY)
@@ -263,7 +264,7 @@ class PreopStressFixesR17EngineTests(TestCase):
 
     def test_clin16_registry_honesty_vignettes_and_zero_jargon_leaks(self):
         # Pillar 1: Registry v1.2.16 honesty (0 UNVERIFIED in STATUS_VERIFIED) + live threshold reactivity
-        self.assertEqual(REGISTRY_VERSION, '1.2.16')
+        self.assertEqual(REGISTRY_VERSION, '1.2.17')
         ver = [r for r in RULES_BY_ID.values() if r.status == STATUS_VERIFIED]
         loc = [r for r in RULES_BY_ID.values() if r.status == STATUS_LOCAL]
         self.assertEqual(len(ver), 13)

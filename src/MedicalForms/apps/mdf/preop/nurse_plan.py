@@ -1,20 +1,12 @@
 """Track B3/B5 plain-Georgian missing-item checklist, phone med-call script, and postponement detector."""
 from .constants import STATUS_NO_Q
 from .nurse_ui import _med_call_status, med_schedule_signature
-from .plain_ka import _CLINICIAN_JARGON_TOKENS, scrub_plain_ka
+from .plain_ka import (
+    _CLINICIAN_JARGON_TOKENS,
+    plain_drug_name as _plain_drug_name,
+    scrub_plain_ka,
+)
 from .utils import _date, _fmt_ka_date, is_self_filled_q
-
-_DRUG_PLAIN_PREFIX = {
-    'SGLT2 (ჯარდიანსი / ფორსიგა)': 'შაქრის წამალი — ჯარდიანსი / ფორსიგა',
-    'DOAC (ქსარელტო / ელიქვისი)': 'სისხლის გამათხელებელი — ქსარელტო / ელიქვისი',
-    'ქსარელტო 2.5 მგ x2': 'სისხლის გამათხელებელი — რივაროქსაბანი (დაბალი დოზა)',
-    'დაბიგატრანი (პრადაქსა)': 'სისხლის გამათხელებელი — პრადაქსა (დაბიგატრანი)',
-    'ვარფარინი': 'სისხლის გამათხელებელი — ვარფარინი',
-    'კლოპიდოგრელი / P2Y12': 'თრომბის საწინააღმდეგო — კლოპიდოგრელი (პლავიქსი)',
-    'ასპირინი (75–100 მგ)': 'ასპირინი (კარდიომაგნილი / თრომბო-ასი)',
-    'GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)': 'წონის/შაქრის ნემსი — ოზემპიკი / მუნჯარო',
-    'ACEi / ARB (პრილი/სარტანი)': 'წნევის წამალი (პრილი / სარტანი)',
-}
 
 _FIELD_TO_INPUT_ID = {
     'bp_sys': 'nw-bp-sys', 'bp_dia': 'nw-bp-dia', 'hr': 'nw-hr', 'spo2': 'nw-spo2',
@@ -26,10 +18,6 @@ _FIELD_TO_INPUT_ID = {
 
 def _scrub_plain_text(txt, second_person=True, strip_quoted_ft=False):
     return scrub_plain_ka(txt, second_person=second_person, strip_quoted_ft=strip_quoted_ft)
-
-
-def _plain_drug_name(raw_drug):
-    return scrub_plain_ka(_DRUG_PLAIN_PREFIX.get(raw_drug, raw_drug), second_person=False, strip_quoted_ft=True)
 
 
 def _append_missing_and_unknown_items(items, ev, has_q_banner):
@@ -225,7 +213,8 @@ def build_phone_med_script(patient, ev, today):
             'spoken': spoken_txt,
             'rule': scrub_plain_ka(row['rule'], second_person=False, strip_quoted_ft=True),
             'tone': row['tone'],
-            'date_plan': plan,
+            'date_plan': scrub_plain_ka(plan, second_person=False, strip_quoted_ft=True),
+            'raw_date_plan': plan,
             'hold_or_skip': is_planned_stop,
             'urgent_contact': is_urgent,
         }
@@ -253,43 +242,65 @@ def build_phone_med_script(patient, ev, today):
     }
 
 
-def _append_postponement_clinical_impacts(impacts, patient, ev, cur_dt, today, cea_win_d, cta_cfg):
+def _append_postponement_clinical_impacts(impacts, patient, ev, cur_dt, today, cea_win_d, cta_cfg, shift_days=0):
     from .utils import cta_live_months_age
 
     cta_std_m, cta_giant_m, cta_giant_mm = cta_cfg
     s = ev['s']
     med_call = _med_call_status(ev, today)
+    contra_drugs = [
+        _plain_drug_name(r['drug']) for r in ev['med_schedule']
+        if r.get('contraindicated') or r.get('acute_hold')
+    ]
     hold_drugs = [
         _plain_drug_name(r['drug']) for r in ev['med_schedule']
-        if r.get('hold_or_skip') or (ev.get('is_evla_warfarin_only') and 'ვარფარინ' in (r.get('drug') or ''))
+        if not (r.get('contraindicated') or r.get('acute_hold'))
+        and (r.get('hold_or_skip') or (ev.get('is_evla_warfarin_only') and 'ვარფარინ' in (r.get('drug') or '')))
     ]
     stop_locked = (ev['clearance_seal']['code'] == 'stop' or ev.get('has_hard_contraindication'))
     if stop_locked:
-        impacts.append({
-            'tone': 'danger',
-            'text': (
-                'ოპერაციაზე დაშვება დაბლოკილია (STOP) — წამლები არ შეწყვიტოთ და შეჩერების თარიღს ნუ მისცემთ ქირურგის გადაწყვეტილებამდე!'
-                if hold_drugs
-                else 'ოპერაციაზე დაშვება დაბლოკილია (STOP) — თარიღის გადატანის მიუხედავად ოპერაცია ვერ დაიგეგმება ქირურგის გადაწყვეტილებამდე!'
-            ),
-        })
-    elif hold_drugs:
-        if ev.get('has_elapsed_hold_window'):
+        if contra_drugs:
             impacts.append({
                 'tone': 'danger',
-                'text': f'ყურადღება! ახალ თარიღზე წამლის შეჩერების სავალდებულო ფანჯარა უკვე ამოწურულია ({", ".join(hold_drugs[:3])}) — დაუყოვნებლივ აცნობეთ ქირურგს!',
-            })
-        elif med_call['outdated_call']:
-            impacts.append({
-                'tone': 'danger',
-                'text': f'წამლების შეჩერების თარიღები შეიცვალა ({", ".join(hold_drugs[:3])}) — წინა დარეკვის მონიშვნა გაუქმდა! აუცილებლად დაურეკეთ პაციენტს თავიდან ახალი თარიღებით.',
+                'text': f'ოპერაციაზე დაშვება დაბლოკილია (STOP) — გეგმური წამლები არ შეწყვიტოთ, მაგრამ უკუნაჩვენები წამლის გამო ({", ".join(contra_drugs[:3])}) დაუყოვნებლივ დაუკავშირდით ექიმს!',
             })
         else:
             impacts.append({
-                'tone': 'warn',
-                'text': f'გადაამოწმეთ და აუხსენით წამლების შეჩერების ახალი თარიღები ({", ".join(hold_drugs[:3])}).',
+                'tone': 'danger',
+                'text': (
+                    'ოპერაციაზე დაშვება დაბლოკილია (STOP) — წამლები არ შეწყვიტოთ და შეჩერების თარიღს ნუ მისცემთ ქირურგის გადაწყვეტილებამდე!'
+                    if hold_drugs
+                    else 'ოპერაციაზე დაშვება დაბლოკილია (STOP) — თარიღის გადატანის მიუხედავად ოპერაცია ვერ დაიგეგმება ქირურგის გადაწყვეტილებამდე!'
+                ),
             })
+    else:
+        if contra_drugs:
+            impacts.append({
+                'tone': 'danger',
+                'text': f'ყურადღება! ფიქსირდება უკუნაჩვენები ან დაუყოვნებლივ შესათანხმებელი წამალი ({", ".join(contra_drugs[:3])}) — ახალი თარიღის მიუხედავად სასწრაფოდ დაუკავშირდით მკურნალ ექიმს!',
+            })
+        if hold_drugs:
+            if ev.get('has_elapsed_hold_window'):
+                impacts.append({
+                    'tone': 'danger',
+                    'text': f'ყურადღება! ახალ თარიღზე წამლის შეჩერების სავალდებულო ფანჯარა უკვე ამოწურულია ({", ".join(hold_drugs[:3])}) — დაუყოვნებლივ აცნობეთ ქირურგს!',
+                })
+            elif med_call['outdated_call']:
+                impacts.append({
+                    'tone': 'danger',
+                    'text': f'წამლების შეჩერების თარიღები შეიცვალა ({", ".join(hold_drugs[:3])}) — წინა დარეკვის მონიშვნა გაუქმდა! აუცილებლად დაურეკეთ პაციენტს თავიდან ახალი თარიღებით.',
+                })
+            else:
+                impacts.append({
+                    'tone': 'warn',
+                    'text': f'გადაამოწმეთ და აუხსენით წამლების შეჩერების ახალი თარიღები ({", ".join(hold_drugs[:3])}).',
+                })
 
+    if shift_days > 0 and ev.get('pathway') == 'aaa_infra' and s.get('aaa_morphology') == 'inflammatory_mycotic':
+        impacts.append({
+            'tone': 'danger',
+            'text': 'ინფიცირებული / მიკოზური ანევრიზმა — ოპერაციის გადადება მაღალი რისკია! დაუყოვნებლივ შეათანხმეთ ქირურგთან.',
+        })
     cea_ev_dt = _date(ev['q'].get('cea_event_date'))
     if ev.get('is_symp_cea'):
         cea_days_at_op = None
@@ -356,13 +367,13 @@ def detect_postponement_impacts(patient, ev, today):
             'tone': 'danger',
             'text': f'ანალიზებს ახალ თარიღამდე ({_fmt_ka_date(cur_dt)}) გაუვა {stale_lab_d}-დღიანი ვადა (იქნება {age_at_op} დღის) — ანალიზები თავიდან უნდა ჩაბარდეს!',
         })
-    elif not labs_dt and shift_days > 0:
+    elif not labs_dt:
         impacts.append({
             'tone': 'warn',
             'text': f'შეამოწმეთ ანალიზების თარიღი — ახალ ოპერაციის დღემდე არ უნდა იყოს {stale_lab_d} დღეზე ძველი.',
         })
 
-    _append_postponement_clinical_impacts(impacts, patient, ev, cur_dt, today, cea_win_d, cta_cfg)
+    _append_postponement_clinical_impacts(impacts, patient, ev, cur_dt, today, cea_win_d, cta_cfg, shift_days=shift_days)
 
     if not impacts:
         impacts.append({
@@ -456,7 +467,7 @@ def _patient_2nd_person(entries):
     out = []
     for e in entries:
         sp = e.get('spoken') or ''
-        if not (e.get('date_plan') or '').strip() and any(k in sp for k in _CLINICIAN_JARGON_TOKENS):
+        if not (e.get('raw_date_plan') or e.get('date_plan') or '').strip() and any(k in sp for k in _CLINICIAN_JARGON_TOKENS):
             sp = _plain_undated_patient_med(e)
         out.append({
             'drug': scrub_plain_ka(e.get('drug') or '', second_person=True, strip_quoted_ft=True),
@@ -480,8 +491,17 @@ def build_patient_plain_explanation(patient, ev, today):
     q, s, pw = ev['q'], ev['s'], ev['pathway']
     op_dt = _date(s.get('planned_surgery_date'))
     med_script = build_phone_med_script(patient, ev, today)
+    is_inactive = bool(patient.archived) or (ev.get('case_outcome') not in (None, '', 'scheduled'))
+    if patient.archived:
+        inactive_banner = 'ეს ბარათი დაარქივებულია — ძველი თარიღები და დაშვება აღარ მოქმედებს. ახალი დანიშნულებისთვის დაუკავშირდით მკურნალ ექიმს.'
+    elif is_inactive:
+        inactive_banner = f'ოპერაციის სტატუსი შეცვლილია ({ev.get("case_outcome_label") or "არააქტიური"}) — დაგეგმილი მომზადების ბარათი აღარ მოქმედებს.'
+    else:
+        inactive_banner = ''
 
-    if med_script['stop_locked']:
+    if is_inactive:
+        first_arrival = 'ეს ბარათი აღარ არის აქტიური — დაგეგმილი ოპერაციის თარიღი გადაამოწმეთ მკურნალ ექიმთან.'
+    elif med_script['stop_locked']:
         first_arrival = 'ოპერაციის თარიღი დროებით შეჩერებულია — ზუსტ თარიღს მკურნალი ექიმი შეგატყობინებთ.'
     elif op_dt:
         first_arrival = f'დაგეგმილი ოპერაციის თარიღი: {_fmt_ka_date(op_dt)}'
@@ -508,8 +528,13 @@ def build_patient_plain_explanation(patient, ev, today):
         and not lido_allergy
         and not med_script['stop_locked']
     )
-    if med_script['stop_locked']:
-        fasting_plain = f"ოპერაცია შეჩერებულია დაზუსტებამდე — {glp_cfg['liquid_hours']}-საათიანი დიეტა ან უზმოდ რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!"
+    if is_inactive:
+        fasting_plain = 'ბარათი არააქტიურია — უზმოდ ყოფნის რეჟიმი დააზუსტეთ მკურნალ ექიმთან.'
+    elif med_script['stop_locked']:
+        if has_glp1:
+            fasting_plain = f"ოპერაცია შეჩერებულია დაზუსტებამდე — {glp_cfg['liquid_hours']}-საათიანი დიეტა ან უზმოდ რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!"
+        else:
+            fasting_plain = 'ოპერაცია შეჩერებულია დაზუსტებამდე — უზმოდ ყოფნის რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!'
     elif has_glp1:
         fasting_plain = (
             f"ოპერაციამდე {glp_cfg['liquid_hours']} საათით ადრე გადადით მხოლოდ სუფთა თხევად დიეტაზე "
@@ -527,12 +552,15 @@ def build_patient_plain_explanation(patient, ev, today):
 
     seal_code = ev['clearance_seal']['code']
     is_draft = (
-        not bool(patient.approved_at)
-        or seal_code in ('stop', 'pending')
+        is_inactive
+        or not bool(patient.approved_at)
+        or seal_code in ('stop', 'pending', 'conditional', 'inactive')
+        or not bool(ev.get('workup_ready'))
         or bool(ev.get('has_blocking_unknown_state'))
     )
     return {
         'is_draft': is_draft,
+        'inactive_banner': inactive_banner,
         'arrival_items': arrival_items,
         'fasting_plain': fasting_plain,
         'stop_meds': _patient_2nd_person(med_script['stop_rows']),

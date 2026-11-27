@@ -193,10 +193,10 @@ def normalize_glucose_mmol(gl):
 
 def normalize_albumin_gl(alb):
     """Return serum albumin in g/L using registered LAB_UNIT_AUTO_CONVERSION bounds."""
-    v = _num(alb, lo=0.5, hi=80)
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    v = _num(alb, lo=u['alb_gdl_lo'], hi=80)
     if v is None:
         return None
-    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
     return _clean_num(round(v * 10, 4) if u['alb_gdl_lo'] <= v <= u['alb_gdl_hi'] else v)
 
 
@@ -378,12 +378,19 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         return 'III'
 
     med_ch_asa = set(_str_list(q.get('med_chips')))
+    ft_asa_keys, ft_amio_asa = set(), False
+    if isinstance(q.get('other_meds'), str) and q['other_meds'].strip():
+        from .meds_freetext import _detect_freetext_high_risk_meds
+        ft_a = _detect_freetext_high_risk_meds(q['other_meds'], q=q)
+        ft_asa_keys = ft_a.get('matched_keys') or set()
+        ft_amio_asa = bool(ft_a.get('has_ft_amiodarone'))
     if (
         bool(q.get('htn')) or bool(q.get('dm')) or bool(q.get('metformin')) or bool(q.get('smoker'))
         or bool(q.get('pulm')) or bool(_str_list(q.get('pulm_chips'))) or bool(q.get('thyroid_disease'))
         or bool(q.get('med_warfarin')) or bool(q.get('med_doac')) or bool(q.get('med_dabigatran'))
         or bool(q.get('med_clopidogrel')) or bool(q.get('med_ticagrelor')) or bool(q.get('med_prasugrel'))
-        or ('amiodarone' in med_ch_asa)
+        or ('amiodarone' in med_ch_asa) or ft_amio_asa
+        or bool(ft_asa_keys & {'warfarin', 'doac', 'dabigatran', 'clopidogrel', 'ticagrelor', 'prasugrel'})
         or (hba1c is not None and hba1c >= asa['hba1c_ii'])
         or (is_pregnancy_eligible(patient) and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible'))))
         or (bmi_v is not None and bmi_v >= asa['bmi_ii'])

@@ -42,7 +42,7 @@
         <div>
             <div class="small text-muted fw-semibold">წინასაოპერაციო სამედიცინო კითხვარი (ერთჯერადი დაცული ბმული)</div>
             <h1 style="font-size:22px;margin:4px 0">{{ p.patient_name }}</h1>
-            <div class="small text-muted">დაგეგმილი ჩარევა: <strong>{{ ev.effective_operation_label }}</strong></div>
+            <div class="small text-muted">დაგეგმილი ჩარევა: <strong>{{ plain_operation_label|default:ev.effective_operation_label }}</strong></div>
         </div>
         <div class="grid-3 pt-2 border-top" style="border-color:var(--line-soft)!important">
             <label class="fld">პირადი ნომერი (11 ციფრი)
@@ -65,8 +65,8 @@
                 </label>
                 <label class="fld" style="flex:1">სქესი
                     <select name="sex" form="self-q-form" class="form-select">
-                        <option value="M" {% if p.sex == 'M' %}selected{% endif %}>კაცი (M)</option>
-                        <option value="F" {% if p.sex == 'F' %}selected{% endif %}>ქალი (F)</option>
+                        <option value="M" {% if p.sex == 'M' %}selected{% endif %}>კაცი</option>
+                        <option value="F" {% if p.sex == 'F' %}selected{% endif %}>ქალი</option>
                     </select>
                 </label>
             </div>

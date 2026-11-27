@@ -196,7 +196,13 @@ def _eval_missing_s2_and_clearance_seal(ctx):
     }.get(side_s, 'აორტა / ცენტრალური' if pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF) else 'მხარე დასაზუსტებელია')
 
     stale_pending = bool(ctx.needs_stale_labs and not ctx.s.get('stale_labs_refreshed'))
-    if ctx.has_hard_contraindication or ctx.dos_hold_danger or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch:
+    if patient.archived or not ctx.is_active_case:
+        st_lbl = 'დაარქივებული ბარათი' if patient.archived else f'არააქტიური სტატუსი ({ctx.case_outcome_label})'
+        ctx.clearance_seal = {
+            'code': 'inactive', 'badge': f'არააქტიური — {st_lbl}',
+            'detail': 'ბარათი დაარქივებულია ან ოპერაცია დასრულებული/გადადებული/გაუქმებულია — აქტიური GO დაშვება არ მოქმედებს.',
+        }
+    elif ctx.has_hard_contraindication or ctx.dos_hold_danger or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch:
         ctx.clearance_seal = {
             'code': 'stop', 'badge': 'STOP — დაშვება დაბლოკილია',
             'detail': (
@@ -337,8 +343,23 @@ def _build_surgical_abx_regimen(ctx):
     is_std_evla_abx = ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not (
         q.get('ven_ceap') == 'C6' or q.get('ven_acute_svt') or q.get('ven_skin_infection')
     )
+    is_mycotic_aaa = pathway == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic'
     if is_std_evla_abx:
         abx_regimen = 'რუტინული ანტიბიოტიკოპროფილაქტიკა სტანდარტულ EVLA-ზე არ ესაჭიროება (ESVS 2022)'
+    elif is_mycotic_aaa:
+        if 'beta_lactam' in ctx.allergy_chips:
+            myc_gram_pos = 'კლინდამიცინი / დაპტომიცინი' if getattr(ctx, 'has_vancomycin_allergy', False) else 'ვანკომიცინი 15–20 მგ/კგ IV'
+            abx_regimen = (
+                f'მიკოზური AAA — სისხლის ნათესები ×2 + ემპირიული ფართო სპექტრის IV ანტიბიოტიკოთერაპია '
+                f'(β-ლაქტამზე ალერგია: {myc_gram_pos} + აზტრეონამი 2 გ IV, ინფექციონისტთან შეთანხმებით; ESVS 2024)'
+            )
+        else:
+            myc_gram_pos = 'დაპტომიცინი / ლინეზოლიდი (ვანკომიცინზე ალერგია!)' if getattr(ctx, 'has_vancomycin_allergy', False) else 'ვანკომიცინი'
+            myc_beta = 'ცეფეპიმი / მეროპენემი (მსუბუქი პენიცილინის ალერგია)' if 'penicillin_mild' in ctx.allergy_chips else 'პიპერაცილინ-ტაზობაქტამი / მეროპენემი'
+            abx_regimen = (
+                f'მიკოზური AAA — რუტინული ცეფაზოლინი არასაკმარისია! სისხლის ნათესები ×2 + ემპირიული ფართო სპექტრის IV ანტიბიოტიკოთერაპია '
+                f'({myc_gram_pos} + {myc_beta}, ინფექციონისტთან შეთანხმებით; ESVS 2024)'
+            )
     elif 'beta_lactam' in ctx.allergy_chips:
         needs_gram_neg_groin = pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
         core_alt = (
@@ -354,6 +375,8 @@ def _build_surgical_abx_regimen(ctx):
                 gram_neg_addon = '+ აზტრეონამი 2 გ IV საზარდულის/მუცლის მიდგომისას — ორსულობაზე გენტამიცინი და ფტორქინოლონები (ციპროფლოქსაცინი) აკრძალულია!'
             elif avoid_gent:
                 gram_neg_addon = f'+ აზტრეონამი 2 გ ან ციპროფლოქსაცინი 400 მგ IV საზარდულის/მუცლის მიდგომისას — დიალიზზე, CrCl/eGFR <{abx_cfg["gentamicin_avoid_renal"]}-სა და ღია აორტაზე გენტამიცინს მოერიდეთ (გენტამიცინი აკრძალულია)!'
+            elif eff_ren_abx is None:
+                gram_neg_addon = f'+ აზტრეონამი 2 გ ან ციპროფლოქსაცინი 400 მგ IV საზარდულის/მუცლის მიდგომისას — გენტამიცინი არ გამოიყენოთ CrCl/eGFR ≥{abx_cfg["gentamicin_avoid_renal"]} დადასტურებამდე!'
             else:
                 gram_neg_addon = '+ გენტამიცინი 5 მგ/კგ IV საზარდულის მიდგომისას (ან აზტრეონამი 2 გ / ციპროფლოქსაცინი 400 მგ IV)'
             abx_regimen = f'{core_alt} ({gram_neg_addon})'
@@ -394,9 +417,15 @@ def _build_surgical_brief(ctx):
         else:
             heparin_plan = f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — გეგმური ინტრაოპ./პოსტოპ. სისტემური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე (მხოლოდ IPC; გადაუდებელ რევასკულარიზაციაზე გასტროენტეროლოგისა და {"ჰემატოლოგ/ქირურგის" if has_hit else "ქირურგის"} კონსილიუმი)!{hit_gi_b}'
     elif has_hit:
+        oac_hit_tail = (
+            ' · პოსტოპ. მუდმივი თერაპიული OAC-ის აღდგენისას დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (IPC აღდგენამდე — ორმაგი ანტიკოაგულაციის გარეშე!)'
+            if (has_full_oac_b and not getattr(ctx, 'has_contra_full_oac', False))
+            else (' · უკუნაჩვენები OAC არ განაახლოთ (ორმაგი ანტიკოაგულაციის გარეშე!)' if getattr(ctx, 'has_contra_full_oac', False) else '')
+        )
         if (
             ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.needs_vte_prophylaxis
             and not getattr(ctx, 'eff_pregnant', False) and not ctx.has_mech_valve and not hit_severe_renal and not ctx.liver_3x
+            and not has_full_oac_b
         ):
             heparin_plan = 'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH კატეგორიულად აკრძალულია · სტანდარტულ EVLA-ზე ინტრაოპ. ანტიკოაგულაცია არ ესაჭიროება (საჭიროებისას — ბივალირუდინი ან არგატრობანი; ადრეული აქტივაცია)'
         elif getattr(ctx, 'eff_pregnant', False):
@@ -404,14 +433,17 @@ def _build_surgical_brief(ctx):
             p_sfx = f' + {" + ".join(p_tags)}' if p_tags else ''
             c_team = 'ჰემატოლოგის, მეან-გინეკოლოგისა და კარდიოლოგის' if ctx.has_mech_valve else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
             heparin_plan = f'HIT ანამნეზში + ორსულობა{p_sfx}! UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {c_team} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!'
+        elif has_full_oac_b and getattr(ctx, 'is_evla_warfarin_only', False):
+            evla_inr_m = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
+            heparin_plan = f'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH აკრძალულია · EVLA-ზე თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ {evla_inr_m}) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!) · VTE პროფილაქტიკა: Caprini {ctx.caprini_score} ქ. ({ctx.caprini_tier}) — {ctx.caprini_advice}'
         elif ctx.has_mech_valve:
             liver_arg = ' (ღვიძლის ≥3x-ზე უპირატესია ბივალირუდინი; არგატრობანი −75%!)' if ctx.liver_3x else ''
             heparin_plan = f'HIT ანამნეზში + მექანიკური სარქველი! UFH, LMWH და DOAC აკრძალულია → IV ბივალირუდინი ან არგატრობანი{liver_arg} პოსტოპ. ვარფარინზე (VKA) გადასვლით!'
         elif hit_severe_renal:
             liver_arg = ' (ღვიძლის ≥3x-ზე არგატრობანის დოზა მცირდება 75%-ით!)' if ctx.liver_3x else ''
-            heparin_plan = f'HIT ანამნეზში! UFH, LMWH, ფონდაპარინუქსი და DOAC (CrCl/eGFR <{ren_red} / დიალიზი) კატეგორიულად აკრძალულია → ინტრაოპ./პოსტოპ. ბივალირუდინი ან არგატრობანი{liver_arg}!'
+            heparin_plan = f'HIT ანამნეზში! UFH, LMWH, ფონდაპარინუქსი და DOAC (CrCl/eGFR <{ren_red} / დიალიზი) კატეგორიულად აკრძალულია → ინტრაოპ. ბივალირუდინი ან არგატრობანი{liver_arg}{oac_hit_tail}!'
         elif ctx.liver_3x:
-            heparin_plan = 'HIT ანამნეზში + ღვიძლის ≥3x დაზიანება! UFH და LMWH კატეგორიულად აკრძალულია (DOAC და ფონდაპარინუქსი არარეკომენდებულია) → უპირატესია ბივალირუდინი (არგატრობანის დოზა მცირდება 75%-ით!) და პოსტოპ. IPC / IV ბივალირუდინი!'
+            heparin_plan = f'HIT ანამნეზში + ღვიძლის ≥3x დაზიანება! UFH და LMWH კატეგორიულად აკრძალულია (DOAC და ფონდაპარინუქსი არარეკომენდებულია) → უპირატესია ბივალირუდინი (არგატრობანის დოზა მცირდება 75%-ით!){oac_hit_tail}!'
         elif has_full_oac_b:
             if ctx.is_venous:
                 heparin_plan = f'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH აკრძალულია · ინტრაოპერაციული ანტიკოაგულაცია არ ესაჭიროება · VTE პროფილაქტიკა: Caprini {ctx.caprini_score} ქ. ({ctx.caprini_tier}) — {ctx.caprini_advice}'
@@ -490,7 +522,10 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
     if ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
         return _preg_mech_valve_postop_msg(has_hit, severe_renal=hit_severe_renal)
     if ctx.has_mech_valve:
-        mv_ap_b = f' + ჩვენებისას {ctx.oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
+        if ctx.has_active_stent_dapt:
+            mv_ap_b = f' + {ctx.oac_partner_lbl} (კორონარული სტენტის დაცვა!)'
+        else:
+            mv_ap_b = f' + ჩვენებისას {ctx.oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
         return f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap_b} (DOAC აკრძალულია!){statin_tail}'
     if getattr(ctx, 'has_contra_full_oac', False):
         return _contra_full_oac_postop_label(ctx, ctx.oac_partner_lbl) + ('' if getattr(ctx, 'eff_pregnant', False) else statin_tail)

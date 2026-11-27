@@ -457,6 +457,10 @@ _2ND_PERSON_REPLACEMENTS = (
 
 _QUOTED_FT_RE = re.compile(r'თავისუფალ ტექსტში\s*\(„[^“”]{1,220}“\)')
 _BAD_LATIN_VAL_RE = re.compile(r'=\s*[A-Za-z][A-Za-z0-9_.-]*')
+_REG_CITATION_RE = re.compile(
+    r'\b(?:EMA\s+(?:Brilique\s+)?(?:EPAR\s+)?SmPC|FDA\s+(?:Effient\s+|Brilinta\s+)?PI)(?:\s+\d+(?:\.\d+)*)?\b'
+)
+_ORPHAN_SEC_PAREN_RE = re.compile(r'\(\s*\d+\.\d+(?:\.\d+)*\s*\)')
 _RESIDUAL_LATIN_RE = re.compile(r'(?<![A-Za-z0-9])(?!STOP\b)(?!x2\b)(?!2x\b)(?!3x\b)[A-Za-zβµ][A-Za-z0-9_+./-]{1,}(?![A-Za-z0-9])')
 
 
@@ -475,6 +479,7 @@ def scrub_plain_ka(txt, second_person=True, strip_quoted_ft=False):
     if strip_quoted_ft:
         out = _QUOTED_FT_RE.sub('თავისუფალ ტექსტში', out)
         out = _BAD_LATIN_VAL_RE.sub(' (არასწორი ჩანაწერი)', out)
+    out = _REG_CITATION_RE.sub('', out)
     for old, new in _PHRASE_REPLACEMENTS:
         if old in out:
             out = out.replace(old, new)
@@ -485,8 +490,27 @@ def scrub_plain_ka(txt, second_person=True, strip_quoted_ft=False):
     # Strip any residual non-Georgian technical token (e.g. raw English drug brand or code)
     if strip_quoted_ft:
         out = _RESIDUAL_LATIN_RE.sub('', out)
+    out = _ORPHAN_SEC_PAREN_RE.sub('', out)
     out = re.sub(r'\(\s*[/·;,:—–\s-]*\s*\)', '', out)
     out = re.sub(r'\[\s*[/·;,:—–\s-]*\s*\]', '', out)
     out = re.sub(r'\s+([.,;:!?])', r'\1', out)
     out = re.sub(r'\s{2,}', ' ', out).strip()
     return out
+
+
+_DRUG_PLAIN_PREFIX = {
+    'SGLT2 (ჯარდიანსი / ფორსიგა)': 'შაქრის წამალი — ჯარდიანსი / ფორსიგა',
+    'DOAC (ქსარელტო / ელიქვისი)': 'სისხლის გამათხელებელი — ქსარელტო / ელიქვისი',
+    'ქსარელტო 2.5 მგ x2': 'სისხლის გამათხელებელი — რივაროქსაბანი (დაბალი დოზა)',
+    'დაბიგატრანი (პრადაქსა)': 'სისხლის გამათხელებელი — პრადაქსა (დაბიგატრანი)',
+    'ვარფარინი': 'სისხლის გამათხელებელი — ვარფარინი',
+    'კლოპიდოგრელი / P2Y12': 'თრომბის საწინააღმდეგო — კლოპიდოგრელი (პლავიქსი)',
+    'ასპირინი (75–100 მგ)': 'ასპირინი (კარდიომაგნილი / თრომბო-ასი)',
+    'GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)': 'წონის/შაქრის ნემსი — ოზემპიკი / მუნჯარო',
+    'ACEi / ARB (პრილი/სარტანი)': 'წნევის წამალი (პრილი / სარტანი)',
+}
+
+
+def plain_drug_name(raw_drug):
+    return scrub_plain_ka(_DRUG_PLAIN_PREFIX.get(raw_drug, raw_drug), second_person=False, strip_quoted_ft=True)
+

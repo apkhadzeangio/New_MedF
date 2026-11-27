@@ -307,7 +307,7 @@
                 </div>
                 <div class="grid-4">
                     <label class="fld">ექო — LVEF % ({% if ev.needs_echo_or_bnp %}ან NT-proBNP &lt;125{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 58" min="5" max="90" class="form-control">
+                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 58" min="5" max="95" class="form-control">
                     </label>
                     <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
                         <select name="cxr" class="form-select">
@@ -381,7 +381,7 @@
                         <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
                     </label>
                     <label class="fld">ექო — LVEF % (ან NT-proBNP &lt;125)
-                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="90" class="form-control">
+                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="95" class="form-control">
                     </label>
                     <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
                         <select name="cxr" class="form-select">
@@ -463,7 +463,7 @@
                         <input type="number" step="0.1" name="pad_gsv_mm" value="{{ s.pad_gsv_mm|default_if_none:'' }}" placeholder="მაგ. 3.4" min="0.5" max="30" class="form-control">
                     </label>
                     <label class="fld">ექო — LVEF % ({% if ev.needs_echo_or_bnp %}ან NT-proBNP &lt;125{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="90" class="form-control">
+                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="95" class="form-control">
                     </label>
                 </div>
                 <div class="grid-4">
@@ -591,7 +591,7 @@
                         <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
                     </label>
                     <label class="fld">ექო — LVEF % ({% if ev.needs_echo_or_bnp %}ან NT-proBNP &lt;125{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="90" class="form-control">
+                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="95" class="form-control">
                     </label>
                     <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
                         <select name="cxr" class="form-select">
@@ -630,9 +630,11 @@
                 <input type="hidden" name="cta_months" value="{{ s.cta_months|default_if_none:'' }}">
                 {% endif %}
 
+                {% if not is_inactive_card %}
                 <div class="d-flex justify-content-end pt-1">
                     <button type="submit" class="x-btn primary">შენახვა და გადამოწმება → საფეხური 2</button>
                 </div>
+                {% endif %}
             </section>
         </form>
 
@@ -640,6 +642,7 @@
         <section class="x-card mt-3" id="files">
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                 <h2 class="m-0">ატვირთული ანალიზები და კვლევები ({{ total_files }})</h2>
+                {% if not is_inactive_card %}
                 <form method="post" action="{% url 'preop-files' p.pk %}" enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2">
                     {% csrf_token %}
                     <input type="hidden" name="tab" value="s1">
@@ -656,6 +659,7 @@
                         <input type="file" name="file" accept="image/*,application/pdf,.pdf" multiple hidden class="js-auto-upload">
                     </label>
                 </form>
+                {% endif %}
             </div>
 
             {% for grp in files_by_cat %}
@@ -676,10 +680,17 @@
                         </div>
                         <div class="d-flex align-items-center justify-content-between text-muted">
                             <span>{{ f.uploaded_on|date:"d.m.Y" }}</span>
+                            {% if not p.archived and not is_inactive_card and not p.approved_at and not s.board_patient_id %}
                             <form method="post" action="{% url 'preop-file-delete' f.pk %}" class="m-0" onsubmit="return confirm('წავშალოთ ეს ფაილი?');">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-link btn-sm p-0 text-danger text-decoration-none">✕</button>
                             </form>
+                            {% elif not p.archived and request.user.is_staff or not p.archived and request.user.is_superuser %}
+                            <form method="post" action="{% url 'preop-file-delete' f.pk %}" class="m-0" onsubmit="return confirm('წავშალოთ ეს ფაილი?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-link btn-sm p-0 text-danger text-decoration-none">✕</button>
+                            </form>
+                            {% endif %}
                         </div>
                     </div>
                     {% endfor %}

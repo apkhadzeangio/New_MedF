@@ -356,13 +356,13 @@ class Round9ClinicalEngineTests(SimpleTestCase):
         guide = nurse_plan.build_patient_plain_explanation(p_stp, evaluate(p_stp, today=TODAY), TODAY)
         self.assertTrue(guide['stop_locked'])
         self.assertEqual(guide['urgent_meds'], [])
-        # Pregnancy + DOAC & hormones ARE genuinely contraindicated (Round-10/11) -> both enter urgent_meds, glp1 stays out
+        # Pregnancy + DOAC, GLP-1 & hormones ARE genuinely contraindicated -> all enter urgent_meds
         p_preg_stp = _go('evla', sex='F', age=30, q={'pregnant_possible': True, 'med_doac': True, 'glp1': True, 'ven_hormones': True})
         guide_p = nurse_plan.build_patient_plain_explanation(p_preg_stp, evaluate(p_preg_stp, today=TODAY), TODAY)
         self.assertTrue(guide_p['stop_locked'])
         self.assertEqual(
             [m['raw_drug'] for m in guide_p['urgent_meds']],
-            ['DOAC (ქსარელტო / ელიქვისი)', 'ჰორმონული პრეპარატი / კონტრაცეპტივი'],
+            ['DOAC (ქსარელტო / ელიქვისი)', 'GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)', 'ჰორმონული პრეპარატი / კონტრაცეპტივი'],
         )
 
         # Combos A-S2-9: Hb 22.1..39.9 emits explicit unit-clarification alert on server

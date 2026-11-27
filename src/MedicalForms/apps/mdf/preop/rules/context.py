@@ -362,6 +362,7 @@ def _init_base_flags_and_pre_reflex(ctx):
 
     ctx.med_chips = set(q.get('med_chips') or [])
     ctx.cad_chips = set(q.get('cad_chips') or [])
+    ctx.has_mech_valve = 'mech_valve' in ctx.cad_chips
     structured_alg_chips = set(q.get('allergy_chips') or [])
     if q.get('ven_lidocaine_allergy'):
         structured_alg_chips.add('lidocaine')

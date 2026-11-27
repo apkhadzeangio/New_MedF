@@ -12,36 +12,36 @@ from .utils import (
 )
 
 _SF_SIMPLE_FLAGS = (
-    ('aaa_pain', 'urgent', 'მუცლის/წელის ტკივილი (AAA)!'),
-    ('cea_hoarseness', 'warn', 'ხმის ჩახლეჩა / დისფაგია (CEA)'),
-    ('cea_prior_neck', 'warn', 'კისრის წინა ოპერაცია / დასხივება (CEA)'),
+    ('aaa_pain', 'urgent', 'მუცლის/წელის ტკივილი (ანევრიზმა)!'),
+    ('cea_hoarseness', 'warn', 'ხმის ჩახლეჩა / ყლაპვის გაძნელება'),
+    ('cea_prior_neck', 'warn', 'კისრის წინა ოპერაცია / დასხივება'),
     ('abf_rest_pain', 'warn', 'მოსვენებითი იშემიური ტკივილი'),
     ('abf_ulcer', 'warn', 'ტერფის წყლული/ნეკროზი'),
     ('abf_wet_infection', 'urgent', 'ტერფის სველი ნეკროზი / ჩირქოვანი ინფექცია!'),
-    ('pta_cant_lie_flat', 'warn', 'ზურგზე ვერ წვება (ორთოპნოე / ტკივილი)'),
+    ('pta_cant_lie_flat', 'warn', 'ზურგზე ვერ წვება (სუნთქვის უკმარისობა / ტკივილი)'),
     ('ven_acute_svt', 'urgent', 'მწვავე თრომბოფლებიტი!'),
     ('ven_skin_infection', 'urgent', 'კანის ინფექცია / სველი ვენური წყლული!'),
     ('ven_lidocaine_allergy', 'urgent', 'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე!'),
     ('ven_bleeding', 'urgent', 'სისხლდენა ვარიკოზული კვანძიდან!'),
-    ('ven_dvt_history', 'warn', 'გადატანილი DVT / PE'),
+    ('ven_dvt_history', 'warn', 'გადატანილი ღრმა ვენების თრომბოზი / ფილტვის ემბოლია'),
     ('ven_thrombophilia', 'warn', 'თრომბოფილია'),
     ('ven_hormones', 'warn', 'ჰორმონული პრეპარატი / კონტრაცეპტივი'),
-    ('ven_cancer_immob', 'warn', 'ონკოლოგია / იმობილიზაცია'),
+    ('ven_cancer_immob', 'warn', 'ონკოლოგია / ხანგრძლივი წოლა'),
     ('active_infection', 'urgent', 'სიცხე / აქტიური ინფექცია!'),
     ('dental_infection', 'warn', 'კარიესული/ჩირქოვანი კბილი'),
     ('anesth_issue', 'warn', 'ანესთეზიის გართულება ანამნეზში'),
     ('on_dialysis', 'urgent', 'პროგრამული დიალიზი'),
-    ('htn', 'info', 'ჰიპერტენზია'),
+    ('htn', 'info', 'მაღალი წნევა (ჰიპერტენზია)'),
     ('pulm', 'info', 'ფილტვების დაავადება / ასთმა'),
     ('thyroid_disease', 'info', 'ფარისებრი ჯირკვალი'),
     ('neuro', 'warn', 'გადატანილი ინსულტი'),
-    ('pacemaker', 'warn', 'კარდიოსტიმულატორი / ICD'),
+    ('pacemaker', 'warn', 'კარდიოსტიმულატორი / დეფიბრილატორი'),
 )
 _SF_MED_BOOLS = (
     ('med_warfarin', 'ვარფარინი'), ('med_dabigatran', 'პრადაქსა'), ('med_doac', 'ქსარელტო/ელიქვისი'),
     ('med_prasugrel', 'პრასუგრელი'), ('med_ticagrelor', 'ტიკაგრელორი'), ('med_clopidogrel', 'კლოპიდოგრელი'),
-    ('med_aspirin', 'ასპირინი'), ('sglt2', 'SGLT2 (ჯარდიანსი/ფორსიგა)'),
-    ('glp1', 'GLP-1 (ოზემპიკი/მუნჯარო)'), ('metformin', 'მეტფორმინი'),
+    ('med_aspirin', 'ასპირინი'), ('sglt2', 'შაქრის წამალი (ჯარდიანსი/ფორსიგა)'),
+    ('glp1', 'ინექციური წამალი (ოზემპიკი/მუნჯარო)'), ('metformin', 'მეტფორმინი'),
 )
 _SF_MED_CHIP_LABELS = (
     ('rivaroxaban_2_5', 'რივაროქსაბანი 2.5 მგ ×2'), ('cilostazol', 'ცილოსტაზოლი'),
@@ -59,12 +59,14 @@ _SF_CHIP_FALLBACKS = {
 
 
 def build_self_fill_highlights(q, patient=None):
-    """Extract concise positive findings reported by the patient via Self-Fill link for 5-second nurse reconciliation."""
+    """Extract concise plain-Georgian positive findings reported via Self-Fill link for nurse reconciliation."""
     if not isinstance(q, dict) or not (q.get('filled') or is_self_filled_q(q)):
         return []
+    from .plain_ka import scrub_plain_ka
+
     items = []
     if q.get('cea_crescendo'):
-        items.append(('urgent', 'განმეორებითი TIA/სიმპტომი <48 სთ!'))
+        items.append(('urgent', 'განმეორებითი ნევროლოგიური სიმპტომი <48 სთ!'))
     elif q.get('cea_symp_event') or q.get('cea_event_chips'):
         items.append(('warn', 'ნევროლოგიური სიმპტომი ანამნეზში'))
     if q.get('cea_thrombolysis'):
@@ -89,13 +91,13 @@ def build_self_fill_highlights(q, patient=None):
     if 'mech_valve' in cad_ch:
         items.append(('urgent', 'მექანიკური სარქველი!'))
     if not q.get('mets_ok', True):
-        items.append(('warn', f"დატვირთვის შეზღუდვა ({'კიდურით' if q.get('mets_limitation') == 'limb' else '<4 METs ქოშინი/გული'})"))
+        items.append(('warn', f"დატვირთვის შეზღუდვა ({'ფეხის ტკივილით' if q.get('mets_limitation') == 'limb' else 'ქოშინი / გულის დატვირთვა 2 სართულზე'})"))
     if q.get('dm'):
         items.append(('info', 'შაქრიანი დიაბეტი' + (' (ინსულინზე)' if q.get('dm_insulin') else '')))
     elif q.get('dm_insulin'):
         items.append(('warn', 'ინსულინი'))
     if q.get('ulcer_active_symp'):
-        items.append(('urgent', 'აქტიური კუჭის ტკივილი / მელენა!'))
+        items.append(('urgent', 'აქტიური კუჭის ტკივილი / სისხლდენის ნიშანი!'))
     elif q.get('ulcer'):
         items.append(('info', 'კუჭის წყლული ანამნეზში'))
     for key, lvl, label in _SF_SIMPLE_FLAGS:
@@ -120,7 +122,8 @@ def build_self_fill_highlights(q, patient=None):
         from .utils import _safe_display_str
         ft = _detect_freetext_high_risk_meds(raw_other_meds, q=q)
         lvl = 'urgent' if ft.get('unstructured_labels') else 'info'
-        items.append((lvl, f'სხვა წამალი: {_safe_display_str(raw_other_meds, max_len=160)}'))
+        clean_other = scrub_plain_ka(_safe_display_str(raw_other_meds, max_len=160), second_person=False, strip_quoted_ft=True)
+        items.append((lvl, f'სხვა წამალი: {clean_other or "მითითებულია ტექსტში"}'))
     if q.get('allergy_iodine'):
         items.append(('urgent', 'ალერგია იოდზე / კონტრასტზე!'))
     from .meds_freetext import _positive_clauses_text
@@ -129,10 +132,11 @@ def build_self_fill_highlights(q, patient=None):
     pos_alg_txt = _positive_clauses_text(raw_alg_txt)
     if q.get('allergy_other') or q.get('allergy_chips') or pos_alg_txt:
         alg_txt = chip_summary(q.get('allergy_chips'), 'allergy_chips', raw_alg_txt if pos_alg_txt else '') or 'მედიკამენტური ალერგია'
-        items.append(('urgent', f'ალერგია: {alg_txt}'))
+        clean_alg = scrub_plain_ka(alg_txt, second_person=False, strip_quoted_ft=True) or 'მედიკამენტური ალერგია'
+        items.append(('urgent', f'ალერგია: {clean_alg}'))
     if q.get('smoker'):
         items.append(('info', 'მწეველი'))
-    return items
+    return [(lvl, scrub_plain_ka(txt, second_person=False, strip_quoted_ft=True) or txt) for lvl, txt in items]
 
 
 def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
@@ -410,8 +414,11 @@ def _anam_aaa(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt):
 
 def _anam_comorb_meds_allergy(patient, pathway, ev, q):
     from .registry import rule_value
-    hba1c_dm = rule_value('GLY_GLUCOSE_HBA1C')['hba1c_dm']
-    lvef_red = rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red']
+    gly_cfg = rule_value('GLY_GLUCOSE_HBA1C')
+    hba1c_dm = gly_cfg['hba1c_dm']
+    cb_cfg = rule_value('CARDIO_BIOMARKERS_ECHO')
+    lvef_red = cb_cfg['lvef_red']
+    s_ev = ev.get('s') or {}
     lines = []
     if q.get('mets_ok', True):
         mets_str = 'დამაკმაყოფილებელი (>= 4 METs, ადის 2 სართულზე გაუჩერებლად)'
@@ -425,7 +432,7 @@ def _anam_comorb_meds_allergy(patient, pathway, ev, q):
     if q.get('htn'):
         comorb.append('არტერიული ჰიპერტენზია')
     cad_ch_set = set(_str_list(q.get('cad_chips')))
-    lvef_c = _num((ev.get('s') or {}).get('lvef'), 5, 95)
+    lvef_c = _num(s_ev.get('lvef'), 5, 95)
     if q.get('cad') or q.get('recent_stent') or cad_ch_set:
         has_ihd_chip = bool((cad_ch_set & {'mi', 'angina', 'cabg', 'stent_old', 'stent_6_12m'}) or q.get('recent_stent') or not cad_ch_set)
         c_det = chip_summary(q.get('cad_chips'), 'cad_chips', q.get('cad_detail'))
@@ -433,14 +440,30 @@ def _anam_comorb_meds_allergy(patient, pathway, ev, q):
             c_det = '; '.join([x for x in ('კორონარული სტენტი <6 თვ.', c_det) if x])
         cad_head = 'გულის იშემიური დაავადება' if has_ihd_chip else 'კარდიოლოგიური პათოლოგია'
         comorb.append(f"{cad_head}{f' ({c_det})' if c_det else ''}")
-    elif lvef_c is not None and lvef_c < lvef_red:
-        comorb.append(f'გულის უკმარისობა / დაქვეითებული განდევნის ფრაქცია (LVEF {lvef_c}%)')
-    hba1c_a = _num((ev.get('s') or {}).get('hba1c'), 3.0, 25.0)
+    else:
+        if lvef_c is not None and lvef_c < lvef_red:
+            comorb.append(f'გულის უკმარისობა / დაქვეითებული განდევნის ფრაქცია (LVEF {lvef_c}%)')
+        if s_ev.get('echo_valve_issue'):
+            comorb.append('სარქვლოვანი პათოლოგია / AS (ექოკარდიოგრაფიით)')
+        if s_ev.get('ecg') == 'afib_controlled':
+            comorb.append('მოციმციმე არითმია (AFib — ეკგ)')
+        elif s_ev.get('ecg') == 'ischemia_arrhythmia':
+            comorb.append('იშემია / არითმია (ეკგ)')
+        if ev.get('hs_ctn') is not None and ev['hs_ctn'] >= cb_cfg['ctn_amb']:
+            comorb.append(f"მომატებული hs-cTn ({ev['hs_ctn']} ng/L)")
+    hba1c_a = _num(s_ev.get('hba1c'), 3.0, 25.0)
+    gl_a = ev.get('gl_mmol')
     if q.get('dm') or q.get('dm_insulin') or q.get('metformin'):
         dm_kind = 'ინსულინზე' if q.get('dm_insulin') else 'ტაბლეტებზე'
         comorb.append(f'შაქრიანი დიაბეტი ({dm_kind})')
     elif hba1c_a is not None and hba1c_a >= hba1c_dm:
         comorb.append(f'არადიაგნოსტირებული შაქრიანი დიაბეტი (HbA1c {hba1c_a}%)')
+    elif ev.get('has_known_dm') or q.get('sglt2'):
+        comorb.append('სავარაუდო შაქრიანი დიაბეტი / SGLT2 თერაპია (დასაზუსტებელია)')
+    elif gl_a is not None and gl_a >= gly_cfg['gl_endo']:
+        comorb.append(f'გამოხატული ჰიპერგლიკემია ({gl_a} მმოლ/ლ — გამოირიცხოს დიაბეტი!)')
+    elif q.get('glp1') or ev.get('has_glp1_any'):
+        comorb.append('GLP-1 თერაპია (დასაზუსტებელია დიაბეტი / წონის მართვა)')
     if q.get('on_dialysis'):
         comorb.append('პროგრამული დიალიზი')
     if q.get('pulm') or q.get('pulm_chips'):
@@ -448,7 +471,7 @@ def _anam_comorb_meds_allergy(patient, pathway, ev, q):
         comorb.append(f"ფილტვების ქრ. დაავადება{f' ({p_det})' if p_det else ''}")
     if q.get('thyroid_disease'):
         comorb.append('ფარისებრი ჯირკვლის პათოლოგია')
-    if has_prior_stroke_or_tia(patient, q=q, s=ev.get('s') or {}):
+    if has_prior_stroke_or_tia(patient, q=q, s=s_ev):
         comorb.append('ანამნეზში ინსულტი/TIA')
     if q.get('ulcer') or q.get('ulcer_active_symp'):
         comorb.append('წყლულოვანი დაავადება (აქტიური ჩივილით)' if q.get('ulcer_active_symp') else 'წყლულოვანი დაავადება ანამნეზში')
@@ -460,10 +483,11 @@ def _anam_comorb_meds_allergy(patient, pathway, ev, q):
     if q.get('smoker'):
         comorb.append('თამბაქოს მწეველი')
     med_ch_set = set(_str_list(q.get('med_chips')))
+    ft_keys_a = set(ev.get('ft_meds_keys') or ())
     has_unlisted_cv_rx = bool(
         ev.get('has_full_oac') or ev.get('has_ft_full_oac')
         or (q.get('med_aspirin') and any(q.get(k) for k in ('med_clopidogrel', 'med_ticagrelor', 'med_prasugrel')))
-        or 'amiodarone' in med_ch_set
+        or ('amiodarone' in med_ch_set) or ('amiodarone' in ft_keys_a)
     )
     if not comorb and has_unlisted_cv_rx:
         comorb.append('დასაზუსტებელი კარდიო/თრომბოზული ჩვენება (იღებს ანტიკოაგულანტს/DAPT/ამიოდარონს)')
@@ -574,6 +598,12 @@ def _anam_anesth_labs(pathway, ev, q, s):
     lvef_a = _num(s.get('lvef'), 5, 95)
     if lvef_a is not None:
         lab_bits.append(f'LVEF {lvef_a}%')
+    if s.get('echo_valve_issue'):
+        lab_bits.append('ექო-კგ: მნიშვნელოვანი სარქვლოვანი პათოლოგია / AS (!)')
+    if s.get('ecg') == 'afib_controlled':
+        lab_bits.append('ეკგ: მოციმციმე არითმია (AFib)')
+    elif s.get('ecg') == 'ischemia_arrhythmia':
+        lab_bits.append('ეკგ: იშემია / არითმია (!)')
     if ev.get('nt_probnp') is not None:
         lab_bits.append(f"NT-proBNP {ev['nt_probnp']} pg/mL")
     if ev.get('hs_ctn') is not None:

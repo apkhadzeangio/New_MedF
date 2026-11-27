@@ -317,9 +317,9 @@ def _set_planned_surgery_date_field(s, raw_val, today):
 
 def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
     for key, fn, lo, hi in (
-        ('spiro_fev1', _int, 10, 160),
+        ('spiro_fev1', _num, 10, 160),
         ('abi_r', _num, 0.0, 3.0), ('abi_l', _num, 0.0, 3.0),
-        ('tp_r', _int, 0, 400), ('tp_l', _int, 0, 400),
+        ('tp_r', _num, 0, 400), ('tp_l', _num, 0, 400),
         ('tbi_r', _num, 0.0, 3.0), ('tbi_l', _num, 0.0, 3.0),
         ('hba1c', _num, 3, 25), ('ferritin', _num, 1, 5000), ('tsat', _num, 1, 100),
     ):

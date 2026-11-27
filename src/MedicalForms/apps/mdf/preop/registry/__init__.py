@@ -90,13 +90,18 @@ def match_rule_for_text(text, domain_hint=None):
                     pat = pat.replace('{val}', str(ev_val))
                 elif '{val0}' in pat and isinstance(ev_val, (tuple, list)) and ev_val:
                     pat = pat.replace('{val0}', str(ev_val[0]))
+                elif '{val[' in pat and isinstance(ev_val, dict):
+                    for vk, vv in ev_val.items():
+                        tok = f'{{val[{vk}]}}'
+                        if tok in pat:
+                            pat = pat.replace(tok, str(vv))
             if pat in haystack and len(pat) > max_len:
                 max_len = len(pat)
         if max_len:
-            key = (max_len, 1 if (domain_hint and entry.domain == domain_hint) else 0, -idx)
+            key = (max_len, 1 if (domain_hint and live_entry.domain == domain_hint) else 0, -idx)
             if best_key is None or key > best_key:
                 best_key = key
-                best_entry = entry
+                best_entry = live_entry
     return best_entry
 
 

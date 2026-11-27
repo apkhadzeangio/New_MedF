@@ -170,7 +170,10 @@ class StressPharmacologyAndComboTests(SimpleTestCase):
         # PHARM-05 + CONTRA-7.2: Clexane and Sintrom/Sinkumari in other_meds must block neuraxial & GO
         for om in ('Clexane 60 mg BID', 'სინკუმარი 4მგ', 'Brilique 90 mg BID', 'Zibor 3500', 'Arixtra 2.5 mg'):
             ft = _detect_freetext_high_risk_meds(om, q={})
-            self.assertTrue(ft['unstructured_antithrombotic'], f'Missed antithrombotic: {om}')
+            self.assertTrue(
+                ft['unstructured_antithrombotic'] or bool(ft['matched_keys'] & {'parenteral_oac', 'parenteral_dti'}),
+                f'Missed antithrombotic: {om}',
+            )
         p_nx = _go_patient('phlebectomy', q={'other_meds': 'Clexane 60 mg BID'}, s={'anesthesia_plan': 'neuraxial'})
         ev_nx = evaluate(p_nx, today=TODAY)
         self.assertTrue(ev_nx['neuraxial_hard_blocked'])

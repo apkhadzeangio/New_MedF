@@ -440,9 +440,11 @@
                         <textarea name="nurse_note_custom" rows="2" class="form-control mt-1" style="height:auto;padding:8px 12px">{{ s.nurse_note_custom }}</textarea>
                     </details>
                 </div>
+                {% if not is_inactive_card %}
                 <div class="d-flex justify-content-end pt-1">
                     <button type="submit" class="x-btn primary">გეგმის შენახვა</button>
                 </div>
+                {% endif %}
                 {% endif %}
             </section>
 
@@ -513,9 +515,11 @@
                     </details>
                 </div>
 
+                {% if not is_inactive_card %}
                 <div class="d-flex justify-content-end">
                     <button type="submit" class="x-btn primary">გეგმისა და კონსულტაციების შენახვა</button>
                 </div>
+                {% endif %}
             </section>
             {% else %}
             <details class="x-card">
@@ -549,9 +553,11 @@
                 <label class="fld pt-2">კარდიოლოგის დამატებითი კომენტარი
                     <input type="text" name="cardio_note_custom" value="{{ s.cardio_note_custom }}" class="form-control">
                 </label>
+                {% if not is_inactive_card %}
                 <div class="d-flex justify-content-end pt-2">
                     <button type="submit" class="x-btn sm primary">კარდიოლოგის ჩანაწერის შენახვა</button>
                 </div>
+                {% endif %}
             </details>
             {% endif %}
         </form>

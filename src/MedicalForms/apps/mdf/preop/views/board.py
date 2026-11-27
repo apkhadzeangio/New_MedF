@@ -325,7 +325,7 @@ def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_r
         elif s.get('liver_status') == '3x':
             vte_board_drug = 'LMWH / UFH კოაგულოგრამის კონტროლით (ღვიძლის ≥3x-ზე DOAC არა!)'
         elif sev_renal:
-            vte_board_drug = 'კანქვეშა UFH 5000 სე ×2–3 ან თირკმელზე კორექტირებული LMWH'
+            vte_board_drug = 'კანქვეშა UFH 5000 სე ×2–3 (LMWH კუმულირდება — მხოლოდ anti-Xa კონტროლით!)'
         else:
             vte_board_drug = 'LMWH პროფილაქტიკური დოზით'
         task_candidates.append((
@@ -365,28 +365,32 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
     elif 'hit_heparin' in allergy_chips:
         has_mv = 'mech_valve' in (q.get('cad_chips') or [])
         liver_3x = s.get('liver_status') == '3x'
+        oac_no_dbl = (
+            ' · პოსტოპ. მუდმივი ვარფარინის/OAC-ის აღდგენისას დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ — IPC აღდგენამდე (ორმაგი ანტიკოაგულაციის გარეშე!)'
+            if (has_full_oac_b and not has_contra_full_oac_b)
+            else (' · უკუნაჩვენები OAC არ განაახლოთ (ორმაგი ანტიკოაგულაციის გარეშე!)' if has_contra_full_oac_b else '')
+        )
         if ev.get('eff_pregnant'):
             mv_hit_s = ' + მექანიკური სარქველი' if has_mv else ''
             team_s = 'ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის' if has_mv else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
             hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!'
+        elif has_full_oac_b and ev.get('is_evla_warfarin_only'):
+            hit_board_agents = 'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
         elif has_mv:
             hit_board_agents = (
                 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე!) → ვარფარინი (VKA)'
                 if liver_3x else 'ბივალირუდინი / არგატრობანი → ვარფარინი (VKA) — ფონდაპარინუქსი/DOAC არა!'
             )
         elif liver_3x and sev_renal:
-            hit_board_agents = f'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი CrCl<{ren_red}/დიალიზზე და ღვიძლის ≥3x-ზე აკრძალულია!)'
+            hit_board_agents = f'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი CrCl<{ren_red}/დიალიზზე და ღვიძლის ≥3x-ზე აკრძალულია!){oac_no_dbl}'
         elif sev_renal:
-            hit_board_agents = f'ბივალირუდინი / არგატრობანი (ფონდაპარინუქსი CrCl<{ren_red}/დიალიზზე აკრძალულია!)'
+            hit_board_agents = f'ბივალირუდინი / არგატრობანი (ფონდაპარინუქსი CrCl<{ren_red}/დიალიზზე აკრძალულია!){oac_no_dbl}'
         elif liver_3x:
-            hit_board_agents = 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი არარეკომენდებულია!)'
+            hit_board_agents = f'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი არარეკომენდებულია!){oac_no_dbl}'
         elif has_contra_full_oac_b:
             hit_board_agents = 'უკუნაჩვენები/დუბლირებული OAC არ განაახლოთ — შეარჩიეთ ერთი უსაფრთხო არაჰეპარინული სქემა (ფონდაპარინუქსი ან ერთი OAC ჰემატოლოგ/კარდიოლოგთან — ორმაგი ანტიკოაგულაციის გარეშე!)'
         elif has_full_oac_b:
-            if ev.get('is_evla_warfarin_only'):
-                hit_board_agents = 'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
-            else:
-                hit_board_agents = 'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე; დამატებითი პროფილაქტიკური ფონდაპარინუქსი/DOAC არ დაუმატოთ — ორმაგი ანტიკოაგულაციის გარეშე!)'
+            hit_board_agents = 'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე; დამატებითი პროფილაქტიკური ფონდაპარინუქსი/DOAC არ დაუმატოთ — ორმაგი ანტიკოაგულაციის გარეშე!)'
         else:
             hit_board_agents = 'ფონდაპარინუქსი / არგატრობანი / ბივალირუდინი'
         task_candidates.append((
@@ -410,6 +414,8 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
                 groin_abx_sfx = ' (+ აზტრეონამი 2 გ IV — ორსულობაზე გენტამიცინი და ფტორქინოლონები აკრძალულია!)'
             elif q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < gent_avoid) or ev.get('open_aortic'):
                 groin_abx_sfx = ' (+ აზტრეონამი / ციპროფლოქსაცინი — გენტამიცინი აკრძალულია!)'
+            elif eff_renal_board is None:
+                groin_abx_sfx = f' (+ აზტრეონამი / ციპროფლოქსაცინი — გენტამიცინი არ გამოიყენოთ CrCl/eGFR ≥{gent_avoid} დადასტურებამდე!)'
             else:
                 groin_abx_sfx = ' (+ გენტამიცინი / აზტრეონამი საზარდულის მიდგომისას)'
         if ev.get('has_vancomycin_allergy') or 'vancomycin' in allergy_chips:
@@ -557,18 +563,20 @@ class PreopBoardHandoffView(LoginRequiredMixin, generic.View):
         from .. import evaluate
         from .parsers import preop_admission_block_reason
 
-        patient = get_object_or_404(
-            PreopPatient.objects.select_related('surgeon', 'surgeon__profile'),
-            pk=pk,
-        )
-        ev = evaluate(patient)
-        blk = preop_admission_block_reason(ev, ev['s'])
-        if blk:
-            messages.error(request, blk)
-            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
         unit = request.POST.get('unit') or ''
         bed = request.POST.get('bed') or ''
-        bp, was_created, added_tasks = admit_preop_to_board(patient, request.user, unit=unit, bed=bed)
+        with _PREOP_MUTATION_LOCK, transaction.atomic():
+            _sqlite_acquire_write_lock(pk)
+            patient = get_object_or_404(
+                PreopPatient.objects.select_for_update().select_related('surgeon', 'surgeon__profile'),
+                pk=pk,
+            )
+            ev = evaluate(patient)
+            blk = preop_admission_block_reason(ev, ev['s'])
+            if blk:
+                messages.error(request, blk)
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
+            bp, was_created, added_tasks = _admit_preop_to_board_locked(patient, request.user, unit=unit, bed=bed)
         if was_created:
             messages.success(
                 request,

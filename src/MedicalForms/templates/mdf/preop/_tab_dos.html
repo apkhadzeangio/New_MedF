@@ -148,9 +148,11 @@
                     </div>
                 </div>
 
+                {% if not p.archived %}
                 <div class="d-flex justify-content-end">
                     <button type="submit" name="action" value="save_dos" class="x-btn primary">სტატუსისა და VQI რეესტრის შენახვა</button>
                 </div>
+                {% endif %}
             </section>
         </form>
     </div>

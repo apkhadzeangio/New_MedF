@@ -269,7 +269,20 @@ def eval_venous(ctx):
     hba1c_v = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
     eff_dm = bool(ctx.has_known_dm or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo']) or (hba1c_v is not None and hba1c_v >= gly_cfg['hba1c_dm']))
-    eff_cardiac = bool(q.get('cad') or ctx.cad_chips or q.get('recent_stent') or (lvef_v is not None and lvef_v < cb['lvef_red']) or (bnp_v is not None and bnp_v >= cb['bnp_red']))
+    ctn_v = _sat_num(_s_raw(s, 'hs_ctn'), 0, 50000)
+    eff_cardiac = bool(
+        q.get('cad') or ctx.cad_chips or q.get('recent_stent')
+        or (lvef_v is not None and lvef_v < cb['lvef_red'])
+        or (bnp_v is not None and bnp_v >= cb['bnp_red'])
+        or (ctn_v is not None and ctn_v >= cb['ctn_amb'])
+        or bool(s.get('echo_valve_issue'))
+        or (s.get('ecg') in ('afib_controlled', 'ischemia_arrhythmia'))
+        or bool(
+            q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran')
+            or ('rivaroxaban_2_5' in ctx.med_chips) or getattr(ctx, 'has_ft_full_oac', False)
+        )
+        or ('amiodarone' in ctx.med_chips) or bool(ctx.ft_meds.get('has_ft_amiodarone'))
+    )
     ctx.needs_wound_care = q_filled and (ceap == 'C6' or bool(q.get('ven_skin_infection')))
     ctx.needs_ecg_venous = (
         ctx.is_phleb

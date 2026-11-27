@@ -11,12 +11,14 @@
         {% if p.case %}
         <div class="d-flex align-items-center gap-2">
             <a href="{% url 'case' p.case.pk %}" class="small">კონფერენციის ქეისი →</a>
+            {% if not is_inactive_card %}
             <form method="post" action="{% url 'preop-new' %}" class="d-inline m-0">
                 {% csrf_token %}
                 <input type="hidden" name="case" value="{{ p.case.pk }}">
                 <input type="hidden" name="sync" value="1">
                 <button type="submit" class="btn btn-link btn-sm p-0 small align-baseline text-decoration-none" title="ქეისიდან ახალი ანატომიური/ჰემოდინამიკური მონაცემების უსაფრთხო განახლება">↻ ქეისიდან განახლება</button>
             </form>
+            {% endif %}
         </div>
         {% endif %}
     </div>
@@ -68,7 +70,7 @@
                 <a class="x-btn sm primary" href="{% url 'preop-passport' p.pk %}" target="_blank" rel="noopener" title="2-გვერდიანი აკადემიური დოსიე და წინასაოპერაციო პასპორტი A4 ამოსაბეჭდად">
                     დოსიე / პასპორტი (2 გვ.)
                 </a>
-                {% if not self_fill_revoked %}
+                {% if not is_inactive_card and not self_fill_revoked %}
                 <button type="button" class="x-btn sm" id="btn-copy-self" data-self-path="{{ self_fill_path }}" title="დააკოპირეთ ერთჯერადი კითხვარის ბმული პაციენტისთვის (SMS / WhatsApp / Viber)">
                     პაციენტის ბმული{% if self_fill_used %} (შევსებულია){% endif %}
                 </button>
@@ -203,7 +205,7 @@
                     <label class="fld" style="width:150px">ტელეფონი
                         <input type="text" name="phone" value="{{ p.phone }}" placeholder="5XX XX XX XX" class="form-control">
                     </label>
-                    {% if not p.archived %}
+                    {% if not is_inactive_card %}
                     <button type="submit" class="x-btn sm">განახლება</button>
                     {% endif %}
                     <div class="ms-auto d-flex gap-2">
@@ -362,11 +364,13 @@
          TAB 5: DAY-OF-SURGERY (WHO SIGN-IN), CANCELLATION AUDIT & 30-DAY VQI
          ================================================================== -->
 {% include "mdf/preop/_tab_dos.html" %}
+    {% if not is_inactive_card %}
     <!-- Sticky Floating Save Bar for Zero-Scroll Nurse Saving -->
     <div class="po-sticky-save d-print-none" id="po-sticky-save" aria-live="polite">
         <span>შეუნახავი ცვლილებები ამ ტაბში</span>
         <button type="button" class="x-btn sm" id="btn-sticky-save">შენახვა (Ctrl+S)</button>
     </div>
+    {% endif %}
 
 {% include "mdf/preop/_rule_modal.html" %}
 </div>

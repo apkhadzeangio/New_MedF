@@ -86,12 +86,14 @@
     <section class="nw-card nw-postpone-card" id="nw-postpone-banner" role="alert">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
             <h2 class="nw-card-title m-0">ოპერაცია გადაიდო ({{ nw_postponement.prev_ka }} → {{ nw_postponement.cur_ka }}) — რა უნდა გაკეთდეს თავიდან</h2>
+            {% if not is_inactive_card %}
             <form method="post" action="{% url 'preop-reschedule' p.pk %}" class="m-0">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="ack_postpone">
                 <input type="hidden" name="sig" value="{{ nw_postponement.sig }}">
                 <button type="submit" class="nw-btn soft" style="min-height:44px">გავეცანი ✓</button>
             </form>
+            {% endif %}
         </div>
         <div class="d-flex flex-column gap-2">
             {% for imp in nw_postponement.impacts %}
@@ -348,9 +350,11 @@
                 </div>
             </div>
 
+            {% if not is_inactive_card %}
             <div>
                 <button type="submit" class="nw-btn primary" id="btn-save-vitals" style="width:100%">ვიტალებისა და ანალიზების შენახვა</button>
             </div>
+            {% endif %}
         </form>
     </section>
 
@@ -359,6 +363,7 @@
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
             <h2 class="nw-card-title m-0">ანალიზის ფურცლების ფოტოები ({{ total_files }})</h2>
         </div>
+        {% if not is_inactive_card %}
         <form method="post" action="{% url 'preop-files' p.pk %}" enctype="multipart/form-data" class="d-flex flex-column gap-2" id="nw-photo-upload-form">
             {% csrf_token %}
             <input type="hidden" name="tab" value="s1">
@@ -381,6 +386,7 @@
             </label>
             <input type="file" id="nw-camera-input" name="file" accept="image/*,application/pdf" capture="environment" multiple class="visually-hidden js-nw-auto-upload">
         </form>
+        {% endif %}
 
         {% if files_by_cat %}
         <div class="nw-file-grid mt-3">
@@ -398,10 +404,17 @@
                         <strong>{{ grp.label }}</strong>
                         {% if f.caption %}<span>{{ f.caption }}</span>{% endif %}
                     </div>
+                    {% if not p.archived and not is_inactive_card and not p.approved_at and not s.board_patient_id %}
                     <form method="post" action="{% url 'preop-file-delete' f.pk %}" class="m-0">
                         {% csrf_token %}
                         <button type="submit" class="nw-btn soft" style="min-height:44px;width:100%" onclick="return confirm('წავშალოთ ეს ფაილი?');">წაშლა</button>
                     </form>
+                    {% elif not p.archived and request.user.is_staff or not p.archived and request.user.is_superuser %}
+                    <form method="post" action="{% url 'preop-file-delete' f.pk %}" class="m-0">
+                        {% csrf_token %}
+                        <button type="submit" class="nw-btn soft" style="min-height:44px;width:100%" onclick="return confirm('წავშალოთ ეს ფაილი?');">წაშლა</button>
+                    </form>
+                    {% endif %}
                 </div>
                 {% endfor %}
             {% endfor %}
@@ -438,7 +451,7 @@
                     </div>
                     <div class="nw-field">
                         <label for="nw-hdr-age">ასაკი (წ.)</label>
-                        <input type="number" id="nw-hdr-age" name="age" min="1" max="120" value="{{ p.age|default_if_none:'' }}" placeholder="მაგ. 68">
+                        <input type="number" id="nw-hdr-age" name="age" min="12" max="120" value="{{ p.age|default_if_none:'' }}" placeholder="მაგ. 68">
                     </div>
                     <div class="nw-field">
                         <label for="nw-hdr-sex">სქესი</label>
@@ -482,18 +495,26 @@
                         <input type="date" id="nw-hdr-bd" name="birth_date" value="{{ s.birth_date }}">
                     </div>
                 </div>
+                {% if not is_inactive_card %}
                 <button type="submit" class="nw-btn primary" style="width:100%">პირადი მონაცემების შენახვა</button>
+                {% endif %}
             </form>
+            {% if is_doctor or can_delete_card %}
             <div class="nw-row-actions mt-3 pt-2 border-top">
+                {% if is_doctor %}
                 <form method="post" action="{% url 'preop-move' p.pk %}" class="m-0">
                     {% csrf_token %}
                     <button type="submit" name="action" value="archive" class="nw-btn soft">{% if p.archived %}არქივიდან დაბრუნება{% else %}არქივში გადატანა{% endif %}</button>
                 </form>
+                {% endif %}
+                {% if can_delete_card %}
                 <form method="post" action="{% url 'preop-move' p.pk %}" class="m-0" onsubmit="return confirm('ნამდვილად წავშალოთ პაციენტის ბარათი?');">
                     {% csrf_token %}
                     <button type="submit" name="action" value="delete" class="nw-btn soft">წაშლა</button>
                 </form>
+                {% endif %}
             </div>
+            {% endif %}
         </div>
     </details>
 

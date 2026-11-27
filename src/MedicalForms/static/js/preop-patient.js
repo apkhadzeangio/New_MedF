@@ -174,7 +174,7 @@
         } catch (e) {}
     }
 
-    var STRICT_NUM_RE = /^[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)$/;
+    var STRICT_NUM_RE = /^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$/;
     function parseStrictNum(raw) {
         if (raw === null || raw === undefined) return NaN;
         var s = String(raw).trim();
@@ -216,7 +216,7 @@
             if (v < 3.5 || v > 260) return { level: 'crit', msg: 'დაუჯერებელი Hb (' + v + ') — გადაამოწმეთ მნიშვნელობა და ერთეული!' };
             if (v > 22.0 && v < 35.0) return { level: 'crit', msg: 'საეჭვო Hb ერთეული (' + v + ') — მიუთითეთ გ/ლ (35–260) ან გ/დლ (3.5–22.0)!' };
             if (v >= 3.5 && v <= 22.0) {
-                var gl = Math.round(v * 100) / 10;
+                var gl = Math.round(v * 100000) / 10000;
                 return { level: gl < 100 ? 'crit' : (gl < 115 ? 'warn' : 'info'), msg: '≈ ' + gl + ' გ/ლ' + (gl < 100 ? ' (მძიმე ანემია!)' : (gl < 115 ? ' (ანემიის რეფლექსი)' : '')) };
             }
             if (v < 100) return { level: 'crit', msg: 'მძიმე ანემია (<100 გ/ლ)!' };
@@ -287,7 +287,7 @@
     document.querySelectorAll('input[name="fibrinogen"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
             if (v < 0.15 || v > 1500) return { level: 'crit', msg: 'დაუჯერებელი ფიბრინოგენი (' + v + ') — გადაამოწმეთ!' };
-            var gl = v > 15 ? Math.round((v / 100.0) * 100) / 100 : v;
+            var gl = v > 15 ? Math.round((v / 100.0) * 10000) / 10000 : v;
             if (gl < 1.5) return { level: 'crit', msg: 'მძიმე ჰიპოფიბრინოგენემია (' + gl + ' გ/ლ < 1.5)!' };
             if (gl < 1.8) return { level: 'warn', msg: 'დაბალი ფიბრინოგენი (' + gl + ' გ/ლ < 1.8)' };
             return null;
@@ -340,7 +340,7 @@
     document.querySelectorAll('input[name="albumin"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
             if (v < 0.5 || v > 80) return { level: 'crit', msg: 'დაუჯერებელი ალბუმინი (' + v + ') — გადაამოწმეთ!' };
-            var gl = (v >= 0.5 && v <= 7.5) ? Math.round(v * 100) / 10 : v;
+            var gl = (v >= 0.5 && v <= 7.5) ? Math.round(v * 100000) / 10000 : v;
             if (gl < 30) return { level: 'crit', msg: 'მძიმე ჰიპოალბუმინემია (' + gl + ' გ/ლ < 30)!' };
             if (gl < 35) return { level: 'warn', msg: 'დაქვეითებული ალბუმინი (' + gl + ' გ/ლ < 35)' };
             return null;

@@ -81,13 +81,17 @@
             <section class="x-card">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <h2 class="m-0">ავტომატურად ფორმირებული მოწესრიგებული ანამნეზი</h2>
+                    {% if not is_inactive_card %}{% if not p.approved_at or is_doctor %}
                     <button type="submit" name="action" value="regenerate" class="x-btn sm">თავიდან აწყობა კითხვარიდან</button>
+                    {% endif %}{% endif %}
                 </div>
                 <p class="small text-muted m-0">ექიმს შეუძლია გადაამოწმოს, ჩაასწოროს ტექსტი და დაადასტუროს პაციენტის მზაობა ოპერაციისთვის.</p>
                 <textarea name="anamnesis" rows="8" class="form-control" style="height:auto;padding:12px;line-height:1.6">{{ shown_anamnesis }}</textarea>
+                {% if not is_inactive_card %}{% if not p.approved_at or is_doctor %}
                 <div class="d-flex justify-content-end">
                     <button type="submit" name="action" value="save_anamnesis" class="x-btn sm">ანამნეზის ტექსტის შენახვა</button>
                 </div>
+                {% endif %}{% endif %}
             </section>
 
             <section class="x-card">

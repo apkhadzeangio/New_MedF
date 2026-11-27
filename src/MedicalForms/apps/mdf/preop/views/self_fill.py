@@ -75,8 +75,54 @@ class PreopSelfFillView(generic.View):
         staff_locked = bool(patient.approved_at or (q.get('nurse_verified') and not reopened) or outcome != 'scheduled')
         return cur_nonce, staff_locked, submitted_once
 
+    _PLAIN_CHIP_OVERRIDES = {
+        'cad_chips': {
+            'cabg': 'გულის შუნტირება',
+        },
+        'abdo_chips': {
+            'hernia_r': 'საზარდულის თიაქარი (მარჯვენა)',
+            'hernia_l': 'საზარდულის თიაქარი (მარცხენა)',
+        },
+        'cea_event_chips': {
+            'amaurosis': 'ცალ თვალში მხედველობის დაბინდვა',
+            'tia_limb': 'კიდურის დროებითი სისუსტე/დაბუჟება (<24 სთ)',
+        },
+        'cea_neck_chips': {
+            'contra_cea': 'მეორე მხარეს საძილე არტერიის ოპერაცია',
+        },
+        'allergy_chips': {
+            'beta_lactam': 'პენიცილინი / ცეფაზოლინი',
+            'hit_heparin': 'ჰეპარინი (ალერგია / თრომბოციტების ვარდნა!)',
+            'nsaid': 'ტკივილგამაყუჩებლები (იბუპროფენი / ანალგინი / ასპირინი)',
+        },
+        'ven_dvt_chips': {
+            'vte_recent_3m': 'ღრმა ვენების თრომბოზი / ფილტვის ემბოლია ბოლო 3 თვეში!',
+            'ipsi_dvt': 'იმავე ფეხის ღრმა ვენის თრომბოზი',
+            'contra_dvt': 'მეორე ფეხის ღრმა ვენის თრომბოზი',
+            'pe': 'ფილტვის არტერიის ემბოლია',
+        },
+        'ven_rec_chips': {
+            'prev_evla': 'წარსულში ვენების ლაზერული / რადიოსიხშირული ოპერაცია',
+        },
+    }
+
+    @classmethod
+    def _plain_self_fill_chips(cls):
+        from ..plain_ka import scrub_plain_ka
+
+        out = {}
+        for cat, items in CHIP_CATALOGS.items():
+            ov = cls._PLAIN_CHIP_OVERRIDES.get(cat, {})
+            out[cat] = tuple(
+                (ck, ov.get(ck) or scrub_plain_ka(cl, second_person=False, strip_quoted_ft=True) or cl)
+                for ck, cl in items
+            )
+        return out
+
     def get(self, request, token):
         from .. import evaluate
+        from ..nurse_ui import _plain_procedure_ka
+        from ..plain_ka import scrub_plain_ka
 
         patient = self._load_patient(token)
         if not patient:
@@ -95,14 +141,24 @@ class PreopSelfFillView(generic.View):
         # L7-F2: Never pre-populate prior clinical answers/meds/allergies on an unauthenticated bearer GET link!
         q_public = dict(DEFAULT_Q)
         s_public = dict(DEFAULT_STUDIES)
+        plain_op_lbl = scrub_plain_ka(_plain_procedure_ka(patient, ev), second_person=False, strip_quoted_ft=True)
+        plain_med_hints = tuple(
+            (ck, scrub_plain_ka(cl, second_person=False, strip_quoted_ft=True) or cl)
+            for ck, cl in SELF_FILL_MED_HINTS
+        )
+        plain_mets_choices = tuple(
+            (mk, scrub_plain_ka(ml, second_person=False, strip_quoted_ft=True) or ml)
+            for mk, ml in METS_LIMIT_CHOICES
+        )
         return render(request, self.template_name, {
             'p': patient,
             'ev': ev,
+            'plain_operation_label': plain_op_lbl,
             'q': q_public,
             's': s_public,
-            'chips': CHIP_CATALOGS,
-            'self_med_hints': SELF_FILL_MED_HINTS,
-            'mets_limit_choices': METS_LIMIT_CHOICES,
+            'chips': self._plain_self_fill_chips(),
+            'self_med_hints': plain_med_hints,
+            'mets_limit_choices': plain_mets_choices,
             'duration_chips': DURATION_CHIPS,
             'ceap_choices': CEAP_CHOICES,
             'locked': locked,

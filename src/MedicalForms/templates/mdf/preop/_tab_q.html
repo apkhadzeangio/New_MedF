@@ -10,7 +10,7 @@
                         <strong>პაციენტმა კითხვარი შეავსო ბმულით — დადებითი პასუხების შეჯამება:</strong>
                         {% if q.nurse_verified %}<span class="po-badge st-ready ms-1">✓ გადამოწმებულია ({{ q.nurse_verified_by }})</span>{% endif %}
                     </div>
-                    {% if not q.nurse_verified %}
+                    {% if not q.nurse_verified and not is_inactive_card %}
                     <button type="submit" id="btn-verify-self" class="x-btn sm ok">
                         ✓ გადავამოწმე პაციენტთან და ვადასტურებ
                     </button>
@@ -616,7 +616,9 @@
 
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-2">
                     {% if q.filled %}<span class="small text-muted">შევსებულია: {{ q.filled_by }}, {{ q.filled_at }}</span>{% else %}<span></span>{% endif %}
+                    {% if not is_inactive_card %}
                     <button type="submit" class="x-btn primary">კითხვარების შენახვა → საფეხური 1</button>
+                    {% endif %}
                 </div>
             </section>
         </form>

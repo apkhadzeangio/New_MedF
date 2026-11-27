@@ -6,6 +6,7 @@ import re
 from ..board import person_name
 from ..models import StaffProfile
 from .constants import STATUS_ALERT, STATUS_NO_Q, STATUS_READY
+from .plain_ka import plain_drug_name as _plain_drug_name
 from .utils import _date, _fmt_ka_date, is_self_filled_q
 
 PREOP_UI_OLD = 'old'
@@ -142,7 +143,7 @@ def _med_call_status(ev, today):
     due_drugs = []
     due_soon = False
     for row in (dated_hold_rows or reconcile_rows):
-        due_drugs.append(row['drug'])
+        due_drugs.append(_plain_drug_name(row['drug']))
     for row in dated_hold_rows:
         start_dt = _extract_hold_start_date(row, op_dt)
         if start_dt and (start_dt - today).days <= 2 and op_dt and op_dt >= today:
@@ -178,6 +179,12 @@ def get_nurse_readiness_verdict(patient, ev):
     """Single unmistakable 03:00 night-shift verdict: STOP / ექიმის ნახვა / მზადაა ✓ / პირობითი / აკლია N პუნქტი."""
     from .plain_ka import scrub_plain_ka
     seal_code = ev['clearance_seal']['code']
+    if seal_code == 'inactive':
+        return {
+            'code': 'pending', 'badge': 'არააქტიური ბარათი',
+            'detail': scrub_plain_ka(ev['clearance_seal'].get('detail', 'ბარათი არააქტიურია'), second_person=False, strip_quoted_ft=True),
+            'missing_cnt': 0, 'rank': 4,
+        }
     open_tasks = [t for t in ev['tasks'] if not t['done']]
     missing_cnt = max(len(ev['missing_items']), len(open_tasks))
     stale_pending = bool(ev.get('needs_stale_labs') and not ev['s'].get('stale_labs_refreshed'))
@@ -290,7 +297,7 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
         sf_info = self_fill_status_info(ev)
         pw = ev['pathway']
         has_acute = bool(
-            (pw == 'aaa_infra' and ev['q'].get('aaa_pain'))
+            (pw == 'aaa_infra' and (ev['q'].get('aaa_pain') or ev['s'].get('aaa_morphology') == 'inflammatory_mycotic'))
             or (pw == 'cea' and ev['q'].get('cea_crescendo'))
             or (pw in ('abf', 'pad_bypass', 'pad_pta') and (
                 ev['q'].get('abf_wet_infection') or ev['q'].get('abf_duration') == '< 2 კვირა'
@@ -350,13 +357,13 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
 
 
 REGISTER_PROCEDURE_GROUPS = [
-    ('საძილე არტერია (CEA)', [
+    ('საძილე არტერია', [
         ('cea_symp', 'საძილე არტერია — სიმპტომური', 'ინსულტი ან გარდამავალი ეპიზოდი · 14 დღე'),
         ('cea_asymp', 'საძილე არტერია — უსიმპტომო', 'გეგმიური შევიწროება'),
     ]),
-    ('მუცლის აორტა (AAA)', [
+    ('მუცლის აორტა', [
         ('open', 'აორტის ანევრიზმა — ღია ოპერაცია', 'მუცლის აორტის პროთეზირება'),
-        ('evar', 'აორტის ანევრიზმა — სტენტი (EVAR)', 'ენდოვასკულური პროთეზი'),
+        ('evar', 'აორტის ანევრიზმა — სტენტირება', 'ენდოვასკულური პროთეზი'),
         ('tbd', 'აორტის ანევრიზმა — ტიპი ზუსტდება', 'კტ-ანგიოგრაფიის შემდეგ'),
     ]),
     ('ფეხის არტერიები (შუნტირება / ბალონირება)', [
@@ -368,7 +375,7 @@ REGISTER_PROCEDURE_GROUPS = [
         ('abf_claud', 'აორტო-ბიფემორალური შუნტი — სიარულის ტკივილი', 'გეგმიური (14 დღე)'),
     ]),
     ('ვენების ოპერაცია', [
-        ('evla', 'ვენების ლაზერული ოპერაცია (EVLA)', 'ადგილობრივი გაუტკივარება'),
+        ('evla', 'ვენების ლაზერული ოპერაცია', 'ადგილობრივი გაუტკივარება'),
         ('phlebectomy', 'ვარიკოზული ვენების ამოკვეთა', 'სპინალური ან ადგილობრივი'),
     ]),
 ]

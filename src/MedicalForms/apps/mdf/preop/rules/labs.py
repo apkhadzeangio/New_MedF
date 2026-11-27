@@ -6,7 +6,6 @@ from ..calculators import (
     _sat_gl_mmol,
     _sat_num,
     calc_max_contrast_ml,
-    normalize_fibrinogen_gl,
 )
 from ..constants import PATHWAY_SHORT
 from ..registry import rule_value
@@ -16,10 +15,9 @@ from ..utils import (
     _num,
     _safe_display_str,
     chip_summary,
-    has_prior_stroke_or_tia,
-    parse_plt_k,
     parse_wbc_k,
 )
+from .anaesthesia import _eval_early_neuraxial_gate
 
 
 def _extract_bp_and_sat(s):
@@ -184,97 +182,6 @@ def _eval_hr_spo2_mets(ctx, hr_cfg, hr, spo2):
             ctx.amber_flags.append('დაქვეითებული ფუნქციური ამტანობა (< 4 METs — ქოშინი/დაღლა 2 სართულზე ასვლისას).')
 
 
-def _eval_early_neuraxial_gate(ctx):
-    patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
-    raw_s = getattr(ctx, 'raw_s', None) or {}
-    asra_cfg, ren_red = rule_value('ASRA_NEURAXIAL_COAG_GATE'), rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
-    doac_low, dabi_low = rule_value('MED_DOAC_HOLD_INTERVALS')['crcl_low'], rule_value('MED_DABIGATRAN_HOLD_INTERVALS')['crcl_low']
-    shock_lim, vka_hold_d = rule_value('VIT_BP_HYPOTENSION_SHOCK')['shock_idx'], rule_value('MED_WARFARIN_HOLD_DAYS')['hold_days']
-    open_aortic = (pathway == PreopPatient.Pathway.ABF) or (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
-    ctx.open_aortic, ctx.open_major = open_aortic, open_aortic or ctx.is_pad_bypass
-    plt, inr, dos_inr_early = parse_plt_k(s.get('plt')), _num(s.get('inr'), lo=0.4, hi=20.0), _num(s.get('dos_inr'), lo=0.5, hi=15)
-    ctx.inr_sat = inr if inr is not None else _sat_num(_s_raw(s, 'inr'), 0.4, 20.0)
-    ctx.dos_inr_sat = dos_inr_early if dos_inr_early is not None else _sat_num(_s_raw(s, 'dos_inr'), 0.5, 15.0)
-    raw_dos_inr = raw_s['dos_inr'] if 'dos_inr' in raw_s else s.get('dos_inr')
-    dos_inr_present = raw_dos_inr is not None and str(raw_dos_inr).strip() != ''
-    eff_inr_nx, fib = (dos_inr_early if dos_inr_present else inr), normalize_fibrinogen_gl(s.get('fibrinogen'))
-    on_oral_anticoag = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
-    ctx.plt, ctx.inr, ctx.eff_inr_nx, ctx.fib, ctx.on_oral_anticoag = plt, inr, eff_inr_nx, fib, on_oral_anticoag
-    has_acs_stent_early = ('stent_6_12m' in ctx.cad_chips) and ('mi' in ctx.cad_chips)
-    p2y12_cnt_early = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
-    asa_allergy_solo_p2y12 = 'nsaid' in ctx.allergy_chips and p2y12_cnt_early >= 1 and (
-        not ctx.is_venous or bool(q.get('cad')) or bool(ctx.cad_chips) or has_prior_stroke_or_tia(patient, q=q, s=s, today=ctx.today)
-    )
-    uninterrupted_p2y12_early = (p2y12_cnt_early >= 1) and (
-        bool(q.get('recent_stent')) or has_acs_stent_early or asa_allergy_solo_p2y12 or (p2y12_cnt_early >= 2)
-        or (ctx.is_pta and bool(q.get('med_clopidogrel') or q.get('med_ticagrelor')))
-        or (ctx.is_symp_cea and bool(q.get('med_clopidogrel') or q.get('med_ticagrelor')))
-    )
-    op_dt_nx = _date(s.get('planned_surgery_date'))
-    prewashout_vka = bool(q.get('med_warfarin') and not dos_inr_present)
-    prewashout_vka_plan = bool(prewashout_vka and eff_inr_nx is not None and asra_cfg['inr_max'] < eff_inr_nx <= asra_cfg['vka_prewashout_inr_max'] and (op_dt_nx is None or op_dt_nx > ctx.today))
-    hard_nx_reasons, inv_in = [], (s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {})
-    def _has_bad(k, parsed):
-        rv = raw_s[k] if k in raw_s else s.get(k)
-        return parsed is None and ((rv is not None and str(rv).strip() != '') or k in inv_in)
-    if _has_bad('dos_inr', dos_inr_early):
-        hard_nx_reasons.append('ოპერაციის დილის INR დაუშვებელია')
-    elif not dos_inr_present and _has_bad('inr', inr):
-        hard_nx_reasons.append('INR დაუშვებელია')
-    if _has_bad('plt', plt):
-        hard_nx_reasons.append('PLT დაუშვებელია')
-    if _has_bad('fibrinogen', fib):
-        hard_nx_reasons.append('ფიბრინოგენი დაუშვებელია')
-    if plt is not None and plt < asra_cfg['plt_min']:
-        hard_nx_reasons.append(f'PLT {plt} < {asra_cfg["plt_min"]}')
-    if eff_inr_nx is not None and eff_inr_nx > asra_cfg['inr_max']:
-        hard_nx_reasons.append(f'INR {eff_inr_nx} > {asra_cfg["inr_max"]}')
-    if fib is not None and fib < asra_cfg['fib_min']:
-        hard_nx_reasons.append(f'ფიბრინოგენი {fib} < {asra_cfg["fib_min"]} გ/ლ')
-    if s.get('aptt_prolonged'):
-        hard_nx_reasons.append('APTT გახანგრძლივებულია')
-    if uninterrupted_p2y12_early:
-        hard_nx_reasons.append('უწყვეტი P2Y12/DAPT — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
-    if ctx.ft_meds.get('unstructured_antithrombotic'):
-        hard_nx_reasons.append('დაუზუსტებელი ანტიკოაგულანტი/ანტიაგრეგანტი ტექსტში (other_meds)')
-    if 'hit_heparin' in ctx.allergy_chips and (not ctx.is_venous or 'mech_valve' in ctx.cad_chips):
-        hard_nx_reasons.append('HIT არტერიულ/მექ. სარქვლის ოპერაციაზე (IV DTI) — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
-    eff_ren_nx = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
-    doac_nx_lims = [lim for cond, lim in ((q.get('med_doac'), doac_low), (q.get('med_dabigatran'), dabi_low), ('rivaroxaban_2_5' in ctx.med_chips, ren_red)) if cond]
-    if doac_nx_lims and (ctx.on_dialysis or (eff_ren_nx is not None and eff_ren_nx < max(doac_nx_lims))):
-        hard_nx_reasons.append(f'CrCl/eGFR < {max(doac_nx_lims)} ანტიკოაგულანტზე — ნეირაქსიული ბლოკადა მოერიდეთ!')
-    if bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in ctx.allergy_chips):
-        hard_nx_reasons.append('ადგილობრივ ანესთეტიკზე (ლიდოკაინი/მარკაინი/ბუპივაკაინი) ალერგია — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
-    if bool(s.get('echo_valve_issue')):
-        hard_nx_reasons.append('მძიმე სარქვლოვანი მანკი / AS — სპინალური ბლოკადა საშიშია!')
-    if getattr(ctx, 'bp_inverted', False):
-        hard_nx_reasons.append('არტერიული წნევის ინვერტირებული ჩანაწერი (SBP ≤ DBP) — გადამოწმებამდე დაბლოკილია!')
-    raw_sbp_low = any((v := _num(_s_raw(raw_s, k) if _s_raw(raw_s, k) is not None else _s_raw(s, k))) is not None and (v < 30 or (ctx.eff_sys is None and v < asra_cfg['sbp_min'])) for k in ('bp_sys', 'bp_sys_l'))
-    raw_hr_v = _num(_s_raw(raw_s, 'hr') if _s_raw(raw_s, 'hr') is not None else _s_raw(s, 'hr'))
-    if (ctx.eff_sys is not None and ctx.eff_sys < asra_cfg['sbp_min']) or raw_sbp_low or (ctx.shock_index is not None and ctx.shock_index >= shock_lim) or (raw_hr_v is not None and (raw_hr_v > 260 or raw_hr_v < 15)):
-        hard_nx_reasons.append(f'ჰიპოტენზია / შოკი (SBP <{asra_cfg["sbp_min"]} ან SI ≥{shock_lim}) — სიმპათექტომია საშიშია!')
-    epi_anatomic_mismatch = ('epidural' in ctx.anesth_lines_set) and (pathway == PreopPatient.Pathway.CEA or patient.op_subtype == PreopPatient.OpSubtype.EVLA)
-    solo_neuraxial_anatomic_mismatch = ((ctx.anesth_plan_raw == 'neuraxial') and (pathway == PreopPatient.Pathway.CEA or open_aortic)) or epi_anatomic_mismatch
-    auto_nx_blockers = [r for r in hard_nx_reasons if not (prewashout_vka_plan and r.startswith('INR '))]
-    explicit_nx_blockers = [r for r in hard_nx_reasons if not (prewashout_vka_plan and r.startswith('INR '))]
-    if solo_neuraxial_anatomic_mismatch:
-        if epi_anatomic_mismatch and ctx.anesth_plan_raw != 'neuraxial':
-            ctx.red_flags.append('არჩეულია სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ლაზერული აბლაციის (EVLA) ოპერაციაზე — ანატომიურად შეუსაბამოა! მოხსენით ეპიდურული კათეტერი ანესთეზიის გეგმიდან.')
-        elif explicit_nx_blockers:
-            ctx.red_flags.append('არჩეულია მხოლოდ სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ღია აორტის ოპერაციაზე — ანატომიურად შეუსაბამოა (ASRA-თი ეპიდურული ანალგეზიაც უკუნაჩვენებია)! შეარჩიეთ ზოგადი ენდოტრაქეული ანესთეზია ან კისრის წნულის ბლოკადა.')
-        else:
-            ctx.red_flags.append('არჩეულია მხოლოდ სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ღია აორტის ოპერაციაზე — ანატომიურად შეუსაბამოა! შეარჩიეთ ზოგადი ენდოტრაქეული ანესთეზია (± ეპიდურული ანალგეზია ღია აორტაზე) ან კისრის წნულის ბლოკადა.')
-    ctx.hard_nx_reasons, ctx.auto_nx_blockers, ctx.explicit_nx_blockers = hard_nx_reasons, auto_nx_blockers, explicit_nx_blockers
-    ctx.solo_neuraxial_anatomic_mismatch = solo_neuraxial_anatomic_mismatch
-    ctx.auto_spinal_candidate = (ctx.anesth_plan_raw == 'auto') and (ctx.is_phleb or patient.op_subtype == 'evar' or ctx.is_pad_bypass)
-    ctx.has_neuraxial_plan = ctx.explicit_neuraxial or ((ctx.anesth_plan_raw == 'auto') and ctx.is_phleb and not auto_nx_blockers)
-    ctx.neuraxial_hard_blocked = bool(ctx.explicit_neuraxial and (explicit_nx_blockers or solo_neuraxial_anatomic_mismatch))
-    if ctx.explicit_neuraxial and explicit_nx_blockers:
-        ctx.red_flags.append(f"არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია ({', '.join(explicit_nx_blockers)}) — სპინალური ჰემატომის / ანაფილაქსიის უმაღლესი რისკი! შეცვალეთ ანესთეზიის გეგმა (ASRA 5th Ed)!")
-    elif ctx.explicit_neuraxial and prewashout_vka_plan and not solo_neuraxial_anatomic_mismatch:
-        ctx.amber_flags.append(f'ვარფარინის ფონზე დაგეგმილია ნეირაქსიული / ეპიდურული ბლოკადა (INR {eff_inr_nx} > {asra_cfg["inr_max"]}) — სავალდებულოა {vka_hold_d}-დღიანი შეჩერება და ოპერაციის დილას საკონტროლო INR ≤ {asra_cfg["inr_max"]} (ASRA 5th Ed)!')
-
-
 def eval_hematology_coag(ctx):
     patient, q, s, hb_gl = ctx.patient, ctx.q, ctx.s, ctx.hb_gl
     _eval_early_neuraxial_gate(ctx)
@@ -339,11 +246,17 @@ def eval_hematology_coag(ctx):
         ctx.amber_flags.append('ღია სისხლძარღვოვანი ოპერაციის წინ მიუთითეთ სისხლის ჯგუფი და რეზუსი (Type & Screen).')
     if fib is not None and fib < coag_cfg['fib_sev']:
         ctx.red_flags.append(f'მძიმე ჰიპოფიბრინოგენემია (ფიბრინოგენი {fib} გ/ლ < {coag_cfg["fib_sev"]}) — კოაგულოპათიური სისხლდენის მაღალი რისკი (ESAIC 2023)!')
+    mech_inr_min = rule_value('MED_MECH_VALVE_SAFETY')
+    evla_subther_mv = bool(ctx.has_mech_valve and eff_inr is not None and eff_inr < mech_inr_min)
     is_evla_vka_ctx = (
         ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
         and not ctx.has_neuraxial_plan and bool(q.get('med_warfarin'))
         and not getattr(ctx, 'eff_pregnant', False) and not getattr(ctx, 'active_gi_bleed', False) and not ctx.liver_3x
-        and not (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips or getattr(ctx, 'has_ft_full_oac', False))
+        and not evla_subther_mv
+        and not (
+            q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips
+            or getattr(ctx, 'has_ft_full_oac', False) or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))
+        )
     )
     evla_inr_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
     evla_vka_ok = is_evla_vka_ctx and eff_inr and eff_inr <= evla_inr_max and not s.get('aptt_prolonged') and (fib is None or fib >= coag_cfg['fib_low'])
@@ -503,20 +416,38 @@ def eval_glycemia_endocrine(ctx):
             )
 
     bmi_eff = ctx.bmi if ctx.bmi is not None else getattr(ctx, 'bmi_sat', None)
+    wt_eff = getattr(ctx, 'weight_sat', ctx.weight_num)
     eff_ren_amio = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
+    dabi_cfg = rule_value('MED_DABIGATRAN_HOLD_INTERVALS')
+    ft_u_g = ctx.ft_meds.get('unstructured_keys') or set()
     has_amio_any = ('amiodarone' in ctx.med_chips) or bool(ctx.ft_meds.get('has_ft_amiodarone'))
-    if q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips:
-        if (q.get('med_doac') or q.get('med_dabigatran')) and bmi_eff is not None and bmi_eff > doac_cfg['extreme_bmi']:
-            ctx.amber_flags.append(
-                f'ექსტრემალური სიმსუქნე (BMI {bmi_eff} > {doac_cfg["extreme_bmi"]} კგ/მ²) DOAC/დაბიგატრანის ფონზე (ISTH 2021) — '
-                'პლაზმური კონცენტრაცია შესაძლოა არაპროგნოზირებადი იყოს; განიხილეთ ანტი-Xa/დონის კონტროლი ან ვარფარინი.'
-            )
-        if has_amio_any and (ctx.on_dialysis or (eff_ren_amio is not None and eff_ren_amio < doac_cfg['amio_renal'])):
-            amio_drug_lbl = 'DOAC/დაბიგატრანი' if (q.get('med_doac') or q.get('med_dabigatran')) else 'რივაროქსაბანი 2.5 მგ'
-            ctx.amber_flags.append(
-                f'ამიოდარონი + {amio_drug_lbl} დაქვეითებული თირკმლის ფუნქციის (CrCl/eGFR < {doac_cfg["amio_renal"]}) ფონზე — '
-                'P-gp ინჰიბირება ზრდის პრეპარატის აკუმულაციას (EHRA 2021: განიხილეთ +24 სთ-ით ადრე შეჩერება)!'
-            )
+    has_dabi_any = bool(q.get('med_dabigatran') or ('dabigatran' in ft_u_g))
+    has_doac_any = bool(q.get('med_doac') or has_dabi_any or ctx.ft_meds.get('has_ft_unstruct_doac'))
+    has_riva_low_any = ('rivaroxaban_2_5' in ctx.med_chips) or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))
+    has_warf_any = bool(q.get('med_warfarin') or ctx.ft_meds.get('has_ft_unstruct_warfarin'))
+    if has_dabi_any and (
+        (bmi_eff is not None and bmi_eff > dabi_cfg['dabi_bmi_max'])
+        or (wt_eff is not None and wt_eff > dabi_cfg['dabi_wt_max'])
+    ):
+        ctx.amber_flags.append(
+            f'სიმსუქნე / მაღალი წონა (BMI {bmi_eff if bmi_eff is not None else "—"} > {dabi_cfg["dabi_bmi_max"]} კგ/მ² ან წონა {wt_eff if wt_eff is not None else "—"} > {dabi_cfg["dabi_wt_max"]} კგ) '
+            'დაბიგატრანის (პრადაქსა) ფონზე (ISTH 2021) — რეკომენდებული არ არის დაქვეითებული პლაზმური კონცენტრაციის რისკის გამო; განიხილეთ აპიქსაბანი/რივაროქსაბანი ან ვარფარინი.'
+        )
+    elif has_doac_any and bmi_eff is not None and bmi_eff > doac_cfg['extreme_bmi']:
+        ctx.amber_flags.append(
+            f'ექსტრემალური სიმსუქნე (BMI {bmi_eff} > {doac_cfg["extreme_bmi"]} კგ/მ²) DOAC/დაბიგატრანის ფონზე (ISTH 2021) — '
+            'პლაზმური კონცენტრაცია შესაძლოა არაპროგნოზირებადი იყოს; განიხილეთ ანტი-Xa/დონის კონტროლი ან ვარფარინი.'
+        )
+    if (has_doac_any or has_riva_low_any) and has_amio_any and (ctx.on_dialysis or (eff_ren_amio is not None and eff_ren_amio < doac_cfg['amio_renal'])):
+        amio_drug_lbl = 'DOAC/დაბიგატრანი' if has_doac_any else 'რივაროქსაბანი 2.5 მგ'
+        ctx.amber_flags.append(
+            f'ამიოდარონი + {amio_drug_lbl} დაქვეითებული თირკმლის ფუნქციის (CrCl/eGFR < {doac_cfg["amio_renal"]}) ფონზე — '
+            'P-gp ინჰიბირება ზრდის პრეპარატის აკუმულაციას (EHRA 2021: განიხილეთ +24 სთ-ით ადრე შეჩერება)!'
+        )
+    if has_amio_any and has_warf_any and ('amiodarone' not in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_warfarin'))):
+        ctx.amber_flags.append(
+            'ამიოდარონი + ვარფარინი — CYP2C9 ინჰიბირება აძლიერებს ანტიკოაგულაციას (INR-ის 30–50%-ით მატება); გადაამოწმეთ INR და კარდიოლოგის სქემა!'
+        )
 
     _eval_tsh_and_nutrition(ctx, nut_cfg)
 
@@ -759,15 +690,21 @@ def eval_carotid_gastro(ctx):
             'აუცილებელია ეგდს, PPI გასტროპროტექცია და ქირურგის შეფასება!'
         )
 
-    p2y12_early_cnt = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
-    has_dapt_high_gi = (p2y12_early_cnt >= 2) or (bool(q.get('med_aspirin')) and p2y12_early_cnt >= 1)
-    has_oac_ap_ppi = ctx.on_oral_anticoag and (bool(q.get('med_aspirin')) or p2y12_early_cnt >= 1 or ('cilostazol' in ctx.med_chips))
+    ft_keys = ctx.ft_meds.get('matched_keys') or set()
+    p2y12_early_cnt = sum([
+        bool(q.get('med_clopidogrel') or 'clopidogrel' in ft_keys),
+        bool(q.get('med_ticagrelor') or 'ticagrelor' in ft_keys),
+        bool(q.get('med_prasugrel') or 'prasugrel' in ft_keys),
+    ])
+    has_asa_gi = bool(q.get('med_aspirin') or 'aspirin' in ft_keys)
+    has_oac_gi = bool(ctx.on_oral_anticoag or getattr(ctx, 'has_ft_full_oac', False))
+    has_dapt_high_gi = (p2y12_early_cnt >= 2) or (has_asa_gi and p2y12_early_cnt >= 1)
+    has_oac_ap_ppi = has_oac_gi and (has_asa_gi or p2y12_early_cnt >= 1 or ('cilostazol' in ctx.med_chips) or ('cilostazol' in ft_keys))
     age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
     has_elder_steroid_ppi = q_filled and ((age_eff or 0) >= gi_cfg['ppi_age']) and ('steroid' in ctx.med_chips) and ctx.has_any_antithrombotic
     needs_ppi = bool((bool(q.get('ulcer_active_symp')) or (gastro_res == 'acute_ulcer') or has_dapt_high_gi or has_oac_ap_ppi or (q_filled and (bool(q.get('ulcer')) or has_elder_steroid_ppi))) and 'ppi' not in ctx.med_chips)
     ctx.needs_ppi = needs_ppi
     if needs_ppi:
-        ft_keys = ctx.ft_meds.get('matched_keys') or set()
         ppi_pref_lbl = (
             'პანტოპრაზოლი 40 მგ (კლოპიდოგრელ/ცილოსტაზოლზე ომეპრაზოლს მოერიდეთ — CYP2C19!)'
             if (q.get('med_clopidogrel') or 'cilostazol' in ctx.med_chips or 'clopidogrel' in ft_keys or 'cilostazol' in ft_keys)
