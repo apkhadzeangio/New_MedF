@@ -98,10 +98,22 @@ def _eval_pta_access_and_meds(ctx, is_clti, hemo_cfg, ldl_target):
                 or s.get('post_antithrombotic_plan') in ('voyager', 'voyager_pad', 'oac_sapt')
                 or bool(ft_keys & {'warfarin', 'doac', 'dabigatran', 'rivaroxaban_2_5'})
             )
-            if has_oac_pta and 'nsaid' in ctx.allergy_chips:
-                alt_pta_txt = 'ინდივიდუალური რეჟიმი კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია — OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III აკრძალულია!)'
+            eff_r_pta = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
+            sev_ren_pta = bool(ctx.on_dialysis or (eff_r_pta is not None and eff_r_pta < rule_value('REN_CKD_NEPHRO_HYDRATION')['red']))
+            has_mv_pta = 'mech_valve' in ctx.cad_chips
+            has_preg_pta = bool(getattr(ctx, 'eff_pregnant', False))
+            has_hit_pta = 'hit_heparin' in ctx.allergy_chips
+            asa_allergy_pta = 'nsaid' in ctx.allergy_chips
+            if has_oac_pta and has_preg_pta:
+                alt_pta_txt = 'ინდივიდუალური რეჟიმი მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმით (ორსულობაზე DOAC/რივაროქსაბანი 2.5 მგ და პერორალური OAC უკუნაჩვენებია; ტიკაგრელორი + OAC აკრძალულია!)'
+            elif has_oac_pta and has_mv_pta:
+                mv_ap = 'ინდივიდუალური კონსილიუმის რეჟიმი (ასპირინზე და კლოპიდოგრელზე ალერგია!)' if asa_allergy_pta else 'ასპირინი 75–100 მგ'
+                alt_pta_txt = f'უვადო ვარფარინი (VKA) + {mv_ap} (მექ. სარქველზე DOAC / რივაროქსაბანი 2.5 მგ და ტიკაგრელორი + OAC აკრძალულია!)'
+            elif has_oac_pta and (sev_ren_pta or ctx.liver_3x or has_hit_pta or asa_allergy_pta):
+                c_tags = [t for cond, t in ((sev_ren_pta, 'CrCl<30/დიალიზი'), (ctx.liver_3x, 'ღვიძლის ≥3x'), (has_hit_pta, 'HIT'), (asa_allergy_pta, 'ასპირინზე ალერგია')) if cond]
+                alt_pta_txt = f'ინდივიდუალური უსაფრთხო ანტიკოაგულაციის რეჟიმი კონსილიუმით ({", ".join(c_tags)} — DOAC/რივაროქსაბანი 2.5 მგ და OAC + ტიკაგრელორი უკუნაჩვენებია!)'
             elif has_oac_pta:
-                alt_pta_txt = 'OAC / რივაროქსაბანი 2.5 მგ + ასპირინი 75–100 მგ (OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III სისხლდენის რისკის გამო აკრძალულია!)'
+                alt_pta_txt = 'უსაფრთხო OAC + ასპირინი 75–100 მგ (OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III სისხლდენის რისკის გამო აკრძალულია!)'
             else:
                 alt_pta_txt = 'ალტერნატიული P2Y12 (ტიკაგრელორი)'
             ctx.red_flags.append(f'ანამნეზში კლოპიდოგრელის აუტანლობა — სტენტირებამდე შეათანხმეთ {alt_pta_txt} ქირურგთან!')

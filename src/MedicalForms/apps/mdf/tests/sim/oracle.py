@@ -109,6 +109,8 @@ def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is
 
 def _oracle_cardio_cxr_uti(oracles, patient, ev, q, s, pw, is_venous, open_aortic, cad_chips, inf_chips, eff_s, eff_d):
     from ...preop.calculators import _s_raw, _sat_num
+    from ...preop.utils import has_prior_stroke_or_tia
+    from .cohort import SIM_TODAY
 
     if not patient.cardio_decision:
         hr_n = _sat_num(_s_raw(s, 'hr'), 15, 260)
@@ -143,7 +145,7 @@ def _oracle_cardio_cxr_uti(oracles, patient, ev, q, s, pw, is_venous, open_aorti
             or bool(s.get('irregular_hr'))
             or (hr_n is not None and (hr_n > 110 or hr_n < 45))
             or sev_htn_or
-            or (pw not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS) and bool(q.get('neuro')))
+            or (pw not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS) and has_prior_stroke_or_tia(patient, q=q, s=s, today=SIM_TODAY))
             or (not is_venous and (bool(q.get('on_dialysis')) or (ev['egfr'] is not None and ev['egfr'] < ckd_cardio_thresh)))
             or (not is_venous and bool(q.get('dm_insulin')))
         )

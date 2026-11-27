@@ -61,10 +61,11 @@ def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
 
 
 def _oac_vte_advice(is_evla_vka, has_contra_oac, has_hit, severe_renal, severe_liver, hit_dtis, comp_sfx):
+    evla_inr_lim = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
     if is_evla_vka:
         if has_hit:
-            return f'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ 3.0){comp_sfx} — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე! HIT: ჰეპარინი/LMWH აკრძალულია!)'
-        return f'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ 3.0){comp_sfx} — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
+            return f'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ {evla_inr_lim}){comp_sfx} — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე! HIT: ჰეპარინი/LMWH აკრძალულია!)'
+        return f'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ {evla_inr_lim}){comp_sfx} — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
     if has_contra_oac:
         if has_hit and severe_renal:
             return f'უკუნაჩვენები OAC არ განაახლოთ — HIT + CrCl/eGFR <30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია! (IPC / სტაციონარული {hit_dtis}, ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
@@ -72,6 +73,8 @@ def _oac_vte_advice(is_evla_vka, has_contra_oac, has_hit, severe_renal, severe_l
             return f'უკუნაჩვენები OAC არ განაახლოთ — HIT + ღვიძლის ≥3x: ჰეპარინი, DOAC და ფონდაპარინუქსი აკრძალულია! (IPC / IV ბივალირუდინი, ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
         if has_hit:
             return f'უკუნაჩვენები OAC არ განაახლოთ — არაჰეპარინული სქემა (ფონდაპარინუქსი ან ერთი უსაფრთხო OAC კარდიოლოგ/ჰემატოლოგთან, ორმაგი ანტიკოაგულაციის გარეშე! HIT: ჰეპარინი/LMWH აკრძალულია!){comp_sfx}'
+        if severe_renal and severe_liver:
+            return f'უკუნაჩვენები OAC არ განაახლოთ — CrCl/eGFR <30 + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი აკრძალულია! შეარჩიეთ კანქვეშა UFH/IPC კოაგულოგრამის კონტროლით კონსილიუმით (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
         if severe_renal:
             return f'უკუნაჩვენები OAC არ განაახლოთ — CrCl/eGFR <30: DOAC/ფონდაპარინუქსი აკრძალულია! შეარჩიეთ კანქვეშა UFH ან VKA კარდიოლოგ/ნეფროლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
         if severe_liver:
@@ -131,6 +134,8 @@ def _caprini_tier_and_advice(
                     else f'არაჰეპარინული პროფილაქტიკა: ფონდაპარინუქსი ან DOAC 7–10 დღე (HIT: LMWH/ჰეპარინი აკრძალულია!){comp_sfx}'
                 )
             )
+        elif severe_renal and severe_liver:
+            advice = f'ფარმაკოლოგიური პროფილაქტიკა: კანქვეშა UFH + IPC კოაგულოგრამის კონტროლით (CrCl/eGFR <30 + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი აკრძალულია, LMWH კუმულირდება!){comp_sfx}'
         elif severe_renal:
             advice = f'ფარმაკოლოგიური პროფილაქტიკა: კანქვეშა UFH 5000 სე ×2–3 ან თირკმელზე კორექტირებული LMWH anti-Xa კონტროლით (CrCl/eGFR <30: DOAC/ფონდაპარინუქსი აკრძალულია!){comp_sfx}'
         elif severe_liver:
@@ -163,6 +168,8 @@ def _caprini_tier_and_advice(
                     else f'ადრეული მობილიზაცია{comp_sfx} ± ფონდაპარინუქსი/DOAC (HIT: ჰეპარინი აკრძალულია!)'
                 )
             )
+        elif severe_renal and severe_liver:
+            advice = f'ადრეული მობილიზაცია{comp_sfx} + IPC ± კანქვეშა UFH კოაგულოგრამის კონტროლით (CrCl/eGFR <30 + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი აკრძალულია, LMWH კუმულირდება!)'
         elif severe_renal:
             advice = f'ადრეული მობილიზაცია{comp_sfx} ± კანქვეშა UFH / დოზა-კორექტირებული LMWH (CrCl/eGFR <30: DOAC არა!)'
         elif severe_liver:
@@ -179,18 +186,25 @@ def _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver):
     has_full_oac = bool(q_d.get('med_warfarin') or q_d.get('med_doac') or q_d.get('med_dabigatran'))
     med_set = set(_str_list(q_d.get('med_chips')))
     oac_cnt = sum([bool(q_d.get('med_warfarin')), bool(q_d.get('med_doac')), bool(q_d.get('med_dabigatran')), ('rivaroxaban_2_5' in med_set)])
-    inr_c = _num(s_cur.get('dos_inr'), 0.5, 15.0) or _num(s_cur.get('inr'), 0.4, 20.0)
+    raw_s = patient.studies if isinstance(patient.studies, dict) else {}
+    inv_in = s_cur.get('_invalid_inputs') if isinstance(s_cur.get('_invalid_inputs'), dict) else {}
+    raw_dos_inr = raw_s['dos_inr'] if 'dos_inr' in raw_s else s_cur.get('dos_inr')
+    dos_inr_pres = (raw_dos_inr is not None and str(raw_dos_inr).strip() != '') or ('dos_inr' in inv_in)
+    dos_inr_v = _num(raw_dos_inr, 0.5, 15.0)
+    dos_inr_bad = dos_inr_pres and dos_inr_v is None
+    inr_c = dos_inr_v if dos_inr_pres else _num(s_cur.get('inr'), 0.4, 20.0)
     evla_max_inr = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
+    has_nx_plan = (s_cur.get('anesthesia_plan') or 'auto') == 'neuraxial' or ('epidural' in _str_list(s_cur.get('anesth_lines_chips')))
     is_evla_vka = bool(
         patient.op_subtype == PreopPatient.OpSubtype.EVLA
-        and (s_cur.get('anesthesia_plan') or 'auto') != 'neuraxial'
-        and q_d.get('med_warfarin') and oac_cnt == 1 and not severe_liver
+        and not has_nx_plan
+        and q_d.get('med_warfarin') and oac_cnt == 1 and not severe_liver and not dos_inr_bad
         and (inr_c is None or inr_c <= evla_max_inr)
     )
     has_contra_oac = bool(
         oac_cnt >= 2
         or ((q_d.get('med_doac') or q_d.get('med_dabigatran')) and (severe_renal or severe_liver))
-        or (not is_evla_vka and q_d.get('med_warfarin') and patient.op_subtype == PreopPatient.OpSubtype.EVLA and inr_c is not None and inr_c > evla_max_inr)
+        or (not is_evla_vka and q_d.get('med_warfarin') and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not has_nx_plan and (dos_inr_bad or (inr_c is not None and inr_c > evla_max_inr)))
     )
     return has_full_oac, is_evla_vka, has_contra_oac
 

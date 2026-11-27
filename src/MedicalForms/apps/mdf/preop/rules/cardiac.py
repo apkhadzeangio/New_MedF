@@ -72,19 +72,21 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
         or (lvef_eff is not None and lvef_eff < cb['lvef_red']) or (bnp_eff is not None and bnp_eff >= cb['bnp_red'])
         or (ctn_eff is not None and ctn_eff >= cb['ctn_amb']) or bool(s.get('echo_valve_issue')) or ecg == 'ischemia_arrhythmia'
     )
+    from ..utils import _safe_display_str, has_prior_stroke_or_tia
     egfr_c = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'egfr_sat', ctx.egfr)
+    has_prior_cvd_c = q_filled and has_prior_stroke_or_tia(patient, q=q, s=s, today=ctx.today)
     guideline_justifies_extra_cardio = (
         guideline_justifies_cag or ctx.true_low_mets or (q_filled and bool(q.get('cad'))) or bool(ctx.cad_chips)
         or (lvef_eff is not None and lvef_eff < cb['lvef_amb']) or ctx.needs_cied or (bnp_eff is not None and bnp_eff >= cb['bnp_amb'])
         or ecg == 'afib_controlled' or (hr_eff is not None and (hr_eff > hr_cfg['hr_hi'] or hr_eff < hr_cfg['hr_lo']))
-        or (pathway not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS) and q_filled and bool(q.get('neuro')))
+        or (pathway not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS) and has_prior_cvd_c)
         or (not ctx.is_venous and (ctx.on_dialysis or (egfr_c is not None and egfr_c < ckd_cardio_thresh)))
         or (not ctx.is_venous and q_filled and bool(q.get('dm_insulin')))
     )
     cardio_non_compliant = False
     if ctx.cardio_decision in ('stress', 'cag', 'pci'):
         cardio_non_compliant = not (guideline_justifies_cag if ctx.cardio_decision in ('cag', 'pci') else guideline_justifies_extra_cardio)
-        who_cardio = patient.cardiologist or 'კარდიოლოგი'
+        who_cardio = _safe_display_str(patient.cardiologist, max_len=80, default='კარდიოლოგი')
         dec_disp = patient.get_cardio_decision_display()
         verb_dec = dec_disp if dec_disp.startswith('მოითხოვა') else f'მოითხოვა {dec_disp}'
         audit_tag = ' [ESC 2022 Class III / CARP — დაბალი/სტაბილური რისკის პაციენტთან!]' if cardio_non_compliant else ''
@@ -340,7 +342,9 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
     if ctx.needs_med_hold:
         tasks.append({'key': 'med_hold', 'label': 'მედიკამენტების მიღების/შეჩერების სქემის დადასტურება', 'done': bool(s.get('med_hold_agreed'))})
     if ctx.needs_cardio and not bypass_em:
-        tasks.append({'key': 'cardio', 'label': f'კარდიოლოგის კონსულტაცია ({patient.cardiologist or "ლიკა ინჯია"})', 'done': ctx.cardio_cleared})
+        from ..utils import _safe_display_str
+        cardio_lbl = _safe_display_str(patient.cardiologist, max_len=80, default='ლიკა ინჯია')
+        tasks.append({'key': 'cardio', 'label': f'კარდიოლოგის კონსულტაცია ({cardio_lbl})', 'done': ctx.cardio_cleared})
     if ctx.needs_anesth:
         tasks.append({'key': 'anesth', 'label': 'ანესთეზიოლოგის კონსულტაცია', 'done': ctx.anesth_cleared})
 
@@ -349,6 +353,7 @@ def _venous_vte_task_label(ctx, ren_red, eff_ren_t):
     ven_severe_renal_t = ctx.on_dialysis or (eff_ren_t is not None and eff_ren_t < ren_red)
     has_hit = 'hit_heparin' in ctx.allergy_chips
     arg_liv_t = ' (ღვიძლის ≥3x: არგატრობანი −75%!)' if ctx.liver_3x else ''
+    evla_inr_lim = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
     if getattr(ctx, 'active_gi_bleed', False):
         hit_gi_v = ' · HIT: ჰეპარინი/LMWH აკრძალულია!' if has_hit else ''
         return f'მხოლოდ IPC — აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული (ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!){hit_gi_v}'
@@ -371,10 +376,12 @@ def _venous_vte_task_label(ctx, ren_red, eff_ren_t):
         if getattr(ctx, 'has_contra_oac', False) or has_contra_oac_t:
             return f'უკუნაჩვენები OAC არ განაახლოთ — უსაფრთხო ანტიკოაგულაციის სქემა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
         if is_evla_vka_t:
-            return f'თერაპიული ვარფარინი მოუხსნელად (INR ≤ 3.0) — დამატებითი LMWH/DOAC არა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
+            return f'თერაპიული ვარფარინი მოუხსნელად (INR ≤ {evla_inr_lim}) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
         return f'მუდმივი OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე; ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
     if has_hit:
         return f'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!){arg_liv_t}' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
+    if ven_severe_renal_t and ctx.liver_3x:
+        return 'კანქვეშა UFH + IPC კოაგულოგრამით (CrCl<30 + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი არა, LMWH კუმულირდება!)'
     if ven_severe_renal_t:
         return 'კანქვეშა UFH / დოზა-კორექტირებული LMWH (DOAC არა!)'
     if ctx.liver_3x:

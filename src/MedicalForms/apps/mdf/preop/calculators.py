@@ -34,16 +34,9 @@ def _sat_age(val):
 
 
 def _parse_plt_k(val):
-    """Normalize PLT to x10^9/L using LAB_UNIT_AUTO_CONVERSION bounds."""
-    v = _num(val)
-    if v is None:
-        return None
-    if v < 0:
-        return 0
-    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
-    if u['plt_ambig_lo'] < v < u['plt_ul_ge']:
-        return None
-    return int(round(v / 1000.0)) if v >= u['plt_ul_ge'] else int(round(v))
+    """Normalize PLT to x10^9/L using Decimal-conservative floor (never rounds <50/<100 upward)."""
+    from .utils import parse_plt_k
+    return parse_plt_k(val, allow_negative_zero=True)
 
 
 def _parse_scr_mgdl(creat, creat_unit=''):
@@ -414,7 +407,7 @@ def _ihd_and_chf_flags(q, s):
     return ihd, chf
 
 
-def calc_rcri(patient, q, s, is_symp_cea=False):
+def calc_rcri(patient, q, s, is_symp_cea=False, today=None):
     """Validated 6-factor Revised Cardiac Risk Index (Lee et al., Circulation 1999 / ESC 2022)."""
     q = q if isinstance(q, dict) else {}
     s = s if isinstance(s, dict) else {}
@@ -441,7 +434,7 @@ def calc_rcri(patient, q, s, is_symp_cea=False):
 
     has_prior_cvd = (
         is_symp_cea
-        or (q_filled and has_prior_stroke_or_tia(patient, q=q, s=s))
+        or (q_filled and has_prior_stroke_or_tia(patient, q=q, s=s, today=today))
         or (pathway == PreopPatient.Pathway.CEA and patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP)
         or (pathway != PreopPatient.Pathway.VENOUS and bool(s.get('carotid_symp')))
         or (s.get('brain_imaging') == 'large_or_hemorrhage')

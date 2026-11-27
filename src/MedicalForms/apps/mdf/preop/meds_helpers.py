@@ -1,0 +1,143 @@
+"""Shared helper utilities for perioperative medication scheduling and STOP-lock protection."""
+import datetime
+
+from .utils import _date, _int, _num, parse_plt_k
+
+_IMMED_STOP_PLAN = 'შეწყვიტეთ დაუყოვნებლივ (ექიმთან შეთანხმებით)!'
+_GI_BLEED_PLAN = 'აქტიური სისხლდენა/წყლული — სასწრაფოდ შეათანხმეთ ექიმთან!'
+
+
+def _apply_stop_lock_to_med_schedule(rows):
+    """C1: Suppress dated elective discontinuation orders on STOP while preserving acute/contraindicated safety alerts."""
+    for r in rows:
+        if r.get('acute_hold'):
+            continue
+        if r.get('unstructured'):
+            r['date_plan'] = 'STOP — დააზუსტეთ ექიმთან (არასტრუქტურირებულია)!'
+            r['tone'] = 'red'
+        elif r.get('contraindicated'):
+            r['date_plan'] = 'STOP — დაუყოვნებლივ დაუკავშირდით ექიმს!'
+            r['tone'] = 'red'
+        elif (
+            r.get('hold_or_skip')
+            or 'შემოწმება' in (r.get('date_plan') or '')
+            or (r.get('drug') == 'ვარფარინი' and 'EVLA' in (r.get('rule') or ''))
+        ):
+            r['date_plan'] = 'STOP — თვითნებურად არ შეწყვიტოთ!'
+            r['tone'] = 'red'
+        elif r.get('date_plan') and ('მიიღეთ' in r['date_plan'] or 'შეათანხმეთ' in r['date_plan'] or 'არ შეწყვიტოთ' in r['date_plan']):
+            r['date_plan'] = 'გააგრძელეთ ექიმთან შეთანხმებით (STOP — ოპერაცია შეჩერებულია)'
+    return rows
+
+
+def _make_med_row_helpers(op_dt):
+    rows = []
+    safe_dt = op_dt if (op_dt and 1900 <= op_dt.year <= 2100) else None
+
+    def d_str(delta_days):
+        if not safe_dt:
+            return ''
+        try:
+            return (safe_dt + datetime.timedelta(days=delta_days)).strftime('%d.%m')
+        except OverflowError:
+            return ''
+
+    def hold_str(hold_days, sfx=''):
+        if not safe_dt:
+            return ''
+        return f'ბოლო: {d_str(-hold_days - 1)} · არ მიიღოთ {d_str(-hold_days)}-დან{sfx}'
+
+    def add_row(drug, rule, tone, date_plan='', hold_or_skip=False, force_date_plan=False,
+                acute_hold=False, contraindicated=False, glp1_diet=False, unstructured=False,
+                mandatory_hold_days=0, reconcile_only=False):
+        if contraindicated and (
+            not (date_plan or '').strip()
+            or 'ბოლო:' in (date_plan or '')
+            or 'მიიღეთ' in (date_plan or '')
+        ):
+            date_plan = _IMMED_STOP_PLAN
+            force_date_plan = True
+        row = {
+            'drug': drug,
+            'rule': rule,
+            'tone': tone,
+            'date_plan': date_plan if (safe_dt or force_date_plan) else '',
+            'hold_or_skip': hold_or_skip,
+        }
+        if acute_hold:
+            row['acute_hold'] = True
+        if contraindicated:
+            row['contraindicated'] = True
+        if glp1_diet:
+            row['glp1_diet'] = True
+        if unstructured:
+            row['unstructured'] = True
+        if mandatory_hold_days:
+            row['mandatory_hold_days'] = int(mandatory_hold_days)
+        if reconcile_only:
+            row['reconcile_only'] = True
+        rows.append(row)
+
+    return rows, d_str, hold_str, add_row
+
+
+def _valid_med_sbp(s):
+    from .calculators import _inverted_bp_arms, _raw_bp_pair
+    bp_sys, _, r_inv = _raw_bp_pair(s, 'bp_sys', 'bp_dia')
+    bp_sys_l, _, l_inv = _raw_bp_pair(s, 'bp_sys_l', 'bp_dia_l')
+    valid = [v for v, inv in ((bp_sys, r_inv), (bp_sys_l, l_inv)) if v is not None and not inv]
+    eff = max(valid, default=None)
+    return eff, (eff is None and bool(_inverted_bp_arms(s)))
+
+
+def _med_renal_and_flags(patient, q, s, egfr, crcl):
+    from .registry import rule_value
+    on_dialysis = bool(q.get('on_dialysis'))
+    egfr = int(round(1.0 if v < 0 else min(v, 300))) if (v := _num(egfr)) is not None else None
+    crcl = int(round(1.0 if v < 0 else min(v, 2000))) if (v := _num(crcl)) is not None else None
+    renal_vals = [x for x in (egfr, crcl) if x is not None]
+    eff_renal = None if on_dialysis else (min(renal_vals) if renal_vals else None)
+    cl_label = 'დიალიზი' if on_dialysis else (f'CrCl {crcl}' if crcl is not None and (egfr is None or crcl <= egfr) else (f'eGFR {egfr}' if egfr is not None else ''))
+    age_m, frail_age = _int(patient.age, lo=12, hi=120) or 0, rule_value('ANES_AIRWAY_STOPBANG_ICU')['delirium_age']
+    frail_no_wt_note = (f' [≥{frail_age} წ. — შეიყვანეთ წონა ზუსტი CrCl-ისთვის!]' if age_m >= frail_age else ' [შეიყვანეთ წონა ზუსტი CrCl-ისთვის!]') if (crcl is None and egfr is not None) else ''
+    return on_dialysis, eff_renal, cl_label, frail_no_wt_note
+
+
+def _standalone_is_neuraxial(anesth_plan, is_phleb, has_epidural_line, q, s, today, eff_alg, ft_meds, cad_chips, med_chips, on_dialysis, eff_renal, raw_s=None):
+    from django.utils import timezone
+
+    from .calculators import _inverted_bp_arms, _s_raw, _valid_bilateral_sbp, normalize_fibrinogen_gl
+    from .registry import rule_value
+    if anesth_plan == 'neuraxial' or has_epidural_line:
+        return True
+    if not (anesth_plan == 'auto' and is_phleb):
+        return False
+    raw_s = raw_s if isinstance(raw_s, dict) else {}
+    asra_cfg, ren_red, shock_lim = rule_value('ASRA_NEURAXIAL_COAG_GATE'), rule_value('REN_CKD_NEPHRO_HYDRATION')['red'], rule_value('VIT_BP_HYPOTENSION_SHOCK')['shock_idx']
+    inv_in = s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {}
+    raw_dos_i = raw_s['dos_inr'] if 'dos_inr' in raw_s else s.get('dos_inr')
+    dos_i_pres = raw_dos_i is not None and str(raw_dos_i).strip() != ''
+    dos_i, base_i = _num(raw_dos_i, lo=0.5, hi=15.0), _num(raw_s.get('inr') if 'inr' in raw_s else s.get('inr'), lo=0.4, hi=20.0)
+    eff_i, op_dt, td = (dos_i if dos_i_pres else base_i), _date(s.get('planned_surgery_date')), (_date(today) or timezone.localdate())
+    prewash = bool(q.get('med_warfarin') and not dos_i_pres and eff_i is not None and asra_cfg['inr_max'] < eff_i <= asra_cfg['vka_prewashout_inr_max'] and (op_dt is None or op_dt > td))
+    plt_k = parse_plt_k(raw_s['plt'] if 'plt' in raw_s else s.get('plt'))
+    fib = normalize_fibrinogen_gl(raw_s['fibrinogen'] if 'fibrinogen' in raw_s else s.get('fibrinogen'))
+    def _has_bad(k, parsed):
+        rv = raw_s[k] if k in raw_s else s.get(k)
+        return parsed is None and ((rv is not None and str(rv).strip() != '') or k in inv_in)
+    p2y_cnt = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
+    unint_p2y = p2y_cnt >= 1 and (bool(q.get('recent_stent')) or (('stent_6_12m' in cad_chips) and ('mi' in cad_chips)) or ('nsaid' in eff_alg and (bool(q.get('cad')) or bool(cad_chips) or bool(q.get('neuro')))) or p2y_cnt >= 2)
+    sbp, hr_raw, bp_inv = _valid_bilateral_sbp(s), _num(_s_raw(s, 'hr')), bool(_inverted_bp_arms(s))
+    raw_sbp_low = any((v := _num(_s_raw(raw_s, k) if _s_raw(raw_s, k) is not None else _s_raw(s, k))) is not None and (v < 30 or (sbp is None and v < asra_cfg['sbp_min'])) for k in ('bp_sys', 'bp_sys_l'))
+    si = round(hr_raw / sbp, 2) if (hr_raw is not None and 15 <= hr_raw <= 260 and sbp and sbp > 0) else None
+    blocked = (
+        _has_bad('dos_inr', dos_i) or (not dos_i_pres and _has_bad('inr', base_i)) or _has_bad('plt', plt_k) or _has_bad('fibrinogen', fib)
+        or (plt_k is not None and plt_k < asra_cfg['plt_min'])
+        or (eff_i is not None and eff_i > asra_cfg['inr_max'] and not prewash) or (fib is not None and fib < asra_cfg['fib_min'])
+        or bool(s.get('aptt_prolonged')) or unint_p2y or bool(ft_meds.get('unstructured_antithrombotic'))
+        or ('hit_heparin' in eff_alg and 'mech_valve' in cad_chips)
+        or ((q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in med_chips) and (on_dialysis or (eff_renal is not None and eff_renal < ren_red)))
+        or bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in eff_alg) or bool(s.get('echo_valve_issue')) or bp_inv
+        or (sbp is not None and sbp < asra_cfg['sbp_min']) or raw_sbp_low or (si is not None and si >= shock_lim) or (hr_raw is not None and (hr_raw > 260 or hr_raw < 15))
+    )
+    return not blocked

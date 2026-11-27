@@ -1,6 +1,7 @@
 """Canonical evaluate() result dictionary assembler."""
 from ..constants import CXR_LABELS, ECG_LABELS, PRIORITY_LABELS, STATUS_LABELS
 from ..registry import rule_value
+from ..utils import _safe_display_str
 
 
 def _effective_operation_label(ctx):
@@ -78,7 +79,10 @@ def _result_clinical_part(ctx):
         'has_mech_valve': ctx.has_mech_valve,
         'has_known_dm': getattr(ctx, 'has_known_dm', False),
         'uses_contrast': getattr(ctx, 'uses_contrast', False),
-        'creat_display_raw': ctx.s.get('creat') if ctx.s.get('creat') is not None else getattr(ctx, 'raw_creat', None),
+        'creat_display_raw': (
+            ctx.s.get('creat') if ctx.s.get('creat') is not None
+            else _safe_display_str(getattr(ctx, 'raw_creat', None), max_len=40, default=None)
+        ),
         'na_val_sat': getattr(ctx, 'na_val_sat', None),
         'is_acute_emergency': ctx.is_acute_emergency,
         'show_pregnancy_check': ctx.show_pregnancy_check,
@@ -132,7 +136,7 @@ def _result_flags_and_needs_part(ctx):
     ecg_display_label = (
         f'მოციმციმე არითმია — ტაქისისტოლია (HR > {hr_hi}!)'
         if (ctx.ecg == 'afib_controlled' and hr_eff is not None and hr_eff > hr_hi)
-        else ECG_LABELS.get(ctx.ecg, ctx.ecg)
+        else (ECG_LABELS.get(ctx.ecg) or _safe_display_str(ctx.ecg, max_len=60))
     )
     has_bad_med = any(r.get('contraindicated') or r.get('unstructured') for r in (ctx.med_schedule or ()))
     return {
@@ -214,7 +218,7 @@ def _result_flags_and_needs_part(ctx):
         'done_count': ctx.done_count,
         'total_count': len(ctx.tasks),
         'ecg_label': ecg_display_label,
-        'cxr_label': CXR_LABELS.get(ctx.cxr, ctx.cxr),
+        'cxr_label': CXR_LABELS.get(ctx.cxr) or _safe_display_str(ctx.cxr, max_len=60),
         'q': ctx.q,
         's': ctx.s,
     }
@@ -223,6 +227,7 @@ def _result_flags_and_needs_part(ctx):
 def _result_needs_part(ctx):
     ft_keys = ctx.ft_meds.get('matched_keys') or ()
     return {
+        'archived': bool(ctx.patient.archived),
         'case_outcome': ctx.case_outcome,
         'case_outcome_label': ctx.case_outcome_label,
         'vqi_bundle_applicable': ctx.vqi_bundle_applicable,

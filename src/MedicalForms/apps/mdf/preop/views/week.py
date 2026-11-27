@@ -382,6 +382,12 @@ class PreopMoveView(LoginRequiredMixin, generic.View):
             patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
 
             if action == 'archive':
+                from .parsers import is_doctor_user
+                if not is_doctor_user(request.user):
+                    if ajax:
+                        return JsonResponse({'ok': False, 'error': 'forbidden'}, status=403)
+                    messages.error(request, 'პაციენტის დაარქივების/არქივიდან დაბრუნების უფლება აქვს მხოლოდ ექიმს ან ადმინისტრატორს!')
+                    return HttpResponseRedirect(reverse('preop'))
                 patient.archived = not patient.archived
                 patient.updated_by = request.user
                 patient.save(update_fields=['archived', 'updated_at', 'updated_by'])

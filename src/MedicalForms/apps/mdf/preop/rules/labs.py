@@ -10,29 +10,15 @@ from ..calculators import (
 )
 from ..constants import PATHWAY_SHORT
 from ..registry import rule_value
-from ..utils import _date, _fmt_ka_date, _int, _num, chip_summary
+from ..utils import _date, _fmt_ka_date, _int, _num, _safe_display_str, chip_summary, parse_plt_k, parse_wbc_k
 
 
 def _parse_wbc(raw):
-    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
-    val = _num(raw, lo=0.1, hi=150000)
-    if val is not None and val >= u['wbc_ul_ge']:
-        val = round(val / 1000.0, 2)
-    return _num(val, lo=0.1, hi=float(u['wbc_ul_ge'])) if val is not None else None
+    return parse_wbc_k(raw)
 
 
 def _parse_plt(raw):
-    import math
-    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
-    val = _num(raw, lo=1, hi=2000000)
-    if val is None or u['plt_ambig_lo'] < val < u['plt_ul_ge']:
-        return None
-    if val >= u['plt_ul_ge']:
-        val = math.floor(val / 100.0) / 10.0
-    val = _num(val, lo=1, hi=float(u['plt_ambig_lo']))
-    if val is None:
-        return None
-    return int(val) if val == int(val) else round(val, 1)
+    return parse_plt_k(raw)
 
 
 def _extract_bp_and_sat(s):
@@ -100,17 +86,25 @@ def eval_vitals_bp(ctx):
             )
         else:
             ctx.red_flags.append(f'მაღალი არტერიული წნევა ({disp_s}/{disp_d} mmHg >= 180/110) — საჭიროა კორექცია ოპერაციამდე.')
-    elif pathway == PreopPatient.Pathway.CEA and eff_dia and eff_dia > htn_cfg['cea_dia_amber']:
-        ctx.amber_flags.append(
-            f'მომატებული არტერიული წნევა CEA-ზე ({eff_sys or "?"}/{eff_dia} mmHg; DBP > 90 mmHg — ESVS 2023 Class IIa/C) — '
-            'ცერებრული ჰიპერპერფუზიისა და კისრის ჰემატომის პრევენციისთვის საჭიროა კორექცია ოპერაციამდე.'
-        )
     elif eff_sys_si is not None and eff_sys_si < hypo_cfg['red_sbp']:
         disp_hs = eff_sys if eff_sys is not None else int(eff_sys_si)
+        hypo_d = bp_dia if (bp_sys == disp_hs and not bp_r_inverted) else (bp_dia_l if (bp_sys_l == disp_hs and not bp_l_inverted) else eff_dia)
+        hypo_d_s = hypo_d if (hypo_d is not None and hypo_d < disp_hs) else '?'
         if pathway == PreopPatient.Pathway.AAA_INFRA:
-            ctx.red_flags.append(f'ჰიპოტენზია ({disp_hs}/{eff_dia or "?"} mmHg) — სასწრაფოდ გამოირიცხოს რუპტურა / შოკი!')
+            ctx.red_flags.append(f'ჰიპოტენზია ({disp_hs}/{hypo_d_s} mmHg) — სასწრაფოდ გამოირიცხოს რუპტურა / შოკი!')
         else:
-            ctx.red_flags.append(f'ჰიპოტენზია ({disp_hs}/{eff_dia or "?"} mmHg) — სასწრაფოდ შეფასდეს ჰემოდინამიკა!')
+            ctx.red_flags.append(f'ჰიპოტენზია ({disp_hs}/{hypo_d_s} mmHg) — სასწრაფოდ შეფასდეს ჰემოდინამიკა!')
+        if pathway == PreopPatient.Pathway.CEA and eff_dia and eff_dia > htn_cfg['cea_dia_amber']:
+            ctx.amber_flags.append(
+                f'მომატებული დიასტოლური წნევა CEA-ზე (DBP {eff_dia} mmHg > {htn_cfg["cea_dia_amber"]} mmHg — ESVS 2023 Class IIa/C) — '
+                'ასიმეტრიული წნევის ფონზე გადაამოწმეთ ორივე მკლავი და ჰემოდინამიკა.'
+            )
+    elif pathway == PreopPatient.Pathway.CEA and eff_dia and eff_dia > htn_cfg['cea_dia_amber']:
+        cea_s_disp = eff_sys if (eff_sys is not None and eff_sys > eff_dia) else '?'
+        ctx.amber_flags.append(
+            f'მომატებული არტერიული წნევა CEA-ზე ({cea_s_disp}/{eff_dia} mmHg; DBP > {htn_cfg["cea_dia_amber"]} mmHg — ESVS 2023 Class IIa/C) — '
+            'ცერებრული ჰიპერპერფუზიისა და კისრის ჰემატომის პრევენციისთვის საჭიროა კორექცია ოპერაციამდე.'
+        )
     elif eff_sys and eff_sys < hypo_cfg['amb_sbp']:
         ctx.amber_flags.append(
             f'სასაზღვრო ჰიპოტენზია ({eff_sys}/{eff_dia or "?"} mmHg — SBP 90–99): შეაფასეთ ვოლემია და დილის ანტიჰიპერტენზიული წამლების გამოტოვება.'
@@ -364,7 +358,7 @@ def eval_renal_electrolytes(ctx):
             ctx.red_flags.append('პაციენტი იმყოფება დიალიზზე — სავალდებულოა დიალიზის სესიისა და კალიუმის შეთანხმება ნეფროლოგთან და ქირურგთან!')
     elif ctx.creat_unit_ambiguous:
         cr_disp = s.get('creat') if s.get('creat') is not None else getattr(ctx, 'raw_creat', None)
-        cr_disp_str = '—' if cr_disp is None else cr_disp
+        cr_disp_str = _safe_display_str(cr_disp, max_len=40, default='—')
         if ctx.creat_unit in ('umol', 'mgdl'):
             ctx.red_flags.append(f'კრეატინინის მნიშვნელობა და არჩეული ერთეული არ ემთხვევა ({cr_disp_str} {ctx.creat_unit})! გადაამოწმეთ ზუსტი ერთეული (µmol/L თუ mg/dL) eGFR / CrCl უსაფრთხო გამოთვლისთვის.')
         else:
@@ -543,9 +537,9 @@ def _eval_tsh_and_nutrition(ctx, nut_cfg):
 
     if ctx.open_major and ctx.alb_gl is not None:
         if ctx.alb_gl < nut_cfg['alb_red']:
-            ctx.red_flags.append(f'მძიმე ჰიპოალბუმინემია ({ctx.alb_gl} გ/ლ < 30) — ღია აორტული ოპერაციის მაღალი რისკი, აცნობეთ ქირურგს!')
+            ctx.red_flags.append(f'მძიმე ჰიპოალბუმინემია ({ctx.alb_gl} გ/ლ < {nut_cfg["alb_red"]}) — ღია აორტული ოპერაციის მაღალი რისკი, აცნობეთ ქირურგს!')
         elif ctx.alb_gl < nut_cfg['alb_amb']:
-            ctx.amber_flags.append(f'დაბალი ალბუმინი ({ctx.alb_gl} გ/ლ < 35) — მომატებული ქირურგიული/ჭრილობის გართულების რისკი.')
+            ctx.amber_flags.append(f'დაბალი ალბუმინი ({ctx.alb_gl} გ/ლ < {nut_cfg["alb_amb"]}) — მომატებული ქირურგიული/ჭრილობის გართულების რისკი.')
 
     if s.get('liver_status') == '3x':
         ctx.red_flags.append('ღვიძლის ფერმენტების/ბილირუბინის მნიშვნელოვანი მატება (>=3x ULN) — აცნობეთ ექიმს.')
@@ -683,10 +677,10 @@ def eval_pulmonary(ctx):
         fev_d = spiro_fev1 if spiro_fev1 is not None else int(spiro_fev1_eff)
         if spiro_fev1_eff < pulm_cfg['fev1_red']:
             if ctx.anesth_cleared:
-                ctx.amber_flags.append(f'სპირომეტრიაზე მძიმე დარღვევა (FEV1 {fev_d}% < 50%) — შეფასებულია ანესთეზიოლოგის მიერ ✓')
+                ctx.amber_flags.append(f'სპირომეტრიაზე მძიმე დარღვევა (FEV1 {fev_d}% < {pulm_cfg["fev1_red"]}%) — შეფასებულია ანესთეზიოლოგის მიერ ✓')
             else:
                 ctx.red_flags.append(
-                    f'სპირომეტრიაზე მძიმე დარღვევა (FEV1 {fev_d}% < 50%) — '
+                    f'სპირომეტრიაზე მძიმე დარღვევა (FEV1 {fev_d}% < {pulm_cfg["fev1_red"]}%) — '
                     'მაღალი რესპირატორული რისკი! აცნობეთ ქირურგსა და ანესთეზიოლოგს.'
                 )
         elif spiro_fev1_eff < pulm_cfg['fev1_amb']:

@@ -148,7 +148,7 @@
         } else if (!isNaN(plt) && plt > 2500 && plt < 3000) {
             msgs.push('დააზუსტეთ PLT ერთეული (' + plt + ' — ×10^9/L თუ /µL)!');
         } else if (!isNaN(plt)) {
-            var pltK = plt >= 3000 ? Math.round(plt / 1000) : plt;
+            var pltK = plt >= 3000 ? Math.floor(plt / 100) / 10 : Math.floor(plt * 10) / 10;
             if (pltK < 100) msgs.push('თრომბოციტოპენია (PLT ' + pltK + ' < 100 ×10^9/L) — აცნობეთ ექიმს!');
             else if (pltK < 150) msgs.push('ზომიერი თრომბოციტოპენია (PLT ' + pltK + ' < 150 ×10^9/L).');
         }
@@ -316,7 +316,7 @@
         attachFldGuard(el, function (v) {
             if (v < 1 || v > 2000000) return { level: 'crit', msg: 'დაუჯერებელი PLT (' + v + ')!' };
             if (v > 2500 && v < 3000) return { level: 'crit', msg: 'დააზუსტეთ PLT ერთეული (×10^9/L თუ /µL)!' };
-            var n = v >= 3000 ? Math.round(v / 1000) : v;
+            var n = v >= 3000 ? Math.floor(v / 100) / 10 : Math.floor(v * 10) / 10;
             if (n < 100) return { level: 'crit', msg: 'თრომბოციტოპენია (<100 ×10^9/L)!' };
             if (n < 150) return { level: 'warn', msg: 'ზომიერი კლება (<150 ×10^9/L)' };
             return null;
@@ -380,8 +380,9 @@
     document.querySelectorAll('input[name="wbc"]').forEach(function (el) {
         attachFldGuard(el, function (v) {
             if (v < 0.1 || v > 150000) return { level: 'crit', msg: 'დაუჯერებელი WBC (' + v + ')!' };
-            var n = v >= 200 ? Math.round((v / 1000.0) * 100) / 100 : v;
-            if (n < 3.5 || n > 12.0) return { level: 'crit', msg: 'პათოლოგიური WBC (' + n + ' ×10^9/L)!' };
+            var rawW = v >= 200 ? (v / 1000.0) : v;
+            var n = rawW < 3.5 ? Math.floor(rawW * 100) / 100 : (rawW > 12.0 ? Math.ceil(rawW * 100) / 100 : Math.round(rawW * 100) / 100);
+            if (rawW < 3.5 || rawW > 12.0) return { level: 'crit', msg: 'პათოლოგიური WBC (' + n + ' ×10^9/L)!' };
             return null;
         });
     });

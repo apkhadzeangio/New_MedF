@@ -1,7 +1,7 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.14'
+REGISTRY_VERSION = '1.2.15'
 REGISTRY_UPDATED_ON = '2026-11-27'
 
 STATUS_VERIFIED = 'source-verified'
@@ -78,6 +78,17 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.15',
+        'date': '2026-11-27',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-16: არქივისა და უმოქმედო სტატუსის სრული ბლოკირება, Decimal PLT/WBC პარიტეტი, O(N) თავისუფალი ტექსტის NLP, HIT+OAC/ორსულობა/PTA დაცვა და დინამიური ზღვრები',
+        'changes_ka': (
+            'დაიხურა ყველა კრიტიკული S1 უსაფრთხოების და კლინიკური ხარვეზი: დაარქივებული ბარათის დაცვა ჩართულია ყველა მოქმედების გეითში (approve, ack_alerts, unapprove, med-call, reschedule, admit-board, complete_and_board, someday:ready) და PreopMoveView archive შეზღუდულია ექიმის/ადმინის RBAC-ით; PLT და WBC იყენებს ერთიან კონსერვატიულ Decimal პარსერს ყველა ფენაში (utils, labs, calculators, meds, views/parsers, preop-patient.js, preop-nurse.js — 99,500–99,999, 99.95–99.99, 49.5–49.99 და 3496–3499/12001–12004 აღარ მრგვალდება ნორმისკენ); თავისუფალი ტექსტის NLP გადაწერილია O(N) წრფივ პარსერად (ReDoS = 0, ქართული SOV და ინგლისური შეკრული/უპუნქტუაციო ფრაზები, „შეწყვეტის გარეშე“, „არა ანაფილაქსიური“, „არა-სტეროიდული“) და ამოწმებს HIT+ჰეპარინს, liver_3x+სტატინსა და ორსულობა/CKD/მექ. სარქვლის უკუჩვენებებს.',
+            'დაიხურა კომბინატორული და კალკულატორის S1/S2 ხარვეზები: _oac_venous_vte_flags ითვალისწინებს epidural-სა და დაუშვებელ dos_inr-ს; EVLA+ვარფარინი+liver_3x სრულად თანხვედრია meds/caprini/anaesthesia-ში; _eval_explicit_postop_plan გადასცემს severe_renal-ს ორსულობა+მექ.სარქველზე და ბლოკავს ორსულობაზე oac_sapt-ს; HIT+OAC გამორიცხავს ორმაგ ანტიკოაგულაციას surgical_brief-სა და Board-ზე; PTA clopidogrel_intol იცავს ორსულობა/მექ.სარქველ/CKD/ღვიძლ/HIT-ს; CEA ასიმეტრიულ წნევაზე ჰიპოტენზია პრიორიტეტულია DBP-ზე; liver_3x+CrCl<30 და გაჯერებული თირკმელი სინქრონიზებულია caprini/venous/cardiac/board-ში; calc_rcri, MINS და CARP იყენებს ერთიან has_prior_stroke_or_tia(..., today=ctx.today)-ს; საკულარული/მიკოზური AAA იღებს 56-დღიან მოლოდინის გაფრთხილებას.',
+            'დასრულდა UX, სანიტიზაციისა და რეესტრის პარიტეტი: _safe_display_str ბლოკავს 50k სტრინგებს, ჩაშენებულ dict-ებსა და NaN/Inf-ს red_flags/tasks/briefings/result/anamnesis-ში; ასაკის კონტრაქტი 12–120 გაერთიანებულია ყველა ფენაში; _save_header აფრთხილებს READY ჩამოქვეითებაზე success ტოსტის გარეშე; _tab_doc და med-call/reschedule/signoff იცავს ყველა არადაგეგმილ/დაარქივებულ სტატუსს; GI-სისხლდენის ანტიაგრეგანტის ატრიბუცია დამატებულია რეესტრში; NSAID გასუფთავებულია პაციენტის გზამკვლევსა და სატელეფონო სკრიპტში; DoS/Alb/FEV1/INR ლიტერალები დინამიურია.',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC 2022 NCS · ASRA 5th Ed 2025 · CHEST 2022 · EHRA 2021 · ACC/AHA 2024 · FDA',
+    },
     {
         'version': '1.2.14',
         'date': '2026-11-27',

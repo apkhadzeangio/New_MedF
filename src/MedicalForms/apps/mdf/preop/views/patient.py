@@ -191,7 +191,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
     def _parse_header_demographics_and_dates(request, patient, s, today):
         raw_inv = s.get('_invalid_inputs')
         inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
-        age_in = _int(request.POST.get('age'), lo=1, hi=120)
+        age_in = _int(request.POST.get('age'), lo=12, hi=120)
         if 'age' in request.POST:
             raw_age = (request.POST.get('age') or '').strip()
             if raw_age and age_in is None:
@@ -299,25 +299,27 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['med_hold_agreed'] = False
             s['med_hold_agreed_date'] = ''
         inv_now = s.get('_invalid_inputs') or {}
+        someday_before_inv = patient.someday_list
         if patient.side != old_side or patient.op_subtype != old_sub:
             s['dos_site_marked'] = False
             s['alerts_ack_sig'] = ''
-            patient.alerts_ack_at = None
-            patient.alerts_ack_by = None
+            patient.alerts_ack_at = patient.alerts_ack_by = None
             uf.extend(['alerts_ack_at', 'alerts_ack_by'])
             _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
         elif (
-            patient.age != old_age or patient.sex != old_sex
-            or s.get('planned_surgery_date') != old_op_dt
-            or 'birth_date' in inv_now
-            or 'age' in inv_now
-            or 'planned_surgery_date' in inv_now
+            patient.age != old_age or patient.sex != old_sex or s.get('planned_surgery_date') != old_op_dt
+            or any(k in inv_now for k in ('birth_date', 'age', 'planned_surgery_date'))
         ):
             _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
         self._migrate_header_pathway_flags(patient, old_pw, new_pw, s, uf)
         patient.studies = s
-        if patient.someday_list == PreopPatient.SomedayList.READY and not can_enter_ready_queue(patient, evaluate(patient)):
+        ready_val = PreopPatient.SomedayList.READY
+        if (someday_before_inv == ready_val and patient.someday_list != ready_val) or (
+            patient.someday_list == ready_val and not can_enter_ready_queue(patient, evaluate(patient))
+        ):
             patient.someday_list = PreopPatient.SomedayList.CONF
+            messages.warning(request, 'პაციენტის მონაცემები განახლდა, თუმცა ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
+            had_err = True
         patient.updated_by = request.user
         patient.save(update_fields=list(dict.fromkeys(uf)))
         return had_err
@@ -582,6 +584,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         s = merged_studies(patient)
 
         if action == 'ack_alerts':
+            if patient.archived or ev.get('case_outcome', 'scheduled') != 'scheduled':
+                messages.error(request, 'დაარქივებულ, გადადებულ, გაუქმებულ ან ნაოპერაციებ ბარათზე გაფრთხილებების დადასტურება დაბლოკილია!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
             if ev['clearance_seal']['code'] == 'stop' or ev.get('has_hard_contraindication'):
                 messages.error(request, 'STOP-სიგნალის / აბსოლუტური უკუჩვენების გაცნობით დადასტურება დაუშვებელია — უკუჩვენება უნდა აღმოიფხვრას!')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
@@ -593,7 +598,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             messages.success(request, 'გაფრთხილებები მონიშნულია როგორც გაცნობილი.')
         elif action == 'approve':
             if (
-                not ev['q'].get('filled')
+                patient.archived
+                or not ev['q'].get('filled')
                 or ev.get('case_outcome', 'scheduled') != 'scheduled'
                 or ev.get('has_hard_contraindication')
                 or ev.get('dos_hold_danger')
@@ -603,7 +609,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 or any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ()))
                 or (ev.get('needs_stale_labs') and not s.get('stale_labs_refreshed'))
             ):
-                messages.error(request, 'აბსოლუტური უკუჩვენების, STOP-სიგნალის, შეჩერებული/ოპერირებული სტატუსის, ხანდაზმული ანალიზების, ნეირაქსიული/მედიკამენტური ბლოკირების ან შეუვსებელი კრიტიკული მონაცემის გამო დადასტურება დაბლოკილია!')
+                messages.error(request, 'დაარქივებული ბარათის, აბსოლუტური უკუჩვენების, STOP-სიგნალის, შეჩერებული/ოპერირებული სტატუსის, ხანდაზმული ანალიზების, ნეირაქსიული/მედიკამენტური ბლოკირების ან შეუვსებელი კრიტიკული მონაცემის გამო დადასტურება დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
             s['alerts_ack_sig'] = ev['alerts_sig']
             if ev.get('red_flags'):
@@ -621,6 +627,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             uf.extend(['studies', 'approved_at', 'approved_by'])
             messages.success(request, f'{patient.patient_name} — დადასტურებულია ოპერაციისთვის.')
         elif action == 'unapprove':
+            if patient.archived or ev.get('case_outcome', 'scheduled') != 'scheduled':
+                messages.error(request, 'დაარქივებულ, გაუქმებულ, გადადებულ ან ნაოპერაციებ ბარათზე დადასტურების მოხსნა დაბლოკილია!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
             patient.approved_at = None
             patient.approved_by = None
             uf.extend(['approved_at', 'approved_by'])

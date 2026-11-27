@@ -155,19 +155,21 @@ class PreopSelfFillView(generic.View):
             pid = _clean_person_id(request.POST.get('person_id'))
             if pid and not s_mut.get('person_id'):
                 s_mut['person_id'] = pid
-            bd = _date(request.POST.get('birth_date'))
+            raw_bd = (request.POST.get('birth_date') or '').strip()
+            bd = _date(raw_bd)
             from ..utils import is_valid_birth_date
-            if bd and is_valid_birth_date(bd, today=timezone.localdate()) and not s_mut.get('birth_date'):
-                dob_age = _age_from_dob(bd)
-                if dob_age is not None and 12 <= dob_age <= 120:
-                    s_mut['birth_date'] = bd.isoformat()
-                    if not patient.age:
-                        patient.age = dob_age
-                        if 'age' not in uf:
-                            uf.append('age')
-                elif dob_age is not None:
+            if raw_bd and not s_mut.get('birth_date'):
+                if bd and is_valid_birth_date(bd, today=timezone.localdate()):
+                    dob_age = _age_from_dob(bd)
+                    if dob_age is not None:
+                        s_mut['birth_date'] = bd.isoformat()
+                        if not patient.age:
+                            patient.age = dob_age
+                            if 'age' not in uf:
+                                uf.append('age')
+                else:
                     inv_sf = dict(s_mut.get('_invalid_inputs') or {}) if isinstance(s_mut.get('_invalid_inputs'), dict) else {}
-                    inv_sf['birth_date'] = bd.isoformat()
+                    inv_sf['birth_date'] = raw_bd[:60]
                     s_mut['_invalid_inputs'] = inv_sf
             if s_mut.get('med_hold_agreed') or s_mut.get('med_hold_agreed_date'):
                 s_mut['med_hold_agreed'] = False

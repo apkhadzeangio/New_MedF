@@ -7,43 +7,66 @@ from .constants import (
     _HIT_WORD_RE,
     _IODINE_WORD_RE,
 )
-from .utils import _str_list
+from .utils import _safe_display_str, _str_list
 
 _RIVA_STEM = r'(?:ქსარელტ\w*|კსარელტ\w*|xarelto|რივაროქსაბ\w*|rivaroxab\w*)'
 _RIVA_STEM_RE = re.compile(_RIVA_STEM)
 _RIVA_LOW_RE = re.compile(
     rf'(?:{_RIVA_STEM}[^\d,;:\n]{{0,12}}(?<![\d.,])2[.,]5(?![\d.,])'
-    rf'|(?<![\d.,])2[.,]5\s*(?:მგ|mg)?[^\w\n]{{0,8}}{_RIVA_STEM})'
+    rf'|(?<![\d.,])2[.,]5 ?(?:მგ|mg)?[^\w\n]{{0,8}}{_RIVA_STEM})'
 )
 _RIVA_THER_DOSE_RE = re.compile(r'(?<![\d.,])(?:10|15|20)(?![\d.,])')
-_RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;,\n/+]|\s+(?:და|ან|and|or)\s+')
+_WS_RUN_RE = re.compile(r'[ \t\u00a0]+')
+# All split regexes run AFTER _WS_RUN_RE collapses horizontal spaces to a single ' ', guaranteeing O(N) linear time.
+_RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;,\n/+]| (?:და|ან|and|or) ')
 _STRONG_CLAUSE_SPLIT_RE = re.compile(
-    r'[;,\n!()—–]+|\s+-\s+|\.(?!\d)|\s+(?:მაგრამ|ხოლო|თუმცა|but)\s+'
+    r'[;,\n!()—–]+| - |\.(?!\d)| (?:მაგრამ|ხოლო|თუმცა|but) '
 )
-_CONJ_SPLIT_RE = re.compile(r'\s+(?:და|ან|and)\s+')
+_CONJ_SPLIT_RE = re.compile(r' (?:და|ან|and) ')
+_KA_VERBS = r'(?:იღებს|ვიღებ|სვამს|ვსვამ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აქვს|მაქვს|აღენიშნება|უფიქსირდება|აწუხებს)'
 _PREFIX_NEG_START_RE = re.compile(
-    r'^(?:(?:არ|აღარ|არა|ვერ)\s+(?:იღებს|ვიღებ|სვამს|ვსვამ|ღებულობს|აქვს|მაქვს|აღენიშნება|უფიქსირდება)'
+    rf'^(?:(?:არ|აღარ|არა|ვერ) {_KA_VERBS}'
+    r'|უარყოფს\b|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*'
     r'|(?:no|not|without|stopped|discontinued|held|denied|denies)\b)',
     re.IGNORECASE,
 )
-_ACTIVE_MED_CUE_RE = re.compile(
-    r'(?:^|\s)(?:სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|უწერია|დაუნიშნ|takes?|taking|uses?|using|on\s)|\d',
+_AFFIRM_PRED_RE = re.compile(
+    rf'(?:^| )(?:{_KA_VERBS}|უწერია|დაუნიშნ[ა-ჰ]*'
+    r'|takes?|taking|uses?|using|started|continues?|has|have|on |allergic)\b',
     re.IGNORECASE,
 )
+_ALLERGY_WORD_RE = re.compile(r'(?:ალერგი[ა-ჰ]*|\ballerg(?:y|ies|ic)\b)', re.IGNORECASE)
 _INLINE_NEG_SPLIT_RE = re.compile(
-    r'\s+(?=(?:no|without|stopped|discontinued|held)\s+[a-zა-ჰ])'
-    r'|\s+(?=(?:არ|აღარ|არა|ვერ)\s+(?:იღებს|ვიღებ|სვამს|ვსვამ|ღებულობს)\s+(?!(?:და|ან|მაგრამ|ხოლო|თუმცა|რომ)(?![ა-ჰ]))[a-zა-ჰ])'
-    r'|(?<=ალერგია)\s+(?=\S+\s+(?:არ|არა)\s+(?:აქვს|მაქვს|აღენიშნება|უფიქსირდება))'
-    r'|(?:(?<=\d)|(?<=მგ)|(?<=mg))\s+(?=ალერგი\w*\s+(?:არ|არა)\s+(?:აქვს|მაქვს|აღენიშნება|უფიქსირდება))'
+    r' (?=(?:no|not|without|stopped|discontinued|held) [a-zა-ჰ])'
+    r'|(?:(?<=\d)|(?<=მგ)|(?<=mg)|(?<=მკგ)|(?<=mcg)|(?<=გ)|(?<=g)) '
+    rf'(?=(?:არ|აღარ|არა|ვერ) {_KA_VERBS} (?!(?:და|ან|მაგრამ|ხოლო|თუმცა|რომ)(?![ა-ჰ]))[a-zა-ჰ])'
+    r'|(?<=ალერგია) (?=\S+ (?:არ|არა) (?:აქვს|მაქვს|აღენიშნება|უფიქსირდება|არის))'
+    r'|(?:(?<=\d)|(?<=მგ)|(?<=mg)|(?<=მკგ)|(?<=mcg)|(?<=გ)|(?<=g)) '
+    r'(?=[a-zა-ჰ0-9\-]+ (?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) '
+    rf'{_KA_VERBS}|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს))'
 )
+_KA_AFFIRM_VERB_AFTER_RE = re.compile(
+    r'(?<![ა-ჰ])(?:სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აქვს|მაქვს|აღენიშნება|უფიქსირდება)'
+    r' (?!(?:და|ან|მაგრამ|ხოლო|თუმცა|რომ)(?![ა-ჰ]))(?=[a-zა-ჰ0-9])'
+)
+_KA_NEG_PARTICLES = frozenset({'არ', 'აღარ', 'არა', 'ვერ'})
 _DOUBLE_NEG_AFFIRM_RE = re.compile(
-    r'\b(?:not\s+(?:stopped|discontinued|held)|never\s+stopped)\b'
-    r'|არ\s+(?:შეუწყვეტია|მოუხსნია|არის\s+(?:შეწყვეტილი|მოხსნილი|შეჩერებული))',
+    r'\b(?:not (?:stopped|discontinued|held)|never stopped)\b'
+    r'|არ (?:შეუწყვეტია|მოუხსნია|არის (?:შეწყვეტილი|მოხსნილი|შეჩერებული))',
     re.IGNORECASE,
+)
+_UNINTERRUPTED_AFFIRM_RE = re.compile(
+    r'(?:შეწყვეტის|შეჩერების|მოხსნის) გარეშე'
+    r'|\bwithout (?:stopping|interruption|discontinuing|holding)\b',
+    re.IGNORECASE,
+)
+_NON_PREFIX_PROTECT_RE = re.compile(
+    r'(?<![ა-ჰ])არა[- ]+(?=ანაფილაქსი|სტეროიდ|ინვაზიურ|სპეციფიკურ|ალკოჰოლ|ჰემორაგ|კარდი|ჰეპარინ)'
 )
 _SYMPTOM_NEG_RE = re.compile(
-    r'(?:სისხლდენ\w*|ჩივილ\w*|გართულებ\w*|ტკივილ\w*|ანაფილაქსი\w*)\s+(?:(?:არ|არა)\s+(?:აქვს|მაქვს|აღნიშნავს|აღენიშნება|ჰქონია)|გარეშე)'
-    r'|\b(?:without|no)\s+(?:active\s+)?(?:bleed\w*|hemorrhag\w*|pain|symptom\w*|complication\w*|anaphyla\w*)\b',
+    r'(?:სისხლდენ[ა-ჰ]*|ჩივილ[ა-ჰ]*|გართულებ[ა-ჰ]*|ტკივილ[ა-ჰ]*|ანაფილაქსი[ა-ჰ]*) '
+    r'(?:(?:არ|არა) (?:აქვს|მაქვს|აღნიშნავს|აღენიშნება|ჰქონია|უფიქსირდება|არის)|გარეშე)'
+    r'|\b(?:without|no) (?:active )?(?:bleed[a-z]*|hemorrhag[a-z]*|pain|symptom[a-z]*|complication[a-z]*|anaphyla[a-z]*)\b',
     re.IGNORECASE,
 )
 _RIVA_ESCALATION_STEMS = (
@@ -68,11 +91,12 @@ _OTHER_XA_DOAC_STEMS = (
 )
 _ALLERGY_NEGATION_WORDS = frozenset({
     'არა', 'უარყოფს', 'არაქვს', 'არმაქვს', 'არააქვს', 'ალერგიაარაქვს', 'ალერგიაარმაქვს', 'ალერგიაარააქვს',
-    'ალერგიისგარეშე', 'no', 'none', 'nil', 'nkda', 'nka', 'noallergy', 'noallergies',
+    'ალერგიისგარეშე', 'არანაირიალერგია', 'არავითარიალერგია', 'ალერგიაარარის',
+    'no', 'none', 'nil', 'nkda', 'nka', 'noallergy', 'noallergies',
 })
 _NEGATION_PHRASE_RE = re.compile(
-    r'(?:(?:არ|აღარ|არა|ვერ)\s+(?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|აღნიშნავს|ჰქონია|აღენიშნება|უფიქსირდება)'
-    r'|(?<![ა-ჰ])(?:არაა?(?![ა-ჰ\-—–])|არაქვს(?![ა-ჰ])|არმაქვს(?![ა-ჰ])|არააქვს(?![ა-ჰ]))'
+    r'(?:(?:არ|აღარ|არა|ვერ) (?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|აღნიშნავს|ჰქონია|აღენიშნება|უფიქსირდება|არის|აწუხებს)'
+    r'|(?<![ა-ჰ])(?:არაა?(?![ა-ჰ\-—–])|არაქვს(?![ა-ჰ])|არმაქვს(?![ა-ჰ])|არააქვს(?![ა-ჰ])|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*)'
     r'|უარყოფს|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს|გამორიცხულია|გარეშე'
     r'|(?<![a-z])(?:no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without)\b)',
     re.IGNORECASE,
@@ -92,10 +116,56 @@ _FT_ACEI_ARB_STEMS = (
     'prestarium', 'prestans', 'tritace', 'cozaar', 'diovan', 'micardis', 'atacand', 'enap', 'noliprel',
 )
 _FT_AMIODARONE_STEMS = ('ამიოდარონ', 'კორდარონ', 'amiodaron', 'cordaron', 'paceron')
+_FT_HEPARIN_LMWH_STEMS = (
+    'კლექსან', 'clexane', 'ლოვენოქს', 'lovenox', 'ფრაქსიპარ', 'fraxipar',
+    'ენოქსაპარ', 'enoxapar', 'ნადროპარ', 'nadropar', 'ფრაგმინ', 'fragmin',
+    'დალტეპარ', 'daltepar', 'ციბორ', 'zibor', 'ბემიპარ', 'bemipar',
+    'ჰეპარინ', 'heparin',
+)
+_DIGIT_RE = re.compile(r'\d')
+
+
+def _normalize_nlp_text(text):
+    """Collapse whitespace to single spaces in O(N) and normalize affirmative/non-prefix clinical idioms."""
+    low = _WS_RUN_RE.sub(' ', text.replace('\r\n', '\n').replace('\r', '\n').lower())
+    low = _DOUBLE_NEG_AFFIRM_RE.sub(' ', low)
+    low = _UNINTERRUPTED_AFFIRM_RE.sub(' ', low)
+    low = _NON_PREFIX_PROTECT_RE.sub('არა-', low)
+    low = _SYMPTOM_NEG_RE.sub(' ', low)
+    return _WS_RUN_RE.sub(' ', low)
+
+
+_GENERIC_SOV_HEADS = frozenset({'ალერგია', 'ალერგიას', 'ალერგიები', 'წამალს', 'წამლებს', 'მედიკამენტს', 'მედიკამენტებს', 'პრეპარატს'})
+
+
+def _split_inline_boundaries(seg):
+    """Split unpunctuated multi-clause utterances (inline negation first, then Georgian finite verb boundary)."""
+    out = []
+    for sub in _INLINE_NEG_SPLIT_RE.split(seg):
+        sub_s = sub.strip()
+        if not sub_s:
+            continue
+        last = 0
+        for m in _KA_AFFIRM_VERB_AFTER_RE.finditer(sub_s):
+            before = sub_s[last:m.start()].rstrip()
+            prev_tok = before.rsplit(' ', 1)[-1] if before else ''
+            if prev_tok in _KA_NEG_PARTICLES:
+                before_neg = before[: -len(prev_tok)].strip()
+                if not before_neg or before_neg in _GENERIC_SOV_HEADS:
+                    continue
+            verb_end = m.end() - 1
+            piece = sub_s[last:verb_end].strip()
+            if piece:
+                out.append(piece)
+            last = verb_end + 1
+        tail = sub_s[last:].strip()
+        if tail:
+            out.append(tail)
+    return out
 
 
 def _split_neg_clauses(cleaned_txt):
-    """Split text into negation-scoped clauses, preserving compound prefix negations while separating SOV/conjunction clauses."""
+    """Split text into negation-scoped clauses, handling Georgian/English prefix & SOV suffix compound negations."""
     out = []
     for chunk in _STRONG_CLAUSE_SPLIT_RE.split(cleaned_txt):
         chunk_s = chunk.strip()
@@ -107,16 +177,28 @@ def _split_neg_clauses(cleaned_txt):
             prev = merged[-1]
             prev_neg = bool(_NEGATION_PHRASE_RE.search(prev))
             nxt_neg = bool(_NEGATION_PHRASE_RE.search(nxt))
-            # Keep compound prefix negation merged only when right side has no negation, no dose, and no active verb
-            if prev_neg and not nxt_neg and _PREFIX_NEG_START_RE.search(prev) and not _ACTIVE_MED_CUE_RE.search(nxt):
+            prev_has_alg, nxt_has_alg = bool(_ALLERGY_WORD_RE.search(prev)), bool(_ALLERGY_WORD_RE.search(nxt))
+            # 1) Compound prefix negation: merge when right side has no negation, no affirmative verb, no repeated
+            #    allergy noun, and no new dose unless prev already carried a dose (e.g. 'stopped aspirin 100mg and clopidogrel 75mg').
+            if (
+                prev_neg and not nxt_neg and _PREFIX_NEG_START_RE.search(prev)
+                and not _AFFIRM_PRED_RE.search(nxt)
+                and not (prev_has_alg and nxt_has_alg)
+                and (not _DIGIT_RE.search(nxt) or bool(_DIGIT_RE.search(prev)))
+            ):
+                merged[-1] = f'{prev} და {nxt}'
+            # 2) Georgian SOV suffix compound negation ('ასპირინი და პლავიქსი მოხსნილია', 'პენიცილინზე და იოდზე ალერგია არ აქვს')
+            elif (
+                not prev_neg and nxt_neg and not _PREFIX_NEG_START_RE.search(nxt)
+                and not _AFFIRM_PRED_RE.search(prev)
+                and not prev_has_alg
+                and not _DIGIT_RE.search(prev)
+            ):
                 merged[-1] = f'{prev} და {nxt}'
             else:
                 merged.append(nxt)
         for seg in merged:
-            for sub in _INLINE_NEG_SPLIT_RE.split(seg):
-                sub_s = sub.strip()
-                if sub_s:
-                    out.append(sub_s)
+            out.extend(_split_inline_boundaries(seg))
     return out
 
 
@@ -124,8 +206,7 @@ def _positive_clauses_text(text):
     """Strip explicitly negated clauses ('არ აქვს', 'არ სვამს', 'no ...', 'stopped ...') before stem matching."""
     if not isinstance(text, str) or not text.strip():
         return ''
-    cleaned_txt = _DOUBLE_NEG_AFFIRM_RE.sub(' ', text.lower())
-    cleaned_txt = _SYMPTOM_NEG_RE.sub(' ', cleaned_txt)
+    cleaned_txt = _normalize_nlp_text(text)
     pos = []
     for cl_s in _split_neg_clauses(cleaned_txt):
         compact = re.sub(r'[\s.,;:!?()\[\]"\'—–-]+', '', cl_s)
@@ -203,9 +284,10 @@ def _detect_freetext_high_risk_meds(text, q=None):
     low = _positive_clauses_text(text)
     if not low:
         return {
-            'matched_keys': set(), 'unstructured_labels': [], 'unstructured_antithrombotic': False,
-            'ertugliflozin': False, 'daily_glp1': False, 'has_omeprazole': False, 'has_glp1': False,
-            'has_ft_statin': False, 'has_ft_acei_arb': False, 'has_ft_amiodarone': False,
+            'matched_keys': set(), 'unstructured_keys': set(), 'unstructured_labels': [],
+            'unstructured_antithrombotic': False, 'ertugliflozin': False, 'daily_glp1': False,
+            'has_omeprazole': False, 'has_glp1': False, 'has_ft_statin': False,
+            'has_ft_acei_arb': False, 'has_ft_amiodarone': False, 'has_ft_heparin_lmwh': False,
         }
     q_d = q if isinstance(q, dict) else {}
     med_chips = set(_str_list(q_d.get('med_chips')))
@@ -233,13 +315,12 @@ def _detect_freetext_high_risk_meds(text, q=None):
         'amiodarone': 'amiodarone' in med_chips,
         'omeprazole': True,  # Tracked via has_omeprazole for CYP2C19 clopidogrel check, not as unstructured blocker
     }
-    matched_keys = set()
-    unstructured_labels = []
-    unstructured_at = False
+    matched_keys, unstructured_keys, unstructured_labels, unstructured_at = set(), set(), [], False
     for key, label, is_at, stems in _FREETEXT_HIGH_RISK_MED_RULES:
         if any(st in low for st in stems):
             matched_keys.add(key)
             if not structured_map.get(key, False):
+                unstructured_keys.add(key)
                 unstructured_labels.append(label)
                 if is_at:
                     unstructured_at = True
@@ -247,6 +328,7 @@ def _detect_freetext_high_risk_meds(text, q=None):
         any(st in low for st in _ASPIRIN_FT_STEMS) or bool(_ASA_WORD_RE.search(low))
     ):
         matched_keys.add('aspirin')
+        unstructured_keys.add('aspirin')
         unstructured_labels.append('ასპირინი (NSAID ალერგია!)' if 'nsaid' in eff_alg_chips else 'ასპირინი (75–100 მგ)')
         unstructured_at = True
     is_ertug = any(st in low for st in (
@@ -259,6 +341,7 @@ def _detect_freetext_high_risk_meds(text, q=None):
     ))
     return {
         'matched_keys': matched_keys,
+        'unstructured_keys': unstructured_keys,
         'unstructured_labels': unstructured_labels,
         'unstructured_antithrombotic': unstructured_at,
         'ertugliflozin': is_ertug,
@@ -267,5 +350,65 @@ def _detect_freetext_high_risk_meds(text, q=None):
         'has_glp1': 'glp1' in matched_keys,
         'has_ft_statin': any(st in low for st in _FT_STATIN_STEMS),
         'has_ft_acei_arb': any(st in low for st in _FT_ACEI_ARB_STEMS),
-        'has_ft_amiodarone': ('amiodarone' in matched_keys) or any(st in low for st in _FT_AMIODARONE_STEMS),
+        'has_ft_amiodarone': any(st in low for st in _FT_AMIODARONE_STEMS),
+        'has_ft_heparin_lmwh': any(st in low for st in _FT_HEPARIN_LMWH_STEMS),
     }
+
+
+def append_freetext_med_rows(c, immed_stop_plan, gi_bleed_plan):
+    """Append contraindicated/unstructured rows derived from free-text `q.other_meds`."""
+    q, med_chips, add_row = c['q'], c['med_chips'], c['add_row']
+    ft = c['ft_meds']
+    raw_txt = _safe_display_str(q.get('other_meds'), max_len=160)
+    if ft.get('has_ft_statin') and 'statin' not in med_chips:
+        if c['repro_pregnant']:
+            add_row('სტატინი (ტექსტიდან)', 'ორსულობის დროს სტატინი უკუნაჩვენებია (ტერატოგენული რისკი) — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ექიმთან!', 'red', immed_stop_plan, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        elif c['liver_3x']:
+            add_row('სტატინი (ტექსტიდან)', f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია სტატინი — ღვიძლის ფერმენტების ≥3x მატების ფონზე ჰეპატოტოქსიკურობის გამო სტატინი უკუნაჩვენებია, შეწყვიტეთ და შეათანხმეთ ექიმთან!', 'red', immed_stop_plan, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+    if c['repro_pregnant'] and ft.get('has_ft_acei_arb') and 'acei_arb' not in med_chips:
+        add_row('ACEi / ARB (ტექსტიდან)', 'ორსულობის დროს ACEi / ARB აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!', 'red', immed_stop_plan, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+    if not ft['unstructured_labels']:
+        return
+    labels, is_at = ', '.join(ft['unstructured_labels']), bool(ft['unstructured_antithrombotic'])
+    u_keys = ft.get('unstructured_keys') or set()
+    contra_msgs, plan_override = [], ''
+    if c['has_hit'] and ft.get('has_ft_heparin_lmwh'):
+        contra_msgs.append('HIT ანამნეზში: ჰეპარინი/LMWH აბსოლუტურად უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და ჩართეთ ჰემატოლოგი!')
+        plan_override = 'STOP — HIT! ჰეპარინი/LMWH აბსოლუტურად აკრძალულია!'
+    if is_at and c['is_cea_oac_p2y_stop']:
+        contra_msgs.append('სისხლჩაქცევის/თრომბოლიზისის ფონზე დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!')
+        plan_override = plan_override or 'დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!'
+    if is_at and c['active_gi_bleed']:
+        contra_msgs.append('აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის ფონზე სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან!')
+        plan_override = plan_override or gi_bleed_plan
+    if c['repro_pregnant'] and (u_keys & {'warfarin', 'doac', 'dabigatran'}):
+        contra_msgs.append('ორსულობის დროს პერორალური OAC უკუნაჩვენებია — დაუყოვნებლივ შეათანხმეთ მეან-გინეკოლოგთან და კარდიოლოგთან!')
+        plan_override = plan_override or immed_stop_plan
+    if ('mech_valve' in c['cad_chips']) and (u_keys & {'doac', 'dabigatran'}):
+        contra_msgs.append('მექანიკური სარქვლის ფონზე DOAC კატეგორიულად აკრძალულია (ESC Class III)!')
+        plan_override = plan_override or immed_stop_plan
+    if c['severe_renal'] and (u_keys & {'doac', 'dabigatran', 'metformin'}):
+        contra_msgs.append('CrCl/eGFR <30 ან დიალიზზე DOAC/დაბიგატრანი/მეტფორმინი უკუნაჩვენებია — სასწრაფოდ შეათანხმეთ ექიმთან!')
+        plan_override = plan_override or immed_stop_plan
+    if c['liver_3x'] and (u_keys & {'doac', 'dabigatran'}):
+        contra_msgs.append('ღვიძლის ≥3x დისფუნქციაზე DOAC/დაბიგატრანი უკუნაჩვენებია — სასწრაფოდ შეათანხმეთ ექიმთან!')
+        plan_override = plan_override or immed_stop_plan
+    if c['has_stroke_hx'] and ('prasugrel' in u_keys):
+        contra_msgs.append('ინსულტის/TIA-ს ანამნეზში პრასუგრელი აბსოლუტურად უკუნაჩვენებია!')
+        plan_override = plan_override or immed_stop_plan
+    if ('nsaid' in c['eff_allergy_chips']) and ('aspirin' in u_keys):
+        contra_msgs.append('ასპირინზე/აასს-ზე ალერგიის ფონზე ასპირინი უკუნაჩვენებია — დაუყოვნებლივ შეათანხმეთ ექიმთან!')
+        plan_override = plan_override or immed_stop_plan
+    is_contra = bool(contra_msgs)
+    ft_rule = (
+        f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია მაღალი რისკის უკუნაჩვენები პრეპარატი — {" · ".join(contra_msgs)}'
+        if is_contra else
+        f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია მაღალი რისკის პრეპარატი — მონიშნეთ ჩამრთველი შეჩერების ზუსტი თარიღისთვის!'
+    )
+    add_row(
+        f'დასაზუსტებელი წამალი ({labels})', ft_rule, 'red',
+        plan_override if is_contra else 'დააზუსტეთ ექიმთან — არასტრუქტურირებულია!',
+        hold_or_skip=(not is_contra), force_date_plan=True,
+        contraindicated=is_contra, acute_hold=is_contra,
+        unstructured=True, reconcile_only=True,
+    )

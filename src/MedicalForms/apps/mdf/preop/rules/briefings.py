@@ -5,14 +5,14 @@ from ..calculators import _ihd_and_chf_flags, calc_ariscat_pulm, calc_rcri, calc
 from ..constants import AAA_MORPHOLOGY_CHOICES, AAA_NECK_CHOICES, POPLITEAL_SCREEN_CHOICES, STATUS_READY
 from ..meds import _apply_stop_lock_to_med_schedule
 from ..registry import rule_value
-from ..utils import _num, is_self_filled_q
+from ..utils import _num, _safe_display_str, has_prior_stroke_or_tia, is_self_filled_q
 
 
 def _eval_scores_and_frailty(ctx):
     patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
     nut_cfg = rule_value('LAB_NUTRITION_ALBUMIN_LIVER')
     sb_cfg = rule_value('ANES_AIRWAY_STOPBANG_ICU')
-    ctx.rcri = calc_rcri(patient, q, s, is_symp_cea=ctx.is_symp_cea)
+    ctx.rcri = calc_rcri(patient, q, s, is_symp_cea=ctx.is_symp_cea, today=ctx.today)
     ctx.vsg_cri = calc_vsg_cri(patient, q, s)
     ctx.ariscat = calc_ariscat_pulm(patient, q, s, hb_gl=ctx.hb_gl)
     ctx.ihd_flag, ctx.chf_flag = _ihd_and_chf_flags(q, s)
@@ -406,6 +406,13 @@ def _build_surgical_brief(ctx):
             heparin_plan = f'HIT ანამნეზში! UFH, LMWH, ფონდაპარინუქსი და DOAC (CrCl/eGFR <30 / დიალიზი) კატეგორიულად აკრძალულია → ინტრაოპ./პოსტოპ. ბივალირუდინი ან არგატრობანი{liver_arg}!'
         elif ctx.liver_3x:
             heparin_plan = 'HIT ანამნეზში + ღვიძლის ≥3x დაზიანება! UFH და LMWH კატეგორიულად აკრძალულია (DOAC და ფონდაპარინუქსი არარეკომენდებულია) → უპირატესია ბივალირუდინი (არგატრობანის დოზა მცირდება 75%-ით!) და პოსტოპ. IPC / IV ბივალირუდინი!'
+        elif getattr(ctx, 'has_full_oac', False):
+            if ctx.is_venous:
+                heparin_plan = f'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH აკრძალულია · ინტრაოპერაციული ანტიკოაგულაცია არ ესაჭიროება · VTE პროფილაქტიკა: Caprini {ctx.caprini_score} ქ. ({ctx.caprini_tier}) — {ctx.caprini_advice}'
+            elif getattr(ctx, 'has_contra_oac', False):
+                heparin_plan = 'HIT ანამნეზში + უკუნაჩვენები/დუბლირებული OAC! არაფრაქციული ჰეპარინი (UFH) და LMWH აკრძალულია → ინტრაოპ. ბივალირუდინი ან არგატრობანი · უკუნაჩვენები OAC არ განაახლოთ, შეარჩიეთ ერთი უსაფრთხო არაჰეპარინული სქემა ჰემატოლოგ/კარდიოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!)!'
+            else:
+                heparin_plan = 'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH კატეგორიულად აკრძალულია → ინტრაოპ. ბივალირუდინი ან არგატრობანი · პოსტოპ. მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (დამატებითი პროფილაქტიკური ფონდაპარინუქსი/DOAC არ დაუმატოთ — ორმაგი ანტიკოაგულაციის გარეშე!)!'
         else:
             heparin_plan = 'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH კატეგორიულად აკრძალულია → ბივალირუდინი ან არგატრობანი (პოსტოპ. ფონდაპარინუქსი/DOAC CrCl ≥30-ზე)!'
     elif ctx.is_venous:
@@ -590,7 +597,7 @@ def _build_anesthetic_disposition(ctx, sb_cfg, cb_cfg, ren_hyd):
         (age_eff or 0) >= sb_cfg['mins_age']
         or ctx.ihd_flag or ctx.chf_flag or ctx.on_dialysis
         or (egfr_mins is not None and egfr_mins < ren_hyd)
-        or (q_filled and (ctx.has_known_dm or q.get('neuro') or q.get('htn')))
+        or (q_filled and (ctx.has_known_dm or has_prior_stroke_or_tia(patient, q=q, s=s, today=ctx.today) or q.get('htn')))
     )
     if not ctx.is_venous and (
         ctx.open_aortic
@@ -615,7 +622,7 @@ def _build_anesthetic_brief(ctx):
     neuraxial_gate, bp_corridor = _build_anesthetic_neuraxial_and_bp(ctx)
     high_ischemic_rbc = ctx.ihd_flag or ctx.chf_flag or ctx.has_mech_valve or (pathway == PreopPatient.Pathway.CEA) or (ctx.max_car is not None and ctx.max_car >= hb_cfg['ischemic_carotid_pct']) or ctx.is_clti_any
     rbc_thresh = 'Hb ≥ 80–90 გ/ლ (გიდ / გულის უკმარისობა / ცერებრული / კრიტიკული იშემიის ზღვარი)' if high_ischemic_rbc else 'Hb ≥ 70–80 გ/ლ (რესტრიქციული PBM ზღვარი)'
-    bg_lbl = s.get('blood_group') or 'დაუდგენელია'
+    bg_lbl = _safe_display_str(s.get('blood_group'), max_len=30, default='დაუდგენელია')
     if ctx.is_rupture_suspect:
         transfusion_pbm = f'ჯგუფი: {bg_lbl} · სასწრაფო MTP პროტოკოლი: O Rh(-) / ჯგუფ-სპეციფიკური ერითრომასა + ს.გ.პ. + თრომბოკონცენტრატი (1:1:1) + Cell Saver + TXA 1 გ IV!'
     elif ctx.open_major:

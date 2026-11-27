@@ -109,9 +109,10 @@ def build_self_fill_highlights(q, patient=None):
     raw_other_meds = q.get('other_meds') if isinstance(q.get('other_meds'), str) else ''
     if raw_other_meds.strip():
         from .meds import _detect_freetext_high_risk_meds
+        from .utils import _safe_display_str
         ft = _detect_freetext_high_risk_meds(raw_other_meds, q=q)
         lvl = 'urgent' if ft.get('unstructured_labels') else 'info'
-        items.append((lvl, f'სხვა წამალი: {raw_other_meds}'))
+        items.append((lvl, f'სხვა წამალი: {_safe_display_str(raw_other_meds, max_len=160)}'))
     if q.get('allergy_iodine'):
         items.append(('urgent', 'ალერგია იოდზე / კონტრასტზე!'))
     from .meds_freetext import _positive_clauses_text

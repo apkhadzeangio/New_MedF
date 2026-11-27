@@ -418,7 +418,7 @@ def _compute_core_metrics(patient, q, s, today):
     implausible_fields = _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=today, q=raw_q)
     bmi_val = calc_bmi(s.get('weight_kg'), s.get('height_cm'))
     hb_unit_ambiguous = is_hb_unit_ambiguous(_s_raw(s, 'hb'))
-    age_val = _int(patient.age, lo=1, hi=120)
+    age_val = _int(patient.age, lo=12, hi=120)
     aaa_mm = _num(s.get('aaa_mm'), lo=10, hi=200)
     return {
         'raw_s': raw_s, 'raw_creat': raw_creat, 'on_dialysis': on_dialysis,

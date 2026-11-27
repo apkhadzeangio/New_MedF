@@ -68,7 +68,8 @@ class PreopNurseRegisterView(LoginRequiredMixin, generic.View):
         sex = request.POST.get('sex') if request.POST.get('sex') in ('M', 'F') else (
             'F' if op_subtype in ('evla', 'phlebectomy') else 'M'
         )
-        age = _int(request.POST.get('age'), lo=1, hi=120)
+        raw_age = (request.POST.get('age') or '').strip()
+        age = _int(raw_age, lo=12, hi=120)
         raw_op_date = (request.POST.get('planned_surgery_date') or '').strip()
         op_date = _date(raw_op_date)
         today = timezone.localdate()
@@ -85,6 +86,12 @@ class PreopNurseRegisterView(LoginRequiredMixin, generic.View):
         }
         if not name:
             return render(request, self.template_name, self._ctx(form_data, 'ჩაწერეთ პაციენტის სახელი და გვარი.'), status=400)
+        if raw_age and age is None:
+            return render(
+                request, self.template_name,
+                self._ctx(form_data, 'ასაკი უნდა იყოს 12-დან 120 წლამდე (მოზრდილთა სისხლძარღვთა ქირურგიის მოდული).'),
+                status=400,
+            )
         if pathway == PreopPatient.Pathway.CEA and side == 'B':
             return render(
                 request, self.template_name,
@@ -170,7 +177,11 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
             s = merged_studies(patient)
             uf = ['studies', 'updated_at', 'updated_by']
 
+            out_st = ev.get('case_outcome') or 'scheduled'
             block_msg = med_hold_agreement_block_reason(ev, s)
+            if patient.archived or out_st != 'scheduled':
+                messages.error(request, 'დაარქივებულ, გაუქმებულ, გადადებულ ან ნაოპერაციებ ბარათზე დარეკვის ჩანაწერის შეცვლა დაბლოკილია!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-med-call-card')
             if action == 'clear':
                 s['nurse_med_called_at'] = ''
                 s['nurse_med_called_by'] = ''
@@ -224,8 +235,8 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
 
             out_st = s.get('case_outcome_status') or 'scheduled'
-            if out_st in ('operated', 'cancelled_medical', 'cancelled_patient'):
-                messages.error(request, 'გაუქმებულ ან უკვე ნაოპერაციებ პაციენტზე ოპერაციის თარიღის შეცვლა დაბლოკილია!')
+            if patient.archived or out_st != 'scheduled':
+                messages.error(request, 'დაარქივებულ, გადადებულ, გაუქმებულ ან უკვე ნაოპერაციებ პაციენტზე ოპერაციის თარიღის შეცვლა დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
 
             old_dt = _date(s.get('planned_surgery_date'))

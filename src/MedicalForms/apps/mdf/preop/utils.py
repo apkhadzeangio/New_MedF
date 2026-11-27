@@ -3,6 +3,7 @@ import datetime
 import hashlib
 import math
 import re
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
 
 from django.core.signing import TimestampSigner
 from django.urls import reverse
@@ -20,13 +21,27 @@ from .constants import (
     TARGET_PREP_DAYS,
 )
 
+_NONFINITE_STRS = frozenset({'nan', '+nan', '-nan', 'inf', '+inf', '-inf', 'infinity', '+infinity', '-infinity'})
+
+
+def _safe_display_str(val, max_len=160, default=''):
+    """Safely format arbitrary text/values for display: reject containers/NaN/Inf and bound length."""
+    if val is None or isinstance(val, (bool, dict, list, tuple, set)):
+        return default
+    if isinstance(val, float) and not math.isfinite(val):
+        return default
+    s_v = ' '.join(str(val).split())
+    if not s_v or s_v.lower() in _NONFINITE_STRS:
+        return default
+    return s_v if len(s_v) <= max_len else (s_v[: max_len - 1].rstrip() + '…')
+
 
 def chip_summary(selected_keys, field_name, fallback_text=''):
     labels = CHIP_LABELS.get(field_name, {})
     seq = selected_keys if isinstance(selected_keys, (list, tuple, set)) else ()
     seq_set = {k for k in seq if isinstance(k, str)}
     picked = [lbl for k, lbl in labels.items() if k in seq_set]
-    extra = fallback_text.strip() if isinstance(fallback_text, str) else ''
+    extra = _safe_display_str(fallback_text, max_len=160) if isinstance(fallback_text, str) else ''
     if extra and extra not in picked:
         picked.append(extra)
     return ', '.join(picked)
@@ -44,6 +59,75 @@ def is_self_filled_q(q):
 # --------------------------------------------------------------------------
 
 _ASCII_NUM_RE = re.compile(r'^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$', re.ASCII)
+
+
+def _raw_finite_decimal(val):
+    if val is None or val == '' or isinstance(val, (bool, list, tuple, dict, set)):
+        return None
+    if isinstance(val, int):
+        return Decimal(val)
+    if isinstance(val, float):
+        if not math.isfinite(val):
+            return None
+        try:
+            return Decimal(str(val))
+        except InvalidOperation:
+            return None
+    s_val = str(val).strip().replace(',', '.')
+    if not _ASCII_NUM_RE.match(s_val):
+        return None
+    try:
+        d = Decimal(s_val)
+    except InvalidOperation:
+        return None
+    return d if d.is_finite() else None
+
+
+def parse_plt_k(raw, allow_negative_zero=False):
+    """Parse PLT into x10^9/L using exact Decimal floor (never rounds <50/<100/<150 upward)."""
+    from .registry import rule_value
+
+    d = _raw_finite_decimal(raw)
+    if d is None:
+        return None
+    if d < Decimal('1'):
+        return 0 if allow_negative_zero else None
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    if d > Decimal('2000000'):
+        return None
+    ambig_lo, ul_ge = Decimal(str(u['plt_ambig_lo'])), Decimal(str(u['plt_ul_ge']))
+    if ambig_lo < d < ul_ge:
+        return None
+    if d >= ul_ge:
+        d = d / Decimal('1000')
+    if d < Decimal('1') or d > ambig_lo:
+        return None
+    q = d.quantize(Decimal('0.1'), rounding=ROUND_FLOOR)
+    return int(q) if q == int(q) else float(q)
+
+
+def parse_wbc_k(raw):
+    """Parse WBC into x10^9/L preserving abnormal <wbc_lo (floor) and >wbc_hi (ceil) boundaries."""
+    from .registry import rule_value
+
+    d = _raw_finite_decimal(raw)
+    if d is None or d < Decimal('0.1') or d > Decimal('150000'):
+        return None
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    coag = rule_value('LAB_WBC_PLT_COAG')
+    ul_ge = Decimal(str(u['wbc_ul_ge']))
+    if d >= ul_ge:
+        d = d / Decimal('1000')
+    if d < Decimal('0.1') or d > ul_ge:
+        return None
+    lo_b, hi_b = Decimal(str(coag['wbc_lo'])), Decimal(str(coag['wbc_hi']))
+    if d < lo_b:
+        q = d.quantize(Decimal('0.01'), rounding=ROUND_FLOOR)
+    elif d > hi_b:
+        q = d.quantize(Decimal('0.01'), rounding=ROUND_CEILING)
+    else:
+        q = d.quantize(Decimal('0.01'))
+    return int(q) if q == int(q) else float(q)
 
 
 def _num(val, lo=None, hi=None):
@@ -115,23 +199,23 @@ def _fmt_ka_date(val, short=False):
 
 
 def is_valid_birth_date(val, today=None):
-    """Return True iff `val` parses as a plausible birth date (year >= 1900, <= today, age 1..120)."""
+    """Return True iff `val` parses as a plausible adult/adolescent birth date (year >= 1900, age 12..120)."""
     dob = val if isinstance(val, datetime.date) else _date(val)
     today = _date(today) or timezone.localdate()
     if not dob or dob > today or dob.year < 1900:
         return False
     years = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    return 1 <= years <= 120
+    return 12 <= years <= 120
 
 
 def _age_from_dob(val, today=None):
-    """Compute integer age (1..120) from ISO birth_date."""
+    """Compute integer age (12..120) from ISO birth_date."""
     dob = val if isinstance(val, datetime.date) else _date(val)
     today = _date(today) or timezone.localdate()
     if not is_valid_birth_date(dob, today=today):
         return None
     years = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    return years if 1 <= years <= 120 else None
+    return years if 12 <= years <= 120 else None
 
 
 def _alerts_signature(red_flags):
@@ -414,6 +498,9 @@ def _sanitize_merged_dict(defaults, raw_dict):
                     data[k] = None
                 else:
                     data[k] = (0.0 if (isinstance(rv, float) and rv == 0) else rv) if math.isfinite(rv_f) else None
+            elif k in ('plt', 'wbc'):
+                dec_v = _raw_finite_decimal(rv)
+                data[k] = (int(dec_v) if dec_v == int(dec_v) else float(dec_v)) if dec_v is not None else None
             else:
                 data[k] = _num(rv)
     for k, rv in src.items():

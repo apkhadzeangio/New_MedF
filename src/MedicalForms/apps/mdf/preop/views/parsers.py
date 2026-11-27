@@ -103,21 +103,13 @@ def _set_num_field(s, key, raw, lo=None, hi=None, norm_fn=None):
 
 
 def _norm_plt_post(raw):
-    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
-    x = _num(raw, lo=1, hi=2000000)
-    if x is None or (u['plt_ambig_lo'] < x < u['plt_ul_ge']):
-        return None
-    val = int(round(x / 1000.0)) if x >= u['plt_ul_ge'] else x
-    return _num(val, lo=1, hi=u['plt_ambig_lo'])
+    from ..utils import parse_plt_k
+    return parse_plt_k(raw)
 
 
 def _norm_wbc_post(raw):
-    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
-    x = _num(raw, lo=0.1, hi=150000)
-    if x is None:
-        return None
-    val = round(x / 1000.0, 2) if x >= u['wbc_ul_ge'] else x
-    return _num(val, lo=0.1, hi=u['wbc_ul_ge'])
+    from ..utils import parse_wbc_k
+    return parse_wbc_k(raw)
 
 
 def _parse_s1_numbers_and_dates(post, s, today):
@@ -178,6 +170,8 @@ def _parse_s1_numbers_and_dates(post, s, today):
 
 def med_hold_agreement_block_reason(ev, s):
     """Return Georgian error string if med_hold_agreed / nurse med-call confirmation is clinically unsafe."""
+    if ev.get('archived'):
+        return 'დაარქივებულ ბარათზე წამლების შეჩერების სქემის დადასტურება დაბლოკილია — ჯერ აღადგინეთ არქივიდან!'
     out_st = ev.get('case_outcome') or (s.get('case_outcome_status') if isinstance(s, dict) else '') or 'scheduled'
     if out_st != 'scheduled':
         return 'პაციენტი აღარ არის დაგეგმილ სტატუსში (გადადებულია/გაუქმებულია/ნაოპერაციებია) — წამლების შეჩერების სქემის დადასტურება დაბლოკილია!'
@@ -225,6 +219,8 @@ def preop_admission_block_reason(ev, s):
     """Canonical safety gate for Board handoff, complete_and_board, and case_outcome='operated'."""
     from ..registry import rule_value
 
+    if ev.get('archived'):
+        return 'დაარქივებულ ბარათზე ოპერაცია/დაფაზე გადაყვანა დაბლოკილია — ჯერ აღადგინეთ არქივიდან!'
     if not (ev.get('q') or {}).get('filled'):
         return 'პაციენტის კითხვარი ჯერ არ არის შევსებული (ალერგიები/მედიკამენტები დაუზუსტებელია) — ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
     out_st = ev.get('case_outcome') or (s.get('case_outcome_status') if isinstance(s, dict) else '') or 'scheduled'
@@ -254,7 +250,9 @@ def can_enter_ready_queue(patient, ev):
     """Canonical readiness gate for moving a patient into someday:ready."""
     s = ev.get('s') or {}
     return bool(
-        patient.approved_at
+        not patient.archived
+        and not ev.get('archived')
+        and patient.approved_at
         and ev.get('case_outcome', 'scheduled') == 'scheduled'
         and ev.get('workup_ready')
         and ev['clearance_seal']['code'] != 'stop'

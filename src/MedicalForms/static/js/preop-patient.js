@@ -247,7 +247,7 @@
         attachLiveGuard(el, function (v) {
             if (v < 1 || v > 2000000) return { level: 'crit', msg: 'დაუჯერებელი PLT (' + v + ') — გადაამოწმეთ მნიშვნელობა!' };
             if (v > 2500 && v < 3000) return { level: 'crit', msg: 'დააზუსტეთ თრომბოციტების ერთეული (×10^9/L თუ /µL)!' };
-            var n = v >= 3000 ? Math.round(v / 1000) : v;
+            var n = v >= 3000 ? Math.floor(v / 100) / 10 : Math.floor(v * 10) / 10;
             if (n < 100) return { level: 'crit', msg: 'თრომბოციტოპენია (<100 ×10^9/L)!' };
             if (n < 150) return { level: 'warn', msg: 'ზომიერი კლება (<150 ×10^9/L)' };
             return null;
@@ -330,8 +330,9 @@
     document.querySelectorAll('input[name="wbc"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
             if (v < 0.1 || v > 150000) return { level: 'crit', msg: 'დაუჯერებელი WBC (' + v + ') — გადაამოწმეთ!' };
-            var n = v >= 200 ? Math.round((v / 1000.0) * 100) / 100 : v;
-            if (n < 3.5 || n > 12.0) return { level: 'crit', msg: 'პათოლოგიური WBC (' + n + ' ×10^9/L — ნორმა 3.5–12.0)!' };
+            var rawW = v >= 200 ? (v / 1000.0) : v;
+            var n = rawW < 3.5 ? Math.floor(rawW * 100) / 100 : (rawW > 12.0 ? Math.ceil(rawW * 100) / 100 : Math.round(rawW * 100) / 100);
+            if (rawW < 3.5 || rawW > 12.0) return { level: 'crit', msg: 'პათოლოგიური WBC (' + n + ' ×10^9/L — ნორმა 3.5–12.0)!' };
             return null;
         });
     });

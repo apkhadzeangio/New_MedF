@@ -107,9 +107,11 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
     ctx.needs_vte_prophylaxis = high_vte or (q_filled and (mod_vte_count >= 2 or ctx.caprini_score >= cap_thresh))
     if ctx.needs_vte_prophylaxis and not s.get('vte_prophylaxis_planned'):
         from ..caprini import _oac_venous_vte_flags
-        ven_severe_renal = ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < ren_red)
+        eff_ren_v = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
+        ven_severe_renal = ctx.on_dialysis or (eff_ren_v is not None and eff_ren_v < ren_red)
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv = ' (ღვიძლის ≥3x: არგატრობანი −75% / უპირატესია ბივალირუდინი!)' if ctx.liver_3x else ''
+        evla_inr_lim = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
         has_full_oac_v, is_evla_vka_v, has_contra_oac_v = _oac_venous_vte_flags(ctx.patient, q, s, ven_severe_renal, ctx.liver_3x)
         if getattr(ctx, 'active_gi_bleed', False):
             hit_gi_v = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit else ''
@@ -140,15 +142,17 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
             if has_contra_oac_v:
                 vte_agents = f'უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
             elif is_evla_vka_v:
-                vte_agents = f'თერაპიული ვარფარინი გრძელდება მოუხსნელად (INR ≤ 3.0) — დამატებითი LMWH/DOAC არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
+                vte_agents = f'თერაპიული ვარფარინი გრძელდება მოუხსნელად (INR ≤ {evla_inr_lim}) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
             else:
-                vte_agents = f'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე) — დამატებითი LMWH/DOAC არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
+                vte_agents = f'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
         elif has_hit:
             vte_agents = (
                 f'IPC / არგატრობანი-ბივალირუდინი — HIT + CrCl<30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!{arg_liv}'
                 if ven_severe_renal else
                 ('IPC / IV ბივალირუდინი — HIT + ღვიძლის ≥3x: ჰეპარინი, DOAC და ფონდაპარინუქსი არარეკომენდებულია!' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC — HIT: ჰეპარინი აკრძალულია!')
             )
+        elif ven_severe_renal and ctx.liver_3x:
+            vte_agents = 'კანქვეშა UFH + IPC კოაგულოგრამის კონტროლით (CrCl/eGFR <30 + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი აკრძალულია, LMWH კუმულირდება!)'
         elif ven_severe_renal:
             vte_agents = 'კანქვეშა UFH / დოზა-კორექტირებული LMWH (DOAC არა!)'
         elif ctx.liver_3x:

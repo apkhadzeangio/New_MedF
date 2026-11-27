@@ -35,7 +35,8 @@ def _resolve_effective_anesth_label(ctx, lido_alg, needs_ett_airway):
     if anesth_plan_raw == 'general' and needs_ett_airway:
         return 'ზოგადი ენდოტრაქეული ანესთეზია' + (' + ეპიდურული ანალგეზია' if 'epidural' in ctx.anesth_lines_set else '')
     if anesth_plan_raw != 'auto':
-        return dict(ANESTH_PLAN_CHOICES).get(anesth_plan_raw, anesth_plan_raw)
+        from ..utils import _safe_display_str
+        return dict(ANESTH_PLAN_CHOICES).get(anesth_plan_raw) or _safe_display_str(anesth_plan_raw, max_len=60, default='ავტო')
     if patient.op_subtype == PreopPatient.OpSubtype.EVLA:
         return 'ტუმესცენტური ადგილობრივი ანესთეზია'
     if ctx.is_pta:
@@ -164,15 +165,17 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
                     f'დაგეგმილი CEA-ს თარიღი ({ctx.planned_surgery_ka}) სცდება სიმპტომიდან 14-დღიან ფანჯარას '
                     f'({symp_to_op} დღე — ESVS 2023 / NVR სამიზნე ≤14 დღე)! განიხილეთ უფრო ადრეული საოპერაციო სლოტი.'
                 )
-        elif pathway == PreopPatient.Pathway.AAA_INFRA and aaa_eff_w is not None:
+        elif pathway == PreopPatient.Pathway.AAA_INFRA and (aaa_eff_w is not None or s.get('aaa_morphology') in ('saccular', 'mycotic')):
             min_aaa_thresh = rule_value('AAA_FEMALE_MIN_MM') if patient.sex == 'F' else rule_value('AAA_MALE_MIN_MM')
-            if aaa_eff_w >= rule_value('AAA_GIANT_MM') and wait_to_op > aaa_wait_giant:
+            is_high_risk_morph = s.get('aaa_morphology') in ('saccular', 'mycotic')
+            aaa_lbl_w = f'{aaa_eff_w} მმ' if aaa_eff_w is not None else 'საკულარული/მიკოზური'
+            if aaa_eff_w is not None and aaa_eff_w >= rule_value('AAA_GIANT_MM') and wait_to_op > aaa_wait_giant:
                 ctx.amber_flags.append(
                     f'გიგანტური AAA ({aaa_eff_w} მმ): დაგეგმილი ოპერაციის თარიღი ({ctx.planned_surgery_ka}) დაშორებულია {wait_to_op} დღით (>14 დღე — მაღალი რუპტურის რისკი)!'
                 )
-            elif aaa_eff_w >= min_aaa_thresh and wait_to_op > aaa_wait_std:
+            elif ((aaa_eff_w is not None and aaa_eff_w >= min_aaa_thresh) or is_high_risk_morph) and wait_to_op > aaa_wait_std:
                 ctx.amber_flags.append(
-                    f'AAA ({aaa_eff_w} მმ): დაგეგმილი ოპერაციის მოლოდინი {wait_to_op} დღეა (UK NVR / ESVS სამიზნე ≤8 კვირა / 56 დღე).'
+                    f'AAA ({aaa_lbl_w}): დაგეგმილი ოპერაციის მოლოდინი {wait_to_op} დღეა (UK NVR / ESVS სამიზნე ≤8 კვირა / {aaa_wait_std} დღე).'
                 )
         elif getattr(ctx, 'is_ali_acute', False):
             ali_wait_lim = rule_value('PAD_CLTI_HEMO_THRESHOLDS')['ali_wait_days']
@@ -234,12 +237,13 @@ def _build_allergy_summary(ctx, q, lido_alg):
     if 'clopidogrel_intol' in ctx.allergy_chips:
         allergy_bits.append('კლოპიდოგრელის აუტანლობა')
     from ..meds_freetext import _positive_clauses_text
+    from ..utils import _safe_display_str
 
     raw_alg_txt = (q.get('allergy_text') or '').strip()
     pos_alg_txt = _positive_clauses_text(raw_alg_txt)
     is_dup_lido_txt = lido_alg and pos_alg_txt in ('ლიდოკაინი', 'ლიდოკაინზე ალერგია', 'ალერგია ლიდოკაინზე', 'lidocaine', 'lidocaine allergy')
     if pos_alg_txt and not is_dup_lido_txt and not any(pos_alg_txt in b.lower() for b in allergy_bits):
-        allergy_bits.append(raw_alg_txt)
+        allergy_bits.append(_safe_display_str(raw_alg_txt, max_len=160))
     elif not pos_alg_txt and (q.get('allergy_other') or ctx.unclarified_allergy_other) and not allergy_bits:
         allergy_bits.append('მედიკამენტური ალერგია (დასაზუსტებელია!)')
     return '; '.join(allergy_bits)
@@ -377,18 +381,18 @@ def _eval_dos_and_vqi(ctx):
     if dos_sys is not None and dos_dia is not None and dos_sys <= dos_dia:
         dos_warnings.append(f'ოპერაციის დილის წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი და მაჩვენებელი!')
     elif (dos_sys and dos_sys >= dos_cfg['sbp_hi']) or (dos_dia and dos_dia >= dos_cfg['dbp_hi']):
-        dos_warnings.append(f'ოპერაციის დილის კრიტიკული ჰიპერტენზია ({dos_sys or "?"}/{dos_dia or "?"} mmHg >= 180/110) — გეგმური ინდუქცია საშიშია, საჭიროა სტაბილიზაცია!')
+        dos_warnings.append(f'ოპერაციის დილის კრიტიკული ჰიპერტენზია ({dos_sys or "?"}/{dos_dia or "?"} mmHg >= {dos_cfg["sbp_hi"]}/{dos_cfg["dbp_hi"]}) — გეგმური ინდუქცია საშიშია, საჭიროა სტაბილიზაცია!')
     elif dos_sys and dos_sys < dos_cfg['sbp_lo']:
-        dos_warnings.append(f'ოპერაციის დილის ჰიპოტენზია ({dos_sys}/{dos_dia or "?"} mmHg < 90) — სასწრაფოდ შეფასდეს ჰემოდინამიკა!')
+        dos_warnings.append(f'ოპერაციის დილის ჰიპოტენზია ({dos_sys}/{dos_dia or "?"} mmHg < {dos_cfg["sbp_lo"]}) — სასწრაფოდ შეფასდეს ჰემოდინამიკა!')
     if dos_gl is not None and (dos_gl >= dos_cfg['gl_hi'] or dos_gl < dos_cfg['gl_lo']):
         dos_warnings.append(f'ოპერაციის დილის კრიტიკული გლიკემია ({dos_gl} მმოლ/ლ) — საჭიროა კორექცია საოპერაციოში შეყვანამდე!')
     elif dos_gl is not None and dos_gl > dos_cfg['gl_amb']:
-        ctx.amber_flags.append(f'ოპერაციის დილის ჰიპერგლიკემია ({dos_gl} მმოლ/ლ > 10.0) — სასურველია ინსულინით კორექცია პერიოპერაციული ინფექციის შესამცირებლად.')
+        ctx.amber_flags.append(f'ოპერაციის დილის ჰიპერგლიკემია ({dos_gl} მმოლ/ლ > {dos_cfg["gl_amb"]}) — სასურველია ინსულინით კორექცია პერიოპერაციული ინფექციის შესამცირებლად.')
 
     is_evla_warfarin_only = (
         ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
         and not ctx.has_neuraxial_plan and bool(q.get('med_warfarin'))
-        and not getattr(ctx, 'eff_pregnant', False)
+        and not getattr(ctx, 'eff_pregnant', False) and not ctx.liver_3x
         and not (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips)
     )
     ctx.is_evla_warfarin_only = is_evla_warfarin_only
@@ -402,7 +406,7 @@ def _eval_dos_and_vqi(ctx):
             dos_warnings.append(f'ოპერაციის დილის INR ({dos_inr if dos_inr is not None else dos_inr_eff}) აჭარბებს უსაფრთხო ზღვარს (≤ {inr_lim}) — სისხლდენის / სპინალური ჰემატომის რისკი!')
     elif any_dos_ticked:
         if is_evla_warfarin_only and inr_eff_dos is None:
-            dos_warnings.append('ვარფარინის ფონზე EVLA-მდე აუცილებელია საკონტროლო INR (≤ 3.0) — ამჟამად INR შეყვანილი არ არის!')
+            dos_warnings.append(f'ვარფარინის ფონზე EVLA-მდე აუცილებელია საკონტროლო INR (≤ {evla_inr_max}) — ამჟამად INR შეყვანილი არ არის!')
         elif inr_eff_dos is not None and inr_eff_dos > inr_lim:
             dos_warnings.append(f'საბაზისო INR ({ctx.inr if ctx.inr is not None else inr_eff_dos}) აჭარბებს ზღვარს (≤ {inr_lim}), ხოლო ოპერაციის დილის საკონტროლო INR შეყვანილი არ არის!')
         elif q.get('med_warfarin') and not is_evla_warfarin_only:
