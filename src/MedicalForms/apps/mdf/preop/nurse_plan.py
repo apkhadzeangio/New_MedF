@@ -178,10 +178,10 @@ def build_phone_med_script(patient, ev, today):
         is_non_stop_plan = any(
             kw in plan for kw in ('შეიყვანეთ', 'არ მოხსნათ', 'შეათანხმეთ', 'დააზუსტეთ', 'VTE შეფასება')
         )
-        is_contra_or_reconcile = bool(
-            row.get('contraindicated') or row.get('unstructured') or row.get('reconcile_only')
-        )
-        is_acute_or_contra = bool(row.get('acute_hold') or is_contra_or_reconcile)
+        is_reconcile_only = bool(row.get('reconcile_only'))
+        is_truly_urgent = bool(row.get('acute_hold') or row.get('contraindicated') or row.get('unstructured'))
+        is_contra_or_reconcile = bool(row.get('contraindicated') or row.get('unstructured') or is_reconcile_only)
+        is_acute_or_contra = bool(is_truly_urgent or is_reconcile_only)
         is_skip_text = ('გამოტოვეთ' in plan) or ('არ მიიღოთ' in plan)
         is_planned_stop = (
             (bool(row.get('hold_or_skip')) or is_skip_text)
@@ -189,10 +189,10 @@ def build_phone_med_script(patient, ev, today):
             and not is_glp1_diet
             and not is_non_stop_plan
         )
-        is_urgent = is_acute_or_contra or bool(row.get('tone') == 'red' and not stop_locked)
+        is_urgent = is_truly_urgent or bool(row.get('tone') == 'red' and not stop_locked and not is_reconcile_only)
         spoken_txt = (
             'არ შეწყვიტოთ თვითნებურად — ოპერაცია შეჩერებულია (STOP)!'
-            if (stop_locked and is_planned_stop and not is_acute_or_contra)
+            if (stop_locked and is_planned_stop and not is_truly_urgent)
             else _spoken_med_phrase(row, op_ka)
         )
         entry = {
@@ -232,7 +232,13 @@ def build_phone_med_script(patient, ev, today):
 def detect_postponement_impacts(patient, ev, today):
     """Compute exact re-check items when planned_surgery_date was changed / postponed."""
     from django.utils import timezone
+
+    from .registry import rule_value
+    from .utils import cta_live_months_age
     today = _date(today) or timezone.localdate()
+    stale_lab_d = rule_value('INF_STALE_LABS_DAYS')
+    cea_win_d = rule_value('CEA_SYMP_WINDOW_DAYS')[0]
+    cta_std_m, cta_giant_m, cta_giant_mm = rule_value('AAA_CTA_STALE_MONTHS')
     s = ev['s']
     prev_dt = _date(s.get('prev_planned_surgery_date'))
     cur_dt = _date(s.get('planned_surgery_date'))
@@ -245,16 +251,16 @@ def detect_postponement_impacts(patient, ev, today):
     impacts = []
 
     labs_dt = _date(s.get('labs_date'))
-    if labs_dt and (cur_dt - labs_dt).days > 14:
+    if labs_dt and (cur_dt - labs_dt).days > stale_lab_d:
         age_at_op = (cur_dt - labs_dt).days
         impacts.append({
             'tone': 'danger',
-            'text': f'ანალიზებს ახალ თარიღამდე ({_fmt_ka_date(cur_dt)}) გაუვა 14-დღიანი ვადა (იქნება {age_at_op} დღის) — ანალიზები თავიდან უნდა ჩაბარდეს!',
+            'text': f'ანალიზებს ახალ თარიღამდე ({_fmt_ka_date(cur_dt)}) გაუვა {stale_lab_d}-დღიანი ვადა (იქნება {age_at_op} დღის) — ანალიზები თავიდან უნდა ჩაბარდეს!',
         })
     elif not labs_dt and shift_days > 0:
         impacts.append({
             'tone': 'warn',
-            'text': 'შეამოწმეთ ანალიზების თარიღი — ახალ ოპერაციის დღემდე არ უნდა იყოს 14 დღეზე ძველი.',
+            'text': f'შეამოწმეთ ანალიზების თარიღი — ახალ ოპერაციის დღემდე არ უნდა იყოს {stale_lab_d} დღეზე ძველი.',
         })
 
     med_call = _med_call_status(ev, today)
@@ -278,11 +284,13 @@ def detect_postponement_impacts(patient, ev, today):
             })
 
     cea_ev_dt = _date(ev['q'].get('cea_event_date'))
-    if ev.get('is_symp_cea') and cea_ev_dt and (cur_dt - cea_ev_dt).days > 14:
-        impacts.append({
-            'tone': 'danger',
-            'text': f'სიმპტომური საძილე არტერიის (CEA) 14-დღიანი ფანჯარა ირღვევა (სიმპტომიდან იქნება {(cur_dt - cea_ev_dt).days} დღე) — აცნობეთ ქირურგს!',
-        })
+    if ev.get('is_symp_cea'):
+        cea_ref = today if ev['q'].get('cea_crescendo') else cea_ev_dt
+        if cea_ref and (cur_dt - cea_ref).days > cea_win_d:
+            impacts.append({
+                'tone': 'danger',
+                'text': f'სიმპტომური საძილე არტერიის (CEA) {cea_win_d}-დღიანი ფანჯარა ირღვევა (სიმპტომიდან იქნება {(cur_dt - cea_ref).days} დღე) — აცნობეთ ქირურგს!',
+            })
     started_dt = _date(patient.started_on)
     if ev.get('target_days', 14) <= 7 and started_dt and (cur_dt - started_dt).days > ev['target_days']:
         impacts.append({
@@ -291,11 +299,15 @@ def detect_postponement_impacts(patient, ev, today):
         })
 
     cta_dt = _date(s.get('cta_date'))
-    if cta_dt and (cur_dt - cta_dt).days > 183:
-        impacts.append({
-            'tone': 'warn',
-            'text': 'კტ-ანგიოგრაფია (CTA) ახალ თარიღზე 6 თვეზე ძველი იქნება — დააზუსტეთ ქირურგთან განახლების საჭიროება.',
-        })
+    if cta_dt:
+        aaa_mm = ev.get('aaa_mm')
+        is_giant_aaa = (ev.get('pathway') == 'aaa_infra' and aaa_mm is not None and aaa_mm >= cta_giant_mm)
+        max_cta_m = cta_giant_m if is_giant_aaa else cta_std_m
+        if cta_live_months_age({'cta_date': cta_dt.isoformat()}, today=cur_dt) > max_cta_m:
+            impacts.append({
+                'tone': 'danger' if is_giant_aaa else 'warn',
+                'text': f'კტ-ანგიოგრაფია (CTA) ახალ თარიღზე {max_cta_m} თვეზე ძველი იქნება — დააზუსტეთ ქირურგთან განახლების საჭიროება.',
+            })
 
     if not impacts:
         impacts.append({
@@ -347,15 +359,44 @@ _PATHWAY_EMERGENCY_SIGNS_KA = {
 }
 
 
+def _plain_undated_patient_med(item):
+    raw_d = item.get('raw_drug') or ''
+    if 'GLP-1' in raw_d:
+        return 'ოპერაციამდე 24 საათით ადრე დაგჭირდებათ მხოლოდ სუფთა თხევადი დიეტა; ზუსტ დღეს ექიმი შეგატყობინებთ თარიღის დანიშვნის შემდეგ.'
+    if 'ვარფარინ' in raw_d:
+        return 'ოპერაციის თარიღის დანიშვნის შემდეგ ექიმი მოგცემთ წამლის დროებით შეჩერების ზუსტ დღეს და გეტყვით, დაგჭირდებათ თუ არა დროებითი ნემსები.'
+    if 'DOAC' in raw_d or 'დაბიგატრან' in raw_d or 'რივაროქსაბან' in raw_d:
+        return 'ოპერაციის თარიღის დანიშვნის შემდეგ ექიმი მოგცემთ წამლის დროებით შეჩერების ზუსტ დღეს თირკმლის ანალიზის მიხედვით — თვითნებურად არ შეწყვიტოთ!'
+    if 'SGLT2' in raw_d:
+        return 'ოპერაციამდე 3–4 დღით ადრე დროებით შესაჩერებელია — ზუსტ დღეს ექიმი შეგატყობინებთ თარიღის დანიშვნის შემდეგ.'
+    if 'მეტფორმინ' in raw_d:
+        return 'ოპერაციის დილას დროებით გამოსატოვებელია ან დასაზუსტებელია თირკმლის ანალიზის მიხედვით — ზუსტ წესს ექიმი გეტყვით.'
+    if item.get('hold_or_skip'):
+        return 'ოპერაციის თარიღის დანიშვნის შემდეგ ექიმი მოგცემთ ამ წამლის დროებით შეჩერების ზუსტ დღეს — თვითნებურად არ შეწყვიტოთ!'
+    if item.get('tone') == 'ok':
+        return 'არ შეწყვიტოთ! მიიღეთ ჩვეულებრივად ექიმის დანიშნულებით.'
+    return 'ამ წამლის მიღების ან დროებით შეჩერების წესი შეათანხმეთ მკურნალ ექიმთან — თვითნებურად არ შეწყვიტოთ!'
+
+
 def _patient_2nd_person(entries):
     out = []
     for e in entries:
         item = dict(e)
         sp = item.get('spoken') or ''
+        if not (item.get('date_plan') or '').strip() and any(
+            k in sp for k in ('EHRA', 'PAUSE', 'CrCl', 'Multi-Society', 'ESAIC', 'ESVS', 'ESC', 'ASRA', 'D+1', 'LMWH', 'VKA')
+        ):
+            sp = _plain_undated_patient_med(item)
         sp = (
             sp.replace('არ შეწყვიტოს! მიიღოს', 'არ შეწყვიტოთ! მიიღეთ')
             .replace('ბოლო აბი მიიღოს:', 'ბოლო აბი მიიღეთ:')
             .replace('აღარ მიიღოს', 'აღარ მიიღოთ')
+            .replace('კონსილიუმის გარეშე', 'ექიმებთან შეთანხმების გარეშე')
+            .replace('კონსილიუმით', 'ექიმებთან შეთანხმებით')
+            .replace('LMWH ხიდი', 'დროებითი ნემსების სქემა')
+            .replace('LMWH', 'დროებითი ნემსი')
+            .replace('D+1', 'ოპერაციის მეორე დღიდან')
+            .replace('CrCl', 'თირკმლის მაჩვენებლით')
         )
         item['spoken'] = sp
         out.append(item)

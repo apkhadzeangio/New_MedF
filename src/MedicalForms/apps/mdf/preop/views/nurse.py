@@ -177,6 +177,7 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
                 s['nurse_med_called_by'] = ''
                 s['nurse_med_called_sig'] = ''
                 s['med_hold_agreed'] = False
+                s['med_hold_agreed_date'] = ''
                 _invalidate_approval_if_needed(patient, uf)
                 messages.info(request, 'დარეკვის მონიშვნა მოიხსნა.')
             elif not ev.get('needs_med_hold'):
@@ -189,6 +190,7 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
                 s['nurse_med_called_sig'] = med_schedule_signature(ev)
                 s['nurse_med_called_op_date'] = s.get('planned_surgery_date') or ''
                 s['med_hold_agreed'] = True
+                s['med_hold_agreed_date'] = timezone.localdate().isoformat()
                 messages.success(request, 'დაფიქსირდა: პაციენტს დაურეკეთ და წამლების შეჩერების გეგმა აუხსენით ✓')
 
             patient.studies = s
@@ -247,6 +249,7 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                     s['prev_planned_surgery_date'] = old_dt.isoformat()
                     s['postpone_ack_sig'] = ''
                 s['med_hold_agreed'] = False
+                s['med_hold_agreed_date'] = ''
                 if patient.approved_at is not None:
                     patient.approved_at = None
                     patient.approved_by = None
@@ -267,6 +270,7 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
             ev_new = evaluate(patient)
             if s.get('nurse_med_called_sig') and s.get('nurse_med_called_sig') != med_schedule_signature(ev_new):
                 s['med_hold_agreed'] = False
+                s['med_hold_agreed_date'] = ''
             patient.studies = s
             patient.updated_by = request.user
             patient.save(update_fields=uf)
@@ -282,7 +286,7 @@ class PreopNursePassportGuideView(LoginRequiredMixin, generic.View):
     def get(self, request, pk):
         from .. import evaluate
         from ..nurse_plan import build_patient_plain_explanation
-        from ..nurse_ui import PLAIN_PATHWAY_KA, PLAIN_SIDE_KA, PLAIN_SUBTYPE_KA
+        from ..nurse_ui import PLAIN_SIDE_KA, _plain_procedure_ka
 
         patient = get_object_or_404(
             PreopPatient.objects.select_related('surgeon', 'surgeon__profile', 'approved_by'),
@@ -295,7 +299,7 @@ class PreopNursePassportGuideView(LoginRequiredMixin, generic.View):
             'p': patient,
             'ev': ev,
             'guide': guide,
-            'procedure_ka': PLAIN_SUBTYPE_KA.get(patient.op_subtype, PLAIN_PATHWAY_KA.get(ev['pathway'], patient.planned_operation_label)),
+            'procedure_ka': _plain_procedure_ka(patient, ev),
             'side_ka': PLAIN_SIDE_KA.get(patient.side or '', ''),
             'surgeon_name': person_name(patient.surgeon),
             'today': today,

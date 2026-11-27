@@ -3,9 +3,16 @@ from ..constants import CXR_LABELS, ECG_LABELS, PRIORITY_LABELS, STATUS_LABELS
 
 
 def _result_clinical_part(ctx):
+    base_op_lbl = ctx.patient.planned_operation_label
+    eff_op_lbl = (
+        base_op_lbl.replace('ასიმპტომური', 'სიმპტომური')
+        if (ctx.pathway == 'cea' and ctx.is_symp_cea and 'ასიმპტომური' in base_op_lbl)
+        else base_op_lbl
+    )
     return {
         'pathway': ctx.pathway,
         'pathway_short': ctx.pw_short,
+        'effective_operation_label': eff_op_lbl,
         'side_badge': ctx.side_badge,
         'rcri': ctx.rcri,
         'vsg_cri': ctx.vsg_cri,
@@ -28,6 +35,9 @@ def _result_clinical_part(ctx):
         'has_vancomycin_allergy': getattr(ctx, 'has_vancomycin_allergy', False),
         'active_thrombolysis_window': getattr(ctx, 'active_thrombolysis_window', False),
         'has_mech_valve': ctx.has_mech_valve,
+        'has_known_dm': getattr(ctx, 'has_known_dm', False),
+        'uses_contrast': getattr(ctx, 'uses_contrast', False),
+        'creat_display_raw': ctx.s.get('creat') if ctx.s.get('creat') is not None else getattr(ctx, 'raw_creat', None),
         'na_val_sat': getattr(ctx, 'na_val_sat', None),
         'is_acute_emergency': ctx.is_acute_emergency,
         'show_pregnancy_check': ctx.show_pregnancy_check,
@@ -90,12 +100,6 @@ def _result_clinical_part(ctx):
         'dos_total_count': ctx.dos_total_count,
         'dos_ready': ctx.dos_ready,
         'dos_gl_mmol': ctx.dos_gl,
-        'case_outcome': ctx.case_outcome,
-        'case_outcome_label': ctx.case_outcome_label,
-        'vqi_bundle_applicable': ctx.vqi_bundle_applicable,
-        'vqi_bundle_done': ctx.vqi_bundle_done,
-        'vqi_30d_status': ctx.vqi_30d_status,
-        'vqi_30d_label': ctx.vqi_30d_label,
     }
 
 
@@ -192,6 +196,12 @@ def _result_flags_and_needs_part(ctx):
 def _result_needs_part(ctx):
     ft_keys = ctx.ft_meds.get('matched_keys') or ()
     return {
+        'case_outcome': ctx.case_outcome,
+        'case_outcome_label': ctx.case_outcome_label,
+        'vqi_bundle_applicable': ctx.vqi_bundle_applicable,
+        'vqi_bundle_done': ctx.vqi_bundle_done,
+        'vqi_30d_status': ctx.vqi_30d_status,
+        'vqi_30d_label': ctx.vqi_30d_label,
         'implausible_fields': ctx.implausible_fields,
         'severe_htn': ctx.severe_htn,
         'ft_meds_keys': sorted(ft_keys),

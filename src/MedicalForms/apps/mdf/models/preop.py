@@ -147,7 +147,9 @@ class PreopPatient(models.Model):
 
     @property
     def planned_operation_label(self):
-        side_lbl = {'R': ' (მარჯვ.)', 'L': ' (მარცხ.)', 'B': ' (ორმხრ.)'}.get(self.side, '')
+        side_s = self.side if isinstance(self.side, str) else ''
+        sub_s = self.op_subtype if isinstance(self.op_subtype, str) else ''
+        side_lbl = {'R': ' (მარჯვ.)', 'L': ' (მარცხ.)', 'B': ' (ორმხრ.)'}.get(side_s, '')
         short = {
             'open': 'AAA — ღია რეზექცია',
             'evar': 'AAA — EVAR',
@@ -163,7 +165,7 @@ class PreopPatient(models.Model):
             'evla': f'EVLA{side_lbl} — ლაზერული აბლაცია',
             'phlebectomy': f'ფლებექტომია{side_lbl}',
         }
-        return short.get(self.op_subtype, self.get_op_subtype_display())
+        return short.get(sub_s, self.get_op_subtype_display() if sub_s else '')
 
     @property
     def diagnosis_text(self):

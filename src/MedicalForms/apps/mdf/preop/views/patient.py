@@ -102,6 +102,7 @@ def _sync_med_hold_after_mutation(patient, ev_before, ev_after, save=True):
     ):
         if s_cur.get('med_hold_agreed'):
             s_cur['med_hold_agreed'] = False
+            s_cur['med_hold_agreed_date'] = ''
             patient.studies = s_cur
             if save:
                 patient.save(update_fields=['studies', 'updated_at'])
@@ -133,7 +134,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 self._save_header(request, patient)
                 _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
                 messages.success(request, 'პაციენტის მონაცემები განახლდა.')
-                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + f"?tab={request.POST.get('tab', 'q')}")
+                tab_ret = request.POST.get('tab') or 'q'
+                if tab_ret not in ('q', 's1', 's2', 'doc', 'dos'):
+                    tab_ret = 'q'
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + f'?tab={tab_ret}')
 
             if section in ('questionnaire', 'q'):
                 ev_before = evaluate(patient)
@@ -248,9 +252,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             if slot_kind.startswith('someday:'):
                 key = slot_kind.split(':', 1)[1]
                 if key == PreopPatient.SomedayList.READY:
-                    ev_hdr = evaluate(patient)
-                    if not can_enter_ready_queue(patient, ev_hdr):
-                        key = old_someday or PreopPatient.SomedayList.CONF
+                    if not can_enter_ready_queue(patient, evaluate(patient)):
+                        key = old_someday if (old_someday and old_someday != PreopPatient.SomedayList.READY) else PreopPatient.SomedayList.CONF
                 patient.someday_list = key if key in PreopPatient.SomedayList.values else PreopPatient.SomedayList.CONF
                 patient.visit_date = None
             else:
@@ -274,6 +277,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         ]
         if s.get('planned_surgery_date') != old_op_dt:
             s['med_hold_agreed'] = False
+            s['med_hold_agreed_date'] = ''
         inv_now = s.get('_invalid_inputs') or {}
         if patient.side != old_side or patient.op_subtype != old_sub:
             s['dos_site_marked'] = False
@@ -294,6 +298,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['carotid_symp'] = False
 
         patient.studies = s
+        if patient.someday_list == PreopPatient.SomedayList.READY and not can_enter_ready_queue(patient, evaluate(patient)):
+            patient.someday_list = PreopPatient.SomedayList.CONF
         patient.updated_by = request.user
         patient.save(update_fields=list(dict.fromkeys(uf)))
 
@@ -311,6 +317,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         uf = ['questionnaire', 'studies', 'side', 'started_on', 'anamnesis', 'updated_at', 'updated_by']
         if {k: merged_q(patient).get(k) for k in med_keys} != old_meds:
             s['med_hold_agreed'] = False
+            s['med_hold_agreed_date'] = ''
         if patient.side != old_side:
             s['dos_site_marked'] = False
             s['alerts_ack_sig'] = ''
@@ -365,6 +372,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s.get('med_hold_agreed') and med_hold_agreement_block_reason(ev_after, s)
         ):
             s['med_hold_agreed'] = False
+            s['med_hold_agreed_date'] = ''
+            patient.studies = s
+        elif s.get('med_hold_agreed') and not s.get('med_hold_agreed_date'):
+            s['med_hold_agreed_date'] = timezone.localdate().isoformat()
             patient.studies = s
         patient.updated_by = request.user
         _invalidate_approval_if_needed(patient, uf)
@@ -459,6 +470,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         uf = ['studies', 'updated_at', 'updated_by']
         if s.get('planned_surgery_date') != old_op_dt:
             s['med_hold_agreed'] = False
+            s['med_hold_agreed_date'] = ''
             _invalidate_approval_if_needed(patient, uf)
         patient.studies = s
         patient.updated_by = request.user
@@ -543,6 +555,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             patient.approved_at = None
             patient.approved_by = None
             uf.extend(['approved_at', 'approved_by'])
+            if patient.someday_list == PreopPatient.SomedayList.READY:
+                patient.someday_list = PreopPatient.SomedayList.CONF
+                uf.append('someday_list')
             messages.info(request, 'დადასტურება მოიხსნა.')
         else:
             messages.success(request, 'ანამნეზი შეინახა.')

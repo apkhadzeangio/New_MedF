@@ -41,6 +41,15 @@ _SF_MED_CHIP_LABELS = (
 )
 
 
+_SF_CHIP_FALLBACKS = {
+    'cea_prior_neck': 'cea_neck_chips',
+    'abf_ulcer': 'ulcer_chips',
+    'ven_dvt_history': 'ven_dvt_chips',
+    'active_infection': 'inf_chips',
+    'pulm': 'pulm_chips',
+}
+
+
 def build_self_fill_highlights(q):
     """Extract concise positive findings reported by the patient via Self-Fill link for 5-second nurse reconciliation."""
     if not isinstance(q, dict) or not (q.get('filled') or is_self_filled_q(q)):
@@ -48,7 +57,7 @@ def build_self_fill_highlights(q):
     items = []
     if q.get('cea_crescendo'):
         items.append(('urgent', 'განმეორებითი TIA/სიმპტომი <48 სთ!'))
-    elif q.get('cea_symp_event'):
+    elif q.get('cea_symp_event') or q.get('cea_event_chips'):
         items.append(('warn', 'ნევროლოგიური სიმპტომი ანამნეზში'))
     if q.get('cea_thrombolysis'):
         from .registry import rule_value
@@ -60,11 +69,12 @@ def build_self_fill_highlights(q):
             items.append(('warn', f'თრომბოლიზისი ანამნეზში (>{rtpa_d} დღე)'))
     if q.get('ven_pregnant') or q.get('pregnant_possible'):
         items.append(('urgent', 'ორსულობა / შესაძლო ორსულობა / ლაქტაცია!'))
+    cad_ch = set(_str_list(q.get('cad_chips')))
     if q.get('recent_stent'):
         items.append(('urgent', 'კორონარული სტენტი <6 თვეში!'))
-    elif q.get('cad'):
+    elif q.get('cad') or (cad_ch - {'mech_valve'}):
         items.append(('warn', 'გულის დაავადება / სტენტი / არითმია'))
-    if 'mech_valve' in _str_list(q.get('cad_chips')):
+    if 'mech_valve' in cad_ch:
         items.append(('urgent', 'მექანიკური სარქველი!'))
     if not q.get('mets_ok', True):
         items.append(('warn', f"დატვირთვის შეზღუდვა ({'კიდურით' if q.get('mets_limitation') == 'limb' else '<4 METs ქოშინი/გული'})"))
@@ -77,10 +87,13 @@ def build_self_fill_highlights(q):
     elif q.get('ulcer'):
         items.append(('info', 'კუჭის წყლული ანამნეზში'))
     for key, lvl, label in _SF_SIMPLE_FLAGS:
-        if q.get(key):
+        fb = _SF_CHIP_FALLBACKS.get(key)
+        if q.get(key) or (fb and q.get(fb)):
             items.append((lvl, label))
-    if q.get('cea_neck_chips') and not q.get('cea_prior_neck'):
-        items.append(('warn', 'კისრის წინა ოპერაცია / დასხივება (CEA)'))
+    if q.get('abdo_chips') and not q.get('prev_abdo_surg'):
+        items.append(('info', 'მუცლის/საზარდულის წინა ოპერაციები'))
+    if q.get('ven_rec_chips') and not q.get('ven_recurrent'):
+        items.append(('info', 'რეციდივული ვარიკოზი'))
 
     med_chips = set(_str_list(q.get('med_chips')))
     meds = [lbl for key, lbl in _SF_MED_BOOLS if q.get(key)]
@@ -156,7 +169,7 @@ def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
     )
 
     neck_bits = []
-    if q.get('cea_prior_neck'):
+    if q.get('cea_prior_neck') or q.get('cea_neck_chips'):
         neck_txt = chip_summary(q.get('cea_neck_chips'), 'cea_neck_chips', q.get('cea_prior_neck_text')) or 'აღნიშნავს'
         neck_bits.append(f'კისრის წინა ჩარევა/დასხივება: {neck_txt}')
     if q.get('cea_hoarseness'):
@@ -187,14 +200,14 @@ def _anam_abf(patient, q, s, head_prefix, surgeon_str, abdo_txt, vasc_txt, ulcer
     rest_part = 'აღნიშნავს მოსვენებით/ღამის იშემიურ ტკივილს' if q.get('abf_rest_pain') else 'მოსვენებით ტკივილს უარყოფს'
     lines.append(f'სისხლძარღვოვანი ჩივილები: {claud_part}; {rest_part}.')
 
-    if q.get('abf_ulcer'):
+    if q.get('abf_ulcer') or q.get('ulcer_chips'):
         wet_str = 'სველი/ჩირქოვანი გამონადენით (!)' if q.get('abf_wet_infection') else 'მშრალი, მწვავე ჩირქოვანი ნიშნების გარეშე'
         lines.append(f"ტროფიკული სტატუსი: წყლული/ნეკროზი ({ulcer_txt or 'ტერფზე'}), {wet_str}.")
     groin_str = 'საზარდულის ნაკეცებში ინტერტრიგო/დაზიანება (!)' if q.get('abf_groin_issue') else 'საზარდულის კანი ინტაქტურია'
     surg_bits = [groin_str]
-    if q.get('abf_prior_vasc'):
+    if q.get('abf_prior_vasc') or q.get('vasc_chips'):
         surg_bits.append(f"წინა სისხლძარღვოვანი ჩარევა: {vasc_txt or 'აღნიშნავს'}")
-    if q.get('prev_abdo_surg'):
+    if q.get('prev_abdo_surg') or q.get('abdo_chips'):
         surg_bits.append(f"მუცლის ღრუს ოპერაცია: {abdo_txt or 'აღნიშნავს'}")
     lines.append('; '.join(surg_bits) + '.')
 
@@ -231,7 +244,7 @@ def _anam_pad(patient, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
             claud_part += ' — საეჭვოა მწვავე იშემია (ALI)!'
     rest_part = 'მოსვენებითი ტკივილი (+)' if q.get('abf_rest_pain') else 'მოსვენებით ტკივილს უარყოფს'
     lines.append(f'სისხლძარღვოვანი ჩივილები: {claud_part}; {rest_part}.')
-    if q.get('abf_ulcer'):
+    if q.get('abf_ulcer') or q.get('ulcer_chips'):
         wet_str = 'სველი/ჩირქოვანი ინფექციით (!)' if q.get('abf_wet_infection') else 'მწვავე ჩირქოვანი გამონადენის გარეშე'
         lines.append(f"ტროფიკული სტატუსი: {ulcer_txt or 'ტერფის წყლული/ნეკროზი'}, {wet_str}.")
 
@@ -304,7 +317,7 @@ def _anam_venous(patient, ev, q, s, head_prefix, surgeon_str):
         ven_notes.append('დუპლექსით ღრმა ვენების პოსტთრომბოზული ოკლუზია (!)')
     elif v_dup == 'superficial_thrombus':
         ven_notes.append('დუპლექსით მწვავე აღმავალი თრომბოფლებიტი (!)')
-    if q.get('ven_dvt_history'):
+    if q.get('ven_dvt_history') or q.get('ven_dvt_chips'):
         dvt_txt = chip_summary(q.get('ven_dvt_chips'), 'ven_dvt_chips', q.get('ven_dvt_text')) or 'აღნიშნავს'
         ven_notes.append(f'ანამნეზში DVT/PE ({dvt_txt})')
     if q.get('ven_thrombophilia'):
@@ -313,7 +326,7 @@ def _anam_venous(patient, ev, q, s, head_prefix, surgeon_str):
         ven_notes.append('მწვავე თრომბოფლებიტი (!)')
     if q.get('ven_bleeding'):
         ven_notes.append('სისხლდენა კვანძიდან ანამნეზში')
-    if q.get('ven_recurrent'):
+    if q.get('ven_recurrent') or q.get('ven_rec_chips'):
         rec_txt = chip_summary(q.get('ven_rec_chips'), 'ven_rec_chips', q.get('ven_recurrent_text')) or 'წინა ჩარევის შემდეგ'
         ven_notes.append(f'რეციდივული ვარიკოზი ({rec_txt})')
     if q.get('ven_hormones'):
@@ -364,7 +377,7 @@ def _anam_aaa(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt):
     if (s.get('popliteal_screen_status') or 'pending') != 'pending':
         pop_lbl = 'მუხლქვეშა ანევრიზმა გამოირიცხა' if s.get('popliteal_screen_status') == 'normal' else 'გამოვლინდა თანმხლები მუხლქვეშა/ბარძაყის ანევრიზმა (!)'
         surg_extras.append(pop_lbl)
-    if q.get('prev_abdo_surg'):
+    if q.get('prev_abdo_surg') or q.get('abdo_chips'):
         surg_extras.append(f"მუცლის/საზარდულის ოპერაციები: {abdo_txt or 'აღნიშნავს'}")
     if q.get('claudication'):
         surg_extras.append('აღნიშნავს ხანგამოშვებით კოჭლობას სიარულისას')
@@ -378,6 +391,7 @@ def _anam_aaa(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt):
 def _anam_comorb_meds_allergy(pathway, ev, q):
     from .registry import rule_value
     hba1c_dm = rule_value('GLY_GLUCOSE_HBA1C')['hba1c_dm']
+    lvef_red = rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red']
     lines = []
     if q.get('mets_ok', True):
         mets_str = 'დამაკმაყოფილებელი (>= 4 METs, ადის 2 სართულზე გაუჩერებლად)'
@@ -391,6 +405,7 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
     if q.get('htn'):
         comorb.append('არტერიული ჰიპერტენზია')
     cad_ch_set = set(_str_list(q.get('cad_chips')))
+    lvef_c = _int((ev.get('s') or {}).get('lvef'), 5, 95)
     if q.get('cad') or q.get('recent_stent') or cad_ch_set:
         has_ihd_chip = bool((cad_ch_set & {'mi', 'angina', 'cabg', 'stent_old', 'stent_6_12m'}) or q.get('recent_stent') or not cad_ch_set)
         c_det = chip_summary(q.get('cad_chips'), 'cad_chips', q.get('cad_detail'))
@@ -398,6 +413,8 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
             c_det = '; '.join([x for x in ('კორონარული სტენტი <6 თვ.', c_det) if x])
         cad_head = 'გულის იშემიური დაავადება' if has_ihd_chip else 'კარდიოლოგიური პათოლოგია'
         comorb.append(f"{cad_head}{f' ({c_det})' if c_det else ''}")
+    elif lvef_c is not None and lvef_c < lvef_red:
+        comorb.append(f'გულის უკმარისობა / დაქვეითებული განდევნის ფრაქცია (LVEF {lvef_c}%)')
     hba1c_a = _num((ev.get('s') or {}).get('hba1c'), 3.0, 25.0)
     if q.get('dm') or q.get('dm_insulin') or q.get('metformin'):
         dm_kind = 'ინსულინზე' if q.get('dm_insulin') else 'ტაბლეტებზე'
@@ -453,7 +470,7 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
         allergies.append('მედიკამენტური ალერგია')
     if pathway == PreopPatient.Pathway.VENOUS:
         no_allergy_txt = 'უარყოფს (მ.შ. ლიდოკაინზე)'
-    elif q.get('allergy_iodine_asked') or q.get('nurse_verified'):
+    elif q.get('allergy_iodine_asked'):
         no_allergy_txt = 'უარყოფს (მ.შ. იოდზე/კონტრასტზე)'
     else:
         no_allergy_txt = 'უარყოფს (იოდზე ალერგია დასაზუსტებელია)'

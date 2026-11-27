@@ -274,7 +274,11 @@ def _eval_antithrombotic_conflicts(ctx):
         ctx.red_flags.append(
             'პაციენტს მონიშნული აქვს კლოპიდოგრელის აუტანლობა/ალერგია, მაგრამ იღებს კლოპიდოგრელს — დაუყოვნებლივ გადაამოწმეთ დანიშნულება!'
         )
-    if (q.get('med_clopidogrel') or 'cilostazol' in ctx.med_chips) and ('ppi' in ctx.med_chips or ctx.ft_meds['has_omeprazole']):
+    ft_keys = ctx.ft_meds.get('matched_keys') or set()
+    if (
+        q.get('med_clopidogrel') or 'cilostazol' in ctx.med_chips
+        or 'clopidogrel' in ft_keys or 'cilostazol' in ft_keys
+    ) and ('ppi' in ctx.med_chips or ctx.ft_meds['has_omeprazole']):
         ctx.amber_flags.append(
             'CYP2C19 ურთიერთქმედება: ომეპრაზოლი/ეზომეპრაზოლი ამცირებს კლოპიდოგრელის აქტივაციას და ზრდის ცილოსტაზოლის კონცენტრაციას/ტოქსიკურობას — შეცვალეთ პანტოპრაზოლით (40 მგ)!'
         )
@@ -332,14 +336,20 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
             'პაციენტი მუდმივ პერორალურ ანტიკოაგულანტზეა (OAC) — პოსტოპ. მონო-ანტიაგრეგანტზე (SAPT) ჩამოქვეითება ანტიკოაგულაციის გარეშე საშიშია! შეარჩიეთ OAC + მონო-ანტიაგრეგანტი.'
         )
         return f'SAPT უკუნაჩვენებია OAC-ზე! შეცვალეთ: OAC + {oac_partner_lbl}'
-    if post_at_raw in ('voyager', 'dapt') and ctx.has_full_oac:
+    if (post_at_raw in ('voyager', 'dapt') and ctx.has_full_oac) or (post_at_raw == 'dapt' and 'rivaroxaban_2_5' in ctx.med_chips):
+        if 'rivaroxaban_2_5' in ctx.med_chips and not ctx.has_full_oac:
+            ctx.red_flags.append(
+                'არჩეულია პოსტოპ. DAPT პაციენტთან, რომელიც იღებს რივაროქსაბან 2.5 მგ ×2-ს — სამმაგი თერაპიისა და რივაროქსაბანი 2.5 + ტიკაგრელორის სისხლდენის მაღალი რისკი (ESC Class III)! '
+                'შეარჩიეთ VOYAGER PAD (რივაროქსაბანი 2.5 + ასპირინი) ან შეაჩერეთ რივაროქსაბანი DAPT-ისთვის.'
+            )
+            return f'DAPT უკუნაჩვენებია რივაროქსაბან 2.5 მგ-თან (სამმაგი თერაპია)! შეცვალეთ: რივაროქსაბანი 2.5 + {oac_partner_lbl}'
         ctx.red_flags.append(
             'არჩეულია პოსტოპ. VOYAGER / DAPT პაციენტთან, რომელიც მუდმივ ანტიკოაგულანტზეა (OAC) — სამმაგი თერაპიის სისხლდენის მაღალი რისკი! შეცვალეთ OAC + მონო-ანტიაგრეგანტით.'
         )
         return f'არჩეული სქემა უკუნაჩვენებია OAC-ზე (სამმაგი თერაპია)! შეცვალეთ: OAC + {oac_partner_lbl}'
     if post_at_raw == 'voyager' and not voyager_safe:
         ctx.red_flags.append(
-            'პოსტოპ. VOYAGER PAD (რივაროქსაბანი 2.5 მგ ×2) უკუნაჩვენებია/საშიშია (დიალიზი, CrCl/eGFR დაბალი, მექ. სარქველი, AFib, სტენტი/DAPT, ინსულტი, წყლული, ღვიძლის 3x ან ასპირინზე ალერგია) — შეარჩიეთ ალტერნატივა!'
+            'პოსტოპ. VOYAGER PAD (რივაროქსაბანი 2.5 მგ ×2) უკუნაჩვენებია/საშიშია (დიალიზი, CrCl/eGFR უცნობი ან დაბალი, მექ. სარქველი, AFib, სტენტი/DAPT, ინსულტი, წყლული, ღვიძლის 3x ან ასპირინზე ალერგია) — შეარჩიეთ ალტერნატივა!'
         )
         if has_active_stent_dapt:
             if asa_allergy:
@@ -401,9 +411,17 @@ def _eval_postop_voyager(ctx):
     post_at_raw = s.get('post_antithrombotic_plan') or 'auto'
     post_antithrombotic_label = ''
     asa_allergy = 'nsaid' in ctx.allergy_chips
-    voyager_safe = (
-        (ctx.egfr is None or ctx.egfr >= voy_cfg['min_egfr'])
+    eff_ren_sat = getattr(ctx, 'eff_renal_sat', None)
+    voy_renal_ok = (
+        (ctx.egfr is not None or ctx.crcl is not None)
+        and not ctx.creat_unit_ambiguous
+        and not getattr(ctx, 'creat_unit_mismatch', False)
+        and (ctx.egfr is None or ctx.egfr >= voy_cfg['min_egfr'])
         and (ctx.crcl is None or ctx.crcl >= voy_cfg['min_egfr'])
+        and (eff_ren_sat is None or eff_ren_sat >= voy_cfg['min_egfr'])
+    )
+    voyager_safe = (
+        voy_renal_ok
         and not ctx.on_dialysis
         and not q.get('ulcer_active_symp')
         and (s.get('gastro_result') != 'acute_ulcer')
@@ -467,6 +485,39 @@ def _eval_postop_voyager(ctx):
     ctx.post_antithrombotic_label = post_antithrombotic_label
 
 
+def _parse_med_confirm_date(patient, s, med_schedule):
+    """Return earliest verified pre-window hold confirmation date (nurse call, Stage 2, or approval), else None."""
+    import datetime as _dt
+
+    from django.utils import timezone
+
+    from ..nurse_ui import med_schedule_signature
+    if not s.get('med_hold_agreed'):
+        return None
+    dates = []
+    cur_sig = med_schedule_signature({'s': s, 'med_schedule': med_schedule})
+    called_at = str(s.get('nurse_med_called_at') or '').strip()
+    if called_at and str(s.get('nurse_med_called_sig') or '') == cur_sig:
+        for fmt in ('%d.%m.%Y %H:%M', '%d.%m.%Y', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
+            try:
+                dates.append(_dt.datetime.strptime(called_at[:16], fmt).date())
+                break
+            except ValueError:
+                continue
+    agreed_dt = _date(s.get('med_hold_agreed_date'))
+    if agreed_dt:
+        dates.append(agreed_dt)
+    if patient.approved_at:
+        ap = patient.approved_at
+        if isinstance(ap, _dt.datetime):
+            ap_d = timezone.localtime(ap).date() if timezone.is_aware(ap) else ap.date()
+        else:
+            ap_d = _date(ap)
+        if ap_d:
+            dates.append(ap_d)
+    return min(dates) if dates else None
+
+
 def _eval_elapsed_hold_window_alert(ctx):
     from ..nurse_ui import _extract_hold_start_date
     ctx.has_elapsed_hold_window = False
@@ -483,11 +534,13 @@ def _eval_elapsed_hold_window_alert(ctx):
         return
     elapsed = op_dt < ctx.today
     if not elapsed and not s.get('dos_med_hold_verified'):
+        confirmed_dt = _parse_med_confirm_date(ctx.patient, s, ctx.med_schedule)
         for r in hold_rows:
             st_dt = _extract_hold_start_date(r, op_dt)
             if st_dt and st_dt < ctx.today:
-                elapsed = True
-                break
+                if r.get('contraindicated') or confirmed_dt is None or confirmed_dt > st_dt:
+                    elapsed = True
+                    break
     if elapsed:
         ctx.has_elapsed_hold_window = True
         ctx.red_flags.append(

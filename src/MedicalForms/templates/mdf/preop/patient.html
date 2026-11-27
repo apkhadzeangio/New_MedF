@@ -119,7 +119,7 @@
             <summary>
                 ✎ პირადი, კალენდარული და საოპერაციო მონაცემები
                 <span class="fw-normal opacity-75">
-                    ({{ p.planned_operation_label }}{% if p.age %} · {{ p.age }} წ.{% endif %}{% if ev.person_id %} · პირადი N: {{ ev.person_id }}{% endif %}{% if p.phone %} · {{ p.phone }}{% endif %})
+                    ({{ ev.effective_operation_label }}{% if p.age %} · {{ p.age }} წ.{% endif %}{% if ev.person_id %} · პირადი N: {{ ev.person_id }}{% endif %}{% if p.phone %} · {{ p.phone }}{% endif %})
                 </span>
             </summary>
             <form method="post" class="d-flex flex-column gap-2 pt-1">

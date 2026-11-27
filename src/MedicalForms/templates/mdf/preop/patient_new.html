@@ -461,8 +461,8 @@
                         <label for="nw-hdr-surgeon">მკურნალი ქირურგი</label>
                         <select id="nw-hdr-surgeon" name="surgeon">
                             <option value="">აირჩიეთ...</option>
-                            {% for doc in doctors %}
-                            <option value="{{ doc.pk }}" {% if p.surgeon_id == doc.pk %}selected{% endif %}>{{ doc.display_name }}</option>
+                            {% for uid, uname in doctors %}
+                            <option value="{{ uid }}" {% if p.surgeon_id == uid %}selected{% endif %}>{{ uname }}</option>
                             {% endfor %}
                         </select>
                     </div>

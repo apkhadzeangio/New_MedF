@@ -9,7 +9,7 @@ def eval_pta(ctx):
     abi_norm_lo, abi_norm_hi = rule_value('PAD_IC_BMT_3M')
     ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
     is_clti = (patient.op_subtype == PreopPatient.OpSubtype.PTA_CLTI) or (
-        q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')))
+        q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')) or bool(q.get('ulcer_chips')))
     )
     ctx.is_clti_any = is_clti
     if q_filled and patient.side not in ('R', 'L', 'B'):
@@ -51,7 +51,7 @@ def eval_pta(ctx):
             )
     if ctx.min_comp_abi is not None and ctx.min_comp_abi < hemo_cfg['abi_severe'] and not is_clti:
         ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < {hemo_cfg["abi_severe"]:.2f}) — შეესაბამება მძიმე იშემიას.')
-    if patient.op_subtype == PreopPatient.OpSubtype.PTA_CLAUD and q_filled and (q.get('abf_rest_pain') or q.get('abf_ulcer')):
+    if patient.op_subtype == PreopPatient.OpSubtype.PTA_CLAUD and q_filled and (q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips')):
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
         )
@@ -76,7 +76,7 @@ def eval_pta(ctx):
     if q_filled and q.get('pta_cant_lie_flat'):
         ctx.amber_flags.append('პაციენტს უჭირს ზურგზე გაუნძრევლად წოლა 60–90 წთ — ავტომატურად ჩაირთო ანესთეზიოლოგი (სედაციისთვის).')
     if 'clopidogrel_intol' in ctx.allergy_chips:
-        has_oac_pta = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran') or ('rivaroxaban_2_5' in ctx.med_chips))
+        has_oac_pta = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran') or ('rivaroxaban_2_5' in ctx.med_chips) or s.get('post_antithrombotic_plan') in ('voyager', 'voyager_pad'))
         if has_oac_pta and 'nsaid' in ctx.allergy_chips:
             alt_pta_txt = 'ინდივიდუალური რეჟიმი კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია — OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III აკრძალულია!)'
         elif has_oac_pta:
@@ -100,4 +100,4 @@ def eval_pta(ctx):
     elif is_clti:
         ctx.key_badge = 'CLTI'
         ctx.key_badge_urgent = True
-    ctx.needs_wound_care = bool(q.get('abf_wet_infection') or q.get('abf_groin_issue')) or (q_filled and bool(q.get('abf_ulcer')))
+    ctx.needs_wound_care = bool(q.get('abf_wet_infection') or q.get('abf_groin_issue')) or (q_filled and bool(q.get('abf_ulcer') or q.get('ulcer_chips')))

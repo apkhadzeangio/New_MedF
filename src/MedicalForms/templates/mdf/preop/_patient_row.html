@@ -1,6 +1,6 @@
 <a href="{% url 'preop-patient' p.pk %}" class="tw-row st-{{ p.ev.status }}"
    draggable="true" data-move-url="{% url 'preop-move' p.pk %}"
-   title="{{ p.patient_name }} — {{ p.planned_operation_label }} — {{ p.ev.status_label }} ({{ p.ev.priority_label }})">
+   title="{{ p.patient_name }} — {{ p.ev.effective_operation_label }} — {{ p.ev.status_label }} ({{ p.ev.priority_label }})">
     <div class="tw-row-main">
         <div class="tw-row-top">
             <span class="dot dot-{{ p.ev.status }}" style="width:7px;height:7px;border-radius:50%;flex:none"></span>
@@ -13,7 +13,7 @@
             {% endif %}
         </div>
         <div class="tw-row-sub">
-            {{ p.planned_operation_label }}{% if p.surgeon_name %} · ექ. {{ p.surgeon_name }}{% endif %}{% if p.ev.case_outcome == 'scheduled' and p.ev.next_step_hint %} · <span class="tw-next-hint {% if p.ev.has_hard_contraindication %}bad{% elif p.ev.status == 'ready' %}ok{% endif %}">{{ p.ev.next_step_hint }}</span>{% endif %}
+            {{ p.ev.effective_operation_label }}{% if p.surgeon_name %} · ექ. {{ p.surgeon_name }}{% endif %}{% if p.ev.case_outcome == 'scheduled' and p.ev.next_step_hint %} · <span class="tw-next-hint {% if p.ev.has_hard_contraindication %}bad{% elif p.ev.status == 'ready' %}ok{% endif %}">{{ p.ev.next_step_hint }}</span>{% endif %}
         </div>
     </div>
     <div class="tw-row-meta">

@@ -146,7 +146,10 @@ def _detect_freetext_high_risk_meds(text, q=None):
         matched_keys.add('aspirin')
         unstructured_labels.append('ასპირინი (NSAID ალერგია!)' if 'nsaid' in eff_alg_chips else 'ასპირინი (75–100 მგ)')
         unstructured_at = True
-    is_ertug = any(st in low for st in ('ერტუგლიფ', 'ertuglif', 'სტეგლატრ', 'steglatro'))
+    is_ertug = any(st in low for st in (
+        'ერტუგლიფ', 'ertuglif', 'სტეგლატრ', 'steglatro',
+        'სეგლურომეტ', 'segluromet', 'სტეგლუჯან', 'steglujan',
+    ))
     is_daily_glp1 = any(st in low for st in ('საქსენდ', 'saxenda', 'ვიქტოზ', 'victoza', 'ლირაგლუტ', 'liraglut', 'რიბელსუს', 'rybelsus'))
     return {
         'matched_keys': matched_keys,

@@ -18,11 +18,11 @@ def _eval_cea_symptoms_and_clocks(ctx):
         and (days_since_ev is None or days_since_ev <= tl_days)
     )
 
-    if days_since_ev is not None and days_since_ev > symp_max_days and (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP or q.get('cea_symp_event')):
+    if not q.get('cea_crescendo') and days_since_ev is not None and days_since_ev > symp_max_days and (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP or q.get('cea_symp_event')):
         ctx.amber_flags.append(
             f'ნევროლოგიური ეპიზოდიდან გასულია {days_since_ev} დღე (>6 თვე) — ESVS 2023 გაიდლაინით განიხილება როგორც ასიმპტომური სტენოზი.'
         )
-    elif patient.op_subtype == PreopPatient.OpSubtype.CEA_ASYMP and q.get('cea_symp_event'):
+    elif patient.op_subtype == PreopPatient.OpSubtype.CEA_ASYMP and (q.get('cea_symp_event') or q.get('cea_event_chips')) and not q.get('cea_crescendo'):
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა ნევროლოგიური სიმპტომი ბოლო 6 თვეში — გადაამოწმეთ სიმპტომური CEA-ს სტატუსი (14-დღიანი ფანჯარა)!'
         )
@@ -51,7 +51,8 @@ def _eval_cea_symptoms_and_clocks(ctx):
             'მძიმე ნარჩენი ნევროლოგიური დეფიციტი (mRS >= 3) — გადაამოწმეთ CEA-ს ჩვენება და ვადები ქირურგთან და ნევროლოგთან!'
         )
 
-    if is_symp_cea and days_since_ev is not None and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
+    cresc_old_ev = bool(q.get('cea_crescendo') and days_since_ev is not None and days_since_ev > symp_max_days)
+    if is_symp_cea and days_since_ev is not None and not cresc_old_ev and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
         if days_since_ev > win_days:
             msg = f'ინდექსური სიმპტომიდან გავიდა {days_since_ev} დღე — გადაცილებულია ESVS 2023-ის {win_days}-დღიანი ოპტიმალური ფანჯარა! დააჩქარეთ ქირურგის შეფასება.'
             ctx.red_flags.append(msg)
@@ -168,7 +169,7 @@ def eval_cea(ctx):
         ctx.amber_flags.append('კისრის/თავის ტვინის CTA/MRI DICOM დისკი ჯერ არ არის მოტანილი / შემოწმებული.')
 
     ctx.needs_neuro = ctx.is_symp_cea or has_cea_neuro_flags or (q_filled and bool(q.get('neuro')))
-    ctx.needs_laryngoscopy = q_filled and (bool(q.get('cea_prior_neck')) or bool(q.get('cea_hoarseness')))
+    ctx.needs_laryngoscopy = q_filled and (bool(q.get('cea_prior_neck')) or bool(q.get('cea_neck_chips')) or bool(q.get('cea_hoarseness')))
     laryng_res = s.get('laryngoscopy_res') or 'pending'
     if laryng_res == 'palsy':
         ctx.red_flags.append(

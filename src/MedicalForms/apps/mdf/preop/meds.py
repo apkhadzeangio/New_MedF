@@ -127,7 +127,7 @@ def _med_renal_and_flags(patient, q, s, egfr, crcl):
 
 
 def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=None):
-    from .calculators import _s_raw, _sat_num, is_creat_unit_mismatch
+    from .calculators import _parse_scr_mgdl, _s_raw, _sat_num, is_creat_unit_mismatch
     from .registry import rule_value
     from .utils import is_symp_cea_patient
     pw = _resolve_pathway(patient)
@@ -148,8 +148,9 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
         else ((anesth_plan == 'neuraxial') or has_epidural_line or (anesth_plan == 'auto' and is_phleb))
     )
     on_dialysis, eff_renal, cl_label, frail_no_wt_note = _med_renal_and_flags(patient, q, s, egfr, crcl)
-    raw_cr_m = _s_raw(s, 'creat')
-    creat_mismatch = (not on_dialysis) and is_creat_unit_mismatch(raw_cr_m, s.get('creat_unit') or '')
+    raw_cr_m, cr_u_m = _s_raw(s, 'creat'), s.get('creat_unit') or ''
+    creat_mismatch = (not on_dialysis) and is_creat_unit_mismatch(raw_cr_m, cr_u_m)
+    creat_ambig = (not on_dialysis) and (not creat_mismatch) and bool(_parse_scr_mgdl(raw_cr_m, cr_u_m)[1])
     creat_extreme_hi = (not on_dialysis) and (egfr is None) and ((_num(raw_cr_m) or 0) > 3000)
     op_dt = _date(s.get('planned_surgery_date'))
     liver_3x = (s.get('liver_status') == '3x')
@@ -202,7 +203,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
         'is_cea_rtpa_asa_caution': is_cea_rtpa_6d and not is_cea_ich and not is_cea_rtpa_ap_stop,
         'anesth_plan': anesth_plan, 'is_neuraxial': is_neuraxial,
         'on_dialysis': on_dialysis, 'eff_renal': eff_renal, 'renal_cl': eff_renal,
-        'creat_mismatch': creat_mismatch, 'creat_extreme_hi': creat_extreme_hi,
+        'creat_mismatch': creat_mismatch, 'creat_ambig': creat_ambig, 'creat_extreme_hi': creat_extreme_hi,
         'cl_label': cl_label, 'frail_no_wt_note': frail_no_wt_note, 'severe_renal': severe_renal,
         'liver_3x': liver_3x, 'rows': rows, 'd_str': d_str, 'hold_str': hold_str, 'add_row': add_row,
         'med_chips': med_chips, 'cad_chips': cad_chips, 'ven_dvt_chips': ven_dvt_chips,
@@ -429,7 +430,9 @@ def _append_doac_dabigatran_rows(c):
             cl_hdr = cl_label if cl_label else 'CrCl/eGFR'
             add_row('DOAC (ქსარელტო / ელიქვისი)', f'{cl_hdr} (<{doac_low}) — შეჩერება ≥96 სთ-ით ადრე + ნეფროლოგ/ქირურგთან შეთანხმება (ნეირაქსიალური ბლოკადა მოერიდეთ!){frail_no_wt_note}{doac_extra_warn}', 'red', hold_str(doac_cfg['crcl_lt30_days'], ' (≥96 სთ)'), hold_or_skip=True, contraindicated=True, mandatory_hold_days=doac_cfg['crcl_lt30_days'])
         elif renal_cl is None:
-            add_row('DOAC (ქსარელტო / ელიქვისი)', f'შეიყვანეთ კრეატინინი (CrCl / eGFR) — DOAC-ის შეჩერების დრო (48–96+ სთ) დამოკიდებულია თირკმლის ფუნქციაზე!{doac_extra_warn}', 'red', 'შეიყვანეთ კრეატინინი თარიღისთვის', hold_or_skip=True, force_date_plan=True, contraindicated=contra_doac, reconcile_only=True)
+            cr_msg = 'კრეატინინის ერთეული დასაზუსტებელია (µmol/L თუ mg/dL) — DOAC-ის შეჩერების დრო (48–96+ სთ) დამოკიდებულია თირკმლის ფუნქციაზე!' if c['creat_ambig'] else 'შეიყვანეთ კრეატინინი (CrCl / eGFR) — DOAC-ის შეჩერების დრო (48–96+ სთ) დამოკიდებულია თირკმლის ფუნქციაზე!'
+            cr_dp = 'ერთეული დასაზუსტებელია' if c['creat_ambig'] else 'შეიყვანეთ კრეატინინი თარიღისთვის'
+            add_row('DOAC (ქსარელტო / ელიქვისი)', f'{cr_msg}{doac_extra_warn}', 'red', cr_dp, hold_or_skip=True, force_date_plan=True, contraindicated=contra_doac, reconcile_only=True)
         elif is_evla and not is_neuraxial and not liver_3x and c['oac_count'] < 2:
             add_row('DOAC (ქსარელტო / ელიქვისი)', f'ESVS 2022: EVLA-ზე შესაძლებელია მოუხსნელად ან დილის დოზის გამოტოვებით{doac_extra_warn}{res_oac}', 'red' if force_doac_red else 'amber', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=True, contraindicated=contra_doac, reconcile_only=True)
         elif is_neuraxial:
@@ -446,7 +449,7 @@ def _append_doac_dabigatran_rows(c):
         elif has_mech_valve:
             add_row('დაბიგატრანი (პრადაქსა)', f'მექანიკურ სარქველზე დაბიგატრანი აბსოლუტურად უკუნაჩვენებია (RE-ALIGN / ESC Class III — თრომბოზის რისკი)! სასწრაფოდ გადაამოწმეთ ვარფარინი (VKA)!{dup_oac_warn}', 'red', 'უკუნაჩვენებია — კარდიოლოგი!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif on_dialysis:
-            add_row('დაბიგატრანი (პრადაქსა)', f'დიალიზი — დაბიგატრანი უკუნაჩვენებია (EHRA 2021), სავალდებულოა თრომბინის დროის (TT) კონტროლი და კონსილიუმი!{doac_extra_warn}', 'red', 'დიალიზი — უკუნაჩვენებია!', hold_or_skip=True, force_date_plan=True, contraindicated=True, reconcile_only=True)
+            add_row('დაბიგატრანი (პრადაქსა)', f'დიალიზი — დაბიგატრანი უკუნაჩვენებია (EHRA 2021), სავალდებულოა თრომბინის დროის (TT) კონტროლი და კონსილიუმი!{doac_extra_warn}', 'red', 'დიალიზი — უკუნაჩვენებია!', hold_or_skip=True, force_date_plan=True, contraindicated=True, reconcile_only=True, mandatory_hold_days=d_map['lt30'])
         elif c['creat_mismatch']:
             add_row('დაბიგატრანი (პრადაქსა)', f'კრეატინინის ერთეული დასაზუსტებელია — პრადაქსას შეჩერებისა და უკუჩვენების დასადგენად გადაამოწმეთ µmol/L / mg/dL!{doac_extra_warn}', 'red', 'ერთეული დასაზუსტებელია', hold_or_skip=True, force_date_plan=True, contraindicated=True, reconcile_only=True)
         elif c['creat_extreme_hi'] or (renal_cl is not None and renal_cl < dabi_low):
@@ -454,7 +457,9 @@ def _append_doac_dabigatran_rows(c):
             cl_hdr = cl_label if cl_label else 'CrCl/eGFR'
             add_row('დაბიგატრანი (პრადაქსა)', f'{cl_hdr} (<{dabi_low}) — დაბიგატრანი უკუნაჩვენებია (EMA/EHRA 2021)! {nx_tag}შეჩერება ≥120 საათით + TT კონტროლი და ნეფროლოგ/კარდიოლოგთან ჩანაცვლება!{frail_no_wt_note}{doac_extra_warn}', 'red', hold_str(d_map['lt30'], ' (≥120 სთ — ჩანაცვლება!)'), hold_or_skip=True, contraindicated=True, mandatory_hold_days=d_map['lt30'])
         elif renal_cl is None:
-            add_row('დაბიგატრანი (პრადაქსა)', f'შეიყვანეთ კრეატინინი და წონა (CrCl) — პრადაქსას შეჩერების დრო (48–120 სთ) მკაცრად დამოკიდებულია თირკმლის ფუნქციაზე!{doac_extra_warn}', 'red', 'შეიყვანეთ CrCl თარიღისთვის', hold_or_skip=True, force_date_plan=True, contraindicated=contra_doac, reconcile_only=True)
+            cr_dmsg = 'კრეატინინის ერთეული დასაზუსტებელია (µmol/L თუ mg/dL) — პრადაქსას შეჩერების დრო (48–120 სთ) მკაცრად დამოკიდებულია თირკმლის ფუნქციაზე!' if c['creat_ambig'] else 'შეიყვანეთ კრეატინინი და წონა (CrCl) — პრადაქსას შეჩერების დრო (48–120 სთ) მკაცრად დამოკიდებულია თირკმლის ფუნქციაზე!'
+            cr_ddp = 'ერთეული დასაზუსტებელია' if c['creat_ambig'] else 'შეიყვანეთ CrCl თარიღისთვის'
+            add_row('დაბიგატრანი (პრადაქსა)', f'{cr_dmsg}{doac_extra_warn}', 'red', cr_ddp, hold_or_skip=True, force_date_plan=True, contraindicated=contra_doac, reconcile_only=True)
         elif is_evla and not is_neuraxial and not liver_3x and c['oac_count'] < 2:
             add_row('დაბიგატრანი (პრადაქსა)', f'ESVS 2022: EVLA-ზე შესაძლებელია მოუხსნელად ან დილის დოზის გამოტოვებით — დააზუსტეთ ქირურგთან{doac_extra_warn}{res_oac}', 'red' if force_doac_red else 'amber', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=True, contraindicated=contra_doac, reconcile_only=True)
         elif is_neuraxial:
@@ -499,7 +504,9 @@ def _append_rivaroxaban_warfarin_rows(c):
         elif on_dialysis or c['creat_extreme_hi'] or (renal_cl is not None and renal_cl < voy_cfg['min_egfr']):
             add_row('ქსარელტო 2.5 მგ x2', f'თირკმლის მძიმე უკმარისობა / დიალიზი — შეჩერება ≥72–96 სთ-ით ადრე (ASRA 5th Ed დაბალ-დოზიანი ≥30 სთ) და სქემის გადახედვა ქირურგთან!{doac_extra_warn}', 'red', hold_str(voy_cfg['renal_days']), hold_or_skip=True, contraindicated=True, mandatory_hold_days=voy_cfg['renal_days'])
         elif renal_cl is None:
-            add_row('ქსარელტო 2.5 მგ x2', f'შეიყვანეთ კრეატინინი (CrCl / eGFR) — რივაროქსაბანის შეჩერების დრო დამოკიდებულია თირკმლის ფუნქციაზე!{doac_extra_warn}', 'red', 'შეიყვანეთ კრეატინინი თარიღისთვის', hold_or_skip=True, force_date_plan=True, contraindicated=contra_riva, reconcile_only=True)
+            cr_rmsg = 'კრეატინინის ერთეული დასაზუსტებელია (µmol/L თუ mg/dL) — რივაროქსაბანის შეჩერების დრო დამოკიდებულია თირკმლის ფუნქციაზე!' if c['creat_ambig'] else 'შეიყვანეთ კრეატინინი (CrCl / eGFR) — რივაროქსაბანის შეჩერების დრო დამოკიდებულია თირკმლის ფუნქციაზე!'
+            cr_rdp = 'ერთეული დასაზუსტებელია' if c['creat_ambig'] else 'შეიყვანეთ კრეატინინი თარიღისთვის'
+            add_row('ქსარელტო 2.5 მგ x2', f'{cr_rmsg}{doac_extra_warn}', 'red', cr_rdp, hold_or_skip=True, force_date_plan=True, contraindicated=contra_riva, reconcile_only=True)
         elif is_evla and not is_neuraxial and not riva_red:
             t3_ev = c['total_at_cnt'] >= triple_min
             add_row('ქსარელტო 2.5 მგ x2', 'EVLA-ზე შესაძლებელია დილის დოზის გამოტოვებით (ასპირინი გრძელდება) · აღდგენა: ~24 სთ-ში ჰემოსტაზით' + (' [≥3 ანტითრომბოზული — დე-ესკალაცია!]' if t3_ev else ''), 'amber' if t3_ev else 'ok', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=True, reconcile_only=True)
@@ -513,11 +520,12 @@ def _append_rivaroxaban_warfarin_rows(c):
 
     if q.get('med_warfarin'):
         has_afib_m = ('afib' in c['cad_chips']) or ((s.get('ecg') or 'pending') == 'afib_controlled') or bool(s.get('irregular_hr'))
-        afib_recent_stroke = has_afib_m and c['is_symp_cea'] and (c['cea_d'] is None or c['cea_d'] <= cea_recent_d)
+        afib_recent_stroke = has_afib_m and c['is_symp_cea'] and (bool(q.get('cea_crescendo')) or c['cea_d'] is None or c['cea_d'] <= cea_recent_d)
         high_thromb_vka = (
             has_mech_valve or afib_recent_stroke
-            or (q.get('ven_dvt_history') and q.get('ven_thrombophilia'))
+            or ((q.get('ven_dvt_history') or bool(c['ven_dvt_chips'])) and q.get('ven_thrombophilia'))
             or ('vte_recent_3m' in c['ven_dvt_chips'])
+            or (c['ven_dup'] == 'acute_dvt')
         )
         liver_vka_warn = ' [ღვიძლის ≥3x დისფუნქცია: ვარფარინის გამორეცხვა შეიძლება გახანგრძლივდეს >5 დღემდე — გადაამოწმეთ INR!]' if c['liver_3x'] else ''
         dup_vka = c['oac_count'] >= 2
@@ -625,11 +633,19 @@ def _append_metabolic_rows(c):
                 'ღვიძლის მძიმე დისფუნქცია (≥3x ULN) — მეტფორმინი უკუნაჩვენებია ლაქტატ-აციდოზის გამო! შეწყვიტეთ ექიმთან შეთანხმებით!',
                 'red', 'შეწყვიტეთ დაუყოვნებლივ!', hold_or_skip=False, force_date_plan=True, contraindicated=True,
             )
+        elif c['creat_ambig'] or eff_renal is None:
+            m_miss_rule = (
+                'კრეატინინის ერთეული დასაზუსტებელია (15–35 ზონა) — მეტფორმინის უსაფრთხოებისთვის (CrCl/eGFR ≥30, ლაქტატ-აციდოზის გამორიცხვა) მიუთითეთ µmol/L თუ mg/dL!'
+                if c['creat_ambig'] else
+                'შეიყვანეთ კრეატინინი (eGFR/CrCl) — მეტფორმინის უსაფრთხოებისთვის (≥30) და 48 სთ შეჩერების საჭიროების დასადგენად!'
+            )
+            m_miss_dp = 'ერთეული დასაზუსტებელია' if c['creat_ambig'] else 'შეიყვანეთ კრეატინინი რეჟიმისთვის'
+            add_row('მეტფორმინი', m_miss_rule, 'red', m_miss_dp, hold_or_skip=True, force_date_plan=True, reconcile_only=True)
         elif (
             c['is_ia_first_pass']
-            or (c['uses_contrast'] and (eff_renal is None or eff_renal < metf_cfg['contrast_hold_renal']))
+            or (c['uses_contrast'] and eff_renal < metf_cfg['contrast_hold_renal'])
             or c['is_open_major']
-            or (not pure_local_evla and eff_renal is not None and eff_renal < metf_cfg['dose_cap_renal'])
+            or (not pure_local_evla and eff_renal < metf_cfg['dose_cap_renal'])
         ):
             metf_day_lbl = 'კონტრასტის/ჩარევის დღეს' if c['uses_contrast'] else 'ოპერაციის დღეს'
             h_hrs = metf_cfg['hold_hours']

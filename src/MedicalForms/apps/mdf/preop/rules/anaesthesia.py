@@ -156,8 +156,8 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
         if pathway == PreopPatient.Pathway.CEA and ctx.is_symp_cea:
             ev_dt = _date(q.get('cea_event_date'))
             symp_to_op = (
-                (op_dt - ev_dt).days if ev_dt
-                else ((ctx.days_since_ev + (op_dt - ctx.today).days) if (ctx.days_since_ev is not None and op_dt >= ctx.today) else None)
+                ((op_dt - ctx.today).days if op_dt >= ctx.today else None) if q.get('cea_crescendo')
+                else ((op_dt - ev_dt).days if ev_dt else ((ctx.days_since_ev + (op_dt - ctx.today).days) if (ctx.days_since_ev is not None and op_dt >= ctx.today) else None))
             )
             if symp_to_op is not None and symp_to_op > cea_win_d:
                 ctx.amber_flags.append(
@@ -293,9 +293,9 @@ def _build_dos_checks(ctx):
             if ctx.eff_allergy_iodine else 'პოვიდონ-იოდის ანტისეპტიკი (ქლორჰექსიდინის გარეშე!)'
         )
         dos_checks.append({'key': 'dos_latex_free_or', 'label': f'ულატექსო საოპერაციო გარემო (ხელთათმანები/კათეტერი) და {ant_lbl} მზადაა', 'done': bool(s.get('dos_latex_free_or'))})
-    needs_bhcg = is_pregnancy_eligible(patient) and (
-        bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
-        or (patient.sex == 'F' and (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD) or ctx.is_pta or ctx.is_venous))
+    preg_claimed = bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
+    needs_bhcg = is_pregnancy_eligible(patient) and not (preg_claimed and (ctx.is_ali_acute or ctx.is_acute_emergency or ctx.is_rupture_suspect)) and (
+        preg_claimed or (patient.sex == 'F' and (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD) or ctx.is_pta or ctx.is_venous))
     )
     if needs_bhcg:
         dos_checks.append({

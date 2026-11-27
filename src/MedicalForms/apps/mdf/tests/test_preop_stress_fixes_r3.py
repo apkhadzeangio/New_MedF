@@ -153,13 +153,17 @@ class StressR3ClinicalSafetyTests(SimpleTestCase):
             self.assertTrue(ev['neuraxial_hard_blocked'], f'Failed neuraxial block for {patch_s}')
             self.assertNotIn('✓', ev['anesthetic_brief']['neuraxial_gate'])
 
-        # R3-S1-11: PLT 2500..2999 NEVER yields GO and never drops ASA IV -> I
+        # R3-S1-11 & R9-S2-3: PLT 2501..2999 is consistently rejected as implausible (blocks GO & neuraxial, no fabricated ASA IV); within-unit /uL stays monotonic
         ev_2600 = evaluate(_go('open', s={'plt': 2600}), today=TODAY)
         self.assertNotEqual(ev_2600['clearance_seal']['code'], 'go')
         self.assertNotEqual(ev_2600['status'], STATUS_READY)
-        ev_2999 = evaluate(_go('phlebectomy', s={'plt': 2999}), today=TODAY)
+        ev_2999 = evaluate(_go('phlebectomy', s={'plt': 2999, 'anesthesia_plan': 'neuraxial'}), today=TODAY)
+        self.assertIsNone(ev_2999['plt'])
+        self.assertTrue(ev_2999['has_blocking_unknown_state'])
+        self.assertTrue(ev_2999['neuraxial_hard_blocked'])
         ev_3000 = evaluate(_go('phlebectomy', s={'plt': 3000}), today=TODAY)
-        self.assertGreaterEqual(['I', 'II', 'III', 'IV'].index(ev_2999['auto_asa']), ['I', 'II', 'III', 'IV'].index(ev_3000['auto_asa']))
+        ev_50k = evaluate(_go('phlebectomy', s={'plt': 50000}), today=TODAY)
+        self.assertGreaterEqual(['I', 'II', 'III', 'IV'].index(ev_3000['auto_asa']), ['I', 'II', 'III', 'IV'].index(ev_50k['auto_asa']))
 
         # R3-S1-12: Reproductive female with pregnant_possible=True + ack_alerts on EVAR/PTA-CLTI NEVER yields GO
         for sub in ('evar', 'tbd', 'pta_clti'):

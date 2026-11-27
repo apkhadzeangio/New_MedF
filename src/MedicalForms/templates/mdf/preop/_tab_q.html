@@ -558,9 +558,10 @@
 
                     <div class="po-q-item">
                         <div class="po-q-main">
-                            <span class="po-q-text">5. ალერგია მედიკამენტებზე{% if not ev.is_venous %} და იოდის კონტრასტზე{% endif %}:</span>
+                            <span class="po-q-text">5. ალერგია მედიკამენტებზე{% if not ev.is_venous or q.allergy_iodine or ev.eff_allergy_iodine %} და იოდის კონტრასტზე{% endif %}:</span>
                             <div class="d-flex flex-wrap gap-2">
-                                {% if not ev.is_venous %}
+                                {% if not ev.is_venous or q.allergy_iodine or ev.eff_allergy_iodine %}
+                                <input type="hidden" name="allergy_iodine_presented" value="1">
                                 <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="allergy_iodine" value="1" {% if q.allergy_iodine %}checked{% endif %}>ალერგია იოდზე / კონტრასტზე</label>
                                 {% endif %}
                                 <label class="chip-check"><input type="checkbox" name="allergy_other" value="1" id="chk-allergy-other" {% if q.allergy_other or q.allergy_text or q.allergy_chips %}checked{% endif %}>წამლისმიერი ალერგია</label>

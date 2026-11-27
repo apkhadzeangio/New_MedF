@@ -55,14 +55,15 @@ def _eval_venous_lido_and_contra(ctx, ceap, ven_dup, gsv_mm):
             )
     if has_lido_allergy:
         lido_msg = (
-            'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე — ტუმესცენტური ანესთეზია საშიშია! '
+            'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე — ტუმესცენტური ან ნეირაქსიული ანესთეზია საშიშია! '
             'სავალდებულოა ქირურგისა და ანესთეზიოლოგის ჩართვა.'
         )
         ctx.red_flags.append(lido_msg)
         lido_plan = s.get('anesthesia_plan') or 'auto'
         if (
-            (patient.op_subtype == PreopPatient.OpSubtype.EVLA and lido_plan in ('auto', 'local', 'plexus'))
-            or (patient.op_subtype == PreopPatient.OpSubtype.PHLEB and lido_plan in ('local', 'plexus'))
+            (patient.op_subtype == PreopPatient.OpSubtype.EVLA and lido_plan in ('auto', 'local', 'plexus', 'neuraxial'))
+            or (patient.op_subtype == PreopPatient.OpSubtype.PHLEB and lido_plan in ('local', 'plexus', 'neuraxial'))
+            or ('epidural' in ctx.anesth_lines_set)
         ):
             ctx.hard_contraindications.append(lido_msg)
     if q.get('ven_skin_infection'):
@@ -143,7 +144,7 @@ def _eval_venous_arterial_and_vte(ctx, ceap):
     hba1c_v = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
     bmi_eff = ctx.bmi if ctx.bmi is not None else getattr(ctx, 'bmi_sat', None)
-    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo']) or (hba1c_v is not None and hba1c_v >= gly_cfg['hba1c_dm']))
+    eff_dm = bool(ctx.has_known_dm or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo']) or (hba1c_v is not None and hba1c_v >= gly_cfg['hba1c_dm']))
     ctx.needs_abi_check = q_filled and (
         bool(q.get('claudication'))
         or ceap == 'C6'
@@ -224,7 +225,7 @@ def eval_venous(ctx):
     gl_eff = ctx.gl_mmol if ctx.gl_mmol is not None else getattr(ctx, 'gl_mmol_sat', None)
     hba1c_v = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     age_eff = ctx.age if ctx.age is not None else getattr(ctx, 'age_sat', None)
-    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo']) or (hba1c_v is not None and hba1c_v >= gly_cfg['hba1c_dm']))
+    eff_dm = bool(ctx.has_known_dm or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo']) or (hba1c_v is not None and hba1c_v >= gly_cfg['hba1c_dm']))
     eff_cardiac = bool(q.get('cad') or ctx.cad_chips or q.get('recent_stent') or (lvef_v is not None and lvef_v < cb['lvef_red']) or (bnp_v is not None and bnp_v >= cb['bnp_red']))
     ctx.needs_wound_care = q_filled and (ceap == 'C6' or bool(q.get('ven_skin_infection')))
     ctx.needs_ecg_venous = (
@@ -259,16 +260,14 @@ def _eval_cross_pathway_urgency_flags(ctx, aaa_eff):
     hemodyn_unstable = bool((eff_sbp_pre is not None and eff_sbp_pre < hypo_cfg['red_sbp']) or (si_pre is not None and si_pre >= hypo_cfg['shock_idx']))
     aaa_pain_active = bool(pathway == PreopPatient.Pathway.AAA_INFRA and q.get('aaa_pain'))
     cea_cresc_active = bool(pathway == PreopPatient.Pathway.CEA and q.get('cea_crescendo'))
-    is_ali_urgent = (
-        pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
-        and q.get('abf_duration') == '< 2 კვირა'
-    )
+    is_pad_pw = pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
+    is_ali_urgent = is_pad_pw and q.get('abf_duration') == '< 2 კვირა'
     ctx.is_rupture_suspect = bool(aaa_pain_active and hemodyn_unstable)
     ctx.is_symp_aaa_intact = bool(aaa_pain_active and not hemodyn_unstable)
     ctx.is_acute_emergency = bool(aaa_pain_active or cea_cresc_active or is_ali_urgent)
     ctx.is_septic_or_mycotic_urgent = bool(
         (pathway == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic')
-        or bool(q.get('abf_wet_infection'))
+        or (is_pad_pw and bool(q.get('abf_wet_infection')))
     )
     ctx.is_urgent_case = bool(
         ctx.is_acute_emergency
@@ -290,7 +289,7 @@ def eval_cross_pathway_and_urgency(ctx):
     gly_cfg = rule_value('GLY_GLUCOSE_HBA1C')
     hba1c_x = _sat_num(_s_raw(s, 'hba1c'), 3.0, 25.0)
     gl_eff = ctx.gl_mmol if ctx.gl_mmol is not None else getattr(ctx, 'gl_mmol_sat', None)
-    eff_dm = bool(q.get('dm') or q.get('dm_insulin') or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo']) or (hba1c_x is not None and hba1c_x >= gly_cfg['hba1c_dm']))
+    eff_dm = bool(ctx.has_known_dm or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo']) or (hba1c_x is not None and hba1c_x >= gly_cfg['hba1c_dm']))
 
     if (
         pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
@@ -347,9 +346,13 @@ def eval_cross_pathway_and_urgency(ctx):
                 ctx.hard_contraindications.append(preg_art_msg)
 
     if not ctx.is_venous and (bool(q.get('ven_lidocaine_allergy')) or 'lidocaine' in ctx.allergy_chips):
-        if ctx.is_pta or patient.op_subtype in ('evar', 'tbd') or s.get('anesthesia_plan') in ('local', 'plexus'):
+        if (
+            ctx.is_pta or patient.op_subtype in ('evar', 'tbd')
+            or s.get('anesthesia_plan') in ('local', 'plexus', 'neuraxial')
+            or ('epidural' in ctx.anesth_lines_set)
+        ):
             ctx.red_flags.append(
-                'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე — ადგილობრივი/წნულის ანესთეზია საშიშია! '
+                'ალერგია ლიდოკაინზე / ადგილობრივ ანესთეტიკზე — ადგილობრივი/წნულის/ნეირაქსიული ანესთეზია საშიშია! '
                 'სავალდებულოა ანესთეზიოლოგის ჩართვა და ალტერნატიული გაუტკივარების შეთანხმება.'
             )
     _eval_cross_pathway_urgency_flags(ctx, aaa_eff)

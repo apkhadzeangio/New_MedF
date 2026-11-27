@@ -181,11 +181,11 @@ def _init_limb_hemodynamics(ctx):
     unilateral_limb_pw = pathway in (PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA, PreopPatient.Pathway.VENOUS)
     unilateral_specified = unilateral_limb_pw and side_s in ('R', 'L')
     if unilateral_limb_pw and side_s == 'R':
-        scope_legs, contra_abi, contra_tp = ('R',), abi_l, tp_l
+        scope_legs, contra_abi, contra_tp, contra_tbi = ('R',), abi_l, tp_l, tbi_l
     elif unilateral_limb_pw and side_s == 'L':
-        scope_legs, contra_abi, contra_tp = ('L',), abi_r, tp_r
+        scope_legs, contra_abi, contra_tp, contra_tbi = ('L',), abi_r, tp_r, tbi_r
     else:
-        scope_legs, contra_abi, contra_tp = ('R', 'L'), None, None
+        scope_legs, contra_abi, contra_tp, contra_tbi = ('R', 'L'), None, None, None
 
     leg_vals = {
         'R': {'abi': abi_r, 'tp': tp_r, 'tbi': tbi_r, 'abi_s': abi_r_s, 'tp_s': tp_r_s, 'tbi_s': tbi_r_s},
@@ -240,7 +240,7 @@ def _init_limb_hemodynamics(ctx):
     )
 
     ctx.abi_r, ctx.abi_l, ctx.tp_r, ctx.tp_l, ctx.tbi_r, ctx.tbi_l = abi_r, abi_l, tp_r, tp_l, tbi_r, tbi_l
-    ctx.contra_abi, ctx.contra_tp = contra_abi, contra_tp
+    ctx.contra_abi, ctx.contra_tp, ctx.contra_tbi = contra_abi, contra_tp, contra_tbi
     ctx.scoped_abis, ctx.scoped_tps, ctx.scoped_tbis = scoped_abis, scoped_tps, scoped_tbis
     ctx.min_abi, ctx.max_abi, ctx.max_abi_sat, ctx.min_comp_abi = min_abi, max_abi, max_abi_s, min_comp_abi
     ctx.min_comp_abi_sat, ctx.min_tp_sat, ctx.min_tbi_sat = min_comp_abi_s, min_tp_s, min_tbi_s
@@ -252,7 +252,7 @@ def _init_limb_hemodynamics(ctx):
 
 
 def _init_base_flags_and_pre_reflex(ctx):
-    from ..calculators import _sat_num
+    from ..calculators import _inverted_bp_arms, _sat_num, _valid_bilateral_sbp
     from ..meds_freetext import _has_unrecognized_allergy_clause
     from ..utils import is_symp_cea_patient
     q, s = ctx.q, ctx.s
@@ -260,9 +260,20 @@ def _init_base_flags_and_pre_reflex(ctx):
     ctx.ldl_val = normalize_ldl_mmol(s.get('ldl'))
     ctx.weight_num = _num(s.get('weight_kg'), lo=25, hi=260)
     ctx.weight_sat = _sat_num(_s_raw(s, 'weight_kg'), 25, 260)
+    ctx.has_known_dm = bool(q.get('dm') or q.get('dm_insulin') or q.get('metformin'))
     ctx.is_ali_acute = bool(
         ctx.pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
         and q.get('abf_duration') == '< 2 კვირა'
+    )
+    hypo_cfg_c = rule_value('VIT_BP_HYPOTENSION_SHOCK')
+    sbp_pre_c = _valid_bilateral_sbp(s)
+    if sbp_pre_c is None:
+        sbp_pre_c = min((min(sv, dv) for sv, dv in _inverted_bp_arms(s)), default=None)
+    hr_pre_c = _sat_num(_s_raw(s, 'hr'), 15, 260)
+    si_pre_c = round(hr_pre_c / sbp_pre_c, 2) if (hr_pre_c is not None and sbp_pre_c is not None and sbp_pre_c > 0) else None
+    is_rup_pre = bool(
+        ctx.pathway == PreopPatient.Pathway.AAA_INFRA and q.get('aaa_pain')
+        and ((sbp_pre_c is not None and sbp_pre_c < hypo_cfg_c['red_sbp']) or (si_pre_c is not None and si_pre_c >= hypo_cfg_c['shock_idx']))
     )
 
     ctx.ipsi_car, ctx.contra_car, ctx.is_symp_cea, ctx.is_clti_any = None, None, False, False
@@ -309,7 +320,7 @@ def _init_base_flags_and_pre_reflex(ctx):
     )
     # Cilostazol is a vasodilator/PDE3 inhibitor, NOT an ESC/ESVS guideline substitute for antiplatelet therapy
     ctx.has_any_antithrombotic = bool(
-        ctx.has_antiplatelet or q.get('med_aspirin') or q.get('med_clopidogrel')
+        ctx.has_antiplatelet or q.get('med_aspirin') or q.get('med_clopidogrel') or q.get('med_prasugrel')
         or q.get('med_doac') or q.get('med_dabigatran')
         or q.get('med_warfarin') or ('rivaroxaban_2_5' in ctx.med_chips)
     )
@@ -320,7 +331,7 @@ def _init_base_flags_and_pre_reflex(ctx):
             'რევასკულარიზაციის ჩვენება გადაამოწმეთ ქირურგთან!'
         )
 
-    if ctx.abi_non_compressible and not ctx.is_ali_acute:
+    if ctx.abi_non_compressible and not ctx.is_ali_acute and not is_rup_pre:
         ctx.needs_tbi_check = True
         nc_side_lbl = f" ({'/'.join(ctx.nc_legs)})" if ctx.nc_legs else ''
         abi_disp = ctx.max_abi if ctx.max_abi is not None else ctx.max_abi_sat
@@ -391,6 +402,7 @@ def init_eval_context(patient, today=None):
         q=q,
         s=s,
         raw_s=raw_s,
+        raw_creat=raw_creat,
         wbc=None,
         q_filled=bool(q.get('filled')),
         case_outcome=case_outcome,

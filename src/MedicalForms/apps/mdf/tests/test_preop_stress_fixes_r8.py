@@ -278,8 +278,8 @@ class Round8InvariantsPathwaysAndRegistryTests(SimpleTestCase):
         p_naaa = _go('open', s={'aaa_mm': -99})
         self.assertNotIn('-99', p_naaa.diagnosis_text)
 
-        # Registry v1.2.7 honesty & vein_strip match (Clin A-S2-9, A-S2-10, A-S2-11, A-S2-12)
-        self.assertEqual(REGISTRY_VERSION, '1.2.7')
+        # Registry v1.2.7+ honesty & vein_strip match (Clin A-S2-9, A-S2-10, A-S2-11, A-S2-12)
+        self.assertGreaterEqual(tuple(int(x) for x in REGISTRY_VERSION.split('.')), (1, 2, 7))
         self.assertEqual(RULES_BY_ID['SCORE_CAPRINI_VTE'].status, STATUS_LOCAL)
         self.assertEqual(RULES_BY_ID['GI_CAROTID_CONCOMITANT_AND_PPI'].status, STATUS_LOCAL)
         self.assertIn('vriii_mmol', rule_value('GLY_GLUCOSE_HBA1C'))

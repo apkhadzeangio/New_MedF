@@ -158,15 +158,10 @@ def _eval_early_neuraxial_gate(ctx):
     raw_s = getattr(ctx, 'raw_s', None) or {}
     asra_cfg = rule_value('ASRA_NEURAXIAL_COAG_GATE')
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
-    open_aortic = (
-        pathway == PreopPatient.Pathway.ABF
-        or (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
-    )
+    open_aortic = (pathway == PreopPatient.Pathway.ABF) or (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
     ctx.open_aortic = open_aortic
     ctx.open_major = open_aortic or ctx.is_pad_bypass
-    plt = _parse_plt(s.get('plt'))
-    inr = _num(s.get('inr'), lo=0.4, hi=20.0)
-    dos_inr_early = _num(s.get('dos_inr'), lo=0.5, hi=15)
+    plt, inr, dos_inr_early = _parse_plt(s.get('plt')), _num(s.get('inr'), lo=0.4, hi=20.0), _num(s.get('dos_inr'), lo=0.5, hi=15)
     ctx.inr_sat = inr if inr is not None else _sat_num(_s_raw(s, 'inr'), 0.4, 20.0)
     ctx.dos_inr_sat = dos_inr_early if dos_inr_early is not None else _sat_num(_s_raw(s, 'dos_inr'), 0.5, 15.0)
     raw_dos_inr = raw_s['dos_inr'] if 'dos_inr' in raw_s else s.get('dos_inr')
@@ -216,10 +211,10 @@ def _eval_early_neuraxial_gate(ctx):
     if 'hit_heparin' in ctx.allergy_chips and (not ctx.is_venous or 'mech_valve' in ctx.cad_chips):
         hard_nx_reasons.append('HIT არტერიულ/მექ. სარქვლის ოპერაციაზე (IV DTI) — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
     eff_ren_nx = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
-    if (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips) and (
-        ctx.on_dialysis or (eff_ren_nx is not None and eff_ren_nx < ren_red)
-    ):
+    if (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips) and (ctx.on_dialysis or (eff_ren_nx is not None and eff_ren_nx < ren_red)):
         hard_nx_reasons.append('CrCl/eGFR < 30 ანტიკოაგულანტზე — ნეირაქსიული ბლოკადა მოერიდეთ!')
+    if bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in ctx.allergy_chips):
+        hard_nx_reasons.append('ადგილობრივ ანესთეტიკზე (ლიდოკაინი/მარკაინი/ბუპივაკაინი) ალერგია — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
     if bool(s.get('echo_valve_issue')):
         hard_nx_reasons.append('მძიმე სარქვლოვანი მანკი / AS — სპინალური ბლოკადა საშიშია!')
     if getattr(ctx, 'bp_inverted', False):
@@ -251,7 +246,7 @@ def _eval_early_neuraxial_gate(ctx):
     ctx.neuraxial_hard_blocked = bool(ctx.explicit_neuraxial and (hard_nx_reasons or solo_neuraxial_anatomic_mismatch))
     if ctx.neuraxial_hard_blocked and not solo_neuraxial_anatomic_mismatch:
         ctx.red_flags.append(
-            f"არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია ({', '.join(hard_nx_reasons)}) — სპინალური ჰემატომის უმაღლესი რისკი! შეცვალეთ ანესთეზიის გეგმა (ASRA 5th Ed)!"
+            f"არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია ({', '.join(hard_nx_reasons)}) — სპინალური ჰემატომის / ანაფილაქსიის უმაღლესი რისკი! შეცვალეთ ანესთეზიის გეგმა (ASRA 5th Ed)!"
         )
 
 
@@ -261,11 +256,17 @@ def eval_hematology_coag(ctx):
     plt, eff_inr, fib = ctx.plt, ctx.eff_inr_nx, ctx.fib
     hb_cfg = rule_value('LAB_HB_PBM_THRESHOLDS')
     coag_cfg = rule_value('LAB_WBC_PLT_COAG')
+    unit_cfg = rule_value('LAB_UNIT_AUTO_CONVERSION')
 
     ferritin_val = _num(s.get('ferritin'), lo=1, hi=5000)
     tsat_val = _num(s.get('tsat'), lo=1, hi=100)
     hb_norm = hb_cfg['hb_norm_f'] if patient.sex == 'F' else hb_cfg['hb_norm_m']
     hb_eff = hb_gl if hb_gl is not None else getattr(ctx, 'hb_gl_sat', None)
+    hb_raw_num = _num(_s_raw(s, 'hb'))
+    if hb_raw_num is not None and unit_cfg['hb_gdl_hi'] < hb_raw_num < unit_cfg['hb_ambig_hi']:
+        ctx.red_flags.append(
+            f'ჰემოგლობინის ერთეული საეჭვოა ({hb_raw_num} — 22.1–39.9 შუალედი): გადაამოწმეთ მაჩვენებელი (გ/ლ თუ გ/დლ)!'
+        )
     ctx.tsat_val = tsat_val
     ctx.needs_anemia_panel = (hb_eff is not None and hb_eff < hb_cfg['hb_reflex'])
     ctx.anemia_panel_satisfied = bool(s.get('anemia_panel_done')) or ferritin_val is not None or tsat_val is not None
@@ -278,7 +279,7 @@ def eval_hematology_coag(ctx):
     ctx.pbm_iron_required = bool(ctx.pbm_iv_iron_indicated and not (ctx.is_acute_emergency or ctx.is_septic_or_mycotic_urgent))
     if hb_eff is not None:
         hb_poly_hi = hb_cfg['hb_poly_f'] if patient.sex == 'F' else hb_cfg['hb_poly_m']
-        if ctx.needs_anemia_panel and not ctx.is_ali_acute:
+        if ctx.needs_anemia_panel and not (ctx.is_ali_acute or ctx.is_rupture_suspect):
             ctx.reflex_orders.append({
                 'key': 'anemia',
                 'trigger': f'ანემია (Hb {hb_eff} გ/ლ < 115)',
@@ -366,26 +367,18 @@ def eval_renal_electrolytes(ctx):
         if not s.get('nephro_panel_done'):
             ctx.red_flags.append('პაციენტი იმყოფება დიალიზზე — სავალდებულოა დიალიზის სესიისა და კალიუმის შეთანხმება ნეფროლოგთან და ქირურგთან!')
     elif ctx.creat_unit_ambiguous:
+        cr_disp = s.get('creat') if s.get('creat') is not None else getattr(ctx, 'raw_creat', None)
+        cr_disp_str = '—' if cr_disp is None else cr_disp
         if ctx.creat_unit in ('umol', 'mgdl'):
-            ctx.red_flags.append(
-                f'კრეატინინის მნიშვნელობა და არჩეული ერთეული არ ემთხვევა ({s.get("creat")} {ctx.creat_unit})! '
-                'გადაამოწმეთ ზუსტი ერთეული (µmol/L თუ mg/dL) eGFR / CrCl უსაფრთხო გამოთვლისთვის.'
-            )
+            ctx.red_flags.append(f'კრეატინინის მნიშვნელობა და არჩეული ერთეული არ ემთხვევა ({cr_disp_str} {ctx.creat_unit})! გადაამოწმეთ ზუსტი ერთეული (µmol/L თუ mg/dL) eGFR / CrCl უსაფრთხო გამოთვლისთვის.')
         else:
-            ctx.red_flags.append(
-                f'კრეატინინის ერთეული საეჭვოა ({s.get("creat")} — 15–35 შუალედი)! '
-                'მიუთითეთ ზუსტი ერთეული (µmol/L თუ mg/dL) eGFR / CrCl უსაფრთხო გამოთვლისთვის.'
-            )
+            ctx.red_flags.append(f'კრეატინინის ერთეული საეჭვოა ({cr_disp_str} — 15–35 შუალედი)! მიუთითეთ ზუსტი ერთეული (µmol/L თუ mg/dL) eGFR / CrCl უსაფრთხო გამოთვლისთვის.')
     elif s.get('creat') is not None and egfr is None and eff_ren_risk is None:
         ctx.amber_flags.append('კრეატინინის კლირენსის / eGFR გამოსათვლელად მიუთითეთ პაციენტის ასაკი (12–120 წ.) და სქესი.')
     elif eff_ren_risk is not None:
-        if needs_nephro_panel and not ctx.is_ali_acute:
+        if needs_nephro_panel and not (ctx.is_ali_acute or ctx.is_rupture_suspect):
             nephro_lean = ctx.is_venous or ctx.is_pta or bool(s.get('cta_disc')) or (eff_ren_risk >= ren_cfg['red'])
-            nephro_act = (
-                'შარდოვანა, ელექტროლიტები (K+/HCO3-) და ნეფროლოგის კონსულტაცია (CTA-ით / ზომიერ CKD 3b-ზე რუტინული თირკმლის ექო და Ca/P სავალდებულო არ არის)'
-                if nephro_lean
-                else 'შარდოვანა, Ca/P, შარდის ცილა + თირკმელების ექოსკოპია + ნეფროლოგის კონსულტაცია'
-            )
+            nephro_act = 'შარდოვანა, ელექტროლიტები (K+/HCO3-) და ნეფროლოგის კონსულტაცია (CTA-ით / ზომიერ CKD 3b-ზე რუტინული თირკმლის ექო და Ca/P სავალდებულო არ არის)' if nephro_lean else 'შარდოვანა, Ca/P, შარდის ცილა + თირკმელების ექოსკოპია + ნეფროლოგის კონსულტაცია'
             ctx.reflex_orders.append({
                 'key': 'nephro',
                 'trigger': f'დაქვეითებული თირკმლის ფუნქცია ({renal_disp} მლ/წთ < 45)',
@@ -452,16 +445,16 @@ def eval_glycemia_endocrine(ctx):
     needs_endo_reflex = (hba1c_eff is not None and hba1c_eff >= gly_cfg['hba1c_endo']) or (gl_eff is not None and gl_eff >= gly_cfg['gl_endo'])
     ctx.hba1c, ctx.needs_hba1c_reflex, ctx.needs_endo_reflex = hba1c, needs_hba1c_reflex, needs_endo_reflex
     gl_d = gl_mmol if gl_mmol is not None else gl_eff
-    has_known_dm = bool(q.get('dm') or q.get('dm_insulin') or q.get('metformin'))
+    has_known_dm = ctx.has_known_dm
 
-    if needs_hba1c_reflex and not ctx.is_ali_acute:
+    if needs_hba1c_reflex and not (ctx.is_ali_acute or ctx.is_rupture_suspect):
         ctx.reflex_orders.append({
             'key': 'hba1c',
             'trigger': f'უზმოდ გლუკოზა მომატებულია ({gl_d} მმოლ/ლ >= 7.0)',
             'action': 'გლიკირებული ჰემოგლობინის (HbA1c %) განსაზღვრა ექიმის ჩართვამდე',
             'done': hba1c_eff is not None,
         })
-    if needs_endo_reflex and not ctx.is_ali_acute:
+    if needs_endo_reflex and not (ctx.is_ali_acute or ctx.is_rupture_suspect):
         ctx.reflex_orders.append({
             'key': 'endo',
             'trigger': f'მაღალი გლიკემია / HbA1c ({gl_d or "—"} მმოლ/ლ, HbA1c {hba1c_eff or "—"}%)',
@@ -511,7 +504,7 @@ def _eval_tsh_and_nutrition(ctx, nut_cfg):
         or (tsh_res != 'pending')
     )
     ctx.tsh_res, ctx.needs_tsh = tsh_res, needs_tsh
-    if needs_tsh and not ctx.is_ali_acute:
+    if needs_tsh and not (ctx.is_ali_acute or ctx.is_rupture_suspect):
         if ctx.uses_contrast:
             tsh_trig = 'ფარისებრი ჯირკვლის პათოლოგია / ამიოდარონი + იოდის კონტრასტი'
         elif ctx.open_aortic:
@@ -568,17 +561,13 @@ def eval_infection_stale_labs(ctx):
     pathway, q, s = ctx.pathway, ctx.q, ctx.s
     uti_cfg = rule_value('INF_UTI_VS_ASB')
     stale_days = rule_value('INF_STALE_LABS_DAYS')
-    has_synthetic_implant = (
-        pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.CEA)
-        or (ctx.is_pad_bypass and s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
-    )
+    has_synthetic_implant = pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.CEA) or (ctx.is_pad_bypass and s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
     inf_chip_set = set(q.get('inf_chips') or [])
     has_uti_symptoms = ('dysuria' in inf_chip_set) or (bool(q.get('active_infection')) and not inf_chip_set)
     raw_dental = has_synthetic_implant and (bool(q.get('dental_infection')) or 'dental_acute' in inf_chip_set)
-    needs_dental = raw_dental and not (ctx.is_ali_acute or ctx.is_rupture_suspect)
-    non_uti_chips = inf_chip_set - {'dysuria'}
-    if raw_dental:
-        non_uti_chips = non_uti_chips - {'dental_acute'}
+    bypass_dental = bool(ctx.is_ali_acute or ctx.is_rupture_suspect or ctx.is_acute_emergency or ctx.is_septic_or_mycotic_urgent)
+    needs_dental = raw_dental and not bypass_dental
+    non_uti_chips = inf_chip_set - ({'dysuria', 'dental_acute'} if raw_dental else {'dysuria'})
     has_non_uti_active_inf = bool(non_uti_chips)
     if has_non_uti_active_inf:
         inf_desc = chip_summary(list(non_uti_chips), 'inf_chips', q.get('infection_text'))
@@ -594,7 +583,7 @@ def eval_infection_stale_labs(ctx):
     ctx.has_uti_symptoms, ctx.urine_wbc, ctx.uti_suspected = has_uti_symptoms, urine_wbc, uti_suspected
 
     if uti_suspected:
-        if not ctx.is_ali_acute:
+        if not (ctx.is_ali_acute or ctx.is_rupture_suspect):
             ctx.reflex_orders.append({
                 'key': 'uti',
                 'trigger': 'სიმპტომური საშარდე/აქტიური ინფექცია, ნიტრიტები+ ან გამოხატული პიურია (≥25)',
@@ -633,6 +622,11 @@ def eval_infection_stale_labs(ctx):
                 'აქტიური სტომატოლოგიური ინფექციური კერა სინთეზური პროთეზის/პატჩის ჩადგმამდე — '
                 'პროთეზის ინფიცირების მაღალი რისკი, სავალდებულოა სტომატოლოგის სანაცია!'
             )
+    elif raw_dental and not (ctx.is_ali_acute or ctx.is_rupture_suspect) and not s.get('dental_sanitation_done'):
+        ctx.amber_flags.append(
+            'აქტიური სტომატოლოგიური ინფექციური კერა გადაუდებელ/მიკოზურ/სეპტიურ ჩარევამდე — '
+            'ოპერაცია არ ყოვნდება, საჭიროა პერიოპერაციული ანტიბიოტიკოთერაპია და პოსტოპ. სტომატოლოგიური სანაცია.'
+        )
     if has_synthetic_implant and not (ctx.is_rupture_suspect or ctx.is_ali_acute):
         shower_action = (
             'ალტერნატიული უიოდო ანტისეპტიკური შხაპის ინსტრუქტაჟი (ქლორჰექსიდინი + იოდზე ალერგია!)' if dual_chx_iod
@@ -674,7 +668,7 @@ def eval_pulmonary(ctx):
     spo2_eff = ctx.spo2 if ctx.spo2 is not None else getattr(ctx, 'spo2_sat', None)
     needs_spirometry = (
         (ctx.open_aortic and (
-            (q_filled and bool(q.get('pulm')))
+            (q_filled and (bool(q.get('pulm')) or bool(q.get('pulm_chips'))))
             or cxr == 'emphysema'
             or ctx.true_low_mets
         ))

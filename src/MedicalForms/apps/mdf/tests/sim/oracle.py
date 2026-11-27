@@ -45,10 +45,16 @@ def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is
     preg_bio_or = (patient.sex != 'M') and not (patient.sex == 'F' and patient.age is not None and patient.age > 55)
     eff_preg_or = preg_bio_or and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
     uses_contrast_or = (patient.op_subtype in (PreopPatient.OpSubtype.EVAR, PreopPatient.OpSubtype.TBD)) or is_pta
+    lido_plan_or = s.get('anesthesia_plan') or 'auto'
+    lido_lines_or = set(_safe_list(s.get('anesth_lines_chips')))
     evla_lido_stop_or = (
-        is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
+        is_venous
         and (bool(q.get('ven_lidocaine_allergy')) or 'lidocaine' in (ev.get('eff_allergy_chips') or ()))
-        and (s.get('anesthesia_plan') in (None, '', 'auto', 'local'))
+        and (
+            (patient.op_subtype == PreopPatient.OpSubtype.EVLA and lido_plan_or in ('auto', 'local', 'plexus', 'neuraxial'))
+            or (patient.op_subtype == PreopPatient.OpSubtype.PHLEB and lido_plan_or in ('local', 'plexus', 'neuraxial'))
+            or ('epidural' in lido_lines_or)
+        )
     )
     exp_hard_contra = bool(
         (pw == PreopPatient.Pathway.CEA and patient.side in ('R', 'L') and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)

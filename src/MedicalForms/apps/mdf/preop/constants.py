@@ -367,8 +367,8 @@ PRIORITY_LABELS = {
 _FREETEXT_ALLERGY_STEMS = (
     ('beta_lactam', (
         'პენიცილ', 'ამოქსი', 'აუგმენტ', 'ამპიცილ', 'ცეფაზოლ', 'კეფაზოლ', 'კეფზოლ',
-        'ცეფტრიაქს', 'ცეფეპიმ', 'ცეფუროქს', 'მეროპენემ', 'ცეფალოსპ', 'ბეტა-ლაქტ', 'ბეტალაქტ',
-        'penicil', 'amoxi', 'augment', 'ampicil', 'cefazol', 'kefzol', 'ceftriax',
+        'ცეფტრიაქს', 'როცეფინ', 'ცეფეპიმ', 'ცეფუროქს', 'მეროპენემ', 'ცეფალოსპ', 'ბეტა-ლაქტ', 'ბეტალაქტ',
+        'penicil', 'amoxi', 'augment', 'ampicil', 'cefazol', 'kefzol', 'ceftriax', 'rocephin',
         'cefepim', 'meropenem', 'cephalosp', 'beta-lact', 'ოგმენტინ', 'ამოქსიკლავ', 'amoxiclav',
     )),
     ('vancomycin', (
@@ -434,6 +434,7 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
     ('sglt2', 'SGLT2 ინჰიბიტორი (ჯარდიანსი / ფორსიგა / სტეგლატრო)', False, (
         'ჯარდიანს', 'jardiance', 'ფორსიგ', 'ფორქსიგ', 'forxiga', 'farxiga', 'სინჯარდ', 'synjardy',
         'ქსიგდუო', 'xigduo', 'ვოკანამეტ', 'vokanamet', 'ინვოკამეტ', 'invokamet', 'სეგლურომეტ', 'segluromet',
+        'სტეგლუჯან', 'steglujan', 'გლიქსამბ', 'glyxambi',
         'ინვოკან', 'invokana', 'ემპაგლიფ', 'empaglif',
         'დაპაგლიფ', 'dapaglif', 'ერტუგლიფ', 'ertuglif', 'სტეგლატრ', 'steglatro', 'კანაგლიფ', 'canaglif',
     )),

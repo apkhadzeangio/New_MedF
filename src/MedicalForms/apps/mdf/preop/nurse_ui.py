@@ -241,6 +241,13 @@ def _relative_op_label(op_dt, today):
     return f'ოპერაცია: {_fmt_ka_date(op_dt, short=True)}'
 
 
+def _plain_procedure_ka(patient, ev):
+    pw = ev['pathway']
+    if pw == 'cea' and ev.get('is_symp_cea'):
+        return PLAIN_SUBTYPE_KA['cea_symp']
+    return PLAIN_SUBTYPE_KA.get(patient.op_subtype, PLAIN_PATHWAY_KA.get(pw, patient.planned_operation_label))
+
+
 def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
     """Build 09:00 handover action queues + 03:00 instant-answer directory for active patients."""
     from django.utils import timezone
@@ -274,7 +281,7 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
             'p': p,
             'ev': ev,
             'surgeon_name': person_name(p.surgeon),
-            'procedure_ka': PLAIN_SUBTYPE_KA.get(p.op_subtype, PLAIN_PATHWAY_KA.get(pw, p.planned_operation_label)),
+            'procedure_ka': _plain_procedure_ka(p, ev),
             'side_ka': PLAIN_SIDE_KA.get(p.side or '', ''),
             'op_date': op_dt,
             'op_label': _relative_op_label(op_dt, today),
@@ -347,6 +354,9 @@ REGISTER_PROCEDURE_GROUPS = [
 
 def plain_risk_badges(ev):
     """Translate technical scores (RCRI, ARISCAT, eGFR/CrCl, ASA) into plain Georgian badges."""
+    from .registry import rule_value
+    ari_cfg = rule_value('SCORE_ARISCAT_CANET_2010')
+    ren_cfg = rule_value('REN_CKD_NEPHRO_HYDRATION')
     badges = []
     rcri_sc = ev['rcri']['score']
     cardio_lbl = 'დაბალი' if rcri_sc <= 1 else ('საშუალო' if rcri_sc == 2 else 'მაღალი')
@@ -354,8 +364,8 @@ def plain_risk_badges(ev):
     badges.append({'label': 'გულის რისკი', 'value': cardio_lbl, 'tone': cardio_tone})
 
     ari_sc = ev['ariscat']['score']
-    pulm_lbl = 'დაბალი' if ari_sc < 26 else ('საშუალო' if ari_sc < 45 else 'მაღალი')
-    pulm_tone = 'ok' if ari_sc < 26 else ('warn' if ari_sc < 45 else 'danger')
+    pulm_lbl = 'დაბალი' if ari_sc < ari_cfg['low_lt'] else ('საშუალო' if ari_sc <= ari_cfg['int_max'] else 'მაღალი')
+    pulm_tone = 'ok' if ari_sc < ari_cfg['low_lt'] else ('warn' if ari_sc <= ari_cfg['int_max'] else 'danger')
     badges.append({'label': 'ფილტვების რისკი', 'value': pulm_lbl, 'tone': pulm_tone})
 
     renal_vals = [v for v in (ev.get('crcl'), ev.get('egfr')) if v is not None]
@@ -365,7 +375,7 @@ def plain_risk_badges(ev):
         badges.append({'label': 'თირკმლის გაფილტვრა', 'value': 'კრეატინინი: ერთეული დასაზუსტებელია', 'tone': 'danger'})
     elif renal_vals:
         r_min = min(renal_vals)
-        r_tone = 'danger' if r_min < 30 else ('warn' if r_min < 60 else 'ok')
+        r_tone = 'danger' if r_min < ren_cfg['red'] else ('warn' if r_min < ren_cfg['hydration'] else 'ok')
         badges.append({'label': 'თირკმლის გაფილტვრა', 'value': f'{r_min} მლ/წთ', 'tone': r_tone})
     else:
         badges.append({'label': 'თირკმლის გაფილტვრა', 'value': 'კრეატინინი აკლია', 'tone': 'muted'})
@@ -409,7 +419,7 @@ def build_nurse_patient_context(request, patient, ev):
 
     return {
         'nw_verdict': verdict,
-        'nw_procedure_ka': PLAIN_SUBTYPE_KA.get(patient.op_subtype, PLAIN_PATHWAY_KA.get(ev['pathway'], patient.planned_operation_label)),
+        'nw_procedure_ka': _plain_procedure_ka(patient, ev),
         'nw_side_ka': PLAIN_SIDE_KA.get(patient.side or '', ''),
         'nw_op_label': _relative_op_label(op_dt, today),
         'nw_risk_badges': plain_risk_badges(ev),

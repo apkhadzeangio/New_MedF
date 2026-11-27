@@ -114,13 +114,13 @@ def _fmt_ka_date(val, short=False):
 
 
 def is_valid_birth_date(val, today=None):
-    """Return True iff `val` parses as a plausible birth date (year >= 1900, <= today, age <= 120)."""
+    """Return True iff `val` parses as a plausible birth date (year >= 1900, <= today, age 1..120)."""
     dob = val if isinstance(val, datetime.date) else _date(val)
     today = _date(today) or timezone.localdate()
     if not dob or dob > today or dob.year < 1900:
         return False
     years = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    return 0 <= years <= 120
+    return 1 <= years <= 120
 
 
 def _age_from_dob(val, today=None):
@@ -182,9 +182,10 @@ def is_symp_cea_patient(patient, q=None, today=None, s=None, require_filled=True
         return True
     days_ev = cea_live_days_since_event(q_d, today=today, s=s_d)
     symp_within_6m = (days_ev is None) or (days_ev <= symp_max_days)
+    has_symp_flag = bool(q_d.get('cea_symp_event')) or bool(_str_list(q_d.get('cea_event_chips')))
     return bool(
         (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP and symp_within_6m)
-        or (q_ok and bool(q_d.get('cea_symp_event')) and symp_within_6m)
+        or (q_ok and has_symp_flag and symp_within_6m)
     )
 
 
@@ -200,7 +201,7 @@ def target_prep_days(patient, today=None):
         is_symp = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=False)
         return cfg['cea_symp'] if is_symp else cfg['elective_art']
     has_ali_q = (q.get('abf_duration') == '< 2 კვირა')
-    has_clti_q = q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')))
+    has_clti_q = q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')) or bool(_str_list(q.get('ulcer_chips'))))
     if pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and has_ali_q:
         return cfg['cea_symp']
     if pw == PreopPatient.Pathway.ABF:
@@ -286,23 +287,27 @@ def cea_live_days_since_event(q, today=None, s=None):
     return _int(q.get('cea_days_since_event'), lo=0, hi=3650)
 
 
-def cta_live_months_age(s, today=None):
-    """Compute calendar-month CTA age from cta_date (with end-of-month clamping), else static cta_months."""
+def _add_calendar_months(dt, n):
+    """Return dt shifted forward by n calendar months with end-of-month clamping."""
     import calendar
+    total_m = (dt.year * 12 + (dt.month - 1)) + n
+    y, m0 = divmod(total_m, 12)
+    m = m0 + 1
+    return datetime.date(y, m, min(dt.day, calendar.monthrange(y, m)[1]))
+
+
+def cta_live_months_age(s, today=None):
+    """Compute strictly monotonic calendar-month CTA age from cta_date, else static cta_months."""
     if not isinstance(s, dict):
         return None
     today = _date(today) or timezone.localdate()
     cta_dt = _date(s.get('cta_date'))
     if cta_dt and cta_dt <= today:
-        months = (today.year - cta_dt.year) * 12 + (today.month - cta_dt.month)
-        month_end = calendar.monthrange(today.year, today.month)[1]
-        anniv_day = min(cta_dt.day, month_end)
-        if today.day < anniv_day:
-            months -= 1
-        elif months >= 1 and today.day > anniv_day:
-            months += 1
-        day_months = (today - cta_dt).days // 30
-        return max(0, months, day_months)
+        raw = (today.year - cta_dt.year) * 12 + (today.month - cta_dt.month)
+        completed = max(0, raw - 1) if _add_calendar_months(cta_dt, raw) > today else raw
+        if completed == 0:
+            return 0
+        return completed + (1 if today > _add_calendar_months(cta_dt, completed) else 0)
     return _int(s.get('cta_months'), lo=0, hi=240)
 
 

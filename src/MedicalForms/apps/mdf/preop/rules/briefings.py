@@ -26,7 +26,7 @@ def _eval_scores_and_frailty(ctx):
         frailty_notes.append(f'ჰიპოალბუმინემია ({ctx.alb_gl} გ/ლ)')
     if ctx.bmi is not None and ctx.bmi < nut_cfg['bmi_cachexia']:
         frailty_notes.append(f'მძიმე კახექსია (BMI {ctx.bmi}!)')
-    elif ctx.bmi is not None and ctx.bmi < 18.5:
+    elif ctx.bmi is not None and ctx.bmi < nut_cfg['bmi_underweight']:
         frailty_notes.append(f'დეფიციტური წონა (BMI {ctx.bmi})')
     elif ctx.bmi is not None and ctx.bmi >= sb_cfg['sb_bmi']:
         frailty_notes.append(f'სიმსუქნე II–III ხ. (BMI {ctx.bmi})')
@@ -60,7 +60,8 @@ def _eval_scores_and_missing_s1(ctx):
     if ctx.is_venous:
         is_lean_evla_ux = (not ctx.is_phleb) and (not ctx.has_neuraxial_plan) and (ctx.anesth_plan_raw != 'general')
         ven_needs_creat_ux = ctx.is_phleb or ctx.has_neuraxial_plan or bool(
-            q.get('med_doac') or q.get('med_dabigatran') or q.get('metformin') or ('rivaroxaban_2_5' in ctx.med_chips)
+            q.get('med_doac') or q.get('med_dabigatran') or q.get('metformin')
+            or ('rivaroxaban_2_5' in ctx.med_chips) or ('cilostazol' in ctx.med_chips)
         )
         ven_needs_inr_ux = (not is_lean_evla_ux) or ctx.on_oral_anticoag or (s.get('liver_status') in ('2x', '3x'))
         ven_needs_gl_ux = getattr(ctx, 'ven_needs_gl', not is_lean_evla_ux)
@@ -549,7 +550,7 @@ def _build_anesthetic_disposition(ctx, sb_cfg, cb_cfg, ren_hyd):
         (age_eff or 0) >= sb_cfg['mins_age']
         or ctx.ihd_flag or ctx.chf_flag or ctx.on_dialysis
         or (egfr_mins is not None and egfr_mins < ren_hyd)
-        or (q_filled and (q.get('dm') or q.get('neuro') or q.get('htn')))
+        or (q_filled and (ctx.has_known_dm or q.get('neuro') or q.get('htn')))
     )
     if not ctx.is_venous and (
         ctx.open_aortic
@@ -623,7 +624,7 @@ def _build_anesthetic_brief(ctx):
     gl_eff = getattr(ctx, 'gl_mmol_sat', ctx.gl_mmol)
     dos_gl_eff = ctx.dos_gl if ctx.dos_gl is not None else getattr(ctx, 'dos_gl_sat', None)
     hba1c_eff = getattr(ctx, 'hba1c_sat', ctx.hba1c)
-    needs_glycemic_corridor = bool((q_filled and (q.get('dm') or q.get('dm_insulin'))) or (gl_eff is not None and gl_eff >= gly_cfg['gl_hba1c']) or (hba1c_eff is not None and hba1c_eff >= gly_cfg['hba1c_dm']) or (dos_gl_eff is not None and dos_gl_eff >= gly_cfg['dos_corridor_mmol']))
+    needs_glycemic_corridor = bool(ctx.has_known_dm or (gl_eff is not None and gl_eff >= gly_cfg['gl_hba1c']) or (hba1c_eff is not None and hba1c_eff >= gly_cfg['hba1c_dm']) or (dos_gl_eff is not None and dos_gl_eff >= gly_cfg['dos_corridor_mmol']))
     needs_vriii = bool((q_filled and q.get('dm_insulin') and ctx.open_aortic) or (gl_eff is not None and gl_eff >= gly_cfg['vriii_mmol']) or (dos_gl_eff is not None and dos_gl_eff >= gly_cfg['vriii_mmol']))
     vriii_sfx = ' · ინტრაოპ./ICU: IV ინსულინის ინფუზია (VRIII) საათობრივი გლუკოზისა და K+ კონტროლით!' if needs_vriii else ''
     ctx.anesthetic_brief = {

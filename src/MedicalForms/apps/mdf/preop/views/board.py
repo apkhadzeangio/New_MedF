@@ -190,6 +190,8 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
         safety_bits.append('ალერგია ლატექსზე / ქლორჰექსიდინზე!')
     if eff_iod_board:
         safety_bits.append('იოდი/კონტრასტზე ალერგია!')
+    elif ev.get('uses_contrast') and not q.get('allergy_iodine_asked'):
+        safety_bits.append('იოდზე ალერგია დასაზუსტებელია!')
     if 'nsaid' in allergy_chips:
         safety_bits.append('აასს / NSAID ალერგია (კეტოროლაკი/დექსკეტოპროფენი არა!)')
     if 'clopidogrel_intol' in allergy_chips:
@@ -218,6 +220,11 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
     return clean_text('\n'.join(status_lines), 4000)
 
 
+_VTE_PREFIXES = ('VTE პროფილაქტიკა', 'HIT ანამნეზში!', 'VTE / ანტიკოაგულაცია:')
+_ABX_PREFIXES = ('მძიმე ბეტა-ლაქტამური ალერგია!', 'მძიმე β-ლაქტამსა')
+_NEPH_PREFIXES = ('ნეფროპროტექცია:', 'ნეფროპროტექცია (')
+
+
 def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
     cap_low_max = rule_value('SCORE_CAPRINI_VTE')['low_max']
@@ -239,7 +246,14 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
             f"პოსტოპ. ჰემოდინამიკის, დიურეზის და ქვემო კიდურების პულსაციის მონიტორინგი + {ev['surgical_brief']['postop_antithrombotic']} (ESVS 2024)",
         ))
     else:
-        comp_txt = 'ელასტიური კომპრესია უკუნაჩვენებია (არტერიული იშემია!)' if ev.get('compression_contra') else 'ელასტიური კომპრესია პროტოკოლით'
+        if ev.get('compression_contra'):
+            comp_txt = 'ელასტიური კომპრესია უკუნაჩვენებია (არტერიული იშემია!)'
+        elif ev.get('tbi_reduced_comp'):
+            comp_txt = 'მსუბუქი I კლასის კომპრესია (<20 mmHg — სასაზღვრო TP/TBI)'
+        elif ev.get('abi_non_compressible') and not ev.get('tbi_comp_safe'):
+            comp_txt = 'კომპრესიამდე სავალდებულოა TP/TBI შეფასება (არაკომპრესირებადი ABI >1.40!)'
+        else:
+            comp_txt = 'ელასტიური კომპრესია პროტოკოლით'
         task_candidates.append((
             'ვენური პოსტოპ. რეჟიმი:',
             f'ვენური პოსტოპ. რეჟიმი: ადრეული აქტიური სიარული · {comp_txt}',
@@ -252,7 +266,7 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
     if cea_bleed_board:
         hit_cea_sfx = ' (ასევე HIT ანამნეზში — UFH/LMWH კატეგორიულად აკრძალულია!)' if 'hit_heparin' in allergy_chips else ''
         task_candidates.append((
-            'VTE პროფილაქტიკა',
+            _VTE_PREFIXES,
             f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): მხოლოდ მექანიკური პროფილაქტიკა (IPC) — ფარმაკოლოგიური ანტიკოაგულაცია უკუნაჩვენებია თავის ტვინის სისხლჩაქცევის / rt-PA ≤6 დღის გამო!{hit_cea_sfx}",
         ))
     elif 'hit_heparin' in allergy_chips:
@@ -273,18 +287,23 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
         else:
             hit_board_agents = 'ფონდაპარინუქსი / არგატრობანი / ბივალირუდინი'
         task_candidates.append((
-            'HIT ანამნეზში!',
+            _VTE_PREFIXES,
             f'HIT ანამნეზში! არაფრაქციული ჰეპარინი და LMWH აკრძალულია — არაჰეპარინული ანტიკოაგულაცია ({hit_board_agents})',
         ))
     elif ev.get('has_contra_oac'):
         task_candidates.append((
-            'VTE / ანტიკოაგულაცია:',
+            _VTE_PREFIXES,
             'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!',
         ))
     elif ev.get('has_full_oac'):
         task_candidates.append((
-            'VTE / ანტიკოაგულაცია:',
+            _VTE_PREFIXES,
             'VTE / ანტიკოაგულაცია: პაციენტი მუდმივ ანტიკოაგულანტზეა (OAC) — სრული ჰემოსტაზის შემდეგ განახლდეს OAC სქემა ქირურგთან შეთანხმებით (ორმაგი ანტიკოაგულაციის გარეშე!)',
+        ))
+    elif ev.get('has_mech_valve'):
+        task_candidates.append((
+            _VTE_PREFIXES,
+            'VTE / ანტიკოაგულაცია: მექანიკური სარქველი — სავალდებულოა თერაპიული ვარფარინი (VKA) / ხიდური სქემა კარდიოლოგთან (პროფილაქტიკური LMWH ან DOAC არასაკმარისია/აკრძალულია!)',
         ))
     elif ev['caprini_score'] > cap_low_max or not ev['is_venous']:
         if s.get('liver_status') == '3x':
@@ -294,7 +313,7 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
         else:
             vte_board_drug = 'LMWH პროფილაქტიკური დოზით'
         task_candidates.append((
-            'VTE პროფილაქტიკა',
+            _VTE_PREFIXES,
             f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): ადრეული მობილიზაცია + {vte_board_drug} ჰემოსტაზის შემდეგ",
         ))
     _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board)
@@ -323,7 +342,7 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
                 f'მძიმე ბეტა-ლაქტამური ალერგია! ცეფაზოლინი უკუნაჩვენებია — '
                 f'პროფილაქტიკა ვანკომიცინით ან კლინდამიცინით (ვანკომიცინი მაქს. 2 გ){groin_abx_sfx}'
             )
-        task_candidates.append(('მძიმე ბეტა-ლაქტამური ალერგია!', abx_task_txt))
+        task_candidates.append((_ABX_PREFIXES, abx_task_txt))
 
     if 'nsaid' in allergy_chips:
         task_candidates.append((
@@ -349,16 +368,18 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
         else:
             hyd_b = 'იზოტონური ჰიდრატაცია'
         task_candidates.append((
-            'ნეფროპროტექცია:',
+            _NEPH_PREFIXES,
             f'ნეფროპროტექცია: {hyd_b} + საკონტროლო კრეატინინი და K+ 24–48 სთ-ში{contrast_sfx}',
         ))
     elif eff_renal_board is not None and eff_renal_board < hyd_egfr:
         task_candidates.append((
-            'ნეფროპროტექცია:',
+            _NEPH_PREFIXES,
             'ნეფროპროტექცია (თირკმლის მონიტორინგი): საკონტროლო კრეატინინი და K+ 24–48 სთ-ში (ნეფროტოქსიკური წამლების თავიდან აცილება)',
         ))
 
-    if ev.get('needs_ppi') or q.get('ulcer'):
+    ft_med_keys = set(ev.get('ft_meds_keys') or ())
+    has_ppi_now = ('ppi' in (q.get('med_chips') or ())) or ('omeprazole' in ft_med_keys)
+    if ev.get('needs_ppi') or q.get('ulcer') or (ev.get('cyp2c19_ppi_sensitive') and has_ppi_now):
         ppi_b = 'პანტოპრაზოლი 40 მგ (CYP2C19 უსაფრთხო)' if ev.get('cyp2c19_ppi_sensitive') else 'ომეპრაზოლი / პანტოპრაზოლი (PPI)'
         task_candidates.append((
             'გასტროპროტექცია:',

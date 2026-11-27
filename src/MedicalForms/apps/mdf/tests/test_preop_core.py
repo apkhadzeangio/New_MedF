@@ -630,7 +630,8 @@ class PreopVenousTests(PrivateMediaTest):
         self.assertIn('ორსულობა', red_blob)
         self.assertIn('წითელი ქარი', red_blob)
         self.assertIn('ABI 0.72 < 0.80', red_blob)
-        self.assertIn('სპინალური ანესთეზიისა და ფლებექტომიის', amber_blob)
+        self.assertFalse(ev['has_neuraxial_plan'])
+        self.assertIn('შეათანხმეთ მიღების/შეჩერების დღე ქირურგთან', amber_blob)
 
         # NIV prescription prefill carries lidocaine allergy -> allergy=True and CEAP C4 diagnosis
         rx = self.client.get(reverse('niv-cover'), {'preop': p.pk})
@@ -647,6 +648,8 @@ class PreopVenousTests(PrivateMediaTest):
             'med_doac': '1',
             'mets_ok': '1',
         })
+        p.refresh_from_db()
+        self.assertIn('სპინალური ანესთეზიისა და ფლებექტომიის', ' | '.join(evaluate(p)['amber_flags']))
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage1',
             'labs_date': timezone.localdate().isoformat(),

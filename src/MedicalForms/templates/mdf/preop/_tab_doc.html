@@ -7,7 +7,7 @@
             <section class="x-card">
                 <div class="po-seal-banner seal-{{ ev.clearance_seal.code }}">
                     <div>
-                        <div class="fw-bold" style="font-size:15px">{{ ev.clearance_seal.badge }} · {{ p.planned_operation_label }} ({{ ev.side_badge }})</div>
+                        <div class="fw-bold" style="font-size:15px">{{ ev.clearance_seal.badge }} · {{ ev.effective_operation_label }} ({{ ev.side_badge }})</div>
                         <div class="small">{{ ev.clearance_seal.detail }}</div>
                     </div>
                     <a class="x-btn sm primary" href="{% url 'preop-passport' p.pk %}" target="_blank" rel="noopener">

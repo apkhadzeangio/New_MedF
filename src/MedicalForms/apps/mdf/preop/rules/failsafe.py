@@ -82,6 +82,13 @@ def _collect_med_allergy_unknowns(ctx, add):
             'თავისუფალ ტექსტში მითითებულია მედიკამენტური ალერგია, მაგრამ სტრუქტურულად მონიშნული არ არის — დადასტურებამდე GO ბეჭედი არ გაიცემა.',
             blocking=True,
         )
+    if ctx.uses_contrast and ctx.q_filled and not q.get('allergy_iodine_asked') and not ctx.eff_allergy_iodine:
+        add(
+            'iodine_allergy_unasked', 'q', 'allergy_iodine',
+            'იოდზე / კონტრასტზე ალერგია გამოკითხული არ არის',
+            'კონტრასტული ჩარევის წინ სავალდებულოა იოდზე/კონტრასტზე ალერგიის გამოკითხვა და დაფიქსირება.',
+            blocking=True,
+        )
     if ctx.ft_meds.get('unstructured_labels'):
         labels_txt = ', '.join(ctx.ft_meds['unstructured_labels'])
         add(

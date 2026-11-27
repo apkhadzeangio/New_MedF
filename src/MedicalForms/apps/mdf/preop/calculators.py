@@ -34,13 +34,15 @@ def _sat_age(val):
 
 
 def _parse_plt_k(val):
-    """Normalize PLT to x10^9/L (converts /uL >2500 via /1000; saturates <=0 to 0 for monotonicity)."""
+    """Normalize PLT to x10^9/L (converts /uL >=3000 via /1000; rejects ambiguous 2501..2999; saturates <=0 to 0)."""
     v = _num(val)
     if v is None:
         return None
     if v < 0:
         return 0
-    return int(round(v / 1000.0)) if v > 2500 else int(round(v))
+    if 2500 < v < 3000:
+        return None
+    return int(round(v / 1000.0)) if v >= 3000 else int(round(v))
 
 
 def _parse_scr_mgdl(creat, creat_unit=''):
@@ -479,7 +481,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         pw != PreopPatient.Pathway.VENOUS or bool(q.get('on_dialysis'))
         or (egfr_v is not None and egfr_v < asa['egfr_iii']) or bool(q.get('cad')) or bool(cad_chips)
         or bool(q.get('neuro')) or (s.get('ecg') == 'afib_controlled')
-        or bool(q.get('ven_dvt_history')) or bool(q.get('ven_cancer_immob'))
+        or bool(q.get('ven_dvt_history')) or bool(_str_list(q.get('ven_dvt_chips'))) or bool(q.get('ven_cancer_immob'))
         or (s.get('liver_status') == '3x') or (hb_gl is not None and hb_gl < asa['hb_iii'])
         or (hba1c is not None and hba1c >= asa['hba1c_iii']) or (gl_mmol is not None and gl_mmol >= asa['gl_iii'])
         or bool(q.get('dm_insulin')) or (bmi_v is not None and bmi_v >= asa['bmi_iii'])
@@ -491,8 +493,8 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         return 'III'
 
     if (
-        bool(q.get('htn')) or bool(q.get('dm')) or bool(q.get('smoker'))
-        or bool(q.get('pulm')) or bool(q.get('thyroid_disease'))
+        bool(q.get('htn')) or bool(q.get('dm')) or bool(q.get('metformin')) or bool(q.get('smoker'))
+        or bool(q.get('pulm')) or bool(_str_list(q.get('pulm_chips'))) or bool(q.get('thyroid_disease'))
         or (hba1c is not None and hba1c >= asa['hba1c_ii'])
         or (is_pregnancy_eligible(patient) and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible'))))
         or (bmi_v is not None and bmi_v >= asa['bmi_ii'])

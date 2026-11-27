@@ -136,7 +136,7 @@ def _eval_stage1_completeness(ctx):
         ven_needs_creat = (
             ctx.is_phleb or ctx.has_neuraxial_plan
             or bool(q.get('med_doac') or q.get('med_dabigatran') or q.get('metformin'))
-            or ('rivaroxaban_2_5' in ctx.med_chips)
+            or ('rivaroxaban_2_5' in ctx.med_chips) or ('cilostazol' in ctx.med_chips)
         )
         ven_needs_inr = (not is_lean_evla) or ctx.on_oral_anticoag or (s.get('liver_status') in ('2x', '3x'))
         bmi_eff = ctx.bmi if ctx.bmi is not None else getattr(ctx, 'bmi_sat', None)

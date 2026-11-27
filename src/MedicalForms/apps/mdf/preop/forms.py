@@ -87,8 +87,11 @@ _NURSE_Q_TEXT_LIMITS = (
 )
 
 
-def _apply_q_booleans_and_chips(post_data, q):
+def _apply_q_booleans_and_chips(post_data, q, patient=None):
+    is_ven = patient is not None and patient.pathway == PreopPatient.Pathway.VENOUS
     for f in _NURSE_Q_BOOL_FIELDS:
+        if f == 'allergy_iodine' and is_ven and 'allergy_iodine_presented' not in post_data and 'allergy_iodine' not in post_data:
+            continue
         q[f] = post_data.get(f) in ('1', 'on', 'true')
     q['mets_ok'] = post_data.get('mets_ok', '1') != '0'
     if post_data.get('mets_limitation') in ('cardiac', 'limb'):
@@ -110,6 +113,8 @@ def _apply_q_booleans_and_chips(post_data, q):
         q['prev_abdo_surg'] = True
     if q.get('vasc_chips'):
         q['abf_prior_vasc'] = True
+    if q.get('ulcer_chips'):
+        q['abf_ulcer'] = True
     if q.get('inf_chips'):
         q['active_infection'] = True
     if q.get('dm_insulin') or q.get('metformin'):
@@ -122,6 +127,8 @@ def _apply_q_booleans_and_chips(post_data, q):
         q['cea_symp_event'] = True
     if q.get('ven_dvt_chips'):
         q['ven_dvt_history'] = True
+    if q.get('ven_rec_chips'):
+        q['ven_recurrent'] = True
 
 
 def _parse_inv_field(post_data, target, key, parser, inv, keep_valid=False):
@@ -176,7 +183,7 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
 
     raw_inv = s.get('_invalid_inputs')
     inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
-    if q.get('cea_symp_event') or patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP:
+    if q.get('cea_symp_event') or q.get('cea_crescendo') or q.get('cea_thrombolysis') or patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP:
         raw_ev = (post_data.get('cea_event_date') or '').strip() if 'cea_event_date' in post_data else ''
         ev_dt = _date(raw_ev) if raw_ev else None
         if raw_ev:
@@ -228,7 +235,7 @@ def apply_questionnaire_post(post_data, patient, filled_by_label):
     q = merged_q(patient)
     s = merged_studies(patient)
     today = timezone.localdate()
-    _apply_q_booleans_and_chips(post_data, q)
+    _apply_q_booleans_and_chips(post_data, q, patient=patient)
     _apply_q_pathway_and_studies(post_data, patient, q, s, today)
 
     q['filled'] = True
@@ -236,7 +243,8 @@ def apply_questionnaire_post(post_data, patient, filled_by_label):
     q['filled_by'] = filled_by_label
     q['nurse_verified'] = True
     q['nurse_verified_by'] = filled_by_label
-    q['allergy_iodine_asked'] = True
+    if patient.pathway != PreopPatient.Pathway.VENOUS or 'allergy_iodine_presented' in post_data or 'allergy_iodine' in post_data:
+        q['allergy_iodine_asked'] = True
 
     if not patient.started_on:
         patient.started_on = patient.visit_date or today
@@ -269,18 +277,21 @@ _SELF_FILL_PRESERVE_CHIPS = (
     'vasc_chips', 'ven_dvt_chips', 'ven_rec_chips',
 )
 
+_CEAP_RANK = {'C2': 2, 'C3': 3, 'C4': 4, 'C5': 5, 'C6': 6}
+
 
 def _apply_sf_pathway_fields(post_data, pw, q, today, inv):
     if pw == PreopPatient.Pathway.AAA_INFRA:
         for f in ('aaa_pain', 'claudication', 'prev_abdo_surg'):
             q[f] = post_data.get(f) in ('1', 'on', 'true')
     elif pw == PreopPatient.Pathway.CEA:
+        posted_ev_chips = bool(post_data.getlist('cea_event_chips')) if hasattr(post_data, 'getlist') else False
         for f in ('cea_symp_event', 'cea_crescendo', 'cea_prior_neck', 'cea_hoarseness'):
-            if f == 'cea_symp_event' and q.get('cea_event_chips'):
+            if f == 'cea_symp_event' and (q.get('cea_event_chips') or posted_ev_chips):
                 q[f] = True
             else:
                 q[f] = post_data.get(f) in ('1', 'on', 'true')
-        if q.get('cea_symp_event'):
+        if q.get('cea_symp_event') or q.get('cea_crescendo'):
             raw_ev = (post_data.get('cea_event_date') or '').strip() if 'cea_event_date' in post_data else ''
             ev_dt = _date(raw_ev) if raw_ev else None
             if raw_ev:
@@ -339,28 +350,18 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv):
             valid_keys = CHIP_LABELS[chip_field]
             q[chip_field] = [k for k in post_data.getlist(chip_field) if k in valid_keys]
 
-    if q.get('allergy_chips'):
-        q['allergy_other'] = True
-    if q.get('cad_chips'):
-        q['cad'] = True
-    if q.get('pulm_chips'):
-        q['pulm'] = True
-    if q.get('abdo_chips'):
-        q['prev_abdo_surg'] = True
-    if q.get('vasc_chips'):
-        q['abf_prior_vasc'] = True
-    if q.get('inf_chips'):
-        q['active_infection'] = True
+    for ch_k, parent_k in (
+        ('allergy_chips', 'allergy_other'), ('cad_chips', 'cad'), ('pulm_chips', 'pulm'),
+        ('abdo_chips', 'prev_abdo_surg'), ('vasc_chips', 'abf_prior_vasc'), ('ulcer_chips', 'abf_ulcer'),
+        ('inf_chips', 'active_infection'), ('cea_neck_chips', 'cea_prior_neck'),
+        ('cea_event_chips', 'cea_symp_event'), ('ven_dvt_chips', 'ven_dvt_history'), ('ven_rec_chips', 'ven_recurrent'),
+    ):
+        if q.get(ch_k):
+            q[parent_k] = True
     if q.get('sglt2') or q.get('metformin'):
         q['dm'] = True
     if q.get('recent_stent'):
         q['cad'] = True
-    if q.get('cea_neck_chips'):
-        q['cea_prior_neck'] = True
-    if q.get('cea_event_chips'):
-        q['cea_symp_event'] = True
-    if q.get('ven_dvt_chips'):
-        q['ven_dvt_history'] = True
 
     # Patient may fill an empty surgical side, NEVER overwrite an already-set surgeon side (and never side='B' on CEA)!
     valid_sf_sides = ('R', 'L') if pw == PreopPatient.Pathway.CEA else ('R', 'L', 'B')
@@ -380,7 +381,8 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv):
     q['self_fill_submitted'] = True
     q['filled_at'] = timezone.localtime().strftime('%d.%m.%Y %H:%M')
     q['filled_by'] = 'პაციენტი (ბმულით)'
-    q['allergy_iodine_asked'] = True
+    if pw != PreopPatient.Pathway.VENOUS or 'allergy_iodine' in post_data or 'allergy_iodine_presented' in post_data:
+        q['allergy_iodine_asked'] = True
 
     if not patient.started_on:
         patient.started_on = patient.visit_date or today
@@ -406,9 +408,11 @@ def _preserve_prior_sf_risks(old_q, q):
             q[tf] = old_t
         elif old_t and new_t and old_t.lower() not in new_t.lower():
             q[tf] = f'{old_t}; {new_t}'[:lim]
-    for sk in ('abf_duration', 'cea_event_date', 'ven_ceap'):
+    for sk in ('abf_duration', 'cea_event_date'):
         if old_q.get(sk) and not q.get(sk):
             q[sk] = old_q[sk]
+    if _CEAP_RANK.get(old_q.get('ven_ceap'), 0) > _CEAP_RANK.get(q.get('ven_ceap'), 0):
+        q['ven_ceap'] = old_q['ven_ceap']
     for nk in ('cea_days_since_event', 'abf_claud_m'):
         if old_q.get(nk) is not None and q.get(nk) is None:
             q[nk] = old_q[nk]
@@ -425,6 +429,8 @@ def apply_self_fill_post(post_data, patient):
 
     # Common patient-facing switches rendered on self_fill.html across ALL 6 pathways (including active_infection!)
     for f in _SELF_FILL_COMMON_BOOLS:
+        if f == 'allergy_iodine' and pw == PreopPatient.Pathway.VENOUS and 'allergy_iodine' not in post_data:
+            continue
         q[f] = post_data.get(f) in ('1', 'on', 'true')
     if q.get('ulcer_active_symp'):
         q['ulcer'] = True
@@ -442,8 +448,8 @@ def apply_self_fill_post(post_data, patient):
 
     raw_inv = s.get('_invalid_inputs')
     inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
-    _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv)
     _apply_sf_pathway_fields(post_data, pw, q, today, inv)
+    _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv)
     if was_filled:
         _preserve_prior_sf_risks(old_q, q)
     if inv:

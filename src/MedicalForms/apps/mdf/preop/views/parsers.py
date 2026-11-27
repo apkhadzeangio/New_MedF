@@ -156,9 +156,10 @@ def _parse_s1_numbers_and_dates(post, s, today):
             s['labs_date'] = ''
             inv.pop('labs_date', None)
         elif ld and ld <= today:
+            old_ld = s.get('labs_date') or ''
             s['labs_date'] = ld.isoformat()
             inv.pop('labs_date', None)
-            if (today - ld).days <= 14:
+            if s['labs_date'] != old_ld or (today - ld).days <= 14:
                 s['stale_labs_refreshed'] = False
         else:
             s['labs_date'] = ''
@@ -173,6 +174,8 @@ def _parse_s1_numbers_and_dates(post, s, today):
 
 def med_hold_agreement_block_reason(ev, s):
     """Return Georgian error string if med_hold_agreed / nurse med-call confirmation is clinically unsafe."""
+    if not ev.get('needs_med_hold'):
+        return 'ამ პაციენტს შესაჩერებელი მედიკამენტების გრაფიკი არ აქვს.'
     if ev['clearance_seal']['code'] == 'stop' or ev.get('has_hard_contraindication'):
         return 'STOP-სიგნალის დროს წამლების შეწყვეტა დაბლოკილია — ჯერ ქირურგს დაუკავშირდით!'
     if ev.get('neuraxial_hard_blocked'):
@@ -299,9 +302,17 @@ def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
     }
     for bf in _S2_BOOL_FIELDS:
         if bf in post:
-            s[bf] = post.get(bf) in ('1', 'on', 'true')
+            val = post.get(bf) in ('1', 'on', 'true')
+            if bf == 'med_hold_agreed' and val and not ev_before.get('needs_med_hold'):
+                val = False
+            s[bf] = val
         elif s2_full and s2_bool_visible.get(bf, True):
             s[bf] = False
+    if s.get('med_hold_agreed'):
+        if not s.get('med_hold_agreed_date'):
+            s['med_hold_agreed_date'] = timezone.localdate().isoformat()
+    else:
+        s['med_hold_agreed_date'] = ''
     if (s.get('cied_plan') or 'pending') != 'pending':
         s['cied_checked'] = True
 
