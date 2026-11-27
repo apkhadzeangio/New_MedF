@@ -133,7 +133,9 @@
     <section class="nw-card" id="nw-med-call-card">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
             <h2 class="nw-card-title m-0">პაციენტთან დარეკვა — წამლების შეჩერების გეგმა</h2>
-            {% if nw_med_script.stop_locked %}
+            {% if nw_med_script.inactive_locked %}
+            <span class="nw-verdict nw-verdict-pending">არააქტიური / დაარქივებული</span>
+            {% elif nw_med_script.stop_locked %}
             <span class="nw-verdict nw-verdict-stop">{% if nw_med_script.urgent_rows %}STOP — საშიში წამალი!{% else %}STOP — წამლები არ შეწყვიტოთ!{% endif %}</span>
             {% elif nw_med_script.called_valid %}
             <span class="nw-verdict nw-verdict-ready">დარეკილია ✓ ({{ nw_med_script.called_at }})</span>
@@ -143,14 +145,16 @@
         </div>
 
         {% if nw_med_script.stop_locked %}
-        <div class="nw-banner danger">{% if nw_med_script.urgent_rows %}ოპერაცია დაბლოკილია (STOP) — გეგმური წამლები თვითნებურად არ შეწყვიტოთ; წითლად მონიშნული საშიში/დაუზუსტებელი წამლების გამო დაუყოვნებლივ დაუკავშირდით ექიმს!{% else %}ოპერაცია დაბლოკილია (STOP) — არცერთი წამალი არ შეწყვიტოთ ქირურგთან შეთანხმების გარეშე!{% endif %}</div>
+        <div class="nw-banner danger">{% if nw_med_script.urgent_rows %}ოპერაცია დაბლოკილია (STOP) — გეგმური წამლები თვითნებურად არ შეწყვიტოთ; მონიშნული საშიში/დაუზუსტებელი ან მწვავე წამლების გამო დაუყოვნებლივ დაუკავშირდით ექიმს!{% else %}ოპერაცია დაბლოკილია (STOP) — არცერთი წამალი არ შეწყვიტოთ ქირურგთან შეთანხმების გარეშე!{% endif %}</div>
         {% endif %}
 
         {% if nw_med_script.needs_op_date %}
         <div class="nw-banner warn">ზუსტი კალენდარული თარიღების გამოსათვლელად მიუთითეთ ოპერაციის თარიღი ქვემოთ.</div>
         {% endif %}
 
-        {% if nw_med_script.has_meds %}
+        {% if nw_med_script.inactive_locked %}
+        <div class="nw-banner warn m-0">ბარათი დაარქივებული ან არააქტიურია — წინა წამლების შეჩერების თარიღები გაუქმებულია! თვითნებურად არცერთი წამალი არ შეწყვიტოთ; დააზუსტეთ მკურნალ ექიმთან.</div>
+        {% elif nw_med_script.has_meds %}
             {% if nw_med_script.stop_locked %}
                 {% if nw_med_script.urgent_rows %}
                 <div class="nw-med-group-lbl">მწვავე / უკუნაჩვენები წამლები (დაუყოვნებლივ დაუკავშირდით ექიმს):</div>

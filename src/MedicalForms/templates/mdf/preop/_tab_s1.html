@@ -20,13 +20,13 @@
                 </div>
                 <div class="grid-4">
                     <label class="fld">მარჯვენა / ძირითადი სისტოლური (mmHg)
-                        <input type="number" name="bp_sys" value="{{ s.bp_sys|default_if_none:'' }}" placeholder="130" class="form-control">
+                        <input type="number" step="any" name="bp_sys" value="{{ s.bp_sys|default_if_none:'' }}" placeholder="130" class="form-control">
                     </label>
                     <label class="fld">მარჯვენა / ძირითადი დიასტოლური (mmHg)
-                        <input type="number" name="bp_dia" value="{{ s.bp_dia|default_if_none:'' }}" placeholder="80" class="form-control">
+                        <input type="number" step="any" name="bp_dia" value="{{ s.bp_dia|default_if_none:'' }}" placeholder="80" class="form-control">
                     </label>
                     <label class="fld">პულსი (/წთ)
-                        <input type="number" name="hr" value="{{ s.hr|default_if_none:'' }}" placeholder="72" class="form-control">
+                        <input type="number" step="any" name="hr" value="{{ s.hr|default_if_none:'' }}" placeholder="72" class="form-control">
                     </label>
                     <label class="fld">სატურაცია SpO₂ (%)
                         <input type="number" step="any" name="spo2" value="{{ s.spo2|default_if_none:'' }}" placeholder="98" class="form-control">
@@ -35,10 +35,10 @@
                 <div class="d-flex flex-wrap align-items-end gap-3">
                     <label class="chip-check"><input type="checkbox" name="irregular_hr" value="1" {% if s.irregular_hr %}checked{% endif %}>არარეგულარული პულსი (არითმია)</label>
                     <label class="fld" style="width:170px">მარცხენა სისტოლური{% if ev.pathway == 'cea' %} (CEA!){% endif %}
-                        <input type="number" name="bp_sys_l" value="{{ s.bp_sys_l|default_if_none:'' }}" placeholder="128" class="form-control">
+                        <input type="number" step="any" name="bp_sys_l" value="{{ s.bp_sys_l|default_if_none:'' }}" placeholder="128" class="form-control">
                     </label>
                     <label class="fld" style="width:170px">მარცხენა დიასტოლური
-                        <input type="number" name="bp_dia_l" value="{{ s.bp_dia_l|default_if_none:'' }}" placeholder="78" class="form-control">
+                        <input type="number" step="any" name="bp_dia_l" value="{{ s.bp_dia_l|default_if_none:'' }}" placeholder="78" class="form-control">
                     </label>
                     <label class="fld" style="width:115px">წონა (კგ)
                         <input type="number" step="any" name="weight_kg" value="{{ s.weight_kg|default_if_none:'' }}" class="form-control">

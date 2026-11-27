@@ -415,18 +415,22 @@
         {% if ev.clearance_seal.code == 'stop' %}
         <div class="pp-med-gate" style="margin-bottom:5px;padding:5px 8px;border-radius:6px;background:#FEF3F2;border:1.5px solid #D92D20;color:#912018;font-size:11.2px">
             {% if ev.has_urgent_med_action %}
-            <strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით! გეგმური წამლები თვითნებურად არ შეწყვიტოთ; წითლად მონიშნული უკუნაჩვენები/დაუზუსტებელი ან მწვავე მედიკამენტების გამო დაუყოვნებლივ დაუკავშირდით ექიმს!</strong>
+            <strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით! გეგმური წამლები თვითნებურად არ შეწყვიტოთ; მონიშნული უკუნაჩვენები/დაუზუსტებელი ან მწვავე მედიკამენტების გამო დაუყოვნებლივ დაუკავშირდით ექიმს!</strong>
             {% else %}
             <strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით! არცერთი სასიცოცხლო მედიკამენტი (განსაკუთრებით ანტიკოაგულანტი/ანტიაგრეგანტი) არ შეწყვიტოთ!</strong>
             {% endif %}
         </div>
+        {% elif ev.clearance_seal.code == 'inactive' %}
+        <div class="pp-med-gate" style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:#FFFAEB;border:1px solid #FEDF89;color:#93370D;font-size:11.2px">
+            <strong>ბარათი დაარქივებული ან არააქტიურია — მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!</strong> ძველი შეჩერების თარიღები გაუქმებულია; თვითნებურად არცერთი მედიკამენტი არ შეწყვიტოთ და არ შეცვალოთ.
+        </div>
         {% else %}
-        <div class="pp-med-gate" style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if p.approved_at and ev.workup_ready and not ev.has_blocking_unknown_state and ev.clearance_seal.code != 'pending' and ev.clearance_seal.code != 'inactive' %}#EAF7F0;border:1px solid #A9D8C1;color:#065F46{% else %}#FEF3F2;border:1px solid #FECDCA;color:#B42318{% endif %};font-size:11.2px">
+        <div class="pp-med-gate" style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if p.approved_at and ev.workup_ready and not ev.has_blocking_unknown_state and ev.clearance_seal.code != 'pending' %}#EAF7F0;border:1px solid #A9D8C1;color:#065F46{% else %}#FEF3F2;border:1px solid #FECDCA;color:#B42318{% endif %};font-size:11.2px">
             <strong>მოქმედებს მხოლოდ მკურნალი ექიმის დადასტურებით!</strong> თვითნებურად არცერთი მედიკამენტი არ შეწყვიტოთ და არ შეცვალოთ.
-            {% if p.approved_at and ev.workup_ready and not ev.has_blocking_unknown_state and ev.clearance_seal.code != 'pending' and ev.clearance_seal.code != 'inactive' %}· <strong>[დადასტურებულია ექიმთან ✓]</strong>{% else %}· <strong>[სტატუსი: ექიმთან ჯერ არ არის დადასტურებული!]</strong>{% endif %}
+            {% if p.approved_at and ev.workup_ready and not ev.has_blocking_unknown_state and ev.clearance_seal.code != 'pending' %}· <strong>[დადასტურებულია ექიმთან ✓]</strong>{% else %}· <strong>[სტატუსი: ექიმთან ჯერ არ არის დადასტურებული!]</strong>{% endif %}
         </div>
         {% endif %}
-        <div class="pp-fast-box" style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if ev.has_glp1_any and ev.clearance_seal.code != 'stop' %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
+        <div class="pp-fast-box" style="margin-bottom:5px;padding:4px 8px;border-radius:6px;background:{% if ev.has_glp1_any and ev.clearance_seal.code != 'stop' and ev.clearance_seal.code != 'inactive' %}#FFFAEB;border:1px solid #FEDF89{% else %}#F5FAFF;border:1px solid #B2DDFF{% endif %}">
             <strong>{{ ev.fasting_instruction }}</strong>
         </div>
         {% if ev.med_schedule %}

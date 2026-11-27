@@ -91,7 +91,7 @@
                     </div>
                     {% endif %}
 
-                    {% if ev.needs_tsh %}
+                    {% if ev.needs_tsh or s.tsh_status and s.tsh_status != 'pending' %}
                     <div class="po-task-row reflex-row {% if s.tsh_status != 'pending' %}done{% endif %}">
                         <span><strong>რეფლექს-ანალიზი კონტრასტამდე:</strong> TSH და FT4 <small class="text-muted">(ფარისებრი ჯირკვალი / ამიოდარონი)</small></span>
                         <select name="tsh_status" class="form-select form-select-sm" style="width:auto">
@@ -124,9 +124,9 @@
                     </div>
                     {% endif %}
 
-                    {% if ev.needs_tbi_check %}
+                    {% if ev.needs_tbi_check or s.tp_r is not None or s.tp_l is not None or s.tbi_r is not None or s.tbi_l is not None %}
                     <div class="po-task-row reflex-row {% if ev.tbi_measured %}done{% endif %}">
-                        <span><strong>რეფლექს-დოპლერი ({% if ev.abi_non_compressible %}ABI {{ ev.max_abi }} &gt; 1.40 — არაკომპრესირებადი{% else %}დიაბეტი / დიალიზი + CLTI{% endif %}):</strong> სამიზნე კიდურზე თითის წნევა (Toe Pressure, mmHg) ან TBI{% if ev.is_venous %} <small class="text-muted">(კომპრესიამდე TP &ge; 60 ან TBI &ge; 0.70)</small>{% endif %}</span>
+                        <span><strong>რეფლექს-დოპლერი ({% if ev.abi_non_compressible %}ABI {{ ev.max_abi }} &gt; 1.40 — არაკომპრესირებადი{% elif ev.needs_tbi_check %}დიაბეტი / დიალიზი + CLTI{% else %}დაფიქსირებული თითის წნევა / TBI{% endif %}):</strong> სამიზნე კიდურზე თითის წნევა (Toe Pressure, mmHg) ან TBI{% if ev.is_venous %} <small class="text-muted">(კომპრესიამდე TP &ge; 60 ან TBI &ge; 0.70)</small>{% endif %}</span>
                         <div class="d-flex flex-wrap align-items-center gap-1">
                             <span class="small">TP R/L:</span>
                             <input type="number" step="any" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="R mmHg" min="0" max="400" class="form-control form-control-sm" style="width:78px">
@@ -199,7 +199,7 @@
                     </div>
                     {% endif %}
 
-                    {% if ev.pathway == 'cea' and ev.needs_laryngoscopy %}
+                    {% if ev.pathway == 'cea' and ev.needs_laryngoscopy or s.laryngoscopy_res and s.laryngoscopy_res != 'pending' %}
                     <div class="po-task-row {% if s.laryngoscopy_res != 'pending' %}done{% endif %}">
                         <span><strong>ლარინგოსკოპია — სახმო იოგების შემოწმება (ENT)</strong> <small class="text-muted">(კისრის წინა ოპერაციის / ხმის ჩახლეჩის გამო)</small></span>
                         <select name="laryngoscopy_res" class="form-select form-select-sm" style="width:auto">
@@ -302,7 +302,7 @@
                             </select>
                         </div>
                     </div>
-                    <div class="po-alert {% if ev.has_glp1_any and ev.clearance_seal.code != 'stop' %}amber{% else %}reflex{% endif %}" style="padding:8px 12px;font-size:13px">
+                    <div class="po-alert {% if ev.has_glp1_any and ev.clearance_seal.code != 'stop' and ev.clearance_seal.code != 'inactive' %}amber{% else %}reflex{% endif %}" style="padding:8px 12px;font-size:13px">
                         <span><strong>{{ ev.fasting_instruction }}</strong></span>
                     </div>
                     {% endif %}
@@ -310,7 +310,7 @@
                     {% if ev.clearance_seal.code == 'stop' %}
                     <div class="po-alert red" style="padding:8px 12px;font-size:13px">
                         {% if ev.has_urgent_med_action %}
-                        <span><strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — გეგმური წამლები თვითნებურად არ შეწყვიტოთ; წითლად მონიშნული უკუნაჩვენები/მწვავე მედიკამენტების გამო დაუყოვნებლივ შეათანხმეთ ექიმთან!</strong> <button type="button" class="po-cite-btn" data-rule-id="MED_STOP_LOCK_SAFETY" aria-label="კლინიკური წყარო" title="კლინიკური წყარო">ⓘ</button></span>
+                        <span><strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — გეგმური წამლები თვითნებურად არ შეწყვიტოთ; მონიშნული უკუნაჩვენები/მწვავე მედიკამენტების გამო დაუყოვნებლივ შეათანხმეთ ექიმთან!</strong> <button type="button" class="po-cite-btn" data-rule-id="MED_STOP_LOCK_SAFETY" aria-label="კლინიკური წყარო" title="კლინიკური წყარო">ⓘ</button></span>
                         {% else %}
                         <span><strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — არცერთი სასიცოცხლო მედიკამენტი (განსაკუთრებით ანტიკოაგულანტი/ანტიაგრეგანტი) არ შეწყვიტოთ!</strong> <button type="button" class="po-cite-btn" data-rule-id="MED_STOP_LOCK_SAFETY" aria-label="კლინიკური წყარო" title="კლინიკური წყარო">ⓘ</button></span>
                         {% endif %}

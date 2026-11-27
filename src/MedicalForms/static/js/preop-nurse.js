@@ -90,7 +90,7 @@
         }
         if (!isNaN(sbp) && !isNaN(dbp) && sbp <= dbp) {
             msgs.push('შეამოწმეთ წნევა: ზედა წნევა (' + sbp + ') უნდა იყოს ქვედაზე (' + dbp + ') მეტი!');
-        } else if (!isNaN(sbp) && !isNaN(dbp) && (sbp - dbp) < 20) {
+        } else if (!isNaN(sbp) && !isNaN(dbp) && sbp >= 30 && sbp <= 320 && dbp >= 20 && dbp <= 220 && (sbp - dbp) < 20) {
             msgs.push('ვიწრო პულსური წნევა (' + sbp + '/' + dbp + ' mmHg) — გადაამოწმეთ გაზომვა და აცნობეთ ექიმს!');
         }
         if (rawWt && isNaN(wt)) {
@@ -242,7 +242,7 @@
         else if (!isNaN(d) && d >= 110) msgs.push('კრიტიკული დილის ქვედა წნევა (' + d + ' ≥ 110 mmHg) — აცნობეთ ექიმს!');
         else if (!isNaN(d) && d >= 100) msgs.push('მომატებული დილის ქვედა წნევა (' + d + ' ≥ 100 mmHg).');
         if (!isNaN(s) && !isNaN(d) && s <= d) msgs.push('დილის ზედა წნევა (' + s + ') უნდა იყოს ქვედაზე (' + d + ') მეტი!');
-        else if (!isNaN(s) && !isNaN(d) && (s - d) < 20) msgs.push('ვიწრო პულსური წნევა (' + s + '/' + d + ' mmHg < 20 mmHg) — გადაამოწმეთ!');
+        else if (!isNaN(s) && !isNaN(d) && s >= 40 && s <= 300 && d >= 20 && d <= 200 && (s - d) < 20) msgs.push('ვიწრო პულსური წნევა (' + s + '/' + d + ' mmHg < 20 mmHg) — გადაამოწმეთ!');
         if (rawG && isNaN(g)) msgs.push('შეამოწმეთ დილის გლუკოზა: შეიყვანეთ მხოლოდ რიცხვი!');
         else if (!isNaN(g) && (g < 0.5 || g > 1000)) msgs.push('დაუჯერებელი დილის გლუკოზა (' + g + ')!');
         else if (!isNaN(g)) {
@@ -395,11 +395,21 @@
             return null;
         });
     });
+    function roundWbcK(v) {
+        var rawW = v >= 200 ? (v / 1000.0) : v;
+        var u = Math.round(rawW * 1e6);
+        var q = Math.floor(u / 10000), r = u % 10000;
+        if (rawW < 3.5) return (u >= 3500000 ? 349 : q) / 100;
+        if (rawW > 12.0) return (u <= 12000000 ? 1201 : q + (r ? 1 : 0)) / 100;
+        if (r * 2 > 10000) return (q + 1) / 100;
+        if (r * 2 < 10000) return q / 100;
+        return (q % 2 === 0 ? q : q + 1) / 100;
+    }
     document.querySelectorAll('input[name="wbc"]').forEach(function (el) {
         attachFldGuard(el, function (v) {
             if (v < 0.1 || v > 150000) return { level: 'crit', msg: 'დაუჯერებელი WBC (' + v + ')!' };
             var rawW = v >= 200 ? (v / 1000.0) : v;
-            var n = rawW < 3.5 ? Math.floor(rawW * 100) / 100 : (rawW > 12.0 ? Math.ceil(rawW * 100) / 100 : Math.round(rawW * 100) / 100);
+            var n = roundWbcK(v);
             if (rawW < 3.5 || rawW > 12.0) return { level: 'crit', msg: 'პათოლოგიური WBC (' + n + ' ×10^9/L)!' };
             return null;
         });
@@ -420,14 +430,15 @@
         var diaEl = el.closest('form') && diaName ? el.closest('form').querySelector('input[name="' + diaName + '"]') : null;
         var sbpLo = el.name === 'dos_bp_sys' ? 40 : 30;
         var sbpHi = el.name === 'dos_bp_sys' ? 300 : 320;
+        var dbpMax = el.name === 'dos_bp_sys' ? 200 : 220;
         attachFldGuard(el, function (v) {
             if (v < sbpLo || v > sbpHi) return { level: 'crit', msg: 'დაუჯერებელი სისტოლური წნევა (' + v + ' mmHg)!' };
             var dv = diaEl ? parseNum(diaEl.value) : NaN;
             if (!isNaN(dv) && v <= dv) return { level: 'crit', msg: 'სისტოლური (' + v + ') უნდა იყოს დიასტოლურზე (' + dv + ') მეტი!' };
             if (v >= 180 || v < 90) return { level: 'crit', msg: v >= 180 ? 'კრიტიკული ჰიპერტენზია (≥180 mmHg)!' : 'ჰიპოტენზია (<90 mmHg)!' };
-            if (!isNaN(dv) && (v - dv) < 20) return { level: 'warn', msg: 'ვიწრო პულსური წნევა (' + v + '/' + dv + ' mmHg — გადაამოწმეთ!)' };
             if (v < 100) return { level: 'warn', msg: 'სასაზღვრო ჰიპოტენზია (SBP 90–99 mmHg)' };
             if (v >= 160) return { level: 'warn', msg: 'მომატებული წნევა (≥160 mmHg)' };
+            if (!isNaN(dv) && dv >= 20 && dv <= dbpMax && (v - dv) < 20) return { level: 'warn', msg: 'ვიწრო პულსური წნევა (' + v + '/' + dv + ' mmHg — გადაამოწმეთ!)' };
             return null;
         });
         if (diaEl && !el.closest('#nw-vitals-form') && !el.closest('#nw-dos-form')) diaEl.addEventListener('input', function () { el.dispatchEvent(new Event('change')); });
@@ -436,13 +447,15 @@
         var sysName = NW_BP_SYS[el.name];
         var sysEl = el.closest('form') && sysName ? el.closest('form').querySelector('input[name="' + sysName + '"]') : null;
         var dbpHi = el.name === 'dos_bp_dia' ? 200 : 220;
+        var sbpMin = el.name === 'dos_bp_dia' ? 40 : 30;
+        var sbpMax = el.name === 'dos_bp_dia' ? 300 : 320;
         attachFldGuard(el, function (v) {
             if (v < 20 || v > dbpHi) return { level: 'crit', msg: 'დაუჯერებელი დიასტოლური წნევა (' + v + ' mmHg)!' };
             var sv = sysEl ? parseNum(sysEl.value) : NaN;
             if (!isNaN(sv) && sv <= v) return { level: 'crit', msg: 'დიასტოლური (' + v + ') არ შეიძლება აღემატებოდეს სისტოლურს (' + sv + ')!' };
             if (v >= 110) return { level: 'crit', msg: 'კრიტიკული დიასტოლური წნევა (≥110 mmHg)!' };
-            if (!isNaN(sv) && (sv - v) < 20) return { level: 'warn', msg: 'ვიწრო პულსური წნევა (' + sv + '/' + v + ' mmHg — გადაამოწმეთ!)' };
             if (v >= 100) return { level: 'warn', msg: 'მომატებული დიასტოლური წნევა (≥100 mmHg)' };
+            if (!isNaN(sv) && sv >= sbpMin && sv <= sbpMax && (sv - v) < 20) return { level: 'warn', msg: 'ვიწრო პულსური წნევა (' + sv + '/' + v + ' mmHg — გადაამოწმეთ!)' };
             return null;
         });
         if (sysEl && !el.closest('#nw-vitals-form') && !el.closest('#nw-dos-form')) sysEl.addEventListener('input', function () { el.dispatchEvent(new Event('change')); });

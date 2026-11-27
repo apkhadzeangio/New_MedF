@@ -315,6 +315,12 @@ def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_r
             _VTE_PREFIXES,
             f'VTE / ანტიკოაგულაცია: მექანიკური სარქველი — სავალდებულოა თერაპიული ვარფარინი (VKA) / {mv_br} (პროფილაქტიკური LMWH ან DOAC არასაკმარისია/აკრძალულია!)',
         ))
+    elif bool(ft_keys & {'parenteral_oac', 'parenteral_dti'}):
+        par_ren = f' (CrCl/eGFR <{ren_red}/დიალიზი: LMWH/ფონდაპარინუქსი აკრძალულია — უპირატესია UFH!)' if sev_renal else ''
+        task_candidates.append((
+            _VTE_PREFIXES,
+            f'VTE / ანტიკოაგულაცია: პაციენტი უკვე იღებს პარენტერულ ანტიკოაგულანტს{par_ren} — შეათანხმეთ ერთიანი პოსტოპ. სქემა ქირურგთან (დამატებითი პროფილაქტიკური LMWH/DOAC არ დაუმატოთ!)',
+        ))
     elif ev['caprini_score'] > cap_low_max or not ev['is_venous']:
         if ev.get('eff_pregnant'):
             if sev_renal:
@@ -366,6 +372,7 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
     elif 'hit_heparin' in allergy_chips:
         has_mv = 'mech_valve' in (q.get('cad_chips') or [])
         liver_3x = s.get('liver_status') == '3x'
+        has_ft_par_hit = bool(set(ev.get('ft_meds_keys') or ()) & {'parenteral_oac', 'parenteral_dti'})
         oac_no_dbl = (
             ' · პოსტოპ. მუდმივი ვარფარინის/OAC-ის აღდგენისას დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ — IPC აღდგენამდე (ორმაგი ანტიკოაგულაციის გარეშე!)'
             if (has_full_oac_b and not has_contra_full_oac_b)
@@ -392,6 +399,8 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
             hit_board_agents = 'უკუნაჩვენები/დუბლირებული OAC არ განაახლოთ — შეარჩიეთ ერთი უსაფრთხო არაჰეპარინული სქემა (ფონდაპარინუქსი ან ერთი OAC ჰემატოლოგ/კარდიოლოგთან — ორმაგი ანტიკოაგულაციის გარეშე!)'
         elif has_full_oac_b:
             hit_board_agents = 'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე; დამატებითი პროფილაქტიკური ფონდაპარინუქსი/DOAC არ დაუმატოთ — ორმაგი ანტიკოაგულაციის გარეშე!)'
+        elif has_ft_par_hit:
+            hit_board_agents = 'აქტიური პარენტერული ანტიკოაგულაცია — შეათანხმეთ ერთიანი არაჰეპარინული პოსტოპ. სქემა ჰემატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!)'
         else:
             hit_board_agents = 'ფონდაპარინუქსი / არგატრობანი / ბივალირუდინი'
         task_candidates.append((

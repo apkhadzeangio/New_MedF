@@ -543,6 +543,9 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
                 vka_br_note = f'მაღალი თრომბორისკისას ხიდი INR ≥{mv_inr}-მდე'
             return f'ვარფარინის (VKA) აღდგენა 12–24 სთ-ში ჰემოსტაზით ({vka_br_note}) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
         return f'მუდმივი ანტიკოაგულანტის (DOAC) აღდგენა {pause_oac_win} ჰემოსტაზით (PAUSE) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
+    if bool(ft_keys_p & {'parenteral_oac', 'parenteral_dti'}):
+        par_hit_s = ' (HIT: ჰეპარინი/LMWH აკრძალულია — არაჰეპარინული სქემა!)' if has_hit else ''
+        return f'აქტიური პარენტერული ანტიკოაგულაცია{par_hit_s} — შეათანხმეთ ერთიანი პოსტოპ. სქემა ქირურგთან/ჰემატოლოგთან + ჩვენებისას {ctx.oac_partner_lbl} (დამატებითი პროფილაქტიკური ანტიკოაგულანტი არ დაუმატოთ!){statin_tail}'
     if ctx.has_active_stent_dapt:
         st_b = f'{stent_p2y} (ასპირინზე ალერგია — კონსილიუმი!)' if asa_allergy else f'ასპირინი 100 მგ + {stent_p2y}'
         return f'უწყვეტი DAPT: {st_b} (კორონარული სტენტის დაცვა!){statin_tail}'
@@ -564,11 +567,13 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
     asra_ufh_note = (
         ' · ASRA 2025 UFH წესი: ნეირაქსიული პუნქციიდან IV ჰეპარინამდე ≥60 წთ (სისხლიანი პუნქციისას — გადადება/კონსილიუმი); '
         'კათეტერის ამოღება UFH-დან ≥4–6 სთ-ში (ნორმალური aPTT) და P2Y12/DOAC/VOYAGER დაწყებამდე!'
-        if (ctx.has_neuraxial_plan and not ctx.is_venous) else ''
+        if (ctx.has_neuraxial_plan and not ctx.is_venous and 'hit_heparin' not in ctx.allergy_chips) else ''
     )
+    ft_m_nx = ctx.ft_meds.get('matched_keys') or set()
+    has_vka_nx = bool(q.get('med_warfarin') or 'warfarin' in ft_m_nx)
     vka_inr_caution = (
         f' [ვარფარინის ფონზე ASRA 5th Ed რეკომენდაციით სასურველია INR-ის სრული ნორმალიზება ≤{asra_cfg["inr_vka_norm"]} (მიმდინარე: {ctx.eff_inr_nx})!]'
-        if (q.get('med_warfarin') and ctx.eff_inr_nx is not None and asra_cfg['inr_vka_norm'] < ctx.eff_inr_nx <= asra_cfg['inr_max']) else ''
+        if (has_vka_nx and ctx.eff_inr_nx is not None and asra_cfg['inr_vka_norm'] < ctx.eff_inr_nx <= asra_cfg['inr_max']) else ''
     )
     fib_border_caution = (
         f' [სასაზღვრო ჰიპოფიბრინოგენემია ({ctx.fib} < {fib_low} გ/ლ, თუმცა ≥{asra_cfg["fib_min"]} ASRA ზღვარი) — გადაამოწმეთ კოაგულოგრამა ანესთეზიოლოგთან!]'
@@ -580,7 +585,11 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
         if ctx.eff_inr_nx is None:
             neuraxial_blockers.append('INR უცნობია')
         eff_ren_b = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
-        if (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips) and not ctx.on_dialysis and eff_ren_b is None:
+        has_doac_nx = bool(
+            q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips
+            or bool(ft_m_nx & {'doac', 'dabigatran'}) or ctx.ft_meds.get('has_ft_unstruct_riva_low')
+        )
+        if has_doac_nx and not ctx.on_dialysis and eff_ren_b is None:
             if not any('კრეატინინი/CrCl' in b for b in neuraxial_blockers):
                 neuraxial_blockers.append('კრეატინინი/CrCl უცნობია DOAC-ზე')
         if not ctx.uninterrupted_p2y12 and (

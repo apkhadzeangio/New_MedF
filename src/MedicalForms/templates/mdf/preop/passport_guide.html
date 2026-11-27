@@ -74,7 +74,7 @@
         <div class="nw-banner danger mb-2">ოპერაციაზე დაშვება შეჩერებულია (STOP) — გეგმური წამლები თვითნებურად არ შეწყვიტოთ; ქვემოთ მონიშნული მწვავე ან უკუნაჩვენები წამლების გამო დაუყოვნებლივ დაუკავშირდით ექიმს!</div>
         <div class="d-flex flex-column gap-2">
             {% for m in guide.urgent_meds %}
-            <div class="nw-med-script-row tone-red">
+            <div class="nw-med-script-row tone-{{ m.tone }}">
                 <div class="nw-med-drug">{{ m.drug }}</div>
                 <div class="nw-med-spoken">{{ m.spoken }}</div>
             </div>

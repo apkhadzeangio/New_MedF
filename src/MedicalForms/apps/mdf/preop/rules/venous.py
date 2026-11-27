@@ -106,13 +106,13 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
     cap_thresh = vte_cfg['caprini_high']
     ctx.needs_vte_prophylaxis = high_vte or (q_filled and (mod_vte_count >= 2 or ctx.caprini_score >= cap_thresh))
     if ctx.needs_vte_prophylaxis and not s.get('vte_prophylaxis_planned'):
-        from ..caprini import _oac_venous_vte_flags
+        from ..caprini import _oac_venous_vte_flags, _par_vte_advice
         eff_ren_v = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
         ven_severe_renal = ctx.on_dialysis or (eff_ren_v is not None and eff_ren_v < ren_red)
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv = ' (ღვიძლის ≥3x: არგატრობანი −75% / უპირატესია ბივალირუდინი!)' if ctx.liver_3x else ''
         evla_inr_lim = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
-        has_full_oac_v, is_evla_vka_v, has_contra_oac_v = _oac_venous_vte_flags(
+        has_full_oac_v, is_evla_vka_v, has_contra_oac_v, has_ft_par_v = _oac_venous_vte_flags(
             ctx.patient, q, s, ven_severe_renal, ctx.liver_3x,
             active_gi_bleed=getattr(ctx, 'active_gi_bleed', False),
             eff_preg=getattr(ctx, 'eff_pregnant', False),
@@ -152,6 +152,8 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
                 vte_agents = f'თერაპიული ვარფარინი გრძელდება მოუხსნელად (INR ≤ {evla_inr_lim}) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
             else:
                 vte_agents = f'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
+        elif has_ft_par_v:
+            vte_agents = _par_vte_advice(has_contra_oac_v, has_hit, ven_severe_renal, ren_red, '')
         elif has_hit:
             vte_agents = (
                 f'IPC / არგატრობანი-ბივალირუდინი — HIT + CrCl<{ren_red}: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!{arg_liv}'

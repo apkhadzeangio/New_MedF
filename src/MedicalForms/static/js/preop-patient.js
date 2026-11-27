@@ -338,11 +338,21 @@
             return null;
         });
     });
+    function roundWbcK(v) {
+        var rawW = v >= 200 ? (v / 1000.0) : v;
+        var u = Math.round(rawW * 1e6);
+        var q = Math.floor(u / 10000), r = u % 10000;
+        if (rawW < 3.5) return (u >= 3500000 ? 349 : q) / 100;
+        if (rawW > 12.0) return (u <= 12000000 ? 1201 : q + (r ? 1 : 0)) / 100;
+        if (r * 2 > 10000) return (q + 1) / 100;
+        if (r * 2 < 10000) return q / 100;
+        return (q % 2 === 0 ? q : q + 1) / 100;
+    }
     document.querySelectorAll('input[name="wbc"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
             if (v < 0.1 || v > 150000) return { level: 'crit', msg: 'დაუჯერებელი WBC (' + v + ') — გადაამოწმეთ!' };
             var rawW = v >= 200 ? (v / 1000.0) : v;
-            var n = rawW < 3.5 ? Math.floor(rawW * 100) / 100 : (rawW > 12.0 ? Math.ceil(rawW * 100) / 100 : Math.round(rawW * 100) / 100);
+            var n = roundWbcK(v);
             if (rawW < 3.5 || rawW > 12.0) return { level: 'crit', msg: 'პათოლოგიური WBC (' + n + ' ×10^9/L — ნორმა 3.5–12.0)!' };
             return null;
         });

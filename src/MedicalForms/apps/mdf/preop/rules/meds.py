@@ -50,7 +50,7 @@ def _eval_allergies_and_cied(ctx):
     sev_ren_al = bool(ctx.on_dialysis or (eff_ren_al is not None and eff_ren_al < ren_red_al))
     ft_u_al = ctx.ft_meds.get('unstructured_keys') or set()
     ft_m_al = ctx.ft_meds.get('matched_keys') or set()
-    has_oac_al = bool(ctx.on_oral_anticoag or 'rivaroxaban_2_5' in ctx.med_chips or getattr(ctx, 'has_ft_full_oac', False) or ctx.ft_meds.get('has_ft_unstruct_riva_low'))
+    has_oac_al = bool(ctx.on_oral_anticoag or 'rivaroxaban_2_5' in ctx.med_chips or getattr(ctx, 'has_ft_full_oac', False) or ctx.ft_meds.get('has_ft_unstruct_riva_low') or bool(ft_m_al & {'parenteral_oac', 'parenteral_dti'}))
     p2y_al = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))]) + len(ft_u_al & {'clopidogrel', 'ticagrelor', 'prasugrel'})
     has_dapt_al = (p2y_al >= 2) or (bool(q.get('med_aspirin') or 'aspirin' in ft_u_al) and p2y_al >= 1)
     if ctx.ft_meds.get('has_ft_nsaid') and (
@@ -61,14 +61,16 @@ def _eval_allergies_and_cied(ctx):
             f'თავისუფალ ტექსტში („{raw_other_meds_disp}“) მითითებულია აასს / NSAID — უკუნაჩვენებია ალერგიის, GI სისხლდენის, თირკმელ/ღვიძლის უკმარისობის, ორსულობის ან OAC/DAPT ფონზე; '
             'დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ექიმთან!'
         )
-    if ft_m_al & {'parenteral_oac', 'parenteral_dti'}:
+    ctx.has_ft_parenteral = bool(ft_m_al & {'parenteral_oac', 'parenteral_dti'})
+    if ctx.has_ft_parenteral:
         par_contra = bool(
             ('hit_heparin' in ctx.allergy_chips and (ctx.ft_meds.get('has_ft_lmwh') or ctx.ft_meds.get('has_ft_ufh')))
             or (sev_ren_al and (ctx.ft_meds.get('has_ft_lmwh') or ctx.ft_meds.get('has_ft_fondaparinux')))
             or (ctx.liver_3x and ctx.ft_meds.get('has_ft_argatroban'))
             or (ctx.has_mech_valve and ctx.ft_meds.get('has_ft_fondaparinux'))
             or (getattr(ctx, 'eff_pregnant', False) and (ctx.ft_meds.get('has_ft_fondaparinux') or ('parenteral_dti' in ft_m_al)))
-            or (ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and q.get('med_warfarin'))
+            or (ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and (q.get('med_warfarin') or ctx.ft_meds.get('has_ft_unstruct_warfarin')))
+            or bool(q.get('med_ticagrelor') or q.get('med_prasugrel') or (ft_u_al & {'ticagrelor', 'prasugrel'}))
             or getattr(ctx, 'active_gi_bleed', False) or getattr(ctx, 'is_cea_oac_p2y_stop', False) or getattr(ctx, 'is_rupture_suspect', False)
             or bool(q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips or (ft_u_al & {'doac', 'dabigatran'}))
         )
@@ -272,7 +274,11 @@ def _eval_antithrombotic_conflicts(ctx):
     has_acs_stent_12m = ('stent_6_12m' in ctx.cad_chips) and ('mi' in ctx.cad_chips)
     has_afib = ('afib' in ctx.cad_chips) or ((s.get('ecg') or 'pending') == 'afib_controlled')
     ft_u_keys = ctx.ft_meds.get('unstructured_keys') or set()
-    oac_count = sum([bool(q.get('med_warfarin')), bool(q.get('med_doac')), bool(q.get('med_dabigatran')), ('rivaroxaban_2_5' in ctx.med_chips)]) + len(ft_u_keys & {'warfarin', 'doac', 'dabigatran'})
+    oac_count = (
+        sum([bool(q.get('med_warfarin')), bool(q.get('med_doac')), bool(q.get('med_dabigatran')), ('rivaroxaban_2_5' in ctx.med_chips)])
+        + len(ft_u_keys & {'warfarin', 'doac', 'dabigatran'})
+        + (1 if (ctx.ft_meds.get('has_ft_unstruct_doac') and ctx.ft_meds.get('has_ft_unstruct_riva_low')) else 0)
+    )
     p2y12_count = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))]) + len(ft_u_keys & {'clopidogrel', 'ticagrelor', 'prasugrel'})
     total_at_count = oac_count + p2y12_count + (1 if (q.get('med_aspirin') or 'aspirin' in ft_u_keys) else 0) + (1 if ('cilostazol' in ctx.med_chips or 'cilostazol' in ft_u_keys) else 0)
     has_prior_stroke_tia = bool(ctx.is_symp_cea or has_prior_stroke_or_tia(ctx.patient, q=q, s=s, today=ctx.today))
@@ -312,14 +318,15 @@ def _eval_antithrombotic_conflicts(ctx):
             f'პაციენტი ერთდროულად იღებს ≥{triple_min} ანტითრომბოზულ პრეპარატს (სამმაგი ანტითრომბოზული თერაპია — სისხლდენის მაღალი რისკი)! '
             'ESC / ESVS / EMA გაიდლაინით გადაამოწმეთ დე-ესკალაცია (ასპირინის/ცილოსტაზოლის მოხსნა და OAC + მონო-ანტიაგრეგანტი).'
         )
-    if (has_full_oac_any or 'rivaroxaban_2_5' in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))) and (q.get('med_ticagrelor') or q.get('med_prasugrel') or bool(ft_u_keys & {'ticagrelor', 'prasugrel'})):
+    has_ft_par_c = bool(getattr(ctx, 'has_ft_parenteral', False))
+    if (has_full_oac_any or has_ft_par_c or 'rivaroxaban_2_5' in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))) and (q.get('med_ticagrelor') or q.get('med_prasugrel') or bool(ft_u_keys & {'ticagrelor', 'prasugrel'})):
         asa_alg, clop_intol = 'nsaid' in ctx.allergy_chips, 'clopidogrel_intol' in ctx.allergy_chips
         deesc_opt = (
             'ინდივიდუალურ უსაფრთხო რეჟიმზე (ასპირინზე და კლოპიდოგრელზე ალერგია!)' if (clop_intol and asa_alg)
             else ('ასპირინზე (კლოპიდოგრელზე აუტანლობა!)' if clop_intol else ('კლოპიდოგრელზე (ასპირინზე ალერგია!)' if asa_alg else 'კლოპიდოგრელზე ან ასპირინზე'))
         )
         ctx.red_flags.append(
-            'პაციენტი იღებს პერორალურ ანტიკოაგულანტს (OAC / რივაროქსაბანი 2.5 მგ) ტიკაგრელორთან ან პრასუგრელთან ერთად (ESC Class III — სისხლდენის უმაღლესი რისკი)! '
+            'პაციენტი იღებს ანტიკოაგულანტს (OAC / პარენტერული / რივაროქსაბანი 2.5 მგ) ტიკაგრელორთან ან პრასუგრელთან ერთად (ESC Class III — სისხლდენის უმაღლესი რისკი)! '
             f'შეათანხმეთ დე-ესკალაცია {deesc_opt} კარდიოლოგთან!'
         )
     if (q.get('med_prasugrel') or 'prasugrel' in ft_u_keys) and has_prior_stroke_tia:
@@ -460,14 +467,15 @@ def _eval_explicit_triple_therapy(ctx, asa_allergy, voyager_safe, stent_p2y12, o
             return f'რივაროქსაბანი 2.5 მგ უკუნაჩვენებია — შეწყვიტეთ რივაროქსაბანი და გამოიყენეთ DAPT (ასპირინი + {stent_p2y12}) რივაროქსაბანის გარეშე!'
         ctx.red_flags.append('არჩეულია პოსტოპ. DAPT პაციენტთან, რომელიც იღებს რივაროქსაბან 2.5 მგ ×2-ს — სამმაგი თერაპიისა და რივაროქსაბანი 2.5 + ტიკაგრელორის სისხლდენის მაღალი რისკი (ESC Class III)! შეარჩიეთ VOYAGER PAD (რივაროქსაბანი 2.5 + ასპირინი) ან შეაჩერეთ რივაროქსაბანი DAPT-ისთვის.')
         return 'DAPT უკუნაჩვენებია რივაროქსაბან 2.5 მგ-თან (სამმაგი თერაპია)! შეცვალეთ: რივაროქსაბანი 2.5 + ასპირინი 75–100 მგ (VOYAGER PAD) ან DAPT რივაროქსაბანის გარეშე!'
-    ctx.red_flags.append('არჩეულია პოსტოპ. VOYAGER / DAPT პაციენტთან, რომელიც მუდმივ ანტიკოაგულანტზეა (OAC) — სამმაგი თერაპიის სისხლდენის მაღალი რისკი! შეცვალეთ OAC + მონო-ანტიაგრეგანტით.')
-    return f'არჩეული სქემა უკუნაჩვენებია OAC-ზე (სამმაგი თერაპია)! შეცვალეთ: OAC + {oac_partner_lbl}'
+    ctx.red_flags.append('არჩეულია პოსტოპ. VOYAGER / DAPT პაციენტთან, რომელიც მუდმივ ანტიკოაგულანტზეა (OAC / პარენტერული) — სამმაგი თერაპიის სისხლდენის მაღალი რისკი! შეცვალეთ ერთიანი ანტიკოაგულაციით + მონო-ანტიაგრეგანტით.')
+    return f'არჩეული სქემა უკუნაჩვენებია ანტიკოაგულანტზე (სამმაგი თერაპია)! შეცვალეთ: OAC + {oac_partner_lbl}'
 
 
 def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_p2y12_lbl, oac_partner_lbl, has_active_stent_dapt):
     clop_intol = 'clopidogrel_intol' in ctx.allergy_chips
     stent_p2y12 = getattr(ctx, 'stent_p2y12_lbl', alt_p2y12_lbl)
     has_full_oac_any = bool(ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False))
+    has_ft_par = bool(getattr(ctx, 'has_ft_parenteral', False))
     label = dict(POST_ANTITHROMBOTIC_CHOICES).get(post_at_raw, '')
     if getattr(ctx, 'active_gi_bleed', False):
         plan_tag = f' ({label})' if label else ''
@@ -491,7 +499,7 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
         if getattr(ctx, 'has_contra_full_oac', False) and not ctx.has_mech_valve:
             return _contra_full_oac_postop_label(ctx, oac_partner_lbl)
         return f'SAPT უკუნაჩვენებია OAC-ზე! შეცვალეთ: OAC + {oac_partner_lbl}'
-    if (post_at_raw in ('voyager', 'dapt') and has_full_oac_any) or (post_at_raw == 'dapt' and ('rivaroxaban_2_5' in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low')))):
+    if (post_at_raw in ('voyager', 'dapt') and (has_full_oac_any or has_ft_par)) or (post_at_raw == 'dapt' and ('rivaroxaban_2_5' in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low')))):
         return _eval_explicit_triple_therapy(ctx, asa_allergy, voyager_safe, stent_p2y12, oac_partner_lbl, has_full_oac_any)
     if post_at_raw == 'voyager' and not voyager_safe:
         ctx.red_flags.append(
@@ -545,6 +553,7 @@ def _eval_postop_voyager(ctx):
     active_gi_bleed = getattr(ctx, 'active_gi_bleed', False)
     eff_ren_sat = getattr(ctx, 'eff_renal_sat', None)
     has_full_oac_any = bool(ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False))
+    has_ft_par = bool(getattr(ctx, 'has_ft_parenteral', False))
     ft_u_keys = ctx.ft_meds.get('unstructured_keys') or set()
     voy_renal_ok = (
         (ctx.egfr is not None or ctx.crcl is not None)
@@ -556,13 +565,13 @@ def _eval_postop_voyager(ctx):
     voyager_safe = (
         voy_renal_ok and not ctx.on_dialysis and not active_gi_bleed
         and not getattr(ctx, 'has_prior_stroke_tia', False) and not getattr(ctx, 'eff_pregnant', False)
-        and not ctx.liver_3x and not has_full_oac_any and not ctx.has_mech_valve and not ctx.has_afib
+        and not ctx.liver_3x and not has_full_oac_any and not has_ft_par and not ctx.has_mech_valve and not ctx.has_afib
         and not q.get('med_ticagrelor') and not q.get('med_prasugrel')
         and not bool(ft_u_keys & {'ticagrelor', 'prasugrel'})
         and not q.get('recent_stent') and not ctx.has_acs_stent_12m and not asa_allergy
     )
     ctx.voyager_safe = voyager_safe
-    tica_blocked = bool(ctx.liver_3x or getattr(ctx, 'eff_pregnant', False) or has_full_oac_any)
+    tica_blocked = bool(ctx.liver_3x or getattr(ctx, 'eff_pregnant', False) or has_full_oac_any or has_ft_par)
     ctx.tica_blocked = tica_blocked
     if 'clopidogrel_intol' in ctx.allergy_chips:
         alt_p2y12_lbl = 'ინდივიდუალური რეჟიმი კონსილიუმით (P2Y12 აუტანლობა/უკუჩვენება!)' if tica_blocked else 'ტიკაგრელორი'
@@ -608,6 +617,9 @@ def _eval_postop_voyager(ctx):
             post_antithrombotic_label = _contra_full_oac_postop_label(ctx, oac_partner_lbl)
         elif has_full_oac_any:
             post_antithrombotic_label = f'OAC + {oac_partner_lbl} (სამმაგი თერაპიის გარეშე — ESC/ESVS)'
+        elif has_ft_par:
+            par_sfx = ' (HIT: ჰეპარინი/LMWH აკრძალულია — არაჰეპარინული სქემა!)' if 'hit_heparin' in ctx.allergy_chips else ''
+            post_antithrombotic_label = f'აქტიური პარენტერული ანტიკოაგულაცია{par_sfx} + ჩვენებისას {oac_partner_lbl} (ერთიანი სქემა ჰემოსტაზით — დამატებითი VOYAGER / პროფილაქტიკური LMWH არ დაუმატოთ!)'
         elif has_active_stent_dapt:
             st_lbl = f'{stent_p2y12_lbl} (ასპირინზე ალერგია — კარდიოლოგის კონსილიუმი!)' if asa_allergy else f'ასპირინი 100 მგ + {stent_p2y12_lbl}'
             post_antithrombotic_label = f'უწყვეტი DAPT: {st_lbl} (კორონარული სტენტის დაცვა — მონოთერაპიაზე გადაყვანა აკრძალულია!)'
@@ -625,40 +637,8 @@ def _eval_postop_voyager(ctx):
     ctx.post_antithrombotic_label = post_antithrombotic_label
 
 
-def _parse_med_confirm_date(patient, s, med_schedule):
-    """Return earliest verified pre-window hold confirmation date (nurse call, Stage 2, or approval), else None."""
-    import datetime as _dt
-
-    from django.utils import timezone
-
-    from ..nurse_ui import med_schedule_signature
-    if not s.get('med_hold_agreed'):
-        return None
-    dates = []
-    cur_sig = med_schedule_signature({'s': s, 'med_schedule': med_schedule})
-    called_at = str(s.get('nurse_med_called_at') or '').strip()
-    if called_at and str(s.get('nurse_med_called_sig') or '') == cur_sig:
-        for fmt in ('%d.%m.%Y %H:%M', '%d.%m.%Y', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
-            try:
-                dates.append(_dt.datetime.strptime(called_at[:16], fmt).date())
-                break
-            except ValueError:
-                continue
-    agreed_dt = _date(s.get('med_hold_agreed_date'))
-    if agreed_dt:
-        dates.append(agreed_dt)
-    if patient.approved_at:
-        ap = patient.approved_at
-        if isinstance(ap, _dt.datetime):
-            ap_d = timezone.localtime(ap).date() if timezone.is_aware(ap) else ap.date()
-        else:
-            ap_d = _date(ap)
-        if ap_d:
-            dates.append(ap_d)
-    return min(dates) if dates else None
-
-
 def _eval_elapsed_hold_window_alert(ctx):
+    from ..meds_helpers import _parse_med_confirm_date
     from ..nurse_ui import _extract_hold_start_date
     ctx.has_elapsed_hold_window = False
     s = ctx.s

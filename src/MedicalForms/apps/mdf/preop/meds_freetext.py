@@ -32,37 +32,63 @@ _PREFIX_NEG_START_RE = re.compile(
 )
 _AFFIRM_PRED_RE = re.compile(
     rf'(?:^| )(?:{_KA_VERBS}|უწერია|დაუნიშნ[ა-ჰ]*|გადავიდა|გადაიყვან[ა-ჰ]*'
-    r'|takes?|taking|uses?|using|started|continues?|switched|changed|has|have|on |allergic)\b',
+    r'|takes?|taking|uses?|using|started|continues?|continuing|switched|changed|has|have|on |allergic)\b',
     re.IGNORECASE,
+)
+_KA_STOP_VERBS = (
+    r'(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს|შეაჩერეს'
+    r'|მოხსნეს|შეწყვიტეს|შევწყვიტე|მოვხსენი|შევაჩერე|შევწყვიტეთ|მოვხსენით|შევაჩერეთ)'
 )
 _ALLERGY_WORD_RE = re.compile(r'(?:ალერგი[ა-ჰ]*|\ballerg(?:y|ies|ic)\b)', re.IGNORECASE)
 _INLINE_NEG_SPLIT_RE = re.compile(
     r' (?=(?:no|not|without) [a-zა-ჰ])'
     r'| (?=(?:switched to|changed to|allergic to) [a-zა-ჰ])'
-    r"|(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!stopped)(?<!discontinued) (?=(?:taking|takes|started|continues) [a-zა-ჰ])"
+    r"|(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!stopped)(?<!discontinued) (?=(?:taking|takes|using|uses|started|continues|continuing) [a-zა-ჰ])"
     r"|(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!allergy)(?<!allergies) (?=on [a-z])"
-    r'|(?<=stopped) (?=(?:started|takes|switched|changed|continues|on ))'
-    r'|(?<=discontinued) (?=(?:started|takes|switched|changed|continues|on ))'
-    r'|(?<=held) (?=(?:started|takes|switched|changed|continues|on ))'
+    r'|(?<=stopped) (?=(?:started|takes|taking|uses|using|switched|changed|continues|continuing|on ))'
+    r'|(?<=discontinued) (?=(?:started|takes|taking|uses|using|switched|changed|continues|continuing|on ))'
+    r'|(?<=held) (?=(?:started|takes|taking|uses|using|switched|changed|continues|continuing|on ))'
     r'|(?<=ალერგია) (?=\S+ (?:არ|არა) (?:აქვს|მაქვს|აღენიშნება|უფიქსირდება|არის))'
-    r'|(?:(?<=\d)|(?<=მგ)|(?<=mg)|(?<=მკგ)|(?<=mcg)|(?<=გ)|(?<=g)|(?<=მლ)|(?<=ml)|(?<=სე)|(?<=iu)'
-    r'|(?<=bid)|(?<=tid)|(?<=qid)|(?<=qd)|(?<=od)|(?<=daily)|(?<=x2)|(?<=2x)|(?<=ტაბ)|(?<=tab)|(?<=აბი)) '
+    r'|(?:(?<=\d)|(?<=\dმგ)|(?<= მგ)|(?<=\dmg)|(?<= mg)|(?<=\dმკგ)|(?<= მკგ)|(?<=\dmcg)|(?<= mcg)'
+    r'|(?<=\dგ)|(?<= გ)|(?<=\dg)|(?<= g)|(?<=\dმლ)|(?<= მლ)|(?<=\dml)|(?<= ml)|(?<=\dსე)|(?<= სე)|(?<=\diu)|(?<= iu)'
+    r'|(?<= bid)|(?<= tid)|(?<= qid)|(?<= qd)|(?<= od)|(?<= daily)|(?<= x2)|(?<= 2x)|(?<= ტაბ)|(?<= tab)|(?<= აბი)) '
     r'(?!(?:მგ|mg|მკგ|mcg|გ|g|სე|u|iu|მლ|ml|ტაბ|აბი|აბ|tab|x2|2x|bid|tid|qid|qd|od|once|twice|daily) )'
     r'(?=[a-zა-ჰ0-9\-]+ (?:\d+(?:[.,]\d+)?(?: ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu))? )?'
-    rf'(?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) {_KA_VERBS}|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს|შეწყვიტა|მოხსნა|შეაჩერა|stopped|discontinued|held))'
+    rf'(?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) {_KA_VERBS}|{_KA_STOP_VERBS}|stopped|discontinued|held))'
 )
-_KA_NEG_VERB_RE = re.compile(
-    r'(?<![ა-ჰ])(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს)(?![ა-ჰ])'
-)
+_KA_NEG_VERB_RE = re.compile(rf'(?<![ა-ჰ]){_KA_STOP_VERBS}(?![ა-ჰ])')
 _KA_NEG_FOLLOW_STOP = frozenset({
     'და', 'ან', 'მაგრამ', 'ხოლო', 'თუმცა', 'რომ', 'გამო', 'წინ', 'ადრე', 'უკვე', 'მანამდე', 'საერთოდ',
+    'and', 'or', 'but',
     'დღე', 'დღის', 'დღით', 'დღეა', 'დღეები', 'თვე', 'თვის', 'თვეა', 'კვირა', 'კვირის', 'კვირით', 'კვირაა',
     'წელ', 'წლის', 'წლიდან', 'წელია', 'საათ', 'საათის', 'საათით', 'სთ',
     'მგ', 'mg', 'მკგ', 'mcg', 'გ', 'g', 'მლ', 'ml', 'სე', 'iu', 'ტაბ', 'აბი', 'აბ', 'tab',
-    'x2', '2x', 'bid', 'tid', 'qid', 'qd', 'od', 'once', 'twice', 'daily',
+    'x2', '2x', 'bid', 'tid', 'qid', 'qd', 'od', 'once', 'twice', 'daily', 'დღეში',
 })
+_KA_MULTIWORD_HEAD_PREFIXES = (
+    'დაბალმოლეკულ', 'არაფრაქციულ', 'სისხლის', 'ანტითრომბ', 'ანტიკოაგულ', 'პერორალურ', 'ყველა', 'ორივე',
+)
+_EN_NEG_FOLLOW_STOP = frozenset({
+    'and', 'or', 'but', 'და', 'ან', 'მაგრამ', 'ხოლო', 'თუმცა',
+    'for', 'ago', 'day', 'days', 'week', 'weeks', 'month', 'months', 'year', 'years',
+    'hr', 'hrs', 'hour', 'hours', 'prior', 'before', 'due', 'because', 'by', 'on', 'in', 'at', 'per',
+    'with', 'without', 'since', 'last', 'yesterday', 'today', 'after', 'already', 'recently', 'previously',
+    'completely', 'all', 'both', 'med', 'meds', 'medication', 'medications', 'drug', 'drugs', 'therapy',
+    'anticoagulant', 'anticoagulants', 'antiplatelet', 'antiplatelets', 'blood', 'thinner', 'thinners',
+    'pill', 'pills', 'tablet', 'tablets', 'dose', 'doses', 'injection', 'injections', 'preop', 'pre-op',
+    'surgery', 'operation', 'procedure', 'bleeding', 'bleed', 'doctor', 'physician', 'cardiologist',
+    'mg', 'mcg', 'g', 'ml', 'iu', 'u', 'tab', 'caps', 'cap', 'x2', '2x', 'bid', 'tid', 'qid', 'qd', 'od',
+    'once', 'twice', 'daily', 'morning', 'evening', 'night', 'po', 'iv', 'sc', 'im', 'sq',
+    'მგ', 'მკგ', 'გ', 'მლ', 'სე', 'ტაბ', 'აბი', 'აბ', 'დღეში',
+})
+_EN_NEG_HEAD_SKIP = frozenset({
+    'all', 'both', 'my', 'the', 'his', 'her', 'any', 'no', 'blood', 'oral', 'low', 'molecular',
+    'unfractionated', 'antiplatelet', 'anticoagulant', 'antithrombotic', 'dual', 'triple', 'beta',
+    'calcium', 'proton', 'prior', 'previous', 'old', 'chronic', 'regular', 'daily', 'home', 'usual',
+})
+_FREQ_FORM_TOK = r'(?:x\d+|\d+x|bid|tid|qid|qd|od|once|twice|daily|ტაბ|აბი|აბ|tab|caps?|დღეში)'
 _KA_PREFIX_NEG_HEAD_RE = re.compile(
-    r'^[a-zა-ჰ0-9\-]+(?: \d+(?:[.,]\d+)?(?: ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu))?)?(?= [a-zა-ჰ])'
+    rf'^[a-zა-ჰ0-9\-]+(?: \d+(?:[.,]\d+)?(?: ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu))?)?(?: {_FREQ_FORM_TOK}){{0,3}}(?= [a-zა-ჰ])'
 )
 _STOPPED_BUT_NOT_RE = re.compile(
     r'\b(stopped|discontinued|held|off) ([^,;.!?\n]{1,80}?),? but not (?=[a-zა-ჰ])',
@@ -73,10 +99,10 @@ _SUFFIX_STOPPED_BUT_NOT_RE = re.compile(
     re.IGNORECASE,
 )
 _KA_STOPPED_BUT_NOT_RE = re.compile(
-    r'([^,;.!?\n]{0,80}(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს)[^,;.!?\n]{0,40}),? მაგრამ არა (?=[a-zა-ჰ])'
+    rf'([^,;.!?\n]{{0,80}}{_KA_STOP_VERBS}[^,;.!?\n]{{0,40}}),? მაგრამ არა (?=[a-zა-ჰ])'
 )
 _KA_STOPPED_BUT_SOV_NOT_RE = re.compile(
-    r'([^,;.!?\n]{0,80}(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს)[^,;.!?\n]{0,40}),? მაგრამ ([a-zა-ჰ0-9 .\-]{1,40}?) არა(?=$|[,;.!?\n])'
+    rf'([^,;.!?\n]{{0,80}}{_KA_STOP_VERBS}[^,;.!?\n]{{0,40}}),? მაგრამ ([a-zა-ჰ0-9 .\-]{{1,40}}?) არა(?=$|[,;.!?\n(\[—–]| [(\[—–-])'
 )
 _EN_STOPPED_RE = re.compile(r'\b(?:stopped|discontinued|held)\b', re.IGNORECASE)
 _DOSE_UNIT_END_RE = re.compile(r'(?:\d|მგ|mg|მკგ|mcg|გ|g)$', re.IGNORECASE)
@@ -96,7 +122,9 @@ _DOUBLE_NEG_AFFIRM_EN_RE = re.compile(
 )
 _DOUBLE_NEG_AFFIRM_KA_RE = re.compile(
     r'არაა (?:შეწყვეტილი|მოხსნილი|შეჩერებული)'
-    r'|(?:არ|არც|ვერ) (?:შეუწყვეტია|მოუხსნია|შეუჩერებია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს|შეაჩერეს'
+    r'|(?:არ|არც|ვერ) (?:შეუწყვეტია|მოუხსნია|შეუჩერებია|შემიწყვეტია|მომიხსნია|შემიჩერებია'
+    r'|შეგვიწყვეტია|მოგვიხსნია|შეგვიჩერებია|შეწყვიტა|მოხსნა|შეაჩერა|შევწყვიტე|მოვხსენი|შევაჩერე'
+    r'|შევწყვიტეთ|მოვხსენით|შევაჩერეთ|მოუხსნეს|შეუწყვიტეს|შეაჩერეს|მოხსნეს|შეწყვიტეს'
     r'|(?:არის|აქვს|მაქვს) (?:შეწყვეტილი|მოხსნილი|შეჩერებული))',
 )
 _UNINTERRUPTED_AFFIRM_RE = re.compile(
@@ -141,9 +169,9 @@ _ALLERGY_NEGATION_WORDS = frozenset({
     'no', 'none', 'nil', 'nkda', 'nka', 'noallergy', 'noallergies',
 })
 _NEGATION_PHRASE_RE = re.compile(
-    r'(?:(?:არ|აღარ|არა|ვერ) (?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|აღნიშნავს|ჰქონია|აღენიშნება|უფიქსირდება|არის|აწუხებს)'
+    r'(?:(?:არ|აღარ|არა|ვერ) (?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აღნიშნავს|ჰქონია|აღენიშნება|უფიქსირდება|არის|აწუხებს)'
     r'|(?<![ა-ჰ])(?:არაა?(?![ა-ჰ\-—–])|არაქვს(?![ა-ჰ])|არმაქვს(?![ა-ჰ])|არააქვს(?![ა-ჰ])|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*)'
-    r'|უარყოფს|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს|შეწყვიტა|მოხსნა|შეაჩერა|გამორიცხულია'
+    rf'|უარყოფს|{_KA_STOP_VERBS}|გამორიცხულია'
     r'|(?<![ა-ჰ])გარეშე(?![ა-ჰ])'
     r"|(?<![a-z])(?:no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b)",
     re.IGNORECASE,
@@ -170,7 +198,9 @@ _FT_LMWH_STEMS = (
     'თინზაპარ', 'tinzapar', 'ინოჰეპ', 'innohep', 'დაბალმოლეკულ', 'low molecular', 'low-molecular',
 )
 _LMWH_WORD_RE = re.compile(r'(?<![a-zა-ჰ])(?:lmwh|ლმვჰ)(?![a-zა-ჰ])')
-_LMWH_HEPARIN_PHRASE_RE = re.compile(r'(?:დაბალმოლეკულ[ა-ჰ]*|low[\s-]+molecular(?:[\s-]+weight)?) (?:ჰეპარინ[ა-ჰ]*|heparin)')
+_LMWH_HEPARIN_PHRASE_RE = re.compile(
+    r'(?:დაბალმოლეკულ[ა-ჰ]*(?:[\s-]+წონის)?|low[\s-]+molecular(?:[\s-]+weight)?)[\s-]+(?:ჰეპარინ[ა-ჰ]*|heparin)'
+)
 _FT_UFH_STEMS = ('ჰეპარინ', 'heparin')
 _UFH_WORD_RE = re.compile(r'(?<![a-zა-ჰ])(?:ufh|უფჰ)(?![a-zა-ჰ])')
 _FT_HEPARIN_LMWH_STEMS = (*_FT_LMWH_STEMS, *_FT_UFH_STEMS)
@@ -186,9 +216,9 @@ _FT_NSAID_STEMS = (
 _DIGIT_RE = re.compile(r'\d')
 _COMPACT_STRIP_RE = re.compile(r'[\s.,;:!?()\[\]"\'—–-]+')
 _NEG_FAST_HINT_RE = re.compile(
-    r"\b(?:არ|აღარ|არა|ვერ|მოხსნ|შეწყვ|შეჩერ|შეაჩერ|გამორ|უარყ|გარეშე"
+    r"\b(?:არ|აღარ|არა|ვერ|მოხსნ|მოვხსნ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|გამორ|უარყ|გარეშე"
     r"|no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b"
-    r'|\b(?:არა|არაქვს|არმაქვს|არააქვს|არანაირ|არავითარ|უარყოფს|მოხსნ|შეწყვ|შეჩერ|შეაჩერ|მოუხსნ|შეუწყვ|გამორიცხ)',
+    r'|\b(?:არა|არაქვს|არმაქვს|არააქვს|არანაირ|არავითარ|უარყოფს|მოხსნ|მოვხსნ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|მოუხსნ|შეუწყვ|შემიწყვ|მომიხსნ|შემიჩერ|შეგვიწყვ|მოგვიხსნ|შეგვიჩერ|გამორიცხ)',
     re.IGNORECASE,
 )
 
@@ -277,10 +307,12 @@ def _split_ka_neg_clauses(sub_s):
         if not before:
             hm = _KA_PREFIX_NEG_HEAD_RE.match(after) if after else None
             if hm:
+                head = hm.group(0)
                 rest = after[hm.end():].strip()
                 nxt = rest.split(' ', 1)[0] if rest else ''
-                if nxt and nxt not in _KA_NEG_FOLLOW_STOP and not _DIGIT_RE.match(nxt):
-                    out.append(f'{cur[:m.end()]} {hm.group(0)}'.strip())
+                is_mw = (not _DIGIT_RE.search(head)) and head.startswith(_KA_MULTIWORD_HEAD_PREFIXES)
+                if nxt and not is_mw and nxt not in _KA_NEG_FOLLOW_STOP and not _DIGIT_RE.match(nxt):
+                    out.append(f'{cur[:m.end()]} {head}'.strip())
                     cur = rest
                     continue
             out.append(cur)
@@ -304,21 +336,40 @@ def _split_en_stopped(sub_s):
     """Split unpunctuated English 'stopped/discontinued/held' clauses cleanly in O(N)."""
     if ('stopped' not in sub_s and 'discontinued' not in sub_s and 'held' not in sub_s) or not _EN_STOPPED_RE.search(sub_s):
         return [sub_s]
-    out, last = [], 0
-    for m in _EN_STOPPED_RE.finditer(sub_s):
-        before = sub_s[last:m.start()].strip()
-        after = sub_s[m.end():].strip()
+    out, cur = [], sub_s
+    while cur:
+        m = _EN_STOPPED_RE.search(cur)
+        if not m:
+            out.append(cur)
+            break
+        before = cur[:m.start()].strip()
+        after = cur[m.end():].strip()
         if not before:
-            continue
+            hm = _KA_PREFIX_NEG_HEAD_RE.match(after) if after else None
+            if hm:
+                head = hm.group(0)
+                head_tok = head.split(' ', 1)[0]
+                rest = after[hm.end():].strip()
+                nxt = rest.split(' ', 1)[0] if rest else ''
+                is_skip = head_tok in _EN_NEG_HEAD_SKIP or head_tok.split('-', 1)[0] in _EN_NEG_HEAD_SKIP
+                if nxt and not is_skip and nxt not in _EN_NEG_FOLLOW_STOP and not _DIGIT_RE.match(nxt):
+                    out.append(f'{cur[:m.end()]} {head}'.strip())
+                    cur = rest
+                    continue
+            out.append(cur)
+            break
         if _AFFIRM_PRED_RE.search(before):
             out.append(before)
-            last = m.start()
-        elif after:
-            out.append(sub_s[last:m.end()].strip())
-            last = m.end()
-    tail = sub_s[last:].strip()
-    if tail:
-        out.append(tail)
+            cur = cur[m.start():].strip()
+            continue
+        if after:
+            nxt = after.split(' ', 1)[0]
+            if nxt and nxt not in _EN_NEG_FOLLOW_STOP and not _DIGIT_RE.match(nxt):
+                out.append(cur[:m.end()].strip())
+                cur = after
+                continue
+        out.append(cur)
+        break
     return out or [sub_s]
 
 
@@ -556,11 +607,12 @@ def _detect_freetext_high_risk_meds(text, q=None):
     q_d = q if isinstance(q, dict) else {}
     med_chips = set(_str_list(q_d.get('med_chips')))
     eff_alg_chips, _, _ = _effective_allergy_state(q_d)
-    has_ft_riva_low = bool(_RIVA_LOW_RE.search(low)) and not _riva_has_therapeutic_dose(low) and not any(st in low for st in _OTHER_XA_DOAC_STEMS)
+    has_ft_riva_2_5 = bool(_RIVA_LOW_RE.search(low)) and not _riva_has_therapeutic_dose(low)
+    has_ft_riva_low = has_ft_riva_2_5 and not any(st in low for st in _OTHER_XA_DOAC_STEMS)
     riva_low_only = ('rivaroxaban_2_5' in med_chips) and has_ft_riva_low
     structured_map = {
         'warfarin': bool(q_d.get('med_warfarin')),
-        'doac': bool(q_d.get('med_doac')) or riva_low_only,
+        'doac': bool(q_d.get('med_doac') and not (has_ft_riva_2_5 and 'rivaroxaban_2_5' not in med_chips)) or riva_low_only,
         'dabigatran': bool(q_d.get('med_dabigatran')),
         'parenteral_oac': True,  # No structured checkbox exists; handled via dedicated parenteral row & flags (no Catch-22 deadlock)
         'parenteral_dti': True,
@@ -607,7 +659,7 @@ def _detect_freetext_high_risk_meds(text, q=None):
     ))
     has_ft_unstruct_warfarin = 'warfarin' in unstructured_keys
     has_ft_unstruct_doac = ('dabigatran' in unstructured_keys) or (('doac' in unstructured_keys) and not has_ft_riva_low)
-    has_ft_unstruct_riva_low = ('doac' in unstructured_keys) and has_ft_riva_low
+    has_ft_unstruct_riva_low = ('doac' in unstructured_keys) and has_ft_riva_2_5
     has_ft_full_oac = bool(has_ft_unstruct_warfarin or has_ft_unstruct_doac)
     return {
         'matched_keys': matched_keys,

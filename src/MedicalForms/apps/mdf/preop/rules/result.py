@@ -245,6 +245,7 @@ def _result_needs_part(ctx):
         'implausible_fields': ctx.implausible_fields,
         'severe_htn': ctx.severe_htn,
         'ft_meds_keys': sorted(ft_keys),
+        'has_ft_parenteral': bool(set(ft_keys) & {'parenteral_oac', 'parenteral_dti'}),
         'cyp2c19_ppi_sensitive': bool(
             ctx.q.get('med_clopidogrel')
             or 'cilostazol' in ctx.med_chips

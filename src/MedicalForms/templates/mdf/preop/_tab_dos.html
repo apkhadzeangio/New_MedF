@@ -29,10 +29,10 @@
                     </label>
                     <div class="d-flex gap-2">
                         <label class="fld" style="flex:1">დილის SBP
-                            <input type="number" name="dos_bp_sys" value="{{ s.dos_bp_sys|default_if_none:'' }}" placeholder="130" class="form-control">
+                            <input type="number" step="any" name="dos_bp_sys" value="{{ s.dos_bp_sys|default_if_none:'' }}" placeholder="130" class="form-control">
                         </label>
                         <label class="fld" style="flex:1">დილის DBP
-                            <input type="number" name="dos_bp_dia" value="{{ s.dos_bp_dia|default_if_none:'' }}" placeholder="80" class="form-control">
+                            <input type="number" step="any" name="dos_bp_dia" value="{{ s.dos_bp_dia|default_if_none:'' }}" placeholder="80" class="form-control">
                         </label>
                     </div>
                     <label class="fld">დილის გლუკოზა (მმოლ/ლ)

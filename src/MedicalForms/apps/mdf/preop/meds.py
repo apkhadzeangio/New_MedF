@@ -67,6 +67,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     has_ft_unstruct_warfarin = bool(ft_meds.get('has_ft_unstruct_warfarin'))
     has_ft_unstruct_doac = bool(ft_meds.get('has_ft_unstruct_doac'))
     has_ft_unstruct_riva_low = bool(ft_meds.get('has_ft_unstruct_riva_low'))
+    has_ft_parenteral = bool((ft_meds.get('matched_keys') or set()) & {'parenteral_oac', 'parenteral_dti'})
     raw_s_pat = patient.studies if isinstance(patient.studies, dict) else {}
     is_neuraxial = bool(has_neuraxial_override) if has_neuraxial_override is not None else _standalone_is_neuraxial(patient, anesth_plan, is_phleb, has_epidural_line, q, s, today, eff_allergy_chips, ft_meds, cad_chips, med_chips, on_dialysis, None if creat_mismatch else eff_renal, raw_s=raw_s_pat)
     has_mech_valve, has_acs_stent_12m = 'mech_valve' in cad_chips, ('stent_6_12m' in cad_chips) and ('mi' in cad_chips)
@@ -86,7 +87,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     has_true_hfref = (lvef_cur is not None and lvef_cur < lvef_red_lim) or (('hf' in cad_chips) and lvef_cur is None)
     has_full_oac = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
     p2y12_cnt = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))]) + len(ft_unstruct & {'clopidogrel', 'ticagrelor', 'prasugrel'})
-    oac_count = sum([bool(q.get('med_warfarin')), bool(q.get('med_doac')), bool(q.get('med_dabigatran')), ('rivaroxaban_2_5' in med_chips)]) + len(ft_unstruct & {'warfarin', 'doac', 'dabigatran'})
+    oac_count = sum([bool(q.get('med_warfarin')), bool(q.get('med_doac')), bool(q.get('med_dabigatran')), ('rivaroxaban_2_5' in med_chips)]) + len(ft_unstruct & {'warfarin', 'doac', 'dabigatran'}) + (1 if (has_ft_unstruct_doac and has_ft_unstruct_riva_low) else 0)
     total_at_cnt = oac_count + p2y12_cnt + (1 if (q.get('med_aspirin') or 'aspirin' in ft_unstruct) else 0) + (1 if ('cilostazol' in med_chips or 'cilostazol' in ft_unstruct) else 0)
     has_hit, severe_renal = 'hit_heparin' in eff_allergy_chips, on_dialysis or (eff_renal is not None and eff_renal < ren_red_lim)
     dup_oac_warn = ' [ყურადღება: ერთდროულად ≥2 ანტიკოაგულანტია მონიშნული — გადაამოწმეთ დუბლირება!]' if oac_count >= 2 else ''
@@ -121,7 +122,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
         'cl_label': cl_label, 'frail_no_wt_note': frail_no_wt_note, 'severe_renal': severe_renal, 'ren_red_lim': ren_red_lim, 'liver_3x': liver_3x,
         'rows': rows, 'd_str': d_str, 'hold_str': hold_str, 'add_row': add_row, 'med_chips': med_chips, 'cad_chips': cad_chips,
         'ven_dvt_chips': ven_dvt_chips, 'vasc_chips': vasc_chips, 'min_abi': min_abi, 'lido_alg': lido_alg, 'ven_dup': s.get('ven_duplex_status') or '',
-        'eff_allergy_chips': eff_allergy_chips, 'ft_meds': ft_meds, 'has_ft_full_oac': has_ft_full_oac,
+        'eff_allergy_chips': eff_allergy_chips, 'ft_meds': ft_meds, 'has_ft_full_oac': has_ft_full_oac, 'has_ft_parenteral': has_ft_parenteral,
         'has_ft_unstruct_warfarin': has_ft_unstruct_warfarin, 'has_ft_unstruct_doac': has_ft_unstruct_doac, 'has_ft_unstruct_riva_low': has_ft_unstruct_riva_low,
         'has_hit': has_hit, 'has_mech_valve': has_mech_valve, 'has_acs_stent_12m': has_acs_stent_12m,
         'has_full_oac': has_full_oac, 'p2y12_cnt': p2y12_cnt, 'total_at_cnt': total_at_cnt,
@@ -131,6 +132,13 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
         'doac_extra_warn': f'{mech_doac_warn}{dup_oac_warn}{liver_doac_warn}', 'force_doac_red': bool(has_mech_valve or oac_count >= 2 or liver_3x),
         'postop_oac_res': postop_oac_res,
     }
+
+
+_RAAA_P2Y12_RULE = (
+    'საეჭვო რუპტურა / გადაუდებელი AAA — ოპერაციას P2Y12-ის მოხსნის გამო არ გადავდებთ! '
+    'გააუქმეთ შემდგომი დოზა და იყავით მზად ჰემოსტაზისა და თრომბოკონცენტრატის ტრანსფუზიისთვის (ESVS 2024).'
+)
+_RAAA_P2Y12_PLAN = 'გადაუდებელი ოპერაცია — შეჩერებას არ ველოდებით!'
 
 
 def _cea_bleed_rule(c, label):
@@ -147,12 +155,9 @@ def _cea_bleed_rule(c, label):
 def _append_antiplatelet_rows(c):
     from .calculators import _s_raw, _sat_num
     from .registry import rule_value
-    asa_cfg = rule_value('MED_ASPIRIN_CONTINUE')
-    p2y_cfg = rule_value('MED_P2Y12_HOLD_DAYS')
-    cilo_cfg = rule_value('MED_CILOSTAZOL_BLACKBOX')
-    triple_min = rule_value('MED_ANTITHROMBOTIC_CONFLICTS')
-    pad_abi_lo = rule_value('PAD_IC_BMT_3M')[0]
-    car_mod_min = rule_value('CEA_STENOSIS_THRESHOLDS')['symp_min']
+    asa_cfg, p2y_cfg = rule_value('MED_ASPIRIN_CONTINUE'), rule_value('MED_P2Y12_HOLD_DAYS')
+    cilo_cfg, triple_min = rule_value('MED_CILOSTAZOL_BLACKBOX'), rule_value('MED_ANTITHROMBOTIC_CONFLICTS')
+    pad_abi_lo, car_mod_min = rule_value('PAD_IC_BMT_3M')[0], rule_value('CEA_STENOSIS_THRESHOLDS')['symp_min']
     ctn_amb = rule_value('CARDIO_BIOMARKERS_ECHO')['ctn_amb']
     q, s, pw = c['q'], c['s'], c['pw']
     add_row, d_str, hold_str = c['add_row'], c['d_str'], c['hold_str']
@@ -170,8 +175,7 @@ def _append_antiplatelet_rows(c):
         or s.get('ecg') in ('ischemia_arrhythmia', 'afib_controlled') or bool(s.get('echo_valve_issue'))
         or (hs_ctn_cur is not None and hs_ctn_cur >= ctn_amb) or has_vasc_pad
     )
-    asa_allergy = 'nsaid' in eff_allergy_chips
-    clop_intol = 'clopidogrel_intol' in eff_allergy_chips
+    asa_allergy, clop_intol = 'nsaid' in eff_allergy_chips, 'clopidogrel_intol' in eff_allergy_chips
     asa_sub_txt = (
         'ასპირინზე ალერგია — ალტერნატივა შეათანხმეთ ექიმთან!' if asa_allergy
         else ('ასპირინის ფონზე!' if q.get('med_aspirin') else 'ასპირინი 75–100 მგ-ით ჩანაცვლებით!')
@@ -202,6 +206,8 @@ def _append_antiplatelet_rows(c):
         t3_clop_warn = f' [≥{triple_min} ანტითრომბოზული — შეათანხმეთ დე-ესკალაცია ქირურგთან!]' if c['total_at_cnt'] >= triple_min else ''
         if c['is_cea_oac_p2y_stop']:
             add_row('კლოპიდოგრელი / P2Y12', f'{_cea_bleed_rule(c, "თვითნებურად არ გააგრძელოთ,")}{clop_intol_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+        elif c['is_rupture_suspect']:
+            add_row('კლოპიდოგრელი / P2Y12', f'{_RAAA_P2Y12_RULE}{clop_intol_warn}{dup_p2y_warn}', 'red', _RAAA_P2Y12_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif clop_intol:
             add_row('კლოპიდოგრელი / P2Y12', f'კლოპიდოგრელის აუტანლობა/ალერგია — პრეპარატი საშიშია, დაუყოვნებლივ შეცვალეთ ალტერნატივით ექიმთან!{clop_intol_warn}', 'red', 'შეცვალეთ ექიმთან (ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif c['active_gi_bleed']:
@@ -253,12 +259,14 @@ def _append_potent_p2y12_rows(c, p2y_cfg, asa_allergy, clop_intol, asa_sub_txt):
     solo_p2y_asa_alg = asa_allergy and (not q.get('med_clopidogrel') or clop_intol) and (pw != PreopPatient.Pathway.VENOUS or q.get('cad') or c['cad_chips'] or c['has_stroke_hx'])
 
     if q.get('med_ticagrelor'):
-        tica_bad_combo = c['has_full_oac'] or c['has_ft_full_oac'] or c['has_ft_unstruct_riva_low'] or c['p2y12_cnt'] >= 2 or ('rivaroxaban_2_5' in med_chips)
-        tica_esc_warn = ' [OAC / რივაროქსაბანი 2.5 / დუბლირებულ P2Y12-თან ერთად ESC Class III სისხლდენის რისკი — შეათანხმეთ დე-ესკალაცია!]' if tica_bad_combo else ''
+        tica_bad_combo = c['has_full_oac'] or c['has_ft_full_oac'] or c['has_ft_unstruct_riva_low'] or c['has_ft_parenteral'] or c['p2y12_cnt'] >= 2 or ('rivaroxaban_2_5' in med_chips)
+        tica_esc_warn = ' [OAC / პარენტერულ ანტიკოაგულანტთან / რივაროქსაბანი 2.5 / დუბლირებულ P2Y12-თან ერთად ESC Class III სისხლდენის რისკი — შეათანხმეთ დე-ესკალაცია!]' if tica_bad_combo else ''
         tica_org_warn = (' [ღვიძლის ≥3x: ტიკაგრელორი უკუნაჩვენებია — EMA SmPC 4.3!]' if c['liver_3x'] else '') + (' [ორსულობა: ტიკაგრელორი არ არის რეკომენდებული — EMA SmPC 4.6!]' if c['repro_pregnant'] else '')
         tica_contra_any = bool(tica_bad_combo or c['liver_3x'] or c['repro_pregnant'])
         if is_bleed:
             add_row('ტიკაგრელორი (ბრილინტა)', _cea_bleed_rule(c, 'ტიკაგრელორი'), 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+        elif c['is_rupture_suspect']:
+            add_row('ტიკაგრელორი (ბრილინტა)', f'{_RAAA_P2Y12_RULE}{tica_esc_warn}{tica_org_warn}', 'red', _RAAA_P2Y12_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif c['active_gi_bleed']:
             add_row('ტიკაგრელორი (ბრილინტა)', 'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და კარდიოლოგთან!', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif q.get('recent_stent') or has_acs_stent_12m:
@@ -285,8 +293,8 @@ def _append_potent_p2y12_rows(c, p2y_cfg, asa_allergy, clop_intol, asa_sub_txt):
     if q.get('med_prasugrel'):
         has_stroke_hx = c['has_stroke_hx']
         stroke_warn = ' [გადატანილ ინსულტ/TIA-ზე პრასუგრელი უკუნაჩვენებია — გადაამოწმეთ!]' if has_stroke_hx else ''
-        pras_bad_combo = c['has_full_oac'] or c['has_ft_full_oac'] or c['has_ft_unstruct_riva_low'] or c['p2y12_cnt'] >= 2 or ('rivaroxaban_2_5' in med_chips)
-        pras_esc_warn = ' [OAC / რივაროქსაბანი 2.5 / დუბლირებულ P2Y12-თან ერთად ESC Class III სისხლდენის რისკი — შეათანხმეთ დე-ესკალაცია!]' if pras_bad_combo else ''
+        pras_bad_combo = c['has_full_oac'] or c['has_ft_full_oac'] or c['has_ft_unstruct_riva_low'] or c['has_ft_parenteral'] or c['p2y12_cnt'] >= 2 or ('rivaroxaban_2_5' in med_chips)
+        pras_esc_warn = ' [OAC / პარენტერულ ანტიკოაგულანტთან / რივაროქსაბანი 2.5 / დუბლირებულ P2Y12-თან ერთად ESC Class III სისხლდენის რისკი — შეათანხმეთ დე-ესკალაცია!]' if pras_bad_combo else ''
         age_p = _sat_age(c['patient'].age) or 0
         wt_p = _num(c['s'].get('weight_kg'), lo=25, hi=260)
         pras_age75, pras_wt60 = age_p >= 75, (wt_p is not None and wt_p < 60)
@@ -299,6 +307,8 @@ def _append_potent_p2y12_rows(c, p2y_cfg, asa_allergy, clop_intol, asa_sub_txt):
         pras_contra = bool(stroke_warn or pras_bad_combo or c['liver_3x'] or c['repro_pregnant'])
         if is_bleed:
             add_row('პრასუგრელი (ეფიენტი)', f'{_cea_bleed_rule(c, "პრასუგრელი")}{stroke_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+        elif c['is_rupture_suspect']:
+            add_row('პრასუგრელი (ეფიენტი)', f'{_RAAA_P2Y12_RULE}{stroke_warn}{pras_esc_warn}{pras_risk_warn}', 'red', _RAAA_P2Y12_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif c['active_gi_bleed']:
             add_row('პრასუგრელი (ეფიენტი)', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და კარდიოლოგთან!{stroke_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif q.get('recent_stent') or has_acs_stent_12m:

@@ -403,7 +403,7 @@
                             <div class="d-flex flex-wrap align-items-center gap-2">
                                 <input type="number" step="any" name="aaa_mm" value="{{ s.aaa_mm|default_if_none:'' }}" placeholder="მმ (მაგ. 58)" class="form-control form-control-sm" style="width:110px">
                                 <input type="date" name="cta_date" value="{{ s.cta_date }}" title="CTA-ს ჩატარების თარიღი" class="form-control form-control-sm" style="width:148px">
-                                <input type="number" name="cta_months" value="{{ ev.cta_months|default_if_none:'' }}" placeholder="თვე" class="form-control form-control-sm" style="width:68px">
+                                <input type="number" step="any" name="cta_months" value="{{ ev.cta_months|default_if_none:'' }}" placeholder="თვე" class="form-control form-control-sm" style="width:68px">
                                 <span class="small text-muted">თვ.</span>
                                 <label class="chip-check" style="height:34px;padding:0 12px">
                                     <input type="checkbox" name="cta_disc" value="1" {% if s.cta_disc %}checked{% endif %}>DICOM დისკი აქვს

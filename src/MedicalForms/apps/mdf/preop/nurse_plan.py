@@ -180,7 +180,7 @@ def build_phone_med_script(patient, ev, today):
     op_dt = _date(s.get('planned_surgery_date'))
     op_ka = _fmt_ka_date(op_dt, short=True) if op_dt else ''
     is_inactive = bool(patient.archived) or (ev.get('case_outcome') not in (None, '', 'scheduled'))
-    stop_locked = (ev['clearance_seal']['code'] == 'stop' or ev['has_hard_contraindication'])
+    stop_locked = (not is_inactive) and (ev['clearance_seal']['code'] == 'stop' or ev['has_hard_contraindication'])
     med_call = _med_call_status(ev, today)
 
     stop_rows, caution_rows, keep_rows = [], [], []
@@ -233,7 +233,7 @@ def build_phone_med_script(patient, ev, today):
                 keep_rows.append(entry)
 
     return {
-        'has_meds': bool(stop_rows or caution_rows or keep_rows),
+        'has_meds': bool(ev['med_schedule']) if is_inactive else bool(stop_rows or caution_rows or keep_rows),
         'stop_rows': stop_rows,
         'caution_rows': caution_rows,
         'urgent_rows': [r for r in (stop_rows + caution_rows) if r['urgent_contact']],
@@ -332,6 +332,8 @@ def detect_postponement_impacts(patient, ev, today):
     from django.utils import timezone
 
     from .registry import rule_value
+    if bool(patient.archived) or (ev.get('case_outcome') not in (None, '', 'scheduled')) or (ev.get('clearance_seal') or {}).get('code') == 'inactive':
+        return None
     today = _date(today) or timezone.localdate()
     stale_lab_d = rule_value('INF_STALE_LABS_DAYS')
     cea_win_d = rule_value('CEA_SYMP_WINDOW_DAYS')[0]

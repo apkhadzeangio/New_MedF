@@ -371,10 +371,11 @@ def _venous_vte_task_label(ctx, ren_red, eff_ren_t):
             return f'კონსილიუმი (ორსულობა + მექ. სარქველი + CrCl<{ren_red}/დიალიზი: LMWH კუმულირდება, DOAC არა — IV/SC UFH ან ტრიმესტრით VKA!)'
         return 'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (ორსულობა + მექ. სარქველი — DOAC არა!)'
     has_full_oac_t = bool(ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False))
+    has_ft_par_t = bool(getattr(ctx, 'has_ft_parenteral', False))
     is_evla_vka_t, has_contra_oac_t = False, False
-    if has_full_oac_t:
+    if has_full_oac_t or has_ft_par_t:
         from ..caprini import _oac_venous_vte_flags
-        _, is_evla_vka_t, has_contra_oac_t = _oac_venous_vte_flags(
+        _, is_evla_vka_t, has_contra_oac_t, has_ft_par_t = _oac_venous_vte_flags(
             ctx.patient, ctx.q, ctx.s, ven_severe_renal_t, ctx.liver_3x,
             active_gi_bleed=getattr(ctx, 'active_gi_bleed', False), eff_preg=getattr(ctx, 'eff_pregnant', False),
         )
@@ -391,6 +392,9 @@ def _venous_vte_task_label(ctx, ren_red, eff_ren_t):
         if getattr(ctx, 'has_contra_full_oac', False) or has_contra_oac_t:
             return f'უკუნაჩვენები OAC არ განაახლოთ — უსაფრთხო ანტიკოაგულაციის სქემა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
         return f'მუდმივი OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე; ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
+    if has_ft_par_t:
+        from ..caprini import _par_vte_advice
+        return _par_vte_advice(has_contra_oac_t, has_hit, ven_severe_renal_t, ren_red, '')
     if has_hit:
         return f'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<{ren_red}!){arg_liv_t}' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
     if ven_severe_renal_t and ctx.liver_3x:

@@ -16,7 +16,7 @@ _CLINICIAN_JARGON_TOKENS = (
     'P-gp', 'aPTT', 'APTT', 'anti-Xa', 'AFib', 'INR', 'P2Y12', 'DAPT', 'PTA', 'Class III', 'Class I',
     'SBP', 'DBP', 'HR<', 'HR≥', 'K+≥', 'IV ', ' / CCB', '(PPI)', 'NSAID', 'პერიოპერაციულად',
     'ჰიდროკორტიზონ', 'ეტომიდატ', 'უანტიაგრეგანტოდ', 'სავალდებულოა ჩანაცვლება',
-    '≥3x', 'დე-ესკალაცი', 'დეესკალაცი', 'მექ. სარქვ', 'Child-Pugh', 'Black Box', 'Boxed Warning',
+    '≥3x', '>=3x', 'დე-ესკალაცი', 'დეესკალაცი', 'მექ. სარქვ', 'Child-Pugh', 'Black Box', 'Boxed Warning',
 )
 
 _PHRASE_REPLACEMENTS = (
@@ -37,7 +37,9 @@ _PHRASE_REPLACEMENTS = (
     ('[CYP2C9: ვარფარინთან აძლიერებს ანტიკოაგულაციას — გადაამოწმეთ INR!]', '(ვარფარინთან ერთად მიღებისას აუცილებელია სისხლის შედედების ანალიზის გადამოწმება ექიმთან)'),
     ('ღვიძლი ≥3x — შეათანხმეთ ექიმთან!', 'ღვიძლის ანალიზის გამო მიღება ან შეწყვეტა აუცილებლად შეათანხმეთ ექიმთან!'),
     ('≥3x-ზე', '3-ჯერ მეტზე'),
+    ('>=3x-ზე', '3-ჯერ მეტზე'),
     ('≥3x', '3-ჯერ მეტი'),
+    ('>=3x', '3-ჯერ მეტი'),
     (' [≥3 ანტითრომბოზული — შეათანხმეთ დე-ესკალაცია ქირურგთან!]', ' (რამდენიმე გამათხელებელი წამლის გამო სქემა აუცილებლად შეათანხმეთ ქირურგთან!)'),
     ('შეათანხმეთ დე-ესკალაცია ქირურგთან!', 'სქემა აუცილებლად შეათანხმეთ ქირურგთან!'),
     ('შეათანხმეთ დე-ესკალაცია!', 'სქემა აუცილებლად შეათანხმეთ ექიმთან!'),
@@ -110,6 +112,8 @@ _PHRASE_REPLACEMENTS = (
     ('IDSA', ''),
     ('WHO Sign-In', 'ოპერაციის წინა შემოწმება'),
     ('WHO', ''),
+    ('FDA / EMA', ''),
+    ('EMA / FDA', ''),
     ('EMA', ''),
     ('FDA', ''),
     ('VOYAGER PAD', 'რივაროქსაბანის დაბალი დოზის სქემა'),
@@ -506,8 +510,10 @@ def plain_asa_ka(asa_raw):
     return f'{ka} — გადაუდებელი' if is_emerg else ka
 
 
-_INV_BP_ARM_R_RE = re.compile(r'(?<![A-Za-z0-9])R (?=\d+/\d+)')
-_INV_BP_ARM_L_RE = re.compile(r'(?<![A-Za-z0-9])L (?=\d+/\d+)')
+_INV_BP_ARM_R_RE = re.compile(r'(?<![A-Za-z0-9])R\s*(?=(?:\d+|\?)/(?:\d+|\?))')
+_INV_BP_ARM_L_RE = re.compile(r'(?<![A-Za-z0-9])L\s*(?=(?:\d+|\?)/(?:\d+|\?))')
+_ARM_LIMB_R_RE = re.compile(r'(?<![A-Za-z0-9])R (?=კიდურ)')
+_ARM_LIMB_L_RE = re.compile(r'(?<![A-Za-z0-9])L (?=კიდურ)')
 
 
 _EMPTY_PAREN_RE = re.compile(r'\([/·;,:—–\s-]*\)')
@@ -517,8 +523,8 @@ _TRAIL_PAREN_RE = re.compile(r'(?<![/·;,:—–\s-])[/·;,:—–\s-]+\)')
 _LEAD_BRACK_RE = re.compile(r'\[[/·;,:—–\s-]+')
 _TRAIL_BRACK_RE = re.compile(r'(?<![/·;,:—–\s-])[/·;,:—–\s-]+\]')
 _COLON_COMMA_RE = re.compile(r':\s*,+\s*')
-_DASH_PUNCT_RE = re.compile(r'(?<![\s—–-])\s*[—–-]+\s*([!?.])')
-_SPACE_PUNCT_RE = re.compile(r'(?<!\s)\s+([.,;:!?])')
+_DASH_PUNCT_RE = re.compile(r'(?<![\s—–/-])\s*[—–-][\s—–/-]*([!?.])')
+_SPACE_PUNCT_RE = re.compile(r'(?<!\s)\s+([.,;:!]|\?(?!/))')
 _MULTI_SPACE_RE = re.compile(r'\s{2,}')
 
 
@@ -537,6 +543,8 @@ def scrub_plain_ka(txt, second_person=True, strip_quoted_ft=False):
             out = out.replace(old, new)
     out = _INV_BP_ARM_R_RE.sub('მარჯვენა ', out)
     out = _INV_BP_ARM_L_RE.sub('მარცხენა ', out)
+    out = _ARM_LIMB_R_RE.sub('მარჯვენა ', out)
+    out = _ARM_LIMB_L_RE.sub('მარცხენა ', out)
     out = _TOKEN_RE.sub(lambda m: _TOKEN_MAP[m.group(0)], out)
     if second_person:
         for old, new in _2ND_PERSON_REPLACEMENTS:
@@ -577,4 +585,118 @@ _DRUG_PLAIN_PREFIX = {
 def plain_drug_name(raw_drug):
     safe = _safe_ka_str(raw_drug)
     return scrub_plain_ka(_DRUG_PLAIN_PREFIX.get(safe, safe), second_person=False, strip_quoted_ft=True)
+
+
+_SF_UNIT_ONLY_RE = re.compile(
+    r'(?<![ა-ჰ])(?:მგ|მკგ|მლ|სე|გ|ტაბ|აბი|აბ|დღეში|დღ|კვ|სთ'
+    r'|ვიღებ|ვსვამ|იღებს|სვამს|ვიკეთებ|იკეთებს|ვაგრძელებ|აგრძელებს|მაქვს|აქვს|მქონდა|ჰქონდა'
+    r'|ალერგია|ალერგიული|ალერგიას|წამალი|წამალზე|პრეპარატი|პრეპარატზე|ზე|და|ან|დილას|საღამოს|ღამით|ყოველდღე|მხოლოდ)(?![ა-ჰ])'
+)
+_SF_KA_WORD_RE = re.compile(r'[ა-ჰ]{2,}')
+_SF_LONE_LATIN_RE = re.compile(r'(?<![A-Za-z0-9])[A-Za-z](?![A-Za-z0-9])')
+_SF_LATIN_WORD_RE = re.compile(r'[a-z]{2,}')
+_SF_LATIN_FILLER = frozenset({
+    'mg', 'mcg', 'ml', 'iu', 'tab', 'tabs', 'cap', 'caps', 'bid', 'tid', 'qid', 'qd', 'od',
+    'once', 'twice', 'daily', 'morning', 'evening', 'night', 'po', 'iv', 'sc', 'im', 'sq',
+    'and', 'or', 'with', 'without', 'for', 'on', 'in', 'at', 'to', 'of', 'the', 'per', 'by',
+    'taking', 'takes', 'using', 'uses', 'continuing', 'continues', 'started', 'stopped', 'held',
+    'allergy', 'allergic', 'allergies', 'drug', 'med', 'meds', 'medication', 'medicine', 'dose',
+    'day', 'days', 'week', 'weeks', 'month', 'months', 'stop', 'yes', 'no', 'not', 'ok', 'vit', 'vitamin',
+})
+_SF_COMMON_MED_LABELS = (
+    (('ბისოპროლ', 'bisoprol', 'კონკორ', 'concor', 'მეტოპროლ', 'metoprol', 'ნებივოლ', 'nebivol', 'კარვედილ', 'carvedil'), 'ბეტა-ბლოკერი (გულის/წნევის წამალი)'),
+    (('ამლოდიპ', 'amlodip', 'ლერკანიდიპ', 'lercanidip', 'ნიფედიპ', 'nifedip'), 'წნევის წამალი (კალციუმის ბლოკერი)'),
+    (('ფუროსემ', 'furosem', 'ტორასემ', 'torasem', 'ინდაპამ', 'indapam', 'სპირონოლაქტ', 'spironolact', 'ჰიდროქლოროთიაზ', 'hydrochlorothiaz'), 'შარდმდენი'),
+    (('თიროქს', 'thyrox', 'ეუთიროქს', 'euthyrox', 'ლევოთიროქს', 'levothyrox'), 'ფარისებრი ჯირკვლის წამალი'),
+    (('პარაცეტამ', 'paracetam', 'acetaminophen', 'პანადოლ', 'panadol', 'ანალგინ', 'analgin', 'სპაზმალგ', 'spasmalg'), 'ტკივილგამაყუჩებელი / სიცხის დამწევი'),
+    (('ამოქსიც', 'amoxic', 'ოგმენტინ', 'augmentin', 'ცეფალექს', 'cephalex', 'cefalex', 'ცეფუროქს', 'cefurox', 'აზითრომ', 'azithrom', 'ციპროფლოქს', 'ciproflox'), 'ანტიბიოტიკი'),
+    (('ვიტამინი დ', 'vitamin d', 'vit d', 'ქოლეკალციფერ', 'cholecalcifer', 'დ ვიტამინ'), 'ვიტამინი დ'),
+    (('ვიტამინ', 'vitamin'), 'ვიტამინი'),
+)
+
+
+def _has_meaningful_ka_text(txt):
+    return bool(_SF_KA_WORD_RE.search(_SF_UNIT_ONLY_RE.sub(' ', txt or '')))
+
+
+def _has_unrecognized_latin_word(pos_low, known_stems):
+    for w in _SF_LATIN_WORD_RE.findall(pos_low or ''):
+        if w in _SF_LATIN_FILLER:
+            continue
+        if not any((st in w or w in st) for st in known_stems):
+            return True
+    return False
+
+
+def format_sf_freetext_med_and_allergy(q, items):
+    """Build plain-Georgian self-fill highlights for free-text meds/allergies without silent Latin erasure."""
+    from .constants import _FREETEXT_ALLERGY_STEMS, _FREETEXT_HIGH_RISK_MED_RULES
+    from .meds import _detect_freetext_high_risk_meds
+    from .meds_freetext import (
+        _ASPIRIN_FT_STEMS,
+        _FT_ACEI_ARB_STEMS,
+        _FT_AMIODARONE_STEMS,
+        _FT_ARGATROBAN_STEMS,
+        _FT_FONDAPARINUX_STEMS,
+        _FT_HEPARIN_LMWH_STEMS,
+        _FT_NSAID_STEMS,
+        _FT_STATIN_STEMS,
+        _detect_freetext_allergies,
+        _has_unrecognized_allergy_clause,
+        _positive_clauses_text,
+    )
+    from .utils import _safe_display_str, _str_list, chip_summary
+
+    raw_other_meds = q.get('other_meds') if isinstance(q.get('other_meds'), str) else ''
+    if raw_other_meds.strip():
+        ft = _detect_freetext_high_risk_meds(raw_other_meds, q=q)
+        lvl = 'urgent' if ft.get('unstructured_labels') else 'info'
+        pos_low = _positive_clauses_text(raw_other_meds)
+        med_stems = [
+            st for _, _, _, sts in _FREETEXT_HIGH_RISK_MED_RULES for st in sts if st.isascii()
+        ] + [
+            st for grp in (_ASPIRIN_FT_STEMS, _FT_STATIN_STEMS, _FT_ACEI_ARB_STEMS, _FT_AMIODARONE_STEMS, _FT_HEPARIN_LMWH_STEMS, _FT_FONDAPARINUX_STEMS, _FT_ARGATROBAN_STEMS, _FT_NSAID_STEMS) for st in grp if st.isascii()
+        ] + [st for sts, _ in _SF_COMMON_MED_LABELS for st in sts if st.isascii()] + ['asa', 'lmwh', 'ufh']
+        extra_latin_med = _has_unrecognized_latin_word(pos_low, med_stems)
+        ft_lbls = [scrub_plain_ka(lbl, second_person=False, strip_quoted_ft=True) for lbl in (ft.get('unstructured_labels') or [])]
+        if not ft_lbls:
+            rule_lbls = {k: lbl for k, lbl, _, _ in _FREETEXT_HIGH_RISK_MED_RULES}
+            for k in (ft.get('matched_keys') or ()):
+                if k in rule_lbls:
+                    ft_lbls.append(scrub_plain_ka(rule_lbls[k], second_person=False, strip_quoted_ft=True))
+            for flag_k, ka_lbl in (('has_ft_statin', 'სტატინი'), ('has_ft_acei_arb', 'წნევის წამალი'), ('has_ft_nsaid', 'ტკივილგამაყუჩებელი'), ('has_omeprazole', 'კუჭის დამცავი')):
+                if ft.get(flag_k):
+                    ft_lbls.append(ka_lbl)
+            for stems, ka_lbl in _SF_COMMON_MED_LABELS:
+                if any(st in pos_low for st in stems):
+                    if ka_lbl == 'ვიტამინი' and 'ვიტამინი დ' in ft_lbls:
+                        continue
+                    ft_lbls.append(ka_lbl)
+        ft_lbls = [x for x in dict.fromkeys(ft_lbls) if x]
+        if ft_lbls:
+            if extra_latin_med:
+                ft_lbls.append('დამატებითი წამალი ტექსტში (გადაამოწმეთ ჩანაწერი)')
+            clean_other = ', '.join(ft_lbls)
+        else:
+            cand = _SF_LONE_LATIN_RE.sub('', scrub_plain_ka(_safe_display_str(raw_other_meds, max_len=160), second_person=False, strip_quoted_ft=True)).strip(' ,;:-')
+            if _has_meaningful_ka_text(cand):
+                clean_other = f'{cand} · დამატებითი წამალი ტექსტში (გადაამოწმეთ ჩანაწერი)' if extra_latin_med else cand
+            else:
+                clean_other = 'მითითებულია ტექსტში (გადაამოწმეთ ჩანაწერი)'
+        items.append((lvl, f'სხვა წამალი: {clean_other}'))
+    if q.get('allergy_iodine'):
+        items.append(('urgent', 'ალერგია იოდზე / კონტრასტზე!'))
+    raw_alg_txt = q.get('allergy_text') if isinstance(q.get('allergy_text'), str) else ''
+    pos_alg_txt = _positive_clauses_text(raw_alg_txt)
+    if q.get('allergy_other') or q.get('allergy_chips') or pos_alg_txt:
+        alg_chips_eff = list(dict.fromkeys([*_str_list(q.get('allergy_chips')), *(_detect_freetext_allergies(raw_alg_txt) - {'iodine'})]))
+        alg_txt = chip_summary(alg_chips_eff, 'allergy_chips', raw_alg_txt if (pos_alg_txt and not alg_chips_eff) else '') or 'მედიკამენტური ალერგია'
+        clean_alg = _SF_LONE_LATIN_RE.sub('', scrub_plain_ka(alg_txt, second_person=False, strip_quoted_ft=True)).strip(' ,;:-')
+        alg_stems = [st for _, sts in _FREETEXT_ALLERGY_STEMS for st in sts if st.isascii()] + ['iodine', 'hit', 'lmwh']
+        extra_latin_alg = _has_unrecognized_latin_word(pos_alg_txt, alg_stems)
+        if not _has_meaningful_ka_text(clean_alg):
+            clean_alg = 'მედიკამენტური ალერგია (გადაამოწმეთ ჩანაწერი)'
+        elif (alg_chips_eff and _has_unrecognized_allergy_clause(raw_alg_txt)) or (not alg_chips_eff and extra_latin_alg):
+            clean_alg = f'{clean_alg} · დამატებითი ალერგენი ტექსტში (გადაამოწმეთ ჩანაწერი)'
+        items.append(('urgent', f'ალერგია: {clean_alg}'))
 

@@ -1,7 +1,7 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.19'
+REGISTRY_VERSION = '1.2.20'
 REGISTRY_UPDATED_ON = '2026-11-27'
 
 STATUS_VERIFIED = 'source-verified'
@@ -78,6 +78,17 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.20',
+        'date': '2026-11-27',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-21: NLP I-პირის/პრეფიქს/SOV/LMWH და ორმაგი Xa-OAC/rAAA P2Y12/პარენტერული ანტიკოაგულაციის, Catch-22, არააქტიური ბარათების, DoS BP და Plain-KA სრული დახურვა',
+        'changes_ka': (
+            'დაიხურა ყველა 6 S1 კლინიკური/NLP ხარვეზი: _INLINE_NEG_SPLIT_RE ერთეულების ლუქბეჰაინდები დამაგრდა ციფრზე/სივრცეზე (taking/using/continuing აღარ იჭრება); დაემატა I პირის ქართული შეწყვეტის ზმნები („შევწყვიტე/მოვხსენი/შევაჩერე/შემიწყვეტია“), SOV „მაგრამ Y არა (...) / — ...“, სიხშირიანი ქართული და ინგლისური პრეფიქს-შეწყვეტის გაყოფა („მოხსნილია ელიქვისი 5მგ x2 ვარფარინი 5მგ“, „stopped warfarin 5mg daily apixaban 5mg bid“); med_doac + თავისუფალი ტექსტის rivaroxaban 2.5mg ააქტიურებს ორმაგი OAC STOP ბლოკერს; საეჭვო რუპტურირებულ AAA-ზე (rAAA) კლოპიდოგრელი/ტიკაგრელორი/პრასუგრელი აღარ გასცემს გეგმურ 4–7 დღიან შეჩერების თარიღებს.',
+            'დაიხურა ყველა 10 S2 ხარვეზი: პარენტერული ანტიკოაგულანტები ჩაერთო ESC Class III (ტიკაგრელორი/პრასუგრელი), პოსტოპ. VOYAGER/Caprini/დაფის დუბლირების გარდსა და EVLA თავისუფალი ტექსტის ვარფარინის პარიტეტში; მოიხსნა pathway-switch Catch-22 ჩიხები (tsh_status, laryngoscopy_res, tp_r/tp_l/tbi_r/tbi_l _tab_s2-ში); არააქტიურ/არქივირებულ ბარათებზე გაითიშა ძველი უზმოდ ყოფნის ტექსტი, დარჩენილი გადადების ბანერი, წითელი დაუდასტურებელი გეითი პასპორტში და STOP+ცარიელი წამლების კონფლიქტი; HIT-ზე neuraxial_gate აღარ ამატებს IV UFH წესს, ხოლო ქვედა კიდურის შუნტირებაზე წმინდა local ანესთეზია იბლოკება; DoS BP (90–99, 160–179/100–109, PP<20) და preop-nurse.js პარტნიორი წნევის საზღვრები/პრიორიტეტი სინქრონიზდა; LMWH-UFH გამიჯვნა მოიცავს „დაბალმოლეკულური წონის ჰეპარინს“ და დეფისიან ფრაზებს; build_self_fill_highlights აღარ შლის ამოუცნობ ინგლისურ წამლებს/ალერგენებს, CEA_SYMP_WINDOW_DAYS ემთხვევა „ბოლო 180 დღეში“, ხოლო plain_ka თარგმნის R?/115, L 170/? და R/L კიდურს.',
+            'დაიხურა ყველა 7 S3 ხარვეზი: WBC JS კონვერსია გადავიდა ზუსტ მთელრიცხვა მასშტაბზე (0/2,002 დრიფტი); bp_sys/bp_dia/hr/bp_sys_l/bp_dia_l/dos_bp_sys/dos_bp_dia/cta_months მიიღო step="any"; generate_anamnesis აღარ წერს ცრუ „ქრონიკული დაავადებების გარეშე“ ასპირინ/სტატინ/ქრონიკულ მედიკამენტებსა და ზომიერ ორგანულ ლაბებზე; STOP+acute_hold ტონი და ბანერის ტექსტი გაერთიანდა 4-ვე შაბლონში; neuraxial_gate მოიცავს თავისუფალი ტექსტის VKA/DOAC დეტალებს; plain_ka ასუფთავებს „FDA / EMA“ → „— /!]“ ფრაგმენტსა და ASCII >=3x-ს.',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC 2022 NCS · ASRA 5th Ed 2025 · CHEST 2022 · EHRA 2021 · ISTH 2021 · ACC/AHA 2024 · EMA · FDA',
+    },
     {
         'version': '1.2.19',
         'date': '2026-11-27',

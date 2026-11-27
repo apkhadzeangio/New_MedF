@@ -86,9 +86,20 @@ def _oac_vte_advice(is_evla_vka, has_contra_oac, has_hit, severe_renal, severe_l
     return f'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე){comp_sfx} — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
 
 
+def _par_vte_advice(has_hit, severe_renal, severe_liver, hit_dtis, comp_sfx):
+    ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    if has_hit:
+        return f'აქტიური პარენტერული ანტიკოაგულაცია + HIT: ჰეპარინი/LMWH კატეგორიულად აკრძალულია — შეათანხმეთ ერთიანი არაჰეპარინული სქემა ({hit_dtis}) ჰემატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+    if severe_renal:
+        return f'აქტიური პარენტერული ანტიკოაგულაცია + CrCl/eGFR <{ren_red}: LMWH/ფონდაპარინუქსი კუმულირდება — შეათანხმეთ ერთიანი სქემა (UFH) ქირურგთან (დამატებითი პროფილაქტიკური LMWH/DOAC არ დაუმატოთ!){comp_sfx}'
+    if severe_liver:
+        return f'აქტიური პარენტერული ანტიკოაგულაცია + ღვიძლის ≥3x: კოაგულოგრამის კონტროლით ერთიანი სქემა ქირურგთან (დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ!){comp_sfx}'
+    return f'პაციენტი უკვე იღებს პარენტერულ ანტიკოაგულანტს — შეათანხმეთ ერთიანი პოსტოპ. სქემა ქირურგთან (დამატებითი პროფილაქტიკური LMWH/DOAC არ დაუმატოთ!){comp_sfx}'
+
+
 def _caprini_tier_and_advice(
     pts, has_mech_valve, has_hit, severe_renal, severe_liver, compression_contra,
-    cea_bleed_block=False, eff_pregnant=False, active_gi_bleed=False, has_full_oac=False, is_evla_vka=False, has_contra_oac=False,
+    cea_bleed_block=False, eff_pregnant=False, active_gi_bleed=False, has_full_oac=False, is_evla_vka=False, has_contra_oac=False, has_ft_par=False,
 ):
     cap_cfg = rule_value('SCORE_CAPRINI_VTE')
     rtpa_d, ren_red = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS'), rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
@@ -104,7 +115,7 @@ def _caprini_tier_and_advice(
             f'ორსულობა + მექანიკური სარქველი: მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (DOAC აკრძალულია; VKA vs LMWH/UFH ტრიმესტრით){comp_sfx}'
         )
     )
-    oac_vte_txt = _oac_vte_advice(is_evla_vka, has_contra_oac, has_hit, severe_renal, severe_liver, hit_dtis, comp_sfx)
+    oac_vte_txt = _oac_vte_advice(is_evla_vka, has_contra_oac, has_hit, severe_renal, severe_liver, hit_dtis, comp_sfx) if has_full_oac else _par_vte_advice(has_hit, severe_renal, severe_liver, hit_dtis, comp_sfx)
     if pts >= cap_cfg['high_min']:
         tier = f"მაღალი (≥{cap_cfg['high_min']})"
         if cea_bleed_block:
@@ -129,7 +140,7 @@ def _caprini_tier_and_advice(
                     else f'ფარმაკოლოგიური პროფილაქტიკა (მხოლოდ LMWH / UFH 7–10 დღე — ორსულობაზე DOAC უკუნაჩვენებია!){comp_sfx}'
                 )
             )
-        elif has_full_oac:
+        elif has_full_oac or has_ft_par:
             advice = oac_vte_txt
         elif has_hit:
             advice = (
@@ -165,7 +176,7 @@ def _caprini_tier_and_advice(
                     else f'ადრეული მობილიზაცია{comp_sfx} ± LMWH / UFH მეან-გინეკოლოგის შეფასებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
                 )
             )
-        elif has_full_oac:
+        elif has_full_oac or has_ft_par:
             advice = oac_vte_txt
         elif has_hit:
             advice = (
@@ -198,6 +209,7 @@ def _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver, activ
     oac_cnt = (
         sum([bool(q_d.get('med_warfarin')), bool(q_d.get('med_doac')), bool(q_d.get('med_dabigatran')), ('rivaroxaban_2_5' in med_set)])
         + len(ft_unstruct & {'warfarin', 'doac', 'dabigatran'})
+        + (1 if (ft_m.get('has_ft_unstruct_doac') and ft_m.get('has_ft_unstruct_riva_low')) else 0)
     )
     raw_s = patient.studies if isinstance(patient.studies, dict) else {}
     inv_in = s_cur.get('_invalid_inputs') if isinstance(s_cur.get('_invalid_inputs'), dict) else {}
@@ -224,7 +236,7 @@ def _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver, activ
         or ((q_d.get('med_doac') or q_d.get('med_dabigatran') or ft_doac) and (severe_renal or severe_liver))
         or (not is_evla_vka and q_d.get('med_warfarin') and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not has_nx_plan and (dos_inr_bad or (inr_c is not None and inr_c > evla_max_inr)))
     )
-    return has_full_oac, is_evla_vka, has_contra_oac
+    return has_full_oac, is_evla_vka, has_contra_oac, has_ft_par
 
 
 def calc_caprini(patient, q, bmi=None, today=None, eff_renal=None, liver_status='normal', compression_contra=False):
@@ -246,12 +258,12 @@ def calc_caprini(patient, q, bmi=None, today=None, eff_renal=None, liver_status=
     )
     active_gi_bleed = bool(s_cur.get('gastro_result') == 'acute_ulcer' or (q_d.get('ulcer_active_symp') and s_cur.get('gastro_result') != 'remission'))
     eff_preg = is_pregnancy_eligible(patient) and bool(q_d.get('pregnant_possible') or q_d.get('ven_pregnant'))
-    has_full_oac, is_evla_vka, has_contra_oac = _oac_venous_vte_flags(
+    has_full_oac, is_evla_vka, has_contra_oac, has_ft_par = _oac_venous_vte_flags(
         patient, q_d, s_cur, severe_renal, severe_liver, active_gi_bleed=active_gi_bleed, eff_preg=eff_preg,
     )
     tier, advice = _caprini_tier_and_advice(
         pts, 'mech_valve' in cad_set, has_hit, severe_renal, severe_liver, compression_contra,
         cea_bleed_block=cea_bleed_block, eff_pregnant=eff_preg, active_gi_bleed=active_gi_bleed,
-        has_full_oac=has_full_oac, is_evla_vka=is_evla_vka, has_contra_oac=has_contra_oac,
+        has_full_oac=has_full_oac, is_evla_vka=is_evla_vka, has_contra_oac=has_contra_oac, has_ft_par=has_ft_par,
     )
     return pts, tier, advice

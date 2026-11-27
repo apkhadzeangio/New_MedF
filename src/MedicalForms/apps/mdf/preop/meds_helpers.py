@@ -248,10 +248,10 @@ def _collect_ft_contraindications(c, ft, u_keys, is_at, immed_stop_plan, gi_blee
     ):
         contra_msgs.append(f'გულის უკმარისობის / LVEF <{cilo_cfg["lvef_min"]}% / CrCl ≤{cilo_cfg["crcl_min"]} / ტაქიარითმიის / სტენტის / ორსულობის / თირკმელ-ღვიძლის უკმარისობის ფონზე ცილოსტაზოლი აბსოლუტურად უკუნაჩვენებია (FDA Black Box)!')
         plan_override = plan_override or immed_stop_plan
-    has_any_oac = bool(c.get('has_full_oac') or ('rivaroxaban_2_5' in c['med_chips']) or ft.get('has_ft_full_oac') or ft.get('has_ft_unstruct_riva_low'))
+    has_any_oac = bool(c.get('has_full_oac') or ('rivaroxaban_2_5' in c['med_chips']) or ft.get('has_ft_full_oac') or ft.get('has_ft_unstruct_riva_low') or c.get('has_ft_parenteral'))
     has_potent_p2y = bool(c['q'].get('med_ticagrelor') or c['q'].get('med_prasugrel') or (u_keys & {'ticagrelor', 'prasugrel'}))
     if has_any_oac and has_potent_p2y and (u_keys & {'warfarin', 'doac', 'dabigatran', 'ticagrelor', 'prasugrel'}):
-        contra_msgs.append('OAC + ტიკაგრელორი/პრასუგრელი ESC Class III (ჰემორაგიის რისკი) — დაუყოვნებლივ შეათანხმეთ კარდიოლოგთან!')
+        contra_msgs.append('OAC / პარენტერული ანტიკოაგულანტი + ტიკაგრელორი/პრასუგრელი ESC Class III (ჰემორაგიის რისკი) — დაუყოვნებლივ შეათანხმეთ კარდიოლოგთან!')
         plan_override = plan_override or immed_stop_plan
     if c.get('oac_count', 0) >= 2 and (u_keys & {'warfarin', 'doac', 'dabigatran'}):
         contra_msgs.append('ორმაგი პერორალური ანტიკოაგულაცია (≥2 OAC / რივაროქსაბანი 2.5) — დაუყოვნებლივ დააზუსტეთ ქირურგთან/კარდიოლოგთან!')
@@ -316,8 +316,11 @@ def _append_ft_parenteral_row(c, ft, raw_txt, immed_stop_plan, gi_bleed_plan):
     if c['has_mech_valve'] and ft.get('has_ft_fondaparinux'):
         msgs.append('მექანიკურ სარქველზე ფონდაპარინუქსი აკრძალულია (თრომბოზის მაღალი რისკი) — დაუყოვნებლივ შეათანხმეთ კარდიოლოგთან და ჰემატოლოგთან!')
         plan_ov = plan_ov or immed_stop_plan
-    if c['is_evla'] and q.get('med_warfarin'):
+    if c['is_evla'] and (q.get('med_warfarin') or ft.get('has_ft_unstruct_warfarin')):
         msgs.append('ორმაგი ანტიკოაგულაცია EVLA-ზე (უწყვეტი ვარფარინი + პარენტერული ანტიკოაგულანტი) — დაუყოვნებლივ შეათანხმეთ ქირურგთან/კარდიოლოგთან!')
+        plan_ov = plan_ov or immed_stop_plan
+    if q.get('med_ticagrelor') or q.get('med_prasugrel') or (u_keys & {'ticagrelor', 'prasugrel'}):
+        msgs.append('პარენტერული ანტიკოაგულანტი + ტიკაგრელორი/პრასუგრელი (ESC Class III სისხლდენის მაღალი რისკი) — დაუყოვნებლივ შეათანხმეთ დე-ესკალაცია კარდიოლოგთან!')
         plan_ov = plan_ov or immed_stop_plan
     has_doac_conc = bool(q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in med_chips or (u_keys & {'doac', 'dabigatran'}))
     if has_doac_conc:
@@ -378,7 +381,7 @@ def append_freetext_med_rows(c, immed_stop_plan, gi_bleed_plan):
             add_row('ACEi / ARB (ტექსტიდან)', 'ორსულობის დროს ACEi / ARB აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!', 'red', immed_stop_plan, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif c.get('acei_acute_hold'):
             add_row('ACEi / ARB (ტექსტიდან)', f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია ACEi/ARB — დაბალი წნევის ან ჰიპერკალიემიის ფონზე ოპერაციის დილის დოზა გამოტოვეთ და შეათანხმეთ ექიმთან!', 'red', 'გამოტოვეთ დილას! (დაბალი წნევა / მაღალი K+)', hold_or_skip=True, force_date_plan=True, contraindicated=False, acute_hold=True)
-    has_any_oac_ns = bool(c['has_full_oac'] or ('rivaroxaban_2_5' in med_chips) or c['has_ft_full_oac'] or ft.get('has_ft_unstruct_riva_low'))
+    has_any_oac_ns = bool(c['has_full_oac'] or ('rivaroxaban_2_5' in med_chips) or c['has_ft_full_oac'] or ft.get('has_ft_unstruct_riva_low') or c.get('has_ft_parenteral'))
     has_dapt_ns = bool((q.get('med_aspirin') or 'aspirin' in u_keys) and c['p2y12_cnt'] >= 1) or (c['p2y12_cnt'] >= 2)
     if ft.get('has_ft_nsaid') and (
         ('nsaid' in c['eff_allergy_chips']) or c['active_gi_bleed'] or c['severe_renal']
@@ -418,3 +421,36 @@ def append_freetext_med_rows(c, immed_stop_plan, gi_bleed_plan):
         contraindicated=is_contra, acute_hold=is_contra,
         unstructured=True, reconcile_only=True,
     )
+
+
+def _parse_med_confirm_date(patient, s, med_schedule):
+    """Return earliest verified pre-window hold confirmation date (nurse call, Stage 2, or approval), else None."""
+    import datetime as _dt
+
+    from django.utils import timezone
+
+    from .nurse_ui import med_schedule_signature
+    if not s.get('med_hold_agreed'):
+        return None
+    dates = []
+    cur_sig = med_schedule_signature({'s': s, 'med_schedule': med_schedule})
+    called_at = str(s.get('nurse_med_called_at') or '').strip()
+    if called_at and str(s.get('nurse_med_called_sig') or '') == cur_sig:
+        for fmt in ('%d.%m.%Y %H:%M', '%d.%m.%Y', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
+            try:
+                dates.append(_dt.datetime.strptime(called_at[:16], fmt).date())
+                break
+            except ValueError:
+                continue
+    agreed_dt = _date(s.get('med_hold_agreed_date'))
+    if agreed_dt:
+        dates.append(agreed_dt)
+    if patient.approved_at:
+        ap = patient.approved_at
+        if isinstance(ap, _dt.datetime):
+            ap_d = timezone.localtime(ap).date() if timezone.is_aware(ap) else ap.date()
+        else:
+            ap_d = _date(ap)
+        if ap_d:
+            dates.append(ap_d)
+    return min(dates) if dates else None

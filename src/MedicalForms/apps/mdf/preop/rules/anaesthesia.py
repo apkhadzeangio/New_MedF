@@ -37,14 +37,17 @@ from ..utils import (
 def _eval_anatomic_anesth_mismatch(ctx, open_aortic, hard_nx_reasons, prewashout_vka_plan):
     patient, pathway = ctx.patient, ctx.pathway
     open_aortic_non_ga = open_aortic and (ctx.anesth_plan_raw in ('local', 'plexus'))
+    pad_bypass_local = ctx.is_pad_bypass and (ctx.anesth_plan_raw == 'local')
     evla_nx_mismatch = (patient.op_subtype == PreopPatient.OpSubtype.EVLA) and (ctx.anesth_plan_raw == 'neuraxial')
     epi_anatomic_mismatch = ('epidural' in ctx.anesth_lines_set) and (pathway == PreopPatient.Pathway.CEA or patient.op_subtype == PreopPatient.OpSubtype.EVLA)
-    solo_mismatch = ((ctx.anesth_plan_raw == 'neuraxial') and (pathway == PreopPatient.Pathway.CEA or open_aortic)) or evla_nx_mismatch or epi_anatomic_mismatch or open_aortic_non_ga
+    solo_mismatch = ((ctx.anesth_plan_raw == 'neuraxial') and (pathway == PreopPatient.Pathway.CEA or open_aortic)) or evla_nx_mismatch or epi_anatomic_mismatch or open_aortic_non_ga or pad_bypass_local
     auto_nx_blockers = [r for r in hard_nx_reasons if not (prewashout_vka_plan and r.startswith('INR '))]
     explicit_nx_blockers = list(auto_nx_blockers)
     if solo_mismatch:
         if open_aortic_non_ga:
             ctx.red_flags.append('არჩეული ადგილობრივი / წნულის გაუტკივარება ღია აორტის ოპერაციაზე ანატომიურად შეუსაბამოა! სავალდებულოა ზოგადი ენდოტრაქეული ანესთეზია (± ეპიდურული ანალგეზია).')
+        elif pad_bypass_local:
+            ctx.red_flags.append('არჩეული მხოლოდ ადგილობრივი გაუტკივარება ქვედა კიდურის შუნტირებაზე (Bypass) ანატომიურად შეუსაბამოა! შეარჩიეთ სპინალური/ეპიდურული, ზოგადი ანესთეზია ან რეგიონული წნულის ბლოკადა.')
         elif evla_nx_mismatch or (epi_anatomic_mismatch and ctx.anesth_plan_raw != 'neuraxial'):
             ctx.red_flags.append('არჩეულია სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ლაზერული აბლაციის (EVLA) ოპერაციაზე — ანატომიურად შეუსაბამოა! მოხსენით ეპიდურული/სპინალური გეგმა.')
         elif explicit_nx_blockers:
@@ -484,6 +487,26 @@ def _build_dos_checks(ctx):
     return dos_checks
 
 
+def _eval_dos_bp_alerts(ctx, dos_sys, dos_dia, dos_cfg, dos_warnings):
+    htn_cfg = rule_value('VIT_BP_SEVERE_HTN')
+    hypo_cfg = rule_value('VIT_BP_HYPOTENSION_SHOCK')
+    if dos_sys is not None and dos_dia is not None and dos_sys <= dos_dia:
+        dos_warnings.append(f'ოპერაციის დილის წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი და მაჩვენებელი!')
+        return
+    if (dos_sys and dos_sys >= dos_cfg['sbp_hi']) or (dos_dia and dos_dia >= dos_cfg['dbp_hi']):
+        dos_warnings.append(f'ოპერაციის დილის კრიტიკული ჰიპერტენზია ({dos_sys or "?"}/{dos_dia or "?"} mmHg >= {dos_cfg["sbp_hi"]}/{dos_cfg["dbp_hi"]}) — გეგმური ინდუქცია საშიშია, საჭიროა სტაბილიზაცია!')
+    elif dos_sys and dos_sys < dos_cfg['sbp_lo']:
+        dos_warnings.append(f'ოპერაციის დილის ჰიპოტენზია ({dos_sys}/{dos_dia or "?"} mmHg < {dos_cfg["sbp_lo"]}) — სასწრაფოდ შეფასდეს ჰემოდინამიკა!')
+    elif dos_sys and dos_sys < hypo_cfg['amb_sbp']:
+        ctx.amber_flags.append(f'ოპერაციის დილის სასაზღვრო ჰიპოტენზია ({dos_sys}/{dos_dia or "?"} mmHg — SBP {dos_cfg["sbp_lo"]}–{hypo_cfg["amb_sbp"] - 1}): შეაფასეთ ვოლემია და დილის წნევის წამლების რეჟიმი.')
+    elif (dos_sys and dos_sys >= htn_cfg['amb_sbp']) or (dos_dia and dos_dia >= htn_cfg['amb_dbp']):
+        ctx.amber_flags.append(f'ოპერაციის დილის მომატებული არტერიული წნევა ({dos_sys or "?"}/{dos_dia or "?"} mmHg) — სასურველია კორექცია ინდუქციამდე (<{dos_cfg["sbp_hi"]}/{dos_cfg["dbp_hi"]} გეგმურ ჩარევას არ აჩერებს).')
+    if dos_sys is not None and dos_dia is not None and 0 < (dos_sys - dos_dia) < hypo_cfg['narrow_pp']:
+        dos_pp = dos_sys - dos_dia
+        dos_pp_d = int(dos_pp) if isinstance(dos_pp, float) and dos_pp.is_integer() else round(dos_pp, 1)
+        ctx.amber_flags.append(f'ოპერაციის დილის ვიწრო პულსური წნევა ({dos_pp_d} mmHg < {hypo_cfg["narrow_pp"]} mmHg; {dos_sys}/{dos_dia}) — გადაამოწმეთ მანჟეტი და ჰემოდინამიკა.')
+
+
 def _eval_dos_and_vqi(ctx):
     patient, q, s = ctx.patient, ctx.q, ctx.s
     raw_s = getattr(ctx, 'raw_s', None) or {}
@@ -516,12 +539,7 @@ def _eval_dos_and_vqi(ctx):
                 dos_inr_bad = True
             dos_warnings.append(f'{_fmt_bad_val(lbl, raw_v)} — კრიტიკულად დაუშვებელია, გადაამოწმეთ მაჩვენებელი საოპერაციოში შეყვანამდე!')
 
-    if dos_sys is not None and dos_dia is not None and dos_sys <= dos_dia:
-        dos_warnings.append(f'ოპერაციის დილის წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი და მაჩვენებელი!')
-    elif (dos_sys and dos_sys >= dos_cfg['sbp_hi']) or (dos_dia and dos_dia >= dos_cfg['dbp_hi']):
-        dos_warnings.append(f'ოპერაციის დილის კრიტიკული ჰიპერტენზია ({dos_sys or "?"}/{dos_dia or "?"} mmHg >= {dos_cfg["sbp_hi"]}/{dos_cfg["dbp_hi"]}) — გეგმური ინდუქცია საშიშია, საჭიროა სტაბილიზაცია!')
-    elif dos_sys and dos_sys < dos_cfg['sbp_lo']:
-        dos_warnings.append(f'ოპერაციის დილის ჰიპოტენზია ({dos_sys}/{dos_dia or "?"} mmHg < {dos_cfg["sbp_lo"]}) — სასწრაფოდ შეფასდეს ჰემოდინამიკა!')
+    _eval_dos_bp_alerts(ctx, dos_sys, dos_dia, dos_cfg, dos_warnings)
     if dos_gl is not None and (dos_gl >= dos_cfg['gl_hi'] or dos_gl < dos_cfg['gl_lo']):
         dos_warnings.append(f'ოპერაციის დილის კრიტიკული გლიკემია ({dos_gl} მმოლ/ლ) — საჭიროა კორექცია საოპერაციოში შეყვანამდე!')
     elif dos_gl is not None and dos_gl > dos_cfg['gl_amb']:
@@ -560,7 +578,10 @@ def _eval_dos_and_vqi(ctx):
     ctx.dos_checks, ctx.dos_warnings, ctx.dos_gl = dos_checks, dos_warnings, dos_gl
     ctx.has_hard_contraindication = bool(ctx.hard_contraindications)
     ctx.dos_hold_danger = bool(dos_warnings)
-    if ctx.dos_hold_danger or ctx.has_hard_contraindication or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch:
+    if patient.archived or not ctx.is_active_case:
+        ctx.is_local_evla_fasting = False
+        ctx.fasting_instruction = 'არააქტიური / დაარქივებული ბარათი — ძველი უზმოდ ყოფნის რეჟიმი გაუქმებულია; დააზუსტეთ მკურნალ ექიმთან.'
+    elif ctx.dos_hold_danger or ctx.has_hard_contraindication or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch:
         ctx.is_local_evla_fasting = False
         if ctx.has_glp1_any:
             ctx.fasting_instruction = f'STOP — ოპერაცია დაბლოკილია! {glp_liq_h}-საათიანი თხევადი დიეტა და GLP-1 რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!'
