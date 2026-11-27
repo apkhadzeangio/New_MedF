@@ -133,10 +133,12 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
     if has_any_lab:
         labs_dt = _date(s.get('labs_date'))
         if labs_dt is None or labs_dt > ctx.today:
+            from ..registry import rule_value
+            stale_d = rule_value('INF_STALE_LABS_DAYS')
             add(
                 'labs_missing_date', 's1', 'labs_date',
                 'ანალიზების თარიღი აკლია ან არასწორია',
-                'შეყვანილია ლაბორატორიული შედეგები ვალიდური აღების თარიღის გარეშე — 14-დღიანი ვარგისიანობის გადამოწმება შეუძლებელია.',
+                f'შეყვანილია ლაბორატორიული შედეგები ვალიდური აღების თარიღის გარეშე — {stale_d}-დღიანი ვარგისიანობის გადამოწმება შეუძლებელია.',
                 blocking=True,
             )
     if (not age_ok or sex_s not in ('M', 'F')) and (q_filled or has_any_lab):

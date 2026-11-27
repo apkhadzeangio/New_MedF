@@ -88,22 +88,28 @@ def _eval_pta_access_and_meds(ctx, is_clti, hemo_cfg, ldl_target):
     if q_filled and q.get('pta_cant_lie_flat'):
         ctx.amber_flags.append('პაციენტს უჭირს ზურგზე გაუნძრევლად წოლა 60–90 წთ — ავტომატურად ჩაირთო ანესთეზიოლოგი (სედაციისთვის).')
     if 'clopidogrel_intol' in ctx.allergy_chips:
-        ft_keys = ctx.ft_meds.get('matched_keys') or set()
-        has_oac_pta = bool(
-            q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran')
-            or ('rivaroxaban_2_5' in ctx.med_chips)
-            or s.get('post_antithrombotic_plan') in ('voyager', 'voyager_pad', 'oac_sapt')
-            or bool(ft_keys & {'warfarin', 'doac', 'dabigatran', 'rivaroxaban_2_5'})
-        )
-        if has_oac_pta and 'nsaid' in ctx.allergy_chips:
-            alt_pta_txt = 'ინდივიდუალური რეჟიმი კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია — OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III აკრძალულია!)'
-        elif has_oac_pta:
-            alt_pta_txt = 'OAC / რივაროქსაბანი 2.5 მგ + ასპირინი 75–100 მგ (OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III სისხლდენის რისკის გამო აკრძალულია!)'
+        if getattr(ctx, 'active_gi_bleed', False):
+            ctx.red_flags.append('ანამნეზში კლოპიდოგრელის აუტანლობა + აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ანტიაგრეგანტული თერაპია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე (შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან)!')
         else:
-            alt_pta_txt = 'ალტერნატიული P2Y12 (ტიკაგრელორი)'
-        ctx.red_flags.append(f'ანამნეზში კლოპიდოგრელის აუტანლობა — სტენტირებამდე შეათანხმეთ {alt_pta_txt} ქირურგთან!')
+            ft_keys = ctx.ft_meds.get('matched_keys') or set()
+            has_oac_pta = bool(
+                q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran')
+                or ('rivaroxaban_2_5' in ctx.med_chips)
+                or s.get('post_antithrombotic_plan') in ('voyager', 'voyager_pad', 'oac_sapt')
+                or bool(ft_keys & {'warfarin', 'doac', 'dabigatran', 'rivaroxaban_2_5'})
+            )
+            if has_oac_pta and 'nsaid' in ctx.allergy_chips:
+                alt_pta_txt = 'ინდივიდუალური რეჟიმი კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია — OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III აკრძალულია!)'
+            elif has_oac_pta:
+                alt_pta_txt = 'OAC / რივაროქსაბანი 2.5 მგ + ასპირინი 75–100 მგ (OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III სისხლდენის რისკის გამო აკრძალულია!)'
+            else:
+                alt_pta_txt = 'ალტერნატიული P2Y12 (ტიკაგრელორი)'
+            ctx.red_flags.append(f'ანამნეზში კლოპიდოგრელის აუტანლობა — სტენტირებამდე შეათანხმეთ {alt_pta_txt} ქირურგთან!')
     if q_filled and not ctx.has_any_antithrombotic:
-        ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს PTA/სტენტირებამდე (ESVS 2024 Class I).')
+        if getattr(ctx, 'active_gi_bleed', False):
+            ctx.amber_flags.append('აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — PTA-ს წინ ანტიაგრეგანტის დაწყება დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე (შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან)!')
+        else:
+            ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს PTA/სტენტირებამდე (ESVS 2024 Class I).')
     if q_filled and not ctx.has_statin and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I).')
     if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):

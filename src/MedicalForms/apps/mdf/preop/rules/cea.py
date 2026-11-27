@@ -35,7 +35,12 @@ def _eval_cea_symptoms_and_clocks(ctx):
         )
     if ctx.active_thrombolysis_window:
         if (s.get('brain_imaging') == 'normal_small') and days_since_ev is not None and days_since_ev >= 1:
-            if 'nsaid' in ctx.allergy_chips:
+            if getattr(ctx, 'active_gi_bleed', False):
+                ctx.red_flags.append(
+                    f'ინტრავენური თრომბოლიზისი ბოლო {tl_days} დღეში (ESVS 2023) + აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — '
+                    f'სისტემური ანტიკოაგულაცია და ანტიაგრეგანტი (ასპირინიც!) დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე; გადაუდებელი ნევროლოგის, გასტროენტეროლოგისა და ქირურგის კონსილიუმი!'
+                )
+            elif 'nsaid' in ctx.allergy_chips:
                 ctx.red_flags.append(
                     f'ინტრავენური თრომბოლიზისი ბოლო {tl_days} დღეში (ESVS 2023) + ასპირინზე/აასს-ზე ალერგია — '
                     f'არ დაიწყოთ ასპირინი; OAC/P2Y12 და სისტემური ჰეპარინიზაცია ≤{tl_days} დღეში დაბლოკილია — შეათანხმეთ ინდივიდუალური რეჟიმი ნევროლოგთან!'

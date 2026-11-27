@@ -70,14 +70,25 @@ def _has_raw(val):
     return val is not None and (isinstance(val, bool) or str(val).strip() != '')
 
 
-def _fmt_bad_val(lbl, raw):
+def _has_nonfinite(obj):
     import math
-    txt = str(raw).strip()
-    if (isinstance(raw, float) and not math.isfinite(raw)) or txt.lower() in (
-        'nan', '+nan', '-nan', 'inf', '+inf', '-inf', 'infinity', '+infinity', '-infinity',
-    ):
+    if isinstance(obj, float):
+        return not math.isfinite(obj)
+    if isinstance(obj, str):
+        return obj.strip().lower() in (
+            'nan', '+nan', '-nan', 'inf', '+inf', '-inf', 'infinity', '+infinity', '-infinity',
+        )
+    if isinstance(obj, dict):
+        return any(_has_nonfinite(k) or _has_nonfinite(v) for k, v in obj.items())
+    if isinstance(obj, (list, tuple, set)):
+        return any(_has_nonfinite(x) for x in obj)
+    return False
+
+
+def _fmt_bad_val(lbl, raw):
+    if _has_nonfinite(raw):
         return f'{lbl} (არასწორი რიცხვი)'
-    return f'{lbl}={txt[:24]}'
+    return f'{lbl}={str(raw).strip()[:24]}'
 
 
 def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=None, q=None):

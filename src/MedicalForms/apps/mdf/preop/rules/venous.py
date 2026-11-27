@@ -110,7 +110,8 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv = ' (ღვიძლის ≥3x: არგატრობანი −75% / უპირატესია ბივალირუდინი!)' if ctx.liver_3x else ''
         if getattr(ctx, 'active_gi_bleed', False):
-            vte_agents = 'მხოლოდ მექანიკური პროფილაქტიკა (IPC) — აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის გამო ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!'
+            hit_gi_v = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit else ''
+            vte_agents = f'მხოლოდ მექანიკური პროფილაქტიკა (IPC) — აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის გამო ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!{hit_gi_v}'
         elif 'mech_valve' in ctx.cad_chips and getattr(ctx, 'eff_pregnant', False):
             vte_agents = (
                 'IPC / არაჰეპარინული სქემა ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის კონსილიუმით (ორსულობა + მექ. სარქველი + HIT — UFH/LMWH/DOAC აკრძალულია!)'

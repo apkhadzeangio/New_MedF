@@ -1,7 +1,7 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.12'
+REGISTRY_VERSION = '1.2.13'
 REGISTRY_UPDATED_ON = '2026-11-27'
 
 STATUS_VERIFIED = 'source-verified'
@@ -78,6 +78,17 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.13',
+        'date': '2026-11-27',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-14: თავისუფალი ტექსტის ფრჩხილების/ტირეების/ზმნების უარყოფა, PreopMoveView RBAC, GI-სისხლდენა+HIT/ჰორმონი/PAD, ორსულობა+CrCl<30, deferred გეითი და 100% პარიტეტი',
+        'changes_ka': (
+            'დაიხურა ყველა კრიტიკული S1 უსაფრთხოების და ფარმაკოლოგიის ხარვეზი: თავისუფალი ტექსტის უარყოფის პარსერი გამიჯნავს ფრჩხილებს, ტირეებს, ქართულ ზმნურ უარყოფას („არ იღებს“, „არა აქვს“, „არაა“, „შეჩერებულია“) და ალერგიის უარყოფას (აქტიური OAC/P2Y12 და პენიცილინის ალერგია აღარ იკარგება); PreopMoveView(delete) იცავს დამტკიცებულ/დაარქივებულ/ნაოპერაციებ/დაფის პაციენტებს და სხვა მომხმარებლის ფაილებს; აქტიური GI სისხლდენისას დაბლოკილია HIT პოსტოპერაციული ანტიკოაგულაცია, CEA rt-PA ასპირინი, ჰორმონული VTE პროფილაქტიკა და ABF/Bypass/PTA ანტიაგრეგანტის/კლოპიდოგრელის აუტანლობის რეკომენდაციები; ორსულობა + CrCl<30/დიალიზი + OAC ABF/Bypass/PTA-ზეც გადადის UFH-ზე (LMWH კუმულაციის გაფრთხილებით).',
+            'გასწორდა სტატუსების, ფორმების და API პარიტეტი: CASE_OUTCOME_CHOICES-ში დაემატა deferred (იბლოკება 5/5 მოქმედების გეითსა და Self-Fill GET/POST-ში); Tab Q _tab_q.html აღარ ამონიშნავს allergy_other-ს უარყოფილი allergy_text-ისგან; standalone build_med_schedule() ფლებექტომიის auto-ნეირაქსიული სრულად შეესაბამება evaluate()-ს; PTA Stage-2 dapt დავალება ასახავს ორსულობას/HIT/CrCl<30-ს; generate_anamnesis იყენებს ვალიდირებულ ev.age-ს.',
+            'დასრულდა სუფთა ტექსტის, რეესტრისა და JS პარიტეტი: პაციენტის გზამკვლევი და სატელეფონო სკრიპტი გაიწმინდა „დე-ესკალაცია/დეესკალაცია/PTA/ESC“-სგან; INF_STALE_LABS_DAYS დინამიურია labs/cardiac/failsafe/_tab_doc-ში; დაემატა mertenil/cordaron/paceron სტემები; _fmt_bad_val იჭერს ჩაშენებულ NaN/Inf კონტეინერებს; chip_summary იძლევა კანონიკურ რიგს; preop-nurse.js ამოწმებს კრეატინინს (#nw-vitals-form) და აღდგენილ DoS შავ მასალას (#nw-dos-form).',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC 2022 NCS · ASRA 5th Ed 2025 · CHEST 2022 · EHRA 2021 · ACC/AHA 2024 · FDA',
+    },
     {
         'version': '1.2.12',
         'date': '2026-11-27',

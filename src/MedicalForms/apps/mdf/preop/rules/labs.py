@@ -641,7 +641,7 @@ def eval_infection_stale_labs(ctx):
     if needs_stale_labs:
         ctx.reflex_orders.append({
             'key': 'stale_labs',
-            'trigger': f'ანალიზები ჩაბარებულია {labs_age_days} დღის წინ (>14 დღე)',
+            'trigger': f'ანალიზები ჩაბარებულია {labs_age_days} დღის წინ (>{stale_days} დღე)',
             'action': 'საკონტროლო სისხლის საერთო, კოაგულოგრამა და კრეატინინი განახლდეს ოპერაციამდე',
             'done': bool(s.get('stale_labs_refreshed')),
         })

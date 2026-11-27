@@ -24,7 +24,8 @@ from .constants import (
 def chip_summary(selected_keys, field_name, fallback_text=''):
     labels = CHIP_LABELS.get(field_name, {})
     seq = selected_keys if isinstance(selected_keys, (list, tuple, set)) else ()
-    picked = [labels[k] for k in seq if isinstance(k, str) and k in labels]
+    seq_set = {k for k in seq if isinstance(k, str)}
+    picked = [lbl for k, lbl in labels.items() if k in seq_set]
     extra = fallback_text.strip() if isinstance(fallback_text, str) else ''
     if extra and extra not in picked:
         picked.append(extra)

@@ -516,8 +516,16 @@ def _eval_postop_voyager(ctx):
             post_antithrombotic_label = f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap} (DOAC / VOYAGER აკრძალულია!)'
         elif getattr(ctx, 'has_contra_oac', False):
             if getattr(ctx, 'eff_pregnant', False):
-                preg_oac_alt = 'არაჰეპარინული სქემა (HIT: LMWH/UFH აკრძალულია!)' if 'hit_heparin' in ctx.allergy_chips else 'LMWH/UFH'
-                post_antithrombotic_label = f'ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_oac_alt} მეან-გინეკოლოგთან და კარდიოლოგთან!'
+                ren_red_po = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+                eff_ren_po = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
+                sev_ren_po = ctx.on_dialysis or (eff_ren_po is not None and eff_ren_po < ren_red_po)
+                if 'hit_heparin' in ctx.allergy_chips:
+                    preg_oac_alt = 'არაჰეპარინული სქემა (HIT: LMWH/UFH აკრძალულია!) ჰემატოლოგთან, მეან-გინეკოლოგთან და კარდიოლოგთან!'
+                elif sev_ren_po:
+                    preg_oac_alt = 'არასფრაქციული ჰეპარინი (UFH — თირკმლის მძიმე უკმარისობის/დიალიზის გამო LMWH კუმულირდება!) მეან-გინეკოლოგთან და კარდიოლოგთან!'
+                else:
+                    preg_oac_alt = 'LMWH/UFH მეან-გინეკოლოგთან და კარდიოლოგთან!'
+                post_antithrombotic_label = f'ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_oac_alt}'
             else:
                 post_antithrombotic_label = f'უკუნაჩვენები ანტიკოაგულანტი (OAC) არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა (+ ჩვენებისას {oac_partner_lbl}) კარდიოლოგ/ნეფროლოგთან!'
         elif ctx.has_full_oac:

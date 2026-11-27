@@ -115,22 +115,41 @@ def _med_renal_and_flags(patient, q, s, egfr, crcl):
     return on_dialysis, eff_renal, cl_label, frail_no_wt_note
 
 
-def _standalone_is_neuraxial(anesth_plan, is_phleb, has_epidural_line, q, s, today):
+def _standalone_is_neuraxial(anesth_plan, is_phleb, has_epidural_line, q, s, today, eff_alg, ft_meds, cad_chips, med_chips, on_dialysis, eff_renal):
     from django.utils import timezone
 
-    from .calculators import _s_raw, _sat_num
+    from .calculators import _inverted_bp_arms, _s_raw, _valid_bilateral_sbp, normalize_fibrinogen_gl
     from .registry import rule_value
     if anesth_plan == 'neuraxial' or has_epidural_line:
         return True
     if not (anesth_plan == 'auto' and is_phleb):
         return False
-    asra_cfg, vka_d = rule_value('ASRA_NEURAXIAL_COAG_GATE'), rule_value('MED_WARFARIN_HOLD_DAYS')['hold_days']
-    dos_i, base_i = _sat_num(_s_raw(s, 'dos_inr'), 0.5, 15.0), _sat_num(_s_raw(s, 'inr'), 0.4, 20.0)
-    eff_i, op_dt, td = (dos_i if dos_i is not None else base_i), _date(s.get('planned_surgery_date')), (_date(today) or timezone.localdate())
-    prewash = bool(q.get('med_warfarin') and dos_i is None and op_dt and (op_dt - td).days >= vka_d and eff_i is not None and eff_i <= asra_cfg['vka_prewashout_inr_max'])
-    plt_s = _sat_num(_s_raw(s, 'plt'), 1, 2000000)
-    plt_k = round(plt_s / 1000.0, 1) if (plt_s is not None and plt_s >= rule_value('LAB_UNIT_AUTO_CONVERSION')['plt_ul_ge']) else plt_s
-    return not ((eff_i is not None and eff_i > asra_cfg['inr_max'] and not prewash) or (plt_k is not None and plt_k < asra_cfg['plt_min']) or bool(s.get('aptt_prolonged')) or bool(q.get('ven_lidocaine_allergy')))
+    asra_cfg, ren_red, shock_lim = rule_value('ASRA_NEURAXIAL_COAG_GATE'), rule_value('REN_CKD_NEPHRO_HYDRATION')['red'], rule_value('VIT_BP_HYPOTENSION_SHOCK')['shock_idx']
+    u_cfg, inv_in = rule_value('LAB_UNIT_AUTO_CONVERSION'), (s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {})
+    raw_dos_i = s.get('dos_inr')
+    dos_i_pres = raw_dos_i is not None and str(raw_dos_i).strip() != ''
+    dos_i, base_i = _num(raw_dos_i, lo=0.5, hi=15.0), _num(s.get('inr'), lo=0.4, hi=20.0)
+    eff_i, op_dt, td = (dos_i if dos_i_pres else base_i), _date(s.get('planned_surgery_date')), (_date(today) or timezone.localdate())
+    prewash = bool(q.get('med_warfarin') and not dos_i_pres and eff_i is not None and asra_cfg['inr_max'] < eff_i <= asra_cfg['vka_prewashout_inr_max'] and (op_dt is None or op_dt > td))
+    plt_raw, fib = _num(s.get('plt'), lo=1, hi=2000000), normalize_fibrinogen_gl(s.get('fibrinogen'))
+    plt_bad = ((s.get('plt') is not None and str(s.get('plt')).strip() != '') or 'plt' in inv_in) and (plt_raw is None or (u_cfg['plt_ambig_lo'] < plt_raw < u_cfg['plt_ul_ge']))
+    plt_k = round(plt_raw / 1000.0, 1) if (plt_raw is not None and plt_raw >= u_cfg['plt_ul_ge']) else plt_raw
+    p2y_cnt = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
+    unint_p2y = p2y_cnt >= 1 and (bool(q.get('recent_stent')) or (('stent_6_12m' in cad_chips) and ('mi' in cad_chips)) or ('nsaid' in eff_alg and (bool(q.get('cad')) or bool(cad_chips) or bool(q.get('neuro')))) or p2y_cnt >= 2)
+    sbp, hr_raw, bp_inv = _valid_bilateral_sbp(s), _num(_s_raw(s, 'hr')), bool(_inverted_bp_arms(s))
+    raw_sbp_low = any((v := _num(_s_raw(s, k))) is not None and (v < 30 or (sbp is None and v < asra_cfg['sbp_min'])) for k in ('bp_sys', 'bp_sys_l'))
+    si = round(hr_raw / sbp, 2) if (hr_raw is not None and 15 <= hr_raw <= 260 and sbp and sbp > 0) else None
+    blocked = (
+        ((dos_i_pres or 'dos_inr' in inv_in) and dos_i is None) or (not dos_i_pres and (s.get('inr') not in (None, '') or 'inr' in inv_in) and base_i is None) or plt_bad
+        or ((s.get('fibrinogen') not in (None, '') or 'fibrinogen' in inv_in) and fib is None) or (plt_k is not None and plt_k < asra_cfg['plt_min'])
+        or (eff_i is not None and eff_i > asra_cfg['inr_max'] and not prewash) or (fib is not None and fib < asra_cfg['fib_min'])
+        or bool(s.get('aptt_prolonged')) or unint_p2y or bool(ft_meds.get('unstructured_antithrombotic'))
+        or ('hit_heparin' in eff_alg and 'mech_valve' in cad_chips)
+        or ((q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in med_chips) and (on_dialysis or (eff_renal is not None and eff_renal < ren_red)))
+        or bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in eff_alg) or bool(s.get('echo_valve_issue')) or bp_inv
+        or (sbp is not None and sbp < asra_cfg['sbp_min']) or raw_sbp_low or (si is not None and si >= shock_lim) or (hr_raw is not None and (hr_raw > 260 or hr_raw < 15))
+    )
+    return not blocked
 
 
 def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=None):
@@ -146,7 +165,6 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     is_ia_first_pass = patient.op_subtype in ('evar', 'tbd')
     uses_contrast, anesth_plan = is_ia_first_pass or is_pta, s.get('anesthesia_plan') or 'auto'
     has_epidural_line = 'epidural' in _str_list(s.get('anesth_lines_chips'))
-    is_neuraxial = bool(has_neuraxial_override) if has_neuraxial_override is not None else _standalone_is_neuraxial(anesth_plan, is_phleb, has_epidural_line, q, s, today)
     on_dialysis, eff_renal, cl_label, frail_no_wt_note = _med_renal_and_flags(patient, q, s, egfr, crcl)
     raw_cr_m, cr_u_m = _s_raw(s, 'creat'), s.get('creat_unit') or ''
     creat_mismatch = (not on_dialysis) and is_creat_unit_mismatch(raw_cr_m, cr_u_m)
@@ -158,6 +176,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     ven_dvt_chips, vasc_chips = set(_str_list(q.get('ven_dvt_chips'))), set(_str_list(q.get('vasc_chips')))
     eff_allergy_chips, _, _ = _effective_allergy_state(q)
     ft_meds = _detect_freetext_high_risk_meds(q.get('other_meds') or '', q=q)
+    is_neuraxial = bool(has_neuraxial_override) if has_neuraxial_override is not None else _standalone_is_neuraxial(anesth_plan, is_phleb, has_epidural_line, q, s, today, eff_allergy_chips, ft_meds, cad_chips, med_chips, on_dialysis, None if creat_mismatch else eff_renal)
     has_mech_valve, has_acs_stent_12m = 'mech_valve' in cad_chips, ('stent_6_12m' in cad_chips) and ('mi' in cad_chips)
     bp_sys_cur, bp_inverted_only = _valid_med_sbp(s)
     hr_cur, lvef_cur = _sat_num(_s_raw(s, 'hr'), 15, 260), _sat_num(_s_raw(s, 'lvef'), 5, 95)
@@ -720,6 +739,9 @@ def _append_hormone_ppi_steroid_ft_rows(c):
     if q.get('ven_hormones'):
         if c['repro_pregnant']:
             add_row('ჰორმონული პრეპარატი / კონტრაცეპტივი', 'ორსულობის დროს ესტროგენული/ჰორმონული პრეპარატები უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ მეან-გინეკოლოგთან!', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        elif c['active_gi_bleed']:
+            hit_gi_h = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if c['has_hit'] else ''
+            add_row('ჰორმონული პრეპარატი / კონტრაცეპტივი', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ფარმაკოლოგიური თრომბოპროფილაქტიკა დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე (მხოლოდ მექანიკური IPC; ჰორმონის შეწყვეტა შეათანხმეთ ექიმთან)!{hit_gi_h}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif c['liver_3x'] or ('vte_recent_3m' in c['ven_dvt_chips']) or c['ven_dup'] == 'acute_dvt':
             add_row('ჰორმონული პრეპარატი / კონტრაცეპტივი', 'უკუნაჩვენებია ღვიძლის მძიმე დისფუნქციის (≥3x ULN) ან ახალი/მწვავე VTE (<3 თვე / DVT) ფონზე — დაუყოვნებლივ შეათანხმეთ შეწყვეტა ექიმთან!', 'red', 'უკუნაჩვენებია — შეათანხმეთ მოხსნა!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         else:

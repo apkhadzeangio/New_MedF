@@ -112,7 +112,7 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <label class="fld">ანალიზების თარიღი (&le;14 დღე)
+                    <label class="fld">ანალიზების თარიღი (&le;{{ ev.stale_labs_days }} დღე)
                         <input type="date" name="labs_date" value="{{ s.labs_date }}" class="form-control">
                     </label>
                     <div class="d-flex flex-wrap align-items-end gap-2">
@@ -223,7 +223,7 @@
                     <label class="fld">TSAT (%, რკინის სატურაცია — ჩვენებით)
                         <input type="number" step="any" name="tsat" value="{{ s.tsat|default_if_none:'' }}" placeholder="მაგ. 24" class="form-control">
                     </label>
-                    <label class="fld">ანალიზების თარიღი (&le;14 დღე)
+                    <label class="fld">ანალიზების თარიღი (&le;{{ ev.stale_labs_days }} დღე)
                         <input type="date" name="labs_date" value="{{ s.labs_date }}" class="form-control">
                     </label>
                 </div>

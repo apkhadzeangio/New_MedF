@@ -121,6 +121,7 @@ CIED_PLAN_CHOICES = (
 CASE_OUTCOME_CHOICES = (
     ('scheduled', 'იგეგმება / მოსამზადებელი'),
     ('operated', '✓ ოპერაცია შესრულდა'),
+    ('deferred', 'გადადებულია — დროებით შეჩერებული'),
     ('cancelled_medical', 'გაუქმდა / გადაიდო — სამედიცინო მიზეზით'),
     ('cancelled_logistics', 'გაუქმდა / გადაიდო — საოპერაციო / ICU / იმპლანტის რესურსი'),
     ('cancelled_patient', 'გაუქმდა / გადაიდო — პაციენტის მიზეზით / არგამოცხადება'),
@@ -468,7 +469,7 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
         'მეთილპრედ', 'methylpred', 'დექსამეტაზ', 'dexamethas', 'ჰიდროკორტიზონ', 'hydrocortison',
     )),
     ('amiodarone', 'ამიოდარონი (კორდარონი)', False, (
-        'ამიოდარონ', 'amiodaron', 'კორდარონ', 'cordarone',
+        'ამიოდარონ', 'amiodaron', 'კორდარონ', 'cordaron', 'cordarone', 'paceron',
     )),
     ('omeprazole', 'ომეპრაზოლი / ეზომეპრაზოლი (CYP2C19)', False, (
         'ომეპრაზოლ', 'omeprazol', 'omez', 'ომეზ', 'ნექსიუმ', 'nexium', 'ეზომეპრაზ', 'esomepraz',

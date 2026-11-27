@@ -1,5 +1,6 @@
 """Canonical evaluate() result dictionary assembler."""
 from ..constants import CXR_LABELS, ECG_LABELS, PRIORITY_LABELS, STATUS_LABELS
+from ..registry import rule_value
 
 
 def _effective_operation_label(ctx):
@@ -118,13 +119,13 @@ def _result_clinical_part(ctx):
         'planned_surgery_short': ctx.planned_surgery_short,
         'operated_date_ka': ctx.operated_date_ka,
         'allergy_summary': ctx.allergy_summary,
+        'stale_labs_days': rule_value('INF_STALE_LABS_DAYS'),
     }
     res.update(_result_anesth_dos_part(ctx))
     return res
 
 
 def _result_flags_and_needs_part(ctx):
-    from ..registry import rule_value
     hr_hi = rule_value('VIT_HR_SPO2_METS')['hr_hi']
     hr_eff = getattr(ctx, 'hr_sat', ctx.hr)
     ecg_display_label = (

@@ -391,18 +391,29 @@ class PreopMoveView(LoginRequiredMixin, generic.View):
                 return HttpResponseRedirect(reverse('preop'))
 
             if action == 'delete':
+                from .parsers import is_doctor_user
                 s_del = merged_studies(patient)
                 is_audit_protected = (
-                    s_del.get('case_outcome_status') == 'operated'
+                    patient.archived
+                    or bool(patient.approved_at)
+                    or s_del.get('case_outcome_status') == 'operated'
                     or bool(s_del.get('board_patient_id'))
                 )
                 if is_audit_protected and not (request.user.is_superuser or request.user.is_staff):
-                    patient.archived = True
-                    patient.updated_by = request.user
-                    patient.save(update_fields=['archived', 'updated_at', 'updated_by'])
+                    if not patient.archived:
+                        patient.archived = True
+                        patient.updated_by = request.user
+                        patient.save(update_fields=['archived', 'updated_at', 'updated_by'])
                     if ajax:
-                        return JsonResponse({'ok': True, 'archived': True, 'deleted': False})
-                    messages.info(request, f'{patient.patient_name} ნაოპერაციები/ჰოსპიტალიზებულია — სამედიცინო აუდიტის დაცვის მიზნით გადატანილია არქივში.')
+                        return JsonResponse({'ok': False, 'archived': True, 'deleted': False, 'error': 'audit_protected'}, status=403)
+                    messages.info(request, f'{patient.patient_name} დადასტურებული/ნაოპერაციები/დაარქივებულია — სამედიცინო აუდიტის დაცვის მიზნით წაშლა დაბლოკილია (დაცულია არქივში).')
+                    return HttpResponseRedirect(reverse('preop'))
+                has_other_files = patient.files.exclude(created_by=request.user).exists()
+                is_owner = (patient.created_by_id is None or patient.created_by_id == request.user.pk) and not has_other_files and patient.surgeon_id is None
+                if not (request.user.is_superuser or request.user.is_staff or is_doctor_user(request.user) or is_owner):
+                    if ajax:
+                        return JsonResponse({'ok': False, 'deleted': False, 'error': 'forbidden'}, status=403)
+                    messages.error(request, 'პაციენტის წაშლა სხვა მომხმარებლის ფაილებით ან დანიშნული ქირურგით დასაშვებია მხოლოდ ექიმისთვის/ადმინისტრატორისთვის!')
                     return HttpResponseRedirect(reverse('preop'))
                 name = patient.patient_name
                 patient.delete()

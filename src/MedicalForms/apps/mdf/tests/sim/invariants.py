@@ -78,7 +78,13 @@ def _check_allergy_neuraxial_and_renal_meds(patient, ev, q, pw, q_filled, allerg
     # INV-03: HIT Total Heparin Barrier
     if 'hit_heparin' in allergy_chips:
         hep_plan = ev['surgical_brief']['heparin_plan']
-        if 'აკრძალულია' not in hep_plan or ('ბივალირუდინი' not in hep_plan and 'არგატრობანი' not in hep_plan):
+        if 'აკრძალულია' not in hep_plan or (
+            'ბივალირუდინი' not in hep_plan
+            and 'არგატრობანი' not in hep_plan
+            and 'დაბლოკილია' not in hep_plan
+            and 'არაჰეპარინული' not in hep_plan
+            and 'ჰემორაგიული ტრანსფორმაციის' not in hep_plan
+        ):
             violations.append('INV-03_HIT_SURG_BRIEF_UNSAFE')
         if 'LMWH / DOAC' in ev['caprini_advice'] or 'LMWH პროფილაქტიკური' in ev['caprini_advice']:
             violations.append('INV-03_HIT_CAPRINI_LMWH_LEAK')

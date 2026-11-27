@@ -29,7 +29,7 @@
                     <!-- AUTONOMOUS NURSE STANDING REFLEX ORDERS -->
                     {% if ev.needs_stale_labs %}
                     <div class="po-task-row reflex-row {% if s.stale_labs_refreshed %}done{% endif %}">
-                        <span><strong>რეფლექს-განახლება (&gt;14 დღე):</strong> ანალიზები ჩაბარებულია {{ ev.labs_age_days }} დღის წინ — გადაბარდეს სისხლის საერთო, კოაგულოგრამა და კრეატინინი</span>
+                        <span><strong>რეფლექს-განახლება (&gt;{{ ev.stale_labs_days }} დღე):</strong> ანალიზები ჩაბარებულია {{ ev.labs_age_days }} დღის წინ — გადაბარდეს სისხლის საერთო, კოაგულოგრამა და კრეატინინი</span>
                         <label class="chip-check" style="height:34px"><input type="checkbox" name="stale_labs_refreshed" value="1" {% if s.stale_labs_refreshed %}checked{% endif %}>განახლდა ✓</label>
                     </div>
                     {% endif %}

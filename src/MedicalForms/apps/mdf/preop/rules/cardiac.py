@@ -206,7 +206,8 @@ def _build_dynamic_tasks_part1(ctx, tasks, bypass_em, bypass_sep):
     na_hi = rule_value('REN_ELECTROLYTES_K_NA')['na_hi']
     eff_ren_t = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
     if ctx.needs_stale_labs:
-        tasks.append({'key': 'stale_labs', 'label': 'რეფლექს-განახლება: ხანდაზმული ანალიზების (>14 დღე) გადაბარება', 'done': bool(s.get('stale_labs_refreshed'))})
+        stale_d = rule_value('INF_STALE_LABS_DAYS')
+        tasks.append({'key': 'stale_labs', 'label': f'რეფლექს-განახლება: ხანდაზმული ანალიზების (>{stale_d} დღე) გადაბარება', 'done': bool(s.get('stale_labs_refreshed'))})
     if ctx.needs_anemia_panel and not bypass_em:
         tasks.append({'key': 'anemia', 'label': 'რეფლექს-პაკეტი (Hb < 115): ფერიტინი, შრატის რკინა/TSAT, რეტიკულოციტები', 'done': ctx.anemia_panel_satisfied})
     if ctx.pbm_iron_required:
@@ -279,7 +280,8 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv_t = ' (ღვიძლის ≥3x: არგატრობანი −75%!)' if ctx.liver_3x else ''
         if getattr(ctx, 'active_gi_bleed', False):
-            vte_lbl = 'მხოლოდ IPC — აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული (ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!)'
+            hit_gi_v = ' · HIT: ჰეპარინი/LMWH აკრძალულია!' if has_hit else ''
+            vte_lbl = f'მხოლოდ IPC — აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული (ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!){hit_gi_v}'
         elif 'mech_valve' in ctx.cad_chips and getattr(ctx, 'eff_pregnant', False):
             vte_lbl = 'IPC / კონსილიუმი (ორსულობა + მექ. სარქველი + HIT — UFH/LMWH/DOAC არა!)' if has_hit else 'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (ორსულობა + მექ. სარქველი — DOAC არა!)'
         elif 'mech_valve' in ctx.cad_chips:
@@ -339,7 +341,7 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         elif ctx.has_mech_valve:
             dapt_lbl = 'ანტითრომბოზული სქემა მექ. სარქველზე: ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი (DOAC / VOYAGER აკრძალულია!)'
         elif getattr(ctx, 'has_contra_oac', False):
-            dapt_lbl = f'უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა (+ ჩვენებისას {ctx.oac_partner_lbl}) კარდიოლოგ/ნეფროლოგთან!'
+            dapt_lbl = _pta_contra_oac_dapt_label(ctx, ren_red, eff_ren_t)
         elif ctx.has_full_oac:
             dapt_lbl = f'ანტითრომბოზული სქემა OAC ფონზე: ანტიკოაგულანტი + {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე!)'
         elif ctx.has_active_stent_dapt:
@@ -364,6 +366,20 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         tasks.append({'key': 'cardio', 'label': f'კარდიოლოგის კონსულტაცია ({patient.cardiologist or "ლიკა ინჯია"})', 'done': ctx.cardio_cleared})
     if ctx.needs_anesth:
         tasks.append({'key': 'anesth', 'label': 'ანესთეზიოლოგის კონსულტაცია', 'done': ctx.anesth_cleared})
+
+
+def _pta_contra_oac_dapt_label(ctx, ren_red, eff_ren_t):
+    has_hit = 'hit_heparin' in ctx.allergy_chips
+    sev_ren = ctx.on_dialysis or (eff_ren_t is not None and eff_ren_t < ren_red)
+    partner = ctx.oac_partner_lbl
+    if getattr(ctx, 'eff_pregnant', False):
+        if has_hit:
+            return f'ორსულობა + HIT — პერორალური OAC და ჰეპარინი/LMWH აკრძალულია! შეარჩიეთ არაჰეპარინული სქემა (+ ჩვენებისას {partner}) მეან-გინეკოლოგთან, კარდიოლოგთან და ჰემატოლოგთან!'
+        if sev_ren:
+            return f'ორსულობა + თირკმლის მძიმე უკმარისობა/დიალიზი — OAC აკრძალულია, LMWH კუმულირდება! შეარჩიეთ არასფრაქციული ჰეპარინი (UFH) (+ ჩვენებისას {partner}) მეან-გინეკოლოგთან, კარდიოლოგთან და ნეფროლოგთან!'
+        return f'ორსულობა — პერორალური OAC უკუნაჩვენებია! შეარჩიეთ LMWH/UFH (+ ჩვენებისას {partner}) მეან-გინეკოლოგთან და კარდიოლოგთან!'
+    hit_sfx = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit else ''
+    return f'უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა (+ ჩვენებისას {partner}) კარდიოლოგ/ნეფროლოგთან!{hit_sfx}'
 
 
 def eval_cardiac_and_tasks(ctx):

@@ -590,7 +590,8 @@ def generate_anamnesis(patient, ev=None):
 
     pathway = ev['pathway']
     sex_label = 'ქალი' if patient.sex == 'F' else ('მამაკაცი' if patient.sex == 'M' else 'პაციენტი')
-    age_part = f'{patient.age} წ. ' if patient.age else ''
+    age_clean = ev.get('age') if isinstance(ev.get('age'), int) and 12 <= ev['age'] <= 120 else None
+    age_part = f'{age_clean} წ. ' if age_clean is not None else ''
     head_prefix = f'{age_part}{sex_label}'
     surgeon_str = f' (ქირურგი: {person_name(patient.surgeon)})' if patient.surgeon else ''
     abdo_txt = chip_summary(q.get('abdo_chips'), 'abdo_chips', q.get('prev_abdo_text'))

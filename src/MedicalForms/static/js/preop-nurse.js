@@ -91,6 +91,10 @@
             msgs.push('დაუჯერებელი კრეატინინი (' + creat + ') — გადაამოწმეთ მნიშვნელობა და ერთეული!');
         } else if (!isNaN(creat) && ((!cunit && creat > 15 && creat < 35) || (cunit === 'umol' && creat < 15) || (cunit === 'mgdl' && creat > 35))) {
             msgs.push('კრეატინინი (' + creat + ') და არჩეული ერთეული არ ემთხვევა — აირჩიეთ სწორი ერთეული (µmol/L ან mg/dL).');
+        } else if (!isNaN(creat)) {
+            var mgdl = cunit === 'mgdl' ? creat : (cunit === 'umol' ? creat / 88.4 : (creat <= 15 ? creat : creat / 88.4));
+            if (mgdl > 2.0) msgs.push('მაღალი კრეატინინი (' + creat + ' — RCRI +1 / ნეფროლოგი) — აცნობეთ ექიმს!');
+            else if (mgdl >= 1.4) msgs.push('დაქვეითებული თირკმლის ფუნქცია (' + creat + ') — გადაამოწმეთ კრეატინინი.');
         }
         var rawHr = ((document.getElementById('nw-hr') || {}).value || '').trim();
         var rawSpo2 = ((document.getElementById('nw-spo2') || {}).value || '').trim();
@@ -628,6 +632,8 @@
         }
         var vitForm = document.getElementById('nw-vitals-form');
         if (vitForm) vitForm.dispatchEvent(new Event('input'));
+        var dosForm = document.getElementById('nw-dos-form');
+        if (dosForm) dosForm.dispatchEvent(new Event('input'));
     }
 
     if (btnResume) {

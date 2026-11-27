@@ -152,13 +152,16 @@ def eval_abf(ctx):
     if q_filled and not s.get('cta_disc'):
         ctx.amber_flags.append('აორტო-ილიაკური / ქვემო კიდურების CTA DICOM დისკი ჯერ არ არის მოტანილი / შემოწმებული.')
     if q_filled and not ctx.has_any_antithrombotic:
-        if 'nsaid' in ctx.allergy_chips:
-            ap_rec = 'ალტერნატიული P2Y12 (ასპირინზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი (ასპირინზე ალერგია!)'
-        elif 'clopidogrel_intol' in ctx.allergy_chips:
-            ap_rec = 'ასპირინი (კლოპიდოგრელზე აუტანლობა!)'
+        if getattr(ctx, 'active_gi_bleed', False):
+            ctx.amber_flags.append('აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ანტიაგრეგანტის დაწყება დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე (შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან)!')
         else:
-            ap_rec = 'ასპირინი ან კლოპიდოგრელი'
-        ctx.amber_flags.append(f'პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I: {ap_rec}).')
+            if 'nsaid' in ctx.allergy_chips:
+                ap_rec = 'ალტერნატიული P2Y12 (ასპირინზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი (ასპირინზე ალერგია!)'
+            elif 'clopidogrel_intol' in ctx.allergy_chips:
+                ap_rec = 'ასპირინი (კლოპიდოგრელზე აუტანლობა!)'
+            else:
+                ap_rec = 'ასპირინი ან კლოპიდოგრელი'
+            ctx.amber_flags.append(f'პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I: {ap_rec}).')
     if q_filled and not ctx.has_statin and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I: მაღალი ინტენსივობის სტატინი).')
     if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
@@ -335,7 +338,10 @@ def eval_pad_bypass(ctx):
     if q_filled and not s.get('cta_disc'):
         ctx.amber_flags.append('ქვემო კიდურების ანგიოგრაფიის / CTA DICOM დისკი ჯერ არ არის მოტანილი.')
     if q_filled and not ctx.has_any_antithrombotic:
-        ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I).')
+        if getattr(ctx, 'active_gi_bleed', False):
+            ctx.amber_flags.append('აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — შუნტირების წინ ანტიაგრეგანტის დაწყება დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე (შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან)!')
+        else:
+            ctx.amber_flags.append('პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2024 Class I).')
     if q_filled and not ctx.has_statin and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი (ESVS 2024 Class I).')
     if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
