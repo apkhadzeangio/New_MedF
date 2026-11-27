@@ -519,7 +519,7 @@ def eval_infection_stale_labs(ctx):
     pathway, q, s = ctx.pathway, ctx.q, ctx.s
     uti_cfg = rule_value('INF_UTI_VS_ASB')
     stale_days = rule_value('INF_STALE_LABS_DAYS')
-    has_synthetic_implant = pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.CEA) or (ctx.is_pad_bypass and s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
+    has_synthetic_implant = pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.CEA) or (ctx.is_pad_bypass and not ctx.gsv_explicitly_adequate and s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
     inf_chip_set = set(q.get('inf_chips') or [])
     has_uti_symptoms = ('dysuria' in inf_chip_set) or (bool(q.get('active_infection')) and not inf_chip_set)
     raw_dental = has_synthetic_implant and (bool(q.get('dental_infection')) or 'dental_acute' in inf_chip_set)

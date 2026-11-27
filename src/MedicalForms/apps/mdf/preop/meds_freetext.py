@@ -7,7 +7,7 @@ from .constants import (
     _HIT_WORD_RE,
     _IODINE_WORD_RE,
 )
-from .utils import _safe_display_str, _str_list
+from .utils import _str_list
 
 _RIVA_STEM = r'(?:ქსარელტ\w*|კსარელტ\w*|xarelto|რივაროქსაბ\w*|rivaroxab\w*)'
 _RIVA_STEM_RE = re.compile(_RIVA_STEM)
@@ -44,13 +44,39 @@ _INLINE_NEG_SPLIT_RE = re.compile(
     r'|(?<=stopped) (?=(?:started|takes|switched|changed|continues|on ))'
     r'|(?<=discontinued) (?=(?:started|takes|switched|changed|continues|on ))'
     r'|(?<=held) (?=(?:started|takes|switched|changed|continues|on ))'
-    r'|(?:(?<=შეწყვეტილია)|(?<=მოხსნილია)|(?<=შეჩერებულია)|(?<=შეწყვიტა)|(?<=მოხსნა)|(?<=შეაჩერა)|(?<=მოუხსნეს)|(?<=შეუწყვიტეს)) '
-    r'(?!(?:და|ან|მაგრამ|ხოლო|თუმცა|რომ|გამო|წინ|ადრე|დღე|დღის|დღით|თვე|თვის|კვირ|წელ|წლის|წლიდან|საათ|სთ|უკვე|მანამდე|საერთოდ)(?![ა-ჰ]))(?=[a-zა-ჰ])'
     r'|(?<=ალერგია) (?=\S+ (?:არ|არა) (?:აქვს|მაქვს|აღენიშნება|უფიქსირდება|არის))'
-    r'|(?:(?<=\d)|(?<=მგ)|(?<=mg)|(?<=მკგ)|(?<=mcg)|(?<=გ)|(?<=g)) '
-    r'(?!(?:მგ|mg|მკგ|mcg|გ|g|სე|u|iu|მლ|ml|ტაბ|აბ|tab|x2|2x|bid|qd|od) )'
-    r'(?=[a-zა-ჰ0-9\-]+ (?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) '
-    rf'{_KA_VERBS}|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს|შეწყვიტა|მოხსნა|შეაჩერა|stopped|discontinued|held))'
+    r'|(?:(?<=\d)|(?<=მგ)|(?<=mg)|(?<=მკგ)|(?<=mcg)|(?<=გ)|(?<=g)|(?<=მლ)|(?<=ml)|(?<=სე)|(?<=iu)'
+    r'|(?<=bid)|(?<=tid)|(?<=qid)|(?<=qd)|(?<=od)|(?<=daily)|(?<=x2)|(?<=2x)|(?<=ტაბ)|(?<=tab)|(?<=აბი)) '
+    r'(?!(?:მგ|mg|მკგ|mcg|გ|g|სე|u|iu|მლ|ml|ტაბ|აბი|აბ|tab|x2|2x|bid|tid|qid|qd|od|once|twice|daily) )'
+    r'(?=[a-zა-ჰ0-9\-]+ (?:\d+(?:[.,]\d+)?(?: ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu))? )?'
+    rf'(?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) {_KA_VERBS}|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს|შეწყვიტა|მოხსნა|შეაჩერა|stopped|discontinued|held))'
+)
+_KA_NEG_VERB_RE = re.compile(
+    r'(?<![ა-ჰ])(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს)(?![ა-ჰ])'
+)
+_KA_NEG_FOLLOW_STOP = frozenset({
+    'და', 'ან', 'მაგრამ', 'ხოლო', 'თუმცა', 'რომ', 'გამო', 'წინ', 'ადრე', 'უკვე', 'მანამდე', 'საერთოდ',
+    'დღე', 'დღის', 'დღით', 'დღეა', 'დღეები', 'თვე', 'თვის', 'თვეა', 'კვირა', 'კვირის', 'კვირით', 'კვირაა',
+    'წელ', 'წლის', 'წლიდან', 'წელია', 'საათ', 'საათის', 'საათით', 'სთ',
+    'მგ', 'mg', 'მკგ', 'mcg', 'გ', 'g', 'მლ', 'ml', 'სე', 'iu', 'ტაბ', 'აბი', 'აბ', 'tab',
+    'x2', '2x', 'bid', 'tid', 'qid', 'qd', 'od', 'once', 'twice', 'daily',
+})
+_KA_PREFIX_NEG_HEAD_RE = re.compile(
+    r'^[a-zა-ჰ0-9\-]+(?: \d+(?:[.,]\d+)?(?: ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu))?)?(?= [a-zა-ჰ])'
+)
+_STOPPED_BUT_NOT_RE = re.compile(
+    r'\b(stopped|discontinued|held|off) ([^,;.!?\n]{1,80}?),? but not (?=[a-zა-ჰ])',
+    re.IGNORECASE,
+)
+_SUFFIX_STOPPED_BUT_NOT_RE = re.compile(
+    r'([^,;.!?\n]{1,80}? (?:stopped|discontinued|held)),? but not (?=[a-zა-ჰ])',
+    re.IGNORECASE,
+)
+_KA_STOPPED_BUT_NOT_RE = re.compile(
+    r'([^,;.!?\n]{0,80}(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს)[^,;.!?\n]{0,40}),? მაგრამ არა (?=[a-zა-ჰ])'
+)
+_KA_STOPPED_BUT_SOV_NOT_RE = re.compile(
+    r'([^,;.!?\n]{0,80}(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს)[^,;.!?\n]{0,40}),? მაგრამ ([a-zა-ჰ0-9 .\-]{1,40}?) არა(?=$|[,;.!?\n])'
 )
 _EN_STOPPED_RE = re.compile(r'\b(?:stopped|discontinued|held)\b', re.IGNORECASE)
 _DOSE_UNIT_END_RE = re.compile(r'(?:\d|მგ|mg|მკგ|mcg|გ|g)$', re.IGNORECASE)
@@ -141,7 +167,10 @@ _FT_LMWH_STEMS = (
     'კლექსან', 'clexane', 'ლოვენოქს', 'lovenox', 'ფრაქსიპარ', 'fraxipar',
     'ენოქსაპარ', 'enoxapar', 'ნადროპარ', 'nadropar', 'ფრაგმინ', 'fragmin',
     'დალტეპარ', 'daltepar', 'ციბორ', 'zibor', 'ბემიპარ', 'bemipar',
+    'თინზაპარ', 'tinzapar', 'ინოჰეპ', 'innohep', 'დაბალმოლეკულ', 'low molecular', 'low-molecular',
 )
+_LMWH_WORD_RE = re.compile(r'(?<![a-zა-ჰ])(?:lmwh|ლმვჰ)(?![a-zა-ჰ])')
+_LMWH_HEPARIN_PHRASE_RE = re.compile(r'(?:დაბალმოლეკულ[ა-ჰ]*|low[\s-]+molecular(?:[\s-]+weight)?) (?:ჰეპარინ[ა-ჰ]*|heparin)')
 _FT_UFH_STEMS = ('ჰეპარინ', 'heparin')
 _UFH_WORD_RE = re.compile(r'(?<![a-zა-ჰ])(?:ufh|უფჰ)(?![a-zა-ჰ])')
 _FT_HEPARIN_LMWH_STEMS = (*_FT_LMWH_STEMS, *_FT_UFH_STEMS)
@@ -172,6 +201,12 @@ def _normalize_nlp_text(text):
     """Collapse whitespace to single spaces in O(N) and normalize affirmative/non-prefix clinical idioms."""
     low = _WS_RUN_RE.sub(' ', text.strip().replace('\r\n', '\n').replace('\r', '\n').lower())
     changed = False
+    if ' but not ' in low:
+        low = _STOPPED_BUT_NOT_RE.sub(r'\1 \2; ', low)
+        low, changed = _SUFFIX_STOPPED_BUT_NOT_RE.sub(r'\1; ', low), True
+    if ' მაგრამ ' in low:
+        low = _KA_STOPPED_BUT_NOT_RE.sub(r'\1; ', low)
+        low, changed = _KA_STOPPED_BUT_SOV_NOT_RE.sub(r'\1; \2', low), True
     if 'not ' in low or 'never ' in low or "n't " in low:
         low, changed = _DOUBLE_NEG_AFFIRM_EN_RE.sub(' continues ', low), True
     if 'არ ' in low or 'არაა ' in low or 'არც ' in low or 'ვერ ' in low:
@@ -227,6 +262,44 @@ def _split_ka_two_verb_tail(piece):
     return [x for x in (left, right) if x]
 
 
+def _split_ka_neg_clauses(sub_s):
+    """Split unpunctuated Georgian prefix/suffix negation verbs cleanly in O(N)."""
+    if not _KA_NEG_VERB_RE.search(sub_s):
+        return [sub_s]
+    out, cur = [], sub_s
+    while cur:
+        m = _KA_NEG_VERB_RE.search(cur)
+        if not m:
+            out.append(cur)
+            break
+        before = cur[:m.start()].strip()
+        after = cur[m.end():].strip()
+        if not before:
+            hm = _KA_PREFIX_NEG_HEAD_RE.match(after) if after else None
+            if hm:
+                rest = after[hm.end():].strip()
+                nxt = rest.split(' ', 1)[0] if rest else ''
+                if nxt and nxt not in _KA_NEG_FOLLOW_STOP and not _DIGIT_RE.match(nxt):
+                    out.append(f'{cur[:m.end()]} {hm.group(0)}'.strip())
+                    cur = rest
+                    continue
+            out.append(cur)
+            break
+        if _AFFIRM_PRED_RE.search(before):
+            out.append(before)
+            cur = cur[m.start():].strip()
+            continue
+        if after:
+            nxt = after.split(' ', 1)[0]
+            if nxt and nxt not in _KA_NEG_FOLLOW_STOP and not _DIGIT_RE.match(nxt):
+                out.append(cur[:m.end()].strip())
+                cur = after
+                continue
+        out.append(cur)
+        break
+    return out or [sub_s]
+
+
 def _split_en_stopped(sub_s):
     """Split unpunctuated English 'stopped/discontinued/held' clauses cleanly in O(N)."""
     if ('stopped' not in sub_s and 'discontinued' not in sub_s and 'held' not in sub_s) or not _EN_STOPPED_RE.search(sub_s):
@@ -255,45 +328,46 @@ def _split_inline_boundaries(seg):
         return [seg]
     out, seen_subs = [], set()
     for raw_sub in _INLINE_NEG_SPLIT_RE.split(seg):
-        for sub in _split_en_stopped(raw_sub.strip()):
-            sub_s = sub.strip()
-            if not sub_s or sub_s in seen_subs:
-                continue
-            seen_subs.add(sub_s)
-            if not _has_neg_phrase(sub_s):
-                out.append(sub_s)
-                continue
-            verb_total = len(_KA_VERB_WORD_RE.findall(sub_s))
-            last, pieces = 0, []
-            for m in _KA_AFFIRM_VERB_AFTER_RE.finditer(sub_s):
-                before = sub_s[last:m.start()].rstrip()
-                if not before:
+        for ka_sub in _split_ka_neg_clauses(raw_sub.strip()):
+            for sub in _split_en_stopped(ka_sub.strip()):
+                sub_s = sub.strip()
+                if not sub_s or sub_s in seen_subs:
                     continue
-                prev_tok = before.rsplit(' ', 1)[-1] if before else ''
-                if prev_tok in _KA_NEG_PARTICLES:
-                    before_neg = before[: -len(prev_tok)].strip()
-                    if not before_neg or before_neg in _GENERIC_SOV_HEADS:
+                seen_subs.add(sub_s)
+                if not _has_neg_phrase(sub_s):
+                    out.append(sub_s)
+                    continue
+                verb_total = len(_KA_VERB_WORD_RE.findall(sub_s))
+                last, pieces = 0, []
+                for m in _KA_AFFIRM_VERB_AFTER_RE.finditer(sub_s):
+                    before = sub_s[last:m.start()].rstrip()
+                    if not before:
                         continue
-                    if _KA_VERB_WORD_RE.search(before_neg) or (verb_total == 1 and _DOSE_UNIT_END_RE.search(before_neg)):
-                        neg_pos = sub_s.rfind(prev_tok, last, m.start())
-                        if neg_pos > last:
-                            pieces.append(sub_s[last:neg_pos].strip())
-                            last = neg_pos
+                    prev_tok = before.rsplit(' ', 1)[-1] if before else ''
+                    if prev_tok in _KA_NEG_PARTICLES:
+                        before_neg = before[: -len(prev_tok)].strip()
+                        if not before_neg or before_neg in _GENERIC_SOV_HEADS:
                             continue
-                if _PREFIX_NEG_START_RE.search(before):
-                    pieces.append(before)
-                    last = m.start()
-                    continue
-                verb_end = m.end() - 1
-                piece = sub_s[last:verb_end].strip()
-                if piece:
-                    pieces.append(piece)
-                last = verb_end + 1
-            tail = sub_s[last:].strip()
-            if tail:
-                pieces.append(tail)
-            for pc in pieces:
-                out.extend(_split_ka_two_verb_tail(pc))
+                        if _KA_VERB_WORD_RE.search(before_neg) or (verb_total == 1 and _DOSE_UNIT_END_RE.search(before_neg)):
+                            neg_pos = sub_s.rfind(prev_tok, last, m.start())
+                            if neg_pos > last:
+                                pieces.append(sub_s[last:neg_pos].strip())
+                                last = neg_pos
+                                continue
+                    if _PREFIX_NEG_START_RE.search(before):
+                        pieces.append(before)
+                        last = m.start()
+                        continue
+                    verb_end = m.end() - 1
+                    piece = sub_s[last:verb_end].strip()
+                    if piece:
+                        pieces.append(piece)
+                    last = verb_end + 1
+                tail = sub_s[last:].strip()
+                if tail:
+                    pieces.append(tail)
+                for pc in pieces:
+                    out.extend(_split_ka_two_verb_tail(pc))
     return out
 
 
@@ -435,7 +509,7 @@ def _detect_freetext_allergies(text):
             matched.add(key)
     if _IODINE_WORD_RE.search(low):
         matched.add('iodine')
-    if _HIT_WORD_RE.search(low):
+    if _HIT_WORD_RE.search(low) or _LMWH_WORD_RE.search(low):
         matched.add('hit_heparin')
     return matched
 
@@ -450,7 +524,7 @@ def _has_unrecognized_allergy_clause(text):
         if not cleaned or cleaned in _ALLERGY_NEGATION_WORDS:
             continue
         matched = any(any(st in raw_clause for st in stems) for _, stems in _FREETEXT_ALLERGY_STEMS)
-        if not matched and not _HIT_WORD_RE.search(raw_clause) and not _IODINE_WORD_RE.search(raw_clause):
+        if not matched and not _HIT_WORD_RE.search(raw_clause) and not _LMWH_WORD_RE.search(raw_clause) and not _IODINE_WORD_RE.search(raw_clause):
             return True
     return False
 
@@ -511,9 +585,10 @@ def _detect_freetext_high_risk_meds(text, q=None):
                 unstructured_labels.append(label)
                 if is_at:
                     unstructured_at = True
-    has_ft_lmwh = any(st in low for st in _FT_LMWH_STEMS)
-    has_ft_ufh = any(st in low for st in _FT_UFH_STEMS) or bool(_UFH_WORD_RE.search(low))
-    if has_ft_ufh:
+    has_ft_lmwh = any(st in low for st in _FT_LMWH_STEMS) or bool(_LMWH_WORD_RE.search(low))
+    ufh_low = _LMWH_HEPARIN_PHRASE_RE.sub(' ', low) if has_ft_lmwh else low
+    has_ft_ufh = any(st in ufh_low for st in _FT_UFH_STEMS) or bool(_UFH_WORD_RE.search(low))
+    if has_ft_lmwh or has_ft_ufh:
         matched_keys.add('parenteral_oac')
     if not q_d.get('med_aspirin') and (
         any(st in low for st in _ASPIRIN_FT_STEMS) or bool(_ASA_WORD_RE.search(low))
@@ -560,209 +635,8 @@ def _detect_freetext_high_risk_meds(text, q=None):
     }
 
 
-def _collect_ft_contraindications(c, ft, u_keys, is_at, immed_stop_plan, gi_bleed_plan):
-    from .calculators import _sat_age
-    from .registry import rule_value
-    from .utils import _num
-    contra_msgs, extra_notes, plan_override = [], [], ''
-    if c.get('is_rupture_suspect') and ft.get('has_ft_full_oac'):
-        contra_msgs.append('რუპტურირებული AAA-ის ეჭვზე აუცილებელია ანტიკოაგულაციის გადაუდებელი რევერსია (4F-PCC / იდარუციზუმაბი)!')
-        plan_override = 'გადაუდებელი რევერსია (4F-PCC / იდარუციზუმაბი) — გადავადების გარეშე!'
-    if is_at and c['is_cea_oac_p2y_stop']:
-        contra_msgs.append('სისხლჩაქცევის/თრომბოლიზისის ფონზე დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!')
-        plan_override = plan_override or 'დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!'
-    if is_at and c['active_gi_bleed']:
-        contra_msgs.append('აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის ფონზე სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან!')
-        plan_override = plan_override or gi_bleed_plan
-    if c['repro_pregnant'] and (u_keys & {'warfarin', 'doac', 'dabigatran', 'ticagrelor', 'prasugrel', 'sglt2', 'glp1'}):
-        contra_msgs.append('ორსულობის დროს პერორალური OAC / ტიკაგრელორი / პრასუგრელი / SGLT2 / GLP-1 უკუნაჩვენებია — დაუყოვნებლივ შეათანხმეთ მეან-გინეკოლოგთან და ექიმთან!')
-        plan_override = plan_override or immed_stop_plan
-    if ('mech_valve' in c['cad_chips']) and (u_keys & {'doac', 'dabigatran'}):
-        contra_msgs.append('მექანიკური სარქვლის ფონზე DOAC კატეგორიულად აკრძალულია (ESC Class III)!')
-        plan_override = plan_override or immed_stop_plan
-    if c['severe_renal'] and (u_keys & {'doac', 'dabigatran', 'metformin'}):
-        contra_msgs.append('CrCl/eGFR <30 ან დიალიზზე DOAC/დაბიგატრანი/მეტფორმინი უკუნაჩვენებია — სასწრაფოდ შეათანხმეთ ექიმთან!')
-        plan_override = plan_override or immed_stop_plan
-    if c.get('on_dialysis') and ('sglt2' in u_keys):
-        contra_msgs.append('პროგრამულ დიალიზზე SGLT2 ინჰიბიტორი უკუნაჩვენებია — სასწრაფოდ შეათანხმეთ ნეფროლოგთან/ენდოკრინოლოგთან!')
-        plan_override = plan_override or immed_stop_plan
-    if c['liver_3x'] and (u_keys & {'doac', 'dabigatran', 'metformin', 'ticagrelor', 'prasugrel'}):
-        contra_msgs.append('ღვიძლის ≥3x დისფუნქციაზე DOAC/მეტფორმინი/ტიკაგრელორი/პრასუგრელი უკუნაჩვენებია — სასწრაფოდ შეათანხმეთ ექიმთან!')
-        plan_override = plan_override or immed_stop_plan
-    if c['has_stroke_hx'] and (('prasugrel' in u_keys) or (ft.get('has_ft_riva_low') and 'doac' in u_keys)):
-        contra_msgs.append('ინსულტის/TIA-ს ანამნეზში პრასუგრელი / დაბალდოზიანი რივაროქსაბანი უკუნაჩვენებია!')
-        plan_override = plan_override or immed_stop_plan
-    if ('nsaid' in c['eff_allergy_chips']) and (('aspirin' in u_keys) or (ft.get('has_ft_riva_low') and 'doac' in u_keys)):
-        contra_msgs.append('ასპირინზე/აასს-ზე ალერგიის ფონზე ასპირინი / VOYAGER უკუნაჩვენებია — დაუყოვნებლივ შეათანხმეთ ექიმთან!')
-        plan_override = plan_override or immed_stop_plan
-    if ('clopidogrel_intol' in c['eff_allergy_chips']) and ('clopidogrel' in u_keys):
-        contra_msgs.append('კლოპიდოგრელზე აუტანლობის ფონზე პრეპარატი უკუნაჩვენებია — შეარჩიეთ უსაფრთხო ალტერნატივა!')
-        plan_override = plan_override or immed_stop_plan
-    cilo_cfg = rule_value('MED_CILOSTAZOL_BLACKBOX')
-    if ('cilostazol' in u_keys) and (
-        c.get('is_cea_oac_p2y_stop') or c.get('chf_any')
-        or (c.get('lvef_cur') is not None and c['lvef_cur'] < cilo_cfg['lvef_min'])
-        or c.get('on_dialysis') or c.get('creat_extreme_hi')
-        or (c.get('eff_renal') is not None and c['eff_renal'] <= cilo_cfg['crcl_min'])
-        or (c['s'].get('ecg') == 'ischemia_arrhythmia')
-        or (c.get('hr_cur') is not None and c['hr_cur'] > cilo_cfg['hr_max'])
-        or c.get('liver_3x') or c.get('active_gi_bleed')
-        or bool(c['q'].get('recent_stent')) or c.get('has_acs_stent_12m') or c.get('repro_pregnant')
-    ):
-        contra_msgs.append(f'გულის უკმარისობის / LVEF <{cilo_cfg["lvef_min"]}% / CrCl ≤{cilo_cfg["crcl_min"]} / ტაქიარითმიის / სტენტის / ორსულობის / თირკმელ-ღვიძლის უკმარისობის ფონზე ცილოსტაზოლი აბსოლუტურად უკუნაჩვენებია (FDA Black Box)!')
-        plan_override = plan_override or immed_stop_plan
-    has_any_oac = bool(c.get('has_full_oac') or ('rivaroxaban_2_5' in c['med_chips']) or ft.get('has_ft_full_oac') or ft.get('has_ft_unstruct_riva_low'))
-    has_potent_p2y = bool(c['q'].get('med_ticagrelor') or c['q'].get('med_prasugrel') or (u_keys & {'ticagrelor', 'prasugrel'}))
-    if has_any_oac and has_potent_p2y and (u_keys & {'warfarin', 'doac', 'dabigatran', 'ticagrelor', 'prasugrel'}):
-        contra_msgs.append('OAC + ტიკაგრელორი/პრასუგრელი ESC Class III (ჰემორაგიის რისკი) — დაუყოვნებლივ შეათანხმეთ კარდიოლოგთან!')
-        plan_override = plan_override or immed_stop_plan
-    if c.get('oac_count', 0) >= 2 and (u_keys & {'warfarin', 'doac', 'dabigatran'}):
-        contra_msgs.append('ორმაგი პერორალური ანტიკოაგულაცია (≥2 OAC / რივაროქსაბანი 2.5) — დაუყოვნებლივ დააზუსტეთ ქირურგთან/კარდიოლოგთან!')
-        plan_override = plan_override or immed_stop_plan
-    if c.get('p2y12_cnt', 0) >= 2 and (u_keys & {'clopidogrel', 'ticagrelor', 'prasugrel'}):
-        contra_msgs.append('ორმაგი P2Y12 ანტიაგრეგანტი (ESC Class III ჰემორაგიის რისკი) — დაუყოვნებლივ შეათანხმეთ დე-ესკალაცია კარდიოლოგთან!')
-        plan_override = plan_override or immed_stop_plan
-    if 'prasugrel' in u_keys:
-        age_p = _sat_age(c['patient'].age) or 0
-        wt_p = _num(c['s'].get('weight_kg'), lo=25, hi=260)
-        if age_p >= 75:
-            extra_notes.append('[≥75 წ. — FDA Boxed Warning: პრასუგრელი ზოგადად არ არის რეკომენდებული ფატალური/ქალასშიდა სისხლდენის რისკის გამო!]')
-        if wt_p is not None and wt_p < 60:
-            extra_notes.append('[<60 კგ — FDA Boxed Warning: სისხლდენის რისკი, განიხილეთ 5 მგ/დღ ან კლოპიდოგრელზე დეესკალაცია!]')
-    if 'amiodarone' in u_keys:
-        amio_ren = rule_value('MED_DOAC_HOLD_INTERVALS')['amio_renal']
-        if c['q'].get('med_warfarin') or ft.get('has_ft_unstruct_warfarin'):
-            extra_notes.append('[CYP2C9: ვარფარინთან აძლიერებს ანტიკოაგულაციას — გადაამოწმეთ INR!]')
-        if (c['q'].get('med_doac') or c['q'].get('med_dabigatran') or 'rivaroxaban_2_5' in c['med_chips'] or ft.get('has_ft_unstruct_doac') or ft.get('has_ft_unstruct_riva_low')) and (c['on_dialysis'] or (c['eff_renal'] is not None and c['eff_renal'] < amio_ren)):
-            extra_notes.append(f'[P-gp ურთიერთქმედება: DOAC/დაბიგატრანთან და CrCl <{amio_ren}/დიალიზზე ზრდის სისხლდენის რისკს!]')
-    return contra_msgs, extra_notes, plan_override
-
-
-def _append_ft_parenteral_row(c, ft, raw_txt, immed_stop_plan, gi_bleed_plan):
-    matched = ft.get('matched_keys') or set()
-    if not (matched & {'parenteral_oac', 'parenteral_dti'}):
-        return
-    u_keys = ft.get('unstructured_keys') or set()
-    q, med_chips, add_row = c['q'], c['med_chips'], c['add_row']
-    msgs, plan_ov = [], ''
-    if c['has_hit'] and (ft.get('has_ft_lmwh') or ft.get('has_ft_ufh')):
-        msgs.append('HIT ანამნეზში: ჰეპარინი/LMWH აბსოლუტურად უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და ჩართეთ ჰემატოლოგი!')
-        plan_ov = 'STOP — HIT! ჰეპარინი/LMWH აბსოლუტურად აკრძალულია!'
-    if c['severe_renal'] and (ft.get('has_ft_lmwh') or ft.get('has_ft_fondaparinux')):
-        msgs.append('CrCl/eGFR <30 ან დიალიზზე LMWH / ფონდაპარინუქსი აკუმულირდება და უკუნაჩვენებია (უპირატესია არაფრაქციული ჰეპარინი — UFH) — სასწრაფოდ შეათანხმეთ ექიმთან!')
-        plan_ov = plan_ov or immed_stop_plan
-    if c['liver_3x'] and ft.get('has_ft_argatroban'):
-        msgs.append('ღვიძლის ≥3x დისფუნქციაზე არგატრობანის დოზა მცირდება 75%-ით (უპირატესია ბივალირუდინი) — სასწრაფოდ შეათანხმეთ ჰემატოლოგთან!')
-        plan_ov = plan_ov or immed_stop_plan
-    if c['is_cea_oac_p2y_stop']:
-        msgs.append('სისხლჩაქცევის/თრომბოლიზისის ფონზე დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!')
-        plan_ov = plan_ov or 'დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!'
-    if c['active_gi_bleed']:
-        msgs.append('აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის ფონზე სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან!')
-        plan_ov = plan_ov or gi_bleed_plan
-    if c['repro_pregnant'] and (ft.get('has_ft_fondaparinux') or ('parenteral_dti' in matched)):
-        msgs.append('ორსულობის დროს ფონდაპარინუქსი / IV DTI შეათანხმეთ მეან-გინეკოლოგთან და ჰემატოლოგთან!')
-        plan_ov = plan_ov or immed_stop_plan
-    if c['has_mech_valve'] and ft.get('has_ft_fondaparinux'):
-        msgs.append('მექანიკურ სარქველზე ფონდაპარინუქსი აკრძალულია (თრომბოზის მაღალი რისკი) — დაუყოვნებლივ შეათანხმეთ კარდიოლოგთან და ჰემატოლოგთან!')
-        plan_ov = plan_ov or immed_stop_plan
-    if c['is_evla'] and q.get('med_warfarin'):
-        msgs.append('ორმაგი ანტიკოაგულაცია EVLA-ზე (უწყვეტი ვარფარინი + პარენტერული ანტიკოაგულანტი) — დაუყოვნებლივ შეათანხმეთ ქირურგთან/კარდიოლოგთან!')
-        plan_ov = plan_ov or immed_stop_plan
-    has_doac_conc = bool(q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in med_chips or (u_keys & {'doac', 'dabigatran'}))
-    if has_doac_conc:
-        msgs.append('ორმაგი ანტიკოაგულაცია (DOAC + პარენტერული ანტიკოაგულანტი) — დაუყოვნებლივ შეათანხმეთ ქირურგთან/კარდიოლოგთან!')
-        plan_ov = plan_ov or immed_stop_plan
-    is_pure_dti = bool(('parenteral_dti' in matched) and not ft.get('has_ft_lmwh') and not ft.get('has_ft_ufh') and not ft.get('has_ft_fondaparinux'))
-    is_pure_ufh = bool(ft.get('has_ft_ufh') and not ft.get('has_ft_lmwh') and not ft.get('has_ft_fondaparinux') and ('parenteral_dti' not in matched))
-    if is_pure_dti:
-        drug_lbl = 'არაჰეპარინული პარენტერული ანტიკოაგულანტი (არგატრობანი / ბივალირუდინი)'
-    elif is_pure_ufh:
-        drug_lbl = 'პარენტერული ანტიკოაგულანტი — არაფრაქციული ჰეპარინი (UFH)'
-    else:
-        drug_lbl = 'პარენტერული ანტიკოაგულანტი (LMWH / ფონდაპარინუქსი / ჰეპარინი)'
-    if msgs:
-        add_row(
-            drug_lbl,
-            f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია პარენტერული ანტიკოაგულანტი — {" · ".join(msgs)}',
-            'red', plan_ov, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True,
-        )
-    elif is_pure_dti:
-        add_row(
-            drug_lbl,
-            f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია არაჰეპარინული პარენტერული ანტიკოაგულანტი (IV DTI — არგატრობანი / ბივალირუდინი) — შეათანხმეთ შეჩერების დრო ჰემატოლოგთან/ქირურგთან (IV ინფუზიის შეჩერება −2–4 სთ aPTT კონტროლით; ASRA ნეირაქსიული ბლოკადა დაბლოკილია!).',
-            'amber', 'შეათანხმეთ ქირურგთან (IV −2–4 სთ, aPTT)',
-            hold_or_skip=True, force_date_plan=True, contraindicated=False, acute_hold=False, reconcile_only=True,
-        )
-    elif is_pure_ufh:
-        add_row(
-            drug_lbl,
-            f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია არაფრაქციული ჰეპარინი (UFH) — შეათანხმეთ შეჩერების დრო ქირურგთან/ანესთეზიოლოგთან (IV UFH −4–6 სთ, SC UFH −12 სთ, ASRA ნეირაქსიული aPTT კონტროლით; CrCl <30/დიალიზზე დასაშვებია).',
-            'amber', 'შეათანხმეთ ქირურგთან (IV −4–6 სთ / SC −12 სთ)',
-            hold_or_skip=True, force_date_plan=True, contraindicated=False, acute_hold=False, reconcile_only=True,
-        )
-    else:
-        add_row(
-            drug_lbl,
-            f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია პარენტერული ანტიკოაგულანტი — შეათანხმეთ შეჩერების დრო ქირურგთან/ანესთეზიოლოგთან (LMWH პროფილაქტ. −12 სთ / თერაპ. −24 სთ; ფონდაპარინუქსი −36–48 სთ; ASRA ნეირაქსიული კონტროლი!).',
-            'amber', 'შეათანხმეთ ქირურგთან (−12–24 სთ)',
-            hold_or_skip=True, force_date_plan=True, contraindicated=False, acute_hold=False, reconcile_only=True,
-        )
-
-
-def append_freetext_med_rows(c, immed_stop_plan, gi_bleed_plan):
-    """Append contraindicated/unstructured rows derived from free-text `q.other_meds`."""
-    q, med_chips, add_row = c['q'], c['med_chips'], c['add_row']
-    ft = c['ft_meds']
-    raw_txt = _safe_display_str(q.get('other_meds'), max_len=160)
-    u_keys = ft.get('unstructured_keys') or set()
-    if ft.get('has_ft_statin') and 'statin' not in med_chips:
-        if c['repro_pregnant']:
-            add_row('სტატინი (ტექსტიდან)', 'ორსულობის დროს სტატინი უკუნაჩვენებია (ტერატოგენული რისკი) — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ექიმთან!', 'red', immed_stop_plan, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
-        elif c['liver_3x']:
-            add_row('სტატინი (ტექსტიდან)', f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია სტატინი — ღვიძლის ფერმენტების ≥3x მატების ფონზე ჰეპატოტოქსიკურობის გამო სტატინი უკუნაჩვენებია, შეწყვიტეთ და შეათანხმეთ ექიმთან!', 'red', immed_stop_plan, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
-    if ft.get('has_ft_acei_arb') and 'acei_arb' not in med_chips:
-        if c['repro_pregnant']:
-            add_row('ACEi / ARB (ტექსტიდან)', 'ორსულობის დროს ACEi / ARB აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!', 'red', immed_stop_plan, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
-        elif c.get('acei_acute_hold'):
-            add_row('ACEi / ARB (ტექსტიდან)', f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია ACEi/ARB — დაბალი წნევის ან ჰიპერკალიემიის ფონზე ოპერაციის დილის დოზა გამოტოვეთ და შეათანხმეთ ექიმთან!', 'red', 'გამოტოვეთ დილას! (დაბალი წნევა / მაღალი K+)', hold_or_skip=True, force_date_plan=True, contraindicated=False, acute_hold=True)
-    has_any_oac_ns = bool(c['has_full_oac'] or ('rivaroxaban_2_5' in med_chips) or c['has_ft_full_oac'] or ft.get('has_ft_unstruct_riva_low'))
-    has_dapt_ns = bool((q.get('med_aspirin') or 'aspirin' in u_keys) and c['p2y12_cnt'] >= 1) or (c['p2y12_cnt'] >= 2)
-    if ft.get('has_ft_nsaid') and (
-        ('nsaid' in c['eff_allergy_chips']) or c['active_gi_bleed'] or c['severe_renal']
-        or c['repro_pregnant'] or c['liver_3x'] or has_any_oac_ns or has_dapt_ns
-    ):
-        ns_reasons = [lbl for cond, lbl in (
-            ('nsaid' in c['eff_allergy_chips'], 'აასს-ზე ალერგია'),
-            (c['active_gi_bleed'], 'აქტიური GI სისხლდენა/წყლული'),
-            (c['severe_renal'], 'თირკმლის მძიმე უკმარისობა (<30)'),
-            (c['repro_pregnant'], 'ორსულობა'),
-            (c['liver_3x'], 'ღვიძლის მძიმე დისფუნქცია (≥3x)'),
-            (has_any_oac_ns, 'ანტიკოაგულანტთან ერთად სისხლდენის მაღალი რისკი'),
-            (has_dapt_ns, 'ორმაგ ანტიაგრეგანტთან (DAPT) სისხლდენის მაღალი რისკი'),
-        ) if cond]
-        add_row(
-            'ტკივილგამაყუჩებელი აასს (ტექსტიდან)',
-            f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია არასტეროიდული აასს — უკუნაჩვენებია ({", ".join(ns_reasons)})! შეწყვიტეთ დაუყოვნებლივ და შეათანხმეთ ექიმთან!',
-            'red', gi_bleed_plan if c['active_gi_bleed'] else immed_stop_plan,
-            hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True,
-        )
-    _append_ft_parenteral_row(c, ft, raw_txt, immed_stop_plan, gi_bleed_plan)
-    if not ft['unstructured_labels']:
-        return
-    labels, is_at = ', '.join(ft['unstructured_labels']), bool(ft['unstructured_antithrombotic'])
-    contra_msgs, extra_notes, plan_override = _collect_ft_contraindications(c, ft, u_keys, is_at, immed_stop_plan, gi_bleed_plan)
-    is_contra = bool(contra_msgs)
-    note_sfx = (' ' + ' '.join(extra_notes)) if extra_notes else ''
-    ft_rule = (
-        f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია მაღალი რისკის უკუნაჩვენები პრეპარატი — {" · ".join(contra_msgs)}{note_sfx}'
-        if is_contra else
-        f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია მაღალი რისკის პრეპარატი — მონიშნეთ ჩამრთველი შეჩერების ზუსტი თარიღისთვის!{note_sfx}'
-    )
-    add_row(
-        f'დასაზუსტებელი წამალი ({labels})', ft_rule, 'red',
-        plan_override if is_contra else 'დააზუსტეთ ექიმთან — არასტრუქტურირებულია!',
-        hold_or_skip=(not is_contra), force_date_plan=True,
-        contraindicated=is_contra, acute_hold=is_contra,
-        unstructured=True, reconcile_only=True,
-    )
+from .meds_helpers import (  # noqa: E402, F401
+    _append_ft_parenteral_row,
+    _collect_ft_contraindications,
+    append_freetext_med_rows,
+)

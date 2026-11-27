@@ -134,7 +134,7 @@
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
             <h2 class="nw-card-title m-0">პაციენტთან დარეკვა — წამლების შეჩერების გეგმა</h2>
             {% if nw_med_script.stop_locked %}
-            <span class="nw-verdict nw-verdict-stop">STOP — წამლები არ შეწყვიტოთ!</span>
+            <span class="nw-verdict nw-verdict-stop">{% if nw_med_script.urgent_rows %}STOP — საშიში წამალი!{% else %}STOP — წამლები არ შეწყვიტოთ!{% endif %}</span>
             {% elif nw_med_script.called_valid %}
             <span class="nw-verdict nw-verdict-ready">დარეკილია ✓ ({{ nw_med_script.called_at }})</span>
             {% elif nw_med_script.outdated_call %}
@@ -143,7 +143,7 @@
         </div>
 
         {% if nw_med_script.stop_locked %}
-        <div class="nw-banner danger">ოპერაცია დაბლოკილია (STOP) — არცერთი წამალი არ შეწყვიტოთ ქირურგთან შეთანხმების გარეშე!</div>
+        <div class="nw-banner danger">{% if nw_med_script.urgent_rows %}ოპერაცია დაბლოკილია (STOP) — გეგმური წამლები თვითნებურად არ შეწყვიტოთ; წითლად მონიშნული საშიში/დაუზუსტებელი წამლების გამო დაუყოვნებლივ დაუკავშირდით ექიმს!{% else %}ოპერაცია დაბლოკილია (STOP) — არცერთი წამალი არ შეწყვიტოთ ქირურგთან შეთანხმების გარეშე!{% endif %}</div>
         {% endif %}
 
         {% if nw_med_script.needs_op_date %}
@@ -399,11 +399,11 @@
                         {% if f.is_pdf %}
                         <span class="nw-pdf-badge">PDF</span>
                         {% else %}
-                        <img src="{% url 'preop-file-thumb' f.pk %}" alt="{{ f.caption|default:grp.label }}">
+                        <img src="{% url 'preop-file-thumb' f.pk %}" alt="{{ f.caption|default:grp.plain_label }}">
                         {% endif %}
                     </a>
                     <div class="nw-file-meta">
-                        <strong>{{ grp.label }}</strong>
+                        <strong>{{ grp.plain_label }}</strong>
                         {% if f.caption %}<span>{{ f.caption }}</span>{% endif %}
                     </div>
                     {% if not p.archived and not is_inactive_card and not p.approved_at and not s.board_patient_id %}

@@ -209,11 +209,16 @@ def build_phone_med_script(patient, ev, today):
                 if (stop_locked and is_planned_stop and not is_truly_urgent)
                 else _spoken_med_phrase(row, op_ka)
             )
+            rule_txt = (
+                'ოპერაცია შეჩერებულია (STOP) — ექიმის დადასტურებამდე თვითნებურად არ შეწყვიტოთ!'
+                if (stop_locked and not is_truly_urgent)
+                else scrub_plain_ka(row['rule'], second_person=False, strip_quoted_ft=True)
+            )
             entry = {
                 'drug': plain_drug,
                 'raw_drug': row['drug'],
                 'spoken': spoken_txt,
-                'rule': scrub_plain_ka(row['rule'], second_person=False, strip_quoted_ft=True),
+                'rule': rule_txt,
                 'tone': row['tone'],
                 'date_plan': scrub_plain_ka(plan, second_person=False, strip_quoted_ft=True),
                 'raw_date_plan': plan,

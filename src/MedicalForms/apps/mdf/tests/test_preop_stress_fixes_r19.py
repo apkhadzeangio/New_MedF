@@ -265,7 +265,7 @@ class PreopStressFixesR19Tests(TestCase):
         p_st = _mk('open', q={'med_dabigatran': True, 'med_warfarin': True}, s={'anesthesia_plan': 'neuraxial', 'creat': 320, 'creat_unit': 'umol', 'inr': 2.4})
         p_st.save()
         pp_st = self.c_doc.get(reverse('preop-passport', args=[p_st.pk])).content.decode('utf-8')
-        self.assertIn('უკუნაჩვენები/დაუზუსტებელი მედიკამენტების გამო', pp_st)
+        self.assertIn('უკუნაჩვენები/დაუზუსტებელი ან მწვავე მედიკამენტების გამო', pp_st)
         p_stw = _mk('open', q={'med_warfarin': True}, s={'anesthesia_plan': 'neuraxial', 'inr': 2.4})
         p_stw.save()
         pp_stw = self.c_doc.get(reverse('preop-passport', args=[p_stw.pk])).content.decode('utf-8')
@@ -340,7 +340,7 @@ class PreopStressFixesR19Tests(TestCase):
             self.assertNotIn(acro, m_hop.group(0))
 
     def test_r19_s3_registry_mutations_and_html_step_any(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.18')
+        self.assertEqual(REGISTRY_VERSION, '1.2.19')
         # Clin S2-5: mutated cea_asymp_futility_age attributes to live ANES_AIRWAY_STOPBANG_ICU
         orig_sb = RULES_BY_ID['ANES_AIRWAY_STOPBANG_ICU']
         try:

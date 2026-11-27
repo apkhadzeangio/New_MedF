@@ -142,11 +142,13 @@ def _result_flags_and_needs_part(ctx):
         else (ECG_LABELS.get(ctx.ecg) or _safe_display_str(ctx.ecg, max_len=60))
     )
     has_bad_med = any(r.get('contraindicated') or r.get('unstructured') for r in (ctx.med_schedule or ()))
+    has_urgent_med_action = has_bad_med or any(r.get('acute_hold') for r in (ctx.med_schedule or ()))
     return {
         'status': ctx.status,
         'status_label': STATUS_LABELS[ctx.status],
         'all_tasks_done': ctx.all_tasks_done,
         'has_bad_med': has_bad_med,
+        'has_urgent_med_action': has_urgent_med_action,
         'workup_ready': bool(
             ctx.is_active_case
             and not ctx.patient.archived

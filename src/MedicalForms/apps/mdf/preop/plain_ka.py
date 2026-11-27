@@ -488,18 +488,45 @@ _ORPHAN_SEC_PAREN_RE = re.compile(r'\(\s*\d+\.\d+(?:\.\d+)*\s*\)')
 _RESIDUAL_LATIN_RE = re.compile(r'(?<![A-Za-z0-9])(?!STOP\b)(?!x2\b)(?!2x\b)(?!3x\b)[A-Za-zβµ][A-Za-z0-9_+./-]{1,}(?![A-Za-z0-9])')
 
 
+def _safe_ka_str(val):
+    """Safely convert scalar text to str without huge-int ValueError or container repr leakage."""
+    if val is None or isinstance(val, (dict, list, tuple, set, bytes)):
+        return ''
+    if isinstance(val, int) and not isinstance(val, bool) and abs(val) > 10**12:
+        return ''
+    return str(val)
+
+
 def plain_asa_ka(asa_raw):
     """Translate 'ASA I..IV(-E)' into plain Georgian severity label without Latin abbreviations."""
-    s = str(asa_raw or '').strip()
+    s = _safe_ka_str(asa_raw).strip()
     is_emerg = s.endswith('-E')
     base = s[:-2].strip() if is_emerg else s
     ka = _ASA_PLAIN_MAP.get(base, 'შეფასების პროცესში')
     return f'{ka} — გადაუდებელი' if is_emerg else ka
 
 
+_INV_BP_ARM_R_RE = re.compile(r'(?<![A-Za-z0-9])R (?=\d+/\d+)')
+_INV_BP_ARM_L_RE = re.compile(r'(?<![A-Za-z0-9])L (?=\d+/\d+)')
+
+
+_EMPTY_PAREN_RE = re.compile(r'\([/·;,:—–\s-]*\)')
+_EMPTY_BRACK_RE = re.compile(r'\[[/·;,:—–\s-]*\]')
+_LEAD_PAREN_RE = re.compile(r'\((?:[/·;,:—–\s-]+(?:\d+\.\d+(?:\.\d+)*[/·;,:—–\s-]*)?|\d+\.\d+(?:\.\d+)*[/·;,:—–\s-]+)')
+_TRAIL_PAREN_RE = re.compile(r'(?<![/·;,:—–\s-])[/·;,:—–\s-]+\)')
+_LEAD_BRACK_RE = re.compile(r'\[[/·;,:—–\s-]+')
+_TRAIL_BRACK_RE = re.compile(r'(?<![/·;,:—–\s-])[/·;,:—–\s-]+\]')
+_COLON_COMMA_RE = re.compile(r':\s*,+\s*')
+_DASH_PUNCT_RE = re.compile(r'(?<![\s—–-])\s*[—–-]+\s*([!?.])')
+_SPACE_PUNCT_RE = re.compile(r'(?<!\s)\s+([.,;:!?])')
+_MULTI_SPACE_RE = re.compile(r'\s{2,}')
+
+
 def scrub_plain_ka(txt, second_person=True, strip_quoted_ft=False):
     """Scrub clinical abbreviations, guideline names, and Latin tokens into clean Georgian."""
-    out = str(txt or '')
+    out = _safe_ka_str(txt)
+    if not out:
+        return ''
     if strip_quoted_ft:
         out = _QUOTED_FT_RE.sub('თავისუფალ ტექსტში', out)
         out = _BAD_LATIN_VAL_RE.sub(' (არასწორი ჩანაწერი)', out)
@@ -508,6 +535,8 @@ def scrub_plain_ka(txt, second_person=True, strip_quoted_ft=False):
     for old, new in _PHRASE_REPLACEMENTS:
         if old in out:
             out = out.replace(old, new)
+    out = _INV_BP_ARM_R_RE.sub('მარჯვენა ', out)
+    out = _INV_BP_ARM_L_RE.sub('მარცხენა ', out)
     out = _TOKEN_RE.sub(lambda m: _TOKEN_MAP[m.group(0)], out)
     if second_person:
         for old, new in _2ND_PERSON_REPLACEMENTS:
@@ -516,19 +545,19 @@ def scrub_plain_ka(txt, second_person=True, strip_quoted_ft=False):
     if strip_quoted_ft:
         out = _RESIDUAL_LATIN_RE.sub('', out)
     out = _ORPHAN_SEC_PAREN_RE.sub('', out)
-    out = re.sub(r'\(\s*[/·;,:—–\s-]*\s*\)', '', out)
-    out = re.sub(r'\[\s*[/·;,:—–\s-]*\s*\]', '', out)
-    out = re.sub(r'\(\s*(?:[/·;,:—–-]+\s*)+(?:\d+\.\d+(?:\.\d+)*\s*(?:[/·;,:—–-]+\s*)+)?', '(', out)
-    out = re.sub(r'\s*(?:[/·;,:—–-]+\s*)+\)', ')', out)
-    out = re.sub(r'\[\s*(?:[/·;,:—–-]+\s*)+', '[', out)
-    out = re.sub(r'\s*(?:[/·;,:—–-]+\s*)+\]', ']', out)
-    out = re.sub(r'\(\s+', '(', out)
-    out = re.sub(r'\s+\)', ')', out)
-    out = re.sub(r'\[\s+', '[', out)
-    out = re.sub(r'\s+\]', ']', out)
-    out = re.sub(r'\s*[—–-]+\s*([!?.])', r'\1', out)
-    out = re.sub(r'\s+([.,;:!?])', r'\1', out)
-    out = re.sub(r'\s{2,}', ' ', out).strip()
+    # Strictly O(N) linear-time punctuation cleanup (zero nested quantifiers, anchored via lookbehinds)
+    out = _EMPTY_PAREN_RE.sub('', out)
+    out = _EMPTY_BRACK_RE.sub('', out)
+    out = _LEAD_PAREN_RE.sub('(', out)
+    out = _TRAIL_PAREN_RE.sub(')', out)
+    out = _LEAD_BRACK_RE.sub('[', out)
+    out = _TRAIL_BRACK_RE.sub(']', out)
+    out = _EMPTY_PAREN_RE.sub('', out)
+    out = _EMPTY_BRACK_RE.sub('', out)
+    out = _COLON_COMMA_RE.sub(': ', out)
+    out = _DASH_PUNCT_RE.sub(r'\1', out)
+    out = _SPACE_PUNCT_RE.sub(r'\1', out)
+    out = _MULTI_SPACE_RE.sub(' ', out).strip()
     return out
 
 
@@ -546,5 +575,6 @@ _DRUG_PLAIN_PREFIX = {
 
 
 def plain_drug_name(raw_drug):
-    return scrub_plain_ka(_DRUG_PLAIN_PREFIX.get(raw_drug, raw_drug), second_person=False, strip_quoted_ft=True)
+    safe = _safe_ka_str(raw_drug)
+    return scrub_plain_ka(_DRUG_PLAIN_PREFIX.get(safe, safe), second_person=False, strip_quoted_ft=True)
 

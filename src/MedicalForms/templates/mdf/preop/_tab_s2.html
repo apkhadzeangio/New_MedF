@@ -132,13 +132,13 @@
                             <input type="number" step="any" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="R mmHg" min="0" max="400" class="form-control form-control-sm" style="width:78px">
                             <input type="number" step="any" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="L mmHg" min="0" max="400" class="form-control form-control-sm" style="width:78px">
                             <span class="small ms-1">TBI R/L:</span>
-                            <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="0.72" min="0" max="3.0" class="form-control form-control-sm" style="width:72px">
-                            <input type="number" step="0.01" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="0.70" min="0" max="3.0" class="form-control form-control-sm" style="width:72px">
+                            <input type="number" step="any" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="0.72" min="0" max="3.0" class="form-control form-control-sm" style="width:72px">
+                            <input type="number" step="any" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="0.70" min="0" max="3.0" class="form-control form-control-sm" style="width:72px">
                         </div>
                     </div>
                     {% endif %}
 
-                    {% if ev.needs_alt_vein %}
+                    {% if ev.needs_alt_vein or ev.is_pad_bypass and s.alt_vein_mapped and s.alt_vein_mapped != 'pending' %}
                     <div class="po-task-row reflex-row {% if s.alt_vein_mapped != 'pending' %}done{% endif %}">
                         <span><strong>რეფლექს ექო-კარტირება:</strong> კონტრალატერალური GSV, SSV და ხელის ვენები (Cephalic / Basilic)</span>
                         <select name="alt_vein_mapped" class="form-select form-select-sm" style="width:auto">
@@ -162,9 +162,9 @@
                         <span><strong>არტერიული სკრინინგი — საბაზისო ABI</strong> <small class="text-muted">({% if ev.is_venous %}კომპრესიამდე სავალდებულოა ABI &ge; 0.8{% else %}ტერფის დაქვეითებული პულსაციის გამო{% endif %})</small></span>
                         <div class="d-flex align-items-center gap-2">
                             <span class="small">R:</span>
-                            <input type="number" step="0.01" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="1.05" min="0" max="3.0" class="form-control form-control-sm" style="width:82px">
+                            <input type="number" step="any" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="1.05" min="0" max="3.0" class="form-control form-control-sm" style="width:82px">
                             <span class="small">L:</span>
-                            <input type="number" step="0.01" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="1.02" min="0" max="3.0" class="form-control form-control-sm" style="width:82px">
+                            <input type="number" step="any" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="1.02" min="0" max="3.0" class="form-control form-control-sm" style="width:82px">
                         </div>
                     </div>
                     {% endif %}
@@ -309,7 +309,11 @@
 
                     {% if ev.clearance_seal.code == 'stop' %}
                     <div class="po-alert red" style="padding:8px 12px;font-size:13px">
+                        {% if ev.has_urgent_med_action %}
+                        <span><strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — გეგმური წამლები თვითნებურად არ შეწყვიტოთ; წითლად მონიშნული უკუნაჩვენები/მწვავე მედიკამენტების გამო დაუყოვნებლივ შეათანხმეთ ექიმთან!</strong> <button type="button" class="po-cite-btn" data-rule-id="MED_STOP_LOCK_SAFETY" aria-label="კლინიკური წყარო" title="კლინიკური წყარო">ⓘ</button></span>
+                        {% else %}
                         <span><strong>ოპერაციაზე დაშვება დაბლოკილია (STOP) — არცერთი სასიცოცხლო მედიკამენტი (განსაკუთრებით ანტიკოაგულანტი/ანტიაგრეგანტი) არ შეწყვიტოთ!</strong> <button type="button" class="po-cite-btn" data-rule-id="MED_STOP_LOCK_SAFETY" aria-label="კლინიკური წყარო" title="კლინიკური წყარო">ⓘ</button></span>
+                        {% endif %}
                     </div>
                     {% endif %}
                     {% if med_schedule_items %}
@@ -327,7 +331,7 @@
                                 <tr>
                                     <td><strong>{{ m.drug }}</strong></td>
                                     {% if ev.has_any_date_plan %}<td class="po-med-tone-{{ m.tone }}"><strong>{{ m.date_plan }}</strong></td>{% endif %}
-                                    <td class="po-med-tone-{{ m.tone }}">{{ m.rule }}{% if m.rule_meta %} <button type="button" class="po-cite-btn" data-rule-id="{{ m.rule_meta.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ m.rule_meta.source }}">ⓘ</button>{% endif %}</td>
+                                    <td class="po-med-tone-{{ m.tone }}">{% if ev.clearance_seal.code == 'stop' and not m.contraindicated and not m.acute_hold and not m.unstructured %}ოპერაცია შეჩერებულია — გეგმური შეჩერების რეჟიმი დროებით გაუქმებულია; გადაამოწმეთ მკურნალ ექიმთან{% else %}{{ m.rule }}{% endif %}{% if m.rule_meta %} <button type="button" class="po-cite-btn" data-rule-id="{{ m.rule_meta.id }}" aria-label="კლინიკური წყარო" title="კლინიკური წყარო: {{ m.rule_meta.source }}">ⓘ</button>{% endif %}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

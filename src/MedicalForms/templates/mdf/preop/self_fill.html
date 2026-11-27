@@ -74,7 +74,7 @@
                 <input type="number" step="any" name="weight_kg" form="self-q-form" value="{{ s.weight_kg|default_if_none:'' }}" placeholder="მაგ. 72" class="form-control">
             </label>
             <label class="fld">სიმაღლე (სმ)
-                <input type="number" name="height_cm" form="self-q-form" value="{{ s.height_cm|default_if_none:'' }}" placeholder="მაგ. 168" class="form-control">
+                <input type="number" step="any" name="height_cm" form="self-q-form" value="{{ s.height_cm|default_if_none:'' }}" placeholder="მაგ. 168" class="form-control">
             </label>
             <label class="fld">ტელეფონი
                 {% if masked_phone %}

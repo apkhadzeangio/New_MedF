@@ -38,6 +38,17 @@
         syncRegSide();
     }
 
+    function convGlucoseMmol(v) {
+        if (v <= 35) return v;
+        var n = Math.round(v * 10000);
+        var q = Math.floor(n / 1800), r = n % 1800;
+        if (n < 702000) return q / 100;
+        if (n > 1260000) return (q + (r ? 1 : 0)) / 100;
+        if (r * 2 > 1800) return (q + 1) / 100;
+        if (r * 2 < 1800) return q / 100;
+        return (q % 2 === 0 ? q : q + 1) / 100;
+    }
+
     // 2. Comma-decimal normalization on submit + instant clinical guardrails on vitals form
     var vitalsForm = document.getElementById('nw-vitals-form');
     var liveGuard = document.getElementById('nw-live-guard');
@@ -65,6 +76,8 @@
             msgs.push('კრიტიკულად მაღალი ზედა წნევა (' + sbp + ' ≥ 180 mmHg) — აცნობეთ ექიმს!');
         } else if (!isNaN(sbp) && sbp < 90) {
             msgs.push('დაბალი ზედა წნევა (' + sbp + ' < 90 mmHg) — აცნობეთ ექიმს!');
+        } else if (!isNaN(sbp) && sbp < 100) {
+            msgs.push('სასაზღვრო ჰიპოტენზია (' + sbp + ' mmHg — SBP 90–99).');
         } else if (!isNaN(sbp) && sbp >= 160) {
             msgs.push('მომატებული ზედა წნევა (' + sbp + ' ≥ 160 mmHg).');
         }
@@ -126,6 +139,8 @@
             msgs.push('დაუჯერებელი პულსი (' + hr + '/წთ — 15–260)!');
         } else if (!isNaN(hr) && (hr < 45 || hr > 110)) {
             msgs.push('კრიტიკული პულსი (' + hr + '/წთ) — აცნობეთ ექიმს!');
+        } else if (!isNaN(hr) && hr < 55) {
+            msgs.push('ზომიერი ბრადიკარდია (HR ' + hr + '/წთ < 55).');
         }
         if (rawSpo2 && isNaN(spo2)) {
             msgs.push('შეამოწმეთ SpO2: შეიყვანეთ მხოლოდ რიცხვი!');
@@ -175,8 +190,7 @@
         } else if (!isNaN(gl) && (gl < 0.5 || gl > 1000)) {
             msgs.push('დაუჯერებელი გლუკოზა (' + gl + ') — გადაამოწმეთ!');
         } else if (!isNaN(gl)) {
-            var rawGl = gl / 18.0;
-            var glM = gl > 35 ? (rawGl < 3.9 ? Math.floor(rawGl * 100) / 100 : (rawGl > 7.0 ? Math.ceil(rawGl * 100) / 100 : Math.round(rawGl * 100) / 100)) : gl;
+            var glM = convGlucoseMmol(gl);
             if (glM < 3.9 || glM >= 14.0) msgs.push('კრიტიკული გლიკემია (' + glM + ' მმოლ/ლ) — აცნობეთ ექიმს!');
             else if (glM >= 7.0) msgs.push('მომატებული გლუკოზა (' + glM + ' მმოლ/ლ — ჩაირთვება HbA1c).');
         }
@@ -222,16 +236,17 @@
         if ((rawS && isNaN(s)) || (rawD && isNaN(d))) msgs.push('შეამოწმეთ დილის წნევა: შეიყვანეთ მხოლოდ რიცხვები!');
         if (!isNaN(s) && (s < 40 || s > 300)) msgs.push('დაუჯერებელი დილის ზედა წნევა (' + s + ' mmHg — 40–300)!');
         else if (!isNaN(s) && (s >= 180 || s < 90)) msgs.push('კრიტიკული დილის ზედა წნევა (' + s + ' mmHg) — შეაჩერეთ და აცნობეთ ექიმს!');
+        else if (!isNaN(s) && s < 100) msgs.push('სასაზღვრო დილის ჰიპოტენზია (' + s + ' mmHg — SBP 90–99).');
         else if (!isNaN(s) && s >= 160) msgs.push('მომატებული დილის ზედა წნევა (' + s + ' ≥ 160 mmHg).');
         if (!isNaN(d) && (d < 20 || d > 200)) msgs.push('დაუჯერებელი დილის ქვედა წნევა (' + d + ' mmHg — 20–200)!');
         else if (!isNaN(d) && d >= 110) msgs.push('კრიტიკული დილის ქვედა წნევა (' + d + ' ≥ 110 mmHg) — აცნობეთ ექიმს!');
         else if (!isNaN(d) && d >= 100) msgs.push('მომატებული დილის ქვედა წნევა (' + d + ' ≥ 100 mmHg).');
         if (!isNaN(s) && !isNaN(d) && s <= d) msgs.push('დილის ზედა წნევა (' + s + ') უნდა იყოს ქვედაზე (' + d + ') მეტი!');
+        else if (!isNaN(s) && !isNaN(d) && (s - d) < 20) msgs.push('ვიწრო პულსური წნევა (' + s + '/' + d + ' mmHg < 20 mmHg) — გადაამოწმეთ!');
         if (rawG && isNaN(g)) msgs.push('შეამოწმეთ დილის გლუკოზა: შეიყვანეთ მხოლოდ რიცხვი!');
         else if (!isNaN(g) && (g < 0.5 || g > 1000)) msgs.push('დაუჯერებელი დილის გლუკოზა (' + g + ')!');
         else if (!isNaN(g)) {
-            var rawGm = g / 18.0;
-            var gm = g > 35 ? (rawGm < 3.9 ? Math.floor(rawGm * 100) / 100 : (rawGm > 7.0 ? Math.ceil(rawGm * 100) / 100 : Math.round(rawGm * 100) / 100)) : g;
+            var gm = convGlucoseMmol(g);
             if (gm < 3.9 || gm >= 14.0) msgs.push('კრიტიკული დილის გლიკემია (' + gm + ' მმოლ/ლ) — აცნობეთ ექიმს!');
             else if (gm > 10.0) msgs.push('მომატებული დილის გლუკოზა (' + gm + ' > 10.0 მმოლ/ლ — გლიკემიური კონტროლი).');
         }
@@ -342,8 +357,7 @@
         var isDosGl = el.name === 'dos_glucose';
         attachFldGuard(el, function (v) {
             if (v < 0.5 || v > 1000) return { level: 'crit', msg: 'დაუჯერებელი გლუკოზა (' + v + ')!' };
-            var rawMf = v / 18.0;
-            var mmol = v > 35 ? (rawMf < 3.9 ? Math.floor(rawMf * 100) / 100 : (rawMf > 7.0 ? Math.ceil(rawMf * 100) / 100 : Math.round(rawMf * 100) / 100)) : v;
+            var mmol = convGlucoseMmol(v);
             if (mmol >= 14.0 || mmol < 3.9) return { level: 'crit', msg: 'კრიტიკული გლიკემია (' + mmol + ' მმოლ/ლ)!' };
             if (isDosGl) {
                 if (mmol > 10.0) return { level: 'warn', msg: 'მომატებული დილის გლუკოზა (>10.0 მმოლ/ლ)' };
@@ -357,6 +371,7 @@
         attachFldGuard(el, function (v) {
             if (v < 15 || v > 260) return { level: 'crit', msg: 'დაუჯერებელი პულსი (' + v + '/წთ — 15–260)!' };
             if (v < 45 || v > 110) return { level: 'crit', msg: 'კრიტიკული პულსი (' + v + '/წთ)!' };
+            if (v < 55) return { level: 'warn', msg: 'ბრადიკარდია (' + v + '/წთ — 45–54)' };
             return null;
         });
     });
@@ -407,11 +422,11 @@
         var sbpHi = el.name === 'dos_bp_sys' ? 300 : 320;
         attachFldGuard(el, function (v) {
             if (v < sbpLo || v > sbpHi) return { level: 'crit', msg: 'დაუჯერებელი სისტოლური წნევა (' + v + ' mmHg)!' };
-            if (diaEl) {
-                var dv = parseNum(diaEl.value);
-                if (!isNaN(dv) && v <= dv) return { level: 'crit', msg: 'სისტოლური (' + v + ') უნდა იყოს დიასტოლურზე (' + dv + ') მეტი!' };
-            }
+            var dv = diaEl ? parseNum(diaEl.value) : NaN;
+            if (!isNaN(dv) && v <= dv) return { level: 'crit', msg: 'სისტოლური (' + v + ') უნდა იყოს დიასტოლურზე (' + dv + ') მეტი!' };
             if (v >= 180 || v < 90) return { level: 'crit', msg: v >= 180 ? 'კრიტიკული ჰიპერტენზია (≥180 mmHg)!' : 'ჰიპოტენზია (<90 mmHg)!' };
+            if (!isNaN(dv) && (v - dv) < 20) return { level: 'warn', msg: 'ვიწრო პულსური წნევა (' + v + '/' + dv + ' mmHg — გადაამოწმეთ!)' };
+            if (v < 100) return { level: 'warn', msg: 'სასაზღვრო ჰიპოტენზია (SBP 90–99 mmHg)' };
             if (v >= 160) return { level: 'warn', msg: 'მომატებული წნევა (≥160 mmHg)' };
             return null;
         });
@@ -423,11 +438,10 @@
         var dbpHi = el.name === 'dos_bp_dia' ? 200 : 220;
         attachFldGuard(el, function (v) {
             if (v < 20 || v > dbpHi) return { level: 'crit', msg: 'დაუჯერებელი დიასტოლური წნევა (' + v + ' mmHg)!' };
-            if (sysEl) {
-                var sv = parseNum(sysEl.value);
-                if (!isNaN(sv) && sv <= v) return { level: 'crit', msg: 'დიასტოლური (' + v + ') არ შეიძლება აღემატებოდეს სისტოლურს (' + sv + ')!' };
-            }
+            var sv = sysEl ? parseNum(sysEl.value) : NaN;
+            if (!isNaN(sv) && sv <= v) return { level: 'crit', msg: 'დიასტოლური (' + v + ') არ შეიძლება აღემატებოდეს სისტოლურს (' + sv + ')!' };
             if (v >= 110) return { level: 'crit', msg: 'კრიტიკული დიასტოლური წნევა (≥110 mmHg)!' };
+            if (!isNaN(sv) && (sv - v) < 20) return { level: 'warn', msg: 'ვიწრო პულსური წნევა (' + sv + '/' + v + ' mmHg — გადაამოწმეთ!)' };
             if (v >= 100) return { level: 'warn', msg: 'მომატებული დიასტოლური წნევა (≥100 mmHg)' };
             return null;
         });

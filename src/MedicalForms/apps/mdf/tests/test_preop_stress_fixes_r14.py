@@ -366,7 +366,11 @@ class Round14WorkflowSecurityAndFuzzTests(TestCase):
         self.assertEqual(r5.status_code, 200)
         self.assertFalse(PreopPatient.objects.filter(pk=p_own.pk).exists())
 
-        # 5. Staff admin CAN delete audit-protected patient
+        # 5. Archived card is locked even for staff admin until unarchived; once unarchived, staff admin CAN delete
+        r6_locked = c_staff.post(url_app, {'action': 'delete'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(r6_locked.status_code, 403)
+        self.assertTrue(PreopPatient.objects.filter(pk=p_app.pk, archived=True).exists())
+        c_staff.post(url_app, {'action': 'archive'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         r6 = c_staff.post(url_app, {'action': 'delete'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         self.assertEqual(r6.status_code, 200)
         self.assertFalse(PreopPatient.objects.filter(pk=p_app.pk).exists())

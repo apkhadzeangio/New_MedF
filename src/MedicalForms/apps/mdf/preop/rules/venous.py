@@ -124,7 +124,7 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
             vte_agents = (
                 'IPC / არაჰეპარინული სქემა ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის კონსილიუმით (ორსულობა + მექ. სარქველი + HIT — UFH/LMWH/DOAC აკრძალულია!)'
                 if has_hit else (
-                    'მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (ორსულობა + მექ. სარქველი + CrCl<30/დიალიზი: LMWH კუმულირდება, DOAC აკრძალულია — IV/SC UFH ან ტრიმესტრით VKA!)'
+                    f'მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (ორსულობა + მექ. სარქველი + CrCl<{ren_red}/დიალიზი: LMWH კუმულირდება, DOAC აკრძალულია — IV/SC UFH ან ტრიმესტრით VKA!)'
                     if ven_severe_renal else 'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (ორსულობა + მექ. სარქველი: VKA vs LMWH/UFH ტრიმესტრით — DOAC აკრძალულია!)'
                 )
             )
@@ -140,7 +140,7 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
             vte_agents = (
                 'IPC / არაჰეპარინული სქემა მეან-გინეკოლოგთან და ჰემატოლოგთან (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!)'
                 if has_hit else (
-                    'კანქვეშა UFH მეან-გინეკოლოგთან (ორსულობა + CrCl<30: LMWH კუმულირდება, DOAC აკრძალულია!)'
+                    f'კანქვეშა UFH მეან-გინეკოლოგთან (ორსულობა + CrCl<{ren_red}: LMWH კუმულირდება, DOAC აკრძალულია!)'
                     if ven_severe_renal else 'LMWH / UFH მეან-გინეკოლოგთან შეთანხმებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
                 )
             )
@@ -154,12 +154,12 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
                 vte_agents = f'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
         elif has_hit:
             vte_agents = (
-                f'IPC / არგატრობანი-ბივალირუდინი — HIT + CrCl<30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!{arg_liv}'
+                f'IPC / არგატრობანი-ბივალირუდინი — HIT + CrCl<{ren_red}: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!{arg_liv}'
                 if ven_severe_renal else
                 ('IPC / IV ბივალირუდინი — HIT + ღვიძლის ≥3x: ჰეპარინი, DOAC და ფონდაპარინუქსი არარეკომენდებულია!' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC — HIT: ჰეპარინი აკრძალულია!')
             )
         elif ven_severe_renal and ctx.liver_3x:
-            vte_agents = 'კანქვეშა UFH + IPC კოაგულოგრამის კონტროლით (CrCl/eGFR <30 + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი აკრძალულია, LMWH კუმულირდება!)'
+            vte_agents = f'კანქვეშა UFH + IPC კოაგულოგრამის კონტროლით (CrCl/eGFR <{ren_red} + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი აკრძალულია, LMWH კუმულირდება!)'
         elif ven_severe_renal:
             vte_agents = 'კანქვეშა UFH / დოზა-კორექტირებული LMWH (DOAC არა!)'
         elif ctx.liver_3x:

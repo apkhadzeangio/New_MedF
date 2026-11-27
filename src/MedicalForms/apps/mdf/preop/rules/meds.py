@@ -67,8 +67,9 @@ def _eval_allergies_and_cied(ctx):
             or (sev_ren_al and (ctx.ft_meds.get('has_ft_lmwh') or ctx.ft_meds.get('has_ft_fondaparinux')))
             or (ctx.liver_3x and ctx.ft_meds.get('has_ft_argatroban'))
             or (ctx.has_mech_valve and ctx.ft_meds.get('has_ft_fondaparinux'))
+            or (getattr(ctx, 'eff_pregnant', False) and (ctx.ft_meds.get('has_ft_fondaparinux') or ('parenteral_dti' in ft_m_al)))
             or (ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and q.get('med_warfarin'))
-            or getattr(ctx, 'active_gi_bleed', False)
+            or getattr(ctx, 'active_gi_bleed', False) or getattr(ctx, 'is_cea_oac_p2y_stop', False) or getattr(ctx, 'is_rupture_suspect', False)
             or bool(q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips or (ft_u_al & {'doac', 'dabigatran'}))
         )
         if par_contra:
@@ -229,9 +230,10 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
         ctx.red_flags.append('ორსულობის დროს სტატინი უკუნაჩვენებია (ტერატოგენული რისკი) — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ექიმთან!')
     if repro_preg and ('acei_arb' in ctx.med_chips or ctx.ft_meds.get('has_ft_acei_arb')):
         ctx.red_flags.append('ორსულობის დროს ACEi / ARB (პრილი/სარტანი) აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!')
-    if repro_preg and q.get('med_prasugrel'):
+    ft_u_pr = ctx.ft_meds.get('unstructured_keys') or ()
+    if repro_preg and (q.get('med_prasugrel') or 'prasugrel' in ft_u_pr):
         ctx.red_flags.append('ორსულობის დროს პრასუგრელი არ არის რეკომენდებული (FDA / EMA) — დაუყოვნებლივ შეათანხმეთ უსაფრთხო ალტერნატივა მეან-გინეკოლოგთან და კარდიოლოგთან!')
-    if repro_preg and q.get('med_ticagrelor'):
+    if repro_preg and (q.get('med_ticagrelor') or 'ticagrelor' in ft_u_pr):
         ctx.red_flags.append('ორსულობის დროს ტიკაგრელორი უკუნაჩვენებია / არ არის რეკომენდებული (EMA / FDA) — დაუყოვნებლივ შეათანხმეთ უსაფრთხო ალტერნატივა მეან-გინეკოლოგთან და კარდიოლოგთან!')
     if repro_preg and q.get('sglt2'):
         ctx.red_flags.append('ორსულობის დროს SGLT2 ინჰიბიტორი უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ენდოკრინოლოგთან და მეან-გინეკოლოგთან!')
@@ -241,11 +243,11 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
         ctx.red_flags.append('ორსულობის დროს GLP-1 აგონისტი უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ენდოკრინოლოგთან და მეან-გინეკოლოგთან!')
     if ctx.liver_3x and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips):
         ctx.red_flags.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN) ანტიკოაგულანტის ფონზე: კოაგულოპათიის / Child-Pugh B–C დროს DOAC უკუნაჩვენებია (EHRA 2021) — გადაამოწმეთ სქემა!')
-    if ctx.liver_3x and q.get('med_ticagrelor'):
+    if ctx.liver_3x and (q.get('med_ticagrelor') or 'ticagrelor' in ft_u_pr):
         ctx.red_flags.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN): ტიკაგრელორი უკუნაჩვენებია (EMA Brilique SmPC 4.3 / FDA 5.5 — სისხლდენის რისკი)! დაუყოვნებლივ შეცვალეთ კარდიოლოგთან!')
-    if ctx.liver_3x and q.get('med_prasugrel'):
+    if ctx.liver_3x and (q.get('med_prasugrel') or 'prasugrel' in ft_u_pr):
         ctx.red_flags.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN): პრასუგრელი უკუნაჩვენებია (FDA Effient PI 5.1 — მძიმე სისხლდენის რისკი)! დაუყოვნებლივ შეცვალეთ კარდიოლოგთან!')
-    if q.get('med_prasugrel') or ('prasugrel' in (ctx.ft_meds.get('unstructured_keys') or ())):
+    if q.get('med_prasugrel') or ('prasugrel' in ft_u_pr):
         age_pr = ctx.age if ctx.age is not None else (getattr(ctx, 'age_sat', None) or 0)
         wt_pr = getattr(ctx, 'weight_sat', ctx.weight_num)
         if age_pr >= 75:
@@ -320,7 +322,7 @@ def _eval_antithrombotic_conflicts(ctx):
             'პაციენტი იღებს პერორალურ ანტიკოაგულანტს (OAC / რივაროქსაბანი 2.5 მგ) ტიკაგრელორთან ან პრასუგრელთან ერთად (ESC Class III — სისხლდენის უმაღლესი რისკი)! '
             f'შეათანხმეთ დე-ესკალაცია {deesc_opt} კარდიოლოგთან!'
         )
-    if q.get('med_prasugrel') and has_prior_stroke_tia:
+    if (q.get('med_prasugrel') or 'prasugrel' in ft_u_keys) and has_prior_stroke_tia:
         ctx.red_flags.append('პრასუგრელი აბსოლუტურად უკუნაჩვენებია გადატანილი ინსულტის / TIA-ს ანამნეზში (FDA Boxed Warning — ქალასშიდა სისხლჩაქცევის რისკი)! დაუყოვნებლივ შეცვალეთ ანტიაგრეგანტი კარდიოლოგთან!')
     if 'nsaid' in ctx.allergy_chips and q.get('med_aspirin'):
         ctx.red_flags.append('პაციენტს მონიშნული აქვს ასპირინზე / აასს-ზე ალერგია, მაგრამ იღებს ასპირინს — ანაფილაქსიის/ბრონქოსპაზმის რისკი, დაუყოვნებლივ შეწყვიტეთ და შეცვალეთ ანტიაგრეგანტი ექიმთან!')
@@ -450,7 +452,7 @@ def _eval_explicit_triple_therapy(ctx, asa_allergy, voyager_safe, stent_p2y12, o
     if getattr(ctx, 'has_contra_full_oac', False) and not ctx.has_mech_valve:
         ctx.red_flags.append('არჩეულია პოსტოპ. VOYAGER / DAPT, მაგრამ მიმდინარე OAC უკუნაჩვენებია (თირკმლის/ღვიძლის/ორსულობის/დუბლირების გამო) — უკუნაჩვენები OAC არ განაახლოთ, შეარჩიეთ უსაფრთხო სქემა კონსილიუმით!')
         return _contra_full_oac_postop_label(ctx, oac_partner_lbl)
-    if 'rivaroxaban_2_5' in ctx.med_chips and not has_full_oac_any:
+    if ('rivaroxaban_2_5' in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))) and not has_full_oac_any:
         if not voyager_safe:
             ctx.red_flags.append('რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) უკუნაჩვენებია (ორსულობა / დიალიზი / CrCl / ინსულტი / ღვიძლი ≥3x / სტენტი / ალერგია) და DAPT-თან სამმაგი თერაპია დაუშვებელია — შეწყვიტეთ რივაროქსაბანი 2.5 მგ და შეარჩიეთ უსაფრთხო სქემა!')
             if asa_allergy:
@@ -566,10 +568,13 @@ def _eval_postop_voyager(ctx):
         alt_p2y12_lbl = 'ინდივიდუალური რეჟიმი კონსილიუმით (P2Y12 აუტანლობა/უკუჩვენება!)' if tica_blocked else 'ტიკაგრელორი'
     else:
         alt_p2y12_lbl = 'კლოპიდოგრელი 75 მგ'
+    age_pr = ctx.age if ctx.age is not None else (getattr(ctx, 'age_sat', None) or 0)
+    wt_pr = getattr(ctx, 'weight_sat', ctx.weight_num)
+    pras_bw = (age_pr >= 75) or (wt_pr is not None and wt_pr < 60)
     if q.get('med_ticagrelor') and not tica_blocked:
         stent_p2y12_lbl = 'ტიკაგრელორი'
     elif q.get('med_prasugrel') and not getattr(ctx, 'has_prior_stroke_tia', False) and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
-        stent_p2y12_lbl = 'პრასუგრელი'
+        stent_p2y12_lbl = f'{alt_p2y12_lbl} — პრასუგრელის დე-ესკალაციით კარდიოლოგთან (FDA Boxed Warning)!' if pras_bw else 'პრასუგრელი'
     else:
         stent_p2y12_lbl = alt_p2y12_lbl
     ctx.stent_p2y12_lbl = stent_p2y12_lbl

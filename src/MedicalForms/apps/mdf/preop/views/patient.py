@@ -452,34 +452,40 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         return had_err, inv_res
 
     @staticmethod
-    def _apply_dos_vqi_post(post, s, today, dos_check_keys, form_present, dos_partial):
-        if 'planned_surgery_date' in post:
+    def _apply_dos_vqi_post(post, s, today, dos_check_keys, form_present, dos_partial, prev_outcome='scheduled'):
+        from ..constants import INACTIVE_CASE_OUTCOMES
+        posted_out = post.get('case_outcome_status')
+        next_out = posted_out if posted_out in dict(CASE_OUTCOME_CHOICES) else prev_outcome
+        stay_inactive = (prev_outcome in INACTIVE_CASE_OUTCOMES) and (next_out in INACTIVE_CASE_OUTCOMES)
+        if not stay_inactive and 'planned_surgery_date' in post:
             _set_planned_surgery_date_field(s, post.get('planned_surgery_date'), today)
         if 'operated_date' in post:
             done_d = _date(post.get('operated_date'))
             s['operated_date'] = done_d.isoformat() if (done_d and done_d <= today) else ''
-        for key, lo, hi in (
-            ('dos_bp_sys', 40, 300), ('dos_bp_dia', 20, 200),
-            ('dos_glucose', 0.5, 1000), ('dos_inr', 0.5, 15.0),
-        ):
-            if key in post:
-                _set_num_field(s, key, post.get(key), lo=lo, hi=hi)
+        if not stay_inactive:
+            for key, lo, hi in (
+                ('dos_bp_sys', 40, 300), ('dos_bp_dia', 20, 200),
+                ('dos_glucose', 0.5, 1000), ('dos_inr', 0.5, 15.0),
+            ):
+                if key in post:
+                    _set_num_field(s, key, post.get(key), lo=lo, hi=hi)
         present_keys = (
             set(post.getlist('dos_present_keys'))
             if (hasattr(post, 'getlist') and 'dos_present_keys' in post)
             else dos_check_keys
         )
-        for bf in _DOS_CHECK_BOOLS:
-            if (form_present and bf in present_keys) or (dos_partial and bf in present_keys) or bf in post:
-                s[bf] = post.get(bf) in ('1', 'on', 'true')
+        if not stay_inactive:
+            for bf in _DOS_CHECK_BOOLS:
+                if (form_present and bf in present_keys) or (dos_partial and bf in present_keys) or bf in post:
+                    s[bf] = post.get(bf) in ('1', 'on', 'true')
         for bf in _VQI_CHECK_BOOLS:
             if bf == 'icu_bed_booked':
-                if bf in present_keys or bf in post:
+                if not stay_inactive and (bf in present_keys or bf in post):
                     s[bf] = post.get(bf) in ('1', 'on', 'true')
             elif (form_present and not dos_partial) or (dos_partial and bf in present_keys) or bf in post:
                 s[bf] = post.get(bf) in ('1', 'on', 'true')
-        if post.get('case_outcome_status') in dict(CASE_OUTCOME_CHOICES):
-            s['case_outcome_status'] = post.get('case_outcome_status')
+        if posted_out in dict(CASE_OUTCOME_CHOICES):
+            s['case_outcome_status'] = posted_out
         if post.get('vqi_30d_status') in dict(VQI_30D_CHOICES):
             s['vqi_30d_status'] = post.get('vqi_30d_status')
         if hasattr(post, 'getlist'):
@@ -510,7 +516,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         dos_partial = request.POST.get('dos_partial') == '1'
 
         prev_outcome = ev_before.get('case_outcome') or 'scheduled'
-        self._apply_dos_vqi_post(request.POST, s, today, dos_check_keys, form_present, dos_partial)
+        self._apply_dos_vqi_post(request.POST, s, today, dos_check_keys, form_present, dos_partial, prev_outcome=prev_outcome)
         posted_outcome = s.get('case_outcome_status') or 'scheduled'
 
         if action == 'complete_and_board':
@@ -734,19 +740,24 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         tab = request.GET.get('tab') or ('q' if not ev['q'].get('filled') else 's1')
         tab = tab if tab in ('q', 's1', 's2', 'doc', 'dos') else 'q'
         auto_anamnesis = generate_anamnesis(patient, ev)
+        from ..constants import INACTIVE_CASE_OUTCOMES
+        from ..plain_ka import scrub_plain_ka
+
         files = list(patient.files.select_related('created_by', 'created_by__profile'))
         files_by_cat = [
-            {'key': k, 'label': lbl, 'files': ci}
+            {'key': k, 'label': lbl, 'plain_label': scrub_plain_ka(lbl, second_person=False, strip_quoted_ft=True), 'files': ci}
             for k, lbl in PreopFile.Category.choices if (ci := [f for f in files if f.category == k])
         ]
         self_token, board_patient = make_self_fill_token(patient), resolve_board_patient(patient)
         default_board_unit = board_patient.unit if board_patient else (BoardPatient.ICU if ev['needs_icu_bed'] else BoardPatient.WARD)
         is_doc = is_doctor_user(request.user)
         is_inactive_card = bool(patient.archived or ev.get('case_outcome', 'scheduled') != 'scheduled')
-        is_audit_prot = bool(patient.archived or patient.approved_at or ev.get('case_outcome') == 'operated' or ev['s'].get('board_patient_id'))
+        is_audit_prot = bool(patient.archived or patient.approved_at or ev.get('case_outcome') in INACTIVE_CASE_OUTCOMES or ev['s'].get('board_patient_id'))
         can_delete_card = bool(
-            request.user.is_superuser or request.user.is_staff or (is_doc and not is_audit_prot)
-            or (not is_audit_prot and patient.surgeon_id is None and (patient.created_by_id is None or patient.created_by_id == request.user.pk) and not any(f.created_by_id != request.user.pk for f in files))
+            not patient.archived and (
+                request.user.is_superuser or request.user.is_staff or (is_doc and not is_audit_prot)
+                or (not is_audit_prot and patient.surgeon_id is None and (patient.created_by_id is None or patient.created_by_id == request.user.pk) and not any(f.created_by_id != request.user.pk for f in files))
+            )
         )
         ctx = {
             'p': patient, 'ev': ev, 'q': ev['q'], 's': ev['s'], 'tab': tab,

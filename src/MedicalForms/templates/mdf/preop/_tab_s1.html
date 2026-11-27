@@ -29,7 +29,7 @@
                         <input type="number" name="hr" value="{{ s.hr|default_if_none:'' }}" placeholder="72" class="form-control">
                     </label>
                     <label class="fld">სატურაცია SpO₂ (%)
-                        <input type="number" name="spo2" value="{{ s.spo2|default_if_none:'' }}" placeholder="98" class="form-control">
+                        <input type="number" step="any" name="spo2" value="{{ s.spo2|default_if_none:'' }}" placeholder="98" class="form-control">
                     </label>
                 </div>
                 <div class="d-flex flex-wrap align-items-end gap-3">
@@ -44,7 +44,7 @@
                         <input type="number" step="any" name="weight_kg" value="{{ s.weight_kg|default_if_none:'' }}" class="form-control">
                     </label>
                     <label class="fld" style="width:115px">სიმაღლე (სმ)
-                        <input type="number" name="height_cm" value="{{ s.height_cm|default_if_none:'' }}" class="form-control">
+                        <input type="number" step="any" name="height_cm" value="{{ s.height_cm|default_if_none:'' }}" class="form-control">
                     </label>
                 </div>
             </section>
@@ -259,7 +259,7 @@
                         </select>
                     </label>
                     <label class="fld">საჩინო ვენის დიამეტრი (მმ)
-                        <input type="number" step="0.1" name="ven_gsv_mm" value="{{ s.ven_gsv_mm|default_if_none:'' }}" placeholder="მაგ. 8.5" min="1" max="50" class="form-control">
+                        <input type="number" step="any" name="ven_gsv_mm" value="{{ s.ven_gsv_mm|default_if_none:'' }}" placeholder="მაგ. 8.5" min="1" max="50" class="form-control">
                     </label>
                 </div>
                 <div class="po-chip-row">
@@ -285,10 +285,10 @@
                 <!-- CEA Stage 1 Imaging -->
                 <div class="grid-4">
                     <label class="fld">მარჯვენა საძილე — ICA სტენოზი — NASCET (%){% if p.side == 'R' %} · საოპერაციო{% endif %}
-                        <input type="number" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 80" min="0" max="100" class="form-control">
+                        <input type="number" step="any" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 80" min="0" max="100" class="form-control">
                     </label>
                     <label class="fld">მარცხენა საძილე — ICA სტენოზი — NASCET (%){% if p.side == 'L' %} · საოპერაციო{% endif %}
-                        <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 35" min="0" max="100" class="form-control">
+                        <input type="number" step="any" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 35" min="0" max="100" class="form-control">
                     </label>
                     <label class="fld">კისრისა და რკალის CTA / MRA
                         <select name="cea_cta_status" class="form-select">
@@ -307,7 +307,7 @@
                 </div>
                 <div class="grid-4">
                     <label class="fld">ექო — LVEF % ({% if ev.needs_echo_or_bnp %}ან NT-proBNP &lt;125{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 58" min="5" max="95" class="form-control">
+                        <input type="number" step="any" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 58" min="5" max="95" class="form-control">
                     </label>
                     <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
                         <select name="cxr" class="form-select">
@@ -335,10 +335,10 @@
                 <!-- ABF Stage 1 Imaging + Mesenteric / Renal CTA Checklist -->
                 <div class="grid-4">
                     <label class="fld">მარჯვენა ABI (გოჯ-მხრის ინდექსი)
-                        <input type="number" step="0.01" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="მაგ. 0.42" min="0" max="3.0" class="form-control">
+                        <input type="number" step="any" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="მაგ. 0.42" min="0" max="3.0" class="form-control">
                     </label>
                     <label class="fld">მარცხენა ABI (გოჯ-მხრის ინდექსი)
-                        <input type="number" step="0.01" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="მაგ. 0.38" min="0" max="3.0" class="form-control">
+                        <input type="number" step="any" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="მაგ. 0.38" min="0" max="3.0" class="form-control">
                     </label>
                     <label class="fld">აორტის საკლამპე ზონა CTA-ზე
                         <select name="abf_clamp_zone" class="form-select">
@@ -366,22 +366,22 @@
                             <input type="number" step="any" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 40" min="0" max="400" class="form-control">
                         </label>
                         <label class="fld">მარჯვენა TBI (თით-მხრის ინდექსი)
-                            <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.42" min="0" max="3.0" class="form-control">
+                            <input type="number" step="any" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.42" min="0" max="3.0" class="form-control">
                         </label>
                         <label class="fld">მარცხენა TBI (თით-მხრის ინდექსი)
-                            <input type="number" step="0.01" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="მაგ. 0.38" min="0" max="3.0" class="form-control">
+                            <input type="number" step="any" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="მაგ. 0.38" min="0" max="3.0" class="form-control">
                         </label>
                     </div>
                 </details>
                 <div class="grid-4">
                     <label class="fld">მარჯვენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 25" min="0" max="100" class="form-control">
+                        <input type="number" step="any" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 25" min="0" max="100" class="form-control">
                     </label>
                     <label class="fld">მარცხენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
+                        <input type="number" step="any" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
                     </label>
                     <label class="fld">ექო — LVEF % (ან NT-proBNP &lt;125)
-                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="95" class="form-control">
+                        <input type="number" step="any" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="95" class="form-control">
                     </label>
                     <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
                         <select name="cxr" class="form-select">
@@ -420,10 +420,10 @@
                 <!-- PERIPHERAL ARTERIAL BYPASS Stage 1: Runoff CTA + Ipsilateral GSV Vein Mapping -->
                 <div class="grid-4">
                     <label class="fld">მარჯვენა ABI{% if p.side == 'R' %} · საოპერაციო{% endif %}
-                        <input type="number" step="0.01" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="მაგ. 0.35" min="0" max="3.0" class="form-control">
+                        <input type="number" step="any" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="მაგ. 0.35" min="0" max="3.0" class="form-control">
                     </label>
                     <label class="fld">მარცხენა ABI{% if p.side == 'L' %} · საოპერაციო{% endif %}
-                        <input type="number" step="0.01" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="მაგ. 0.85" min="0" max="3.0" class="form-control">
+                        <input type="number" step="any" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="მაგ. 0.85" min="0" max="3.0" class="form-control">
                     </label>
                     <label class="fld" style="grid-column:span 2">დისტალური მიმღები კალაპოტი (Runoff CTA / ანგიოგრაფია)
                         <select name="pad_runoff_status" class="form-select">
@@ -444,10 +444,10 @@
                             <input type="number" step="any" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 75" min="0" max="400" class="form-control">
                         </label>
                         <label class="fld">მარჯვენა TBI
-                            <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.30" min="0" max="3.0" class="form-control">
+                            <input type="number" step="any" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.30" min="0" max="3.0" class="form-control">
                         </label>
                         <label class="fld">მარცხენა TBI
-                            <input type="number" step="0.01" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="მაგ. 0.72" min="0" max="3.0" class="form-control">
+                            <input type="number" step="any" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="მაგ. 0.72" min="0" max="3.0" class="form-control">
                         </label>
                     </div>
                 </details>
@@ -460,18 +460,18 @@
                         </select>
                     </label>
                     <label class="fld">GSV მინიმალური დიამეტრი (მმ)
-                        <input type="number" step="0.1" name="pad_gsv_mm" value="{{ s.pad_gsv_mm|default_if_none:'' }}" placeholder="მაგ. 3.4" min="0.5" max="30" class="form-control">
+                        <input type="number" step="any" name="pad_gsv_mm" value="{{ s.pad_gsv_mm|default_if_none:'' }}" placeholder="მაგ. 3.4" min="0.5" max="30" class="form-control">
                     </label>
                     <label class="fld">ექო — LVEF % ({% if ev.needs_echo_or_bnp %}ან NT-proBNP &lt;125{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="95" class="form-control">
+                        <input type="number" step="any" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="95" class="form-control">
                     </label>
                 </div>
                 <div class="grid-4">
                     <label class="fld">მარჯვენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 25" min="0" max="100" class="form-control">
+                        <input type="number" step="any" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 25" min="0" max="100" class="form-control">
                     </label>
                     <label class="fld">მარცხენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
+                        <input type="number" step="any" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
                     </label>
                     <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
                         <select name="cxr" class="form-select">
@@ -500,10 +500,10 @@
                 <!-- PERIPHERAL PTA / STENTING Stage 1: ABI + Lesion Level + Puncture Access + ECG -->
                 <div class="grid-4">
                     <label class="fld">მარჯვენა ABI{% if p.side == 'R' %} · საოპერაციო{% endif %}
-                        <input type="number" step="0.01" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="მაგ. 0.48" min="0" max="3.0" class="form-control">
+                        <input type="number" step="any" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" placeholder="მაგ. 0.48" min="0" max="3.0" class="form-control">
                     </label>
                     <label class="fld">მარცხენა ABI{% if p.side == 'L' %} · საოპერაციო{% endif %}
-                        <input type="number" step="0.01" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="მაგ. 0.92" min="0" max="3.0" class="form-control">
+                        <input type="number" step="any" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" placeholder="მაგ. 0.92" min="0" max="3.0" class="form-control">
                     </label>
                     <label class="fld">დაზიანების ანატომიური სეგმენტი
                         <select name="pta_lesion_site" class="form-select">
@@ -531,10 +531,10 @@
                             <input type="number" step="any" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 80" min="0" max="400" class="form-control">
                         </label>
                         <label class="fld">მარჯვენა TBI
-                            <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.40" min="0" max="3.0" class="form-control">
+                            <input type="number" step="any" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.40" min="0" max="3.0" class="form-control">
                         </label>
                         <label class="fld">მარცხენა TBI
-                            <input type="number" step="0.01" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="მაგ. 0.74" min="0" max="3.0" class="form-control">
+                            <input type="number" step="any" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="მაგ. 0.74" min="0" max="3.0" class="form-control">
                         </label>
                     </div>
                 </details>
@@ -585,13 +585,13 @@
 
                 <div class="grid-4">
                     <label class="fld">მარჯვენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 25" min="0" max="100" class="form-control">
+                        <input type="number" step="any" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" placeholder="მაგ. 25" min="0" max="100" class="form-control">
                     </label>
                     <label class="fld">მარცხენა საძილე — ICA ({% if ev.needs_carotid_duplex %}სავალდებულო{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
+                        <input type="number" step="any" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" placeholder="მაგ. 30" min="0" max="100" class="form-control">
                     </label>
                     <label class="fld">ექო — LVEF % ({% if ev.needs_echo_or_bnp %}ან NT-proBNP &lt;125{% else %}ჩვენებით{% endif %})
-                        <input type="number" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="95" class="form-control">
+                        <input type="number" step="any" name="lvef" value="{{ s.lvef|default_if_none:'' }}" placeholder="მაგ. 55" min="5" max="95" class="form-control">
                     </label>
                     <label class="fld">გულმკერდის რენტგენი ({% if ev.needs_cxr %}სავალდებულო{% else %}ჩვენებით{% endif %})
                         <select name="cxr" class="form-select">
@@ -636,10 +636,73 @@
                         <select name="ven_duplex_status" class="form-select border-danger">
                             <option value="acute_dvt" selected>მწვავე ღრმა ვენების თრომბოზი (DVT — წითელი სიგნალი!)</option>
                             <option value="pending">მოხსნა / არ ეხება</option>
-                            <option value="reflux_only">✓ ღრმა ვენები თავისუფალია (DVT გამორიცხულია)</option>
+                            <option value="deep_patent_reflux">✓ ღრმა ვენები თავისუფალია (DVT გამორიცხულია)</option>
                         </select>
                     </label>
                 </div>
+                {% endif %}
+
+                {% if ev.is_venous and s.abi_r is not None or ev.is_venous and s.abi_l is not None or ev.is_venous and s.k is not None or ev.pathway != 'aaa_infra' and s.aaa_mm is not None or ev.is_venous or ev.is_pta %}
+                    {% if ev.is_venous and s.abi_r is not None or ev.is_venous and s.abi_l is not None or ev.is_venous and s.k is not None or ev.pathway != 'aaa_infra' and s.aaa_mm is not None or s.echo_valve_issue and ev.is_venous or s.echo_valve_issue and ev.is_pta or s.urine_nitrite and ev.is_venous or s.urine_nitrite and ev.is_pta or s.fibrinogen is not None and ev.is_venous or s.fibrinogen is not None and ev.is_pta or s.lvef is not None and ev.is_venous or s.lvef is not None and ev.is_pta or s.carotid_r is not None and ev.is_venous or s.carotid_r is not None and ev.is_pta or s.carotid_l is not None and ev.is_venous or s.carotid_l is not None and ev.is_pta or s.nt_probnp is not None and ev.is_venous or s.nt_probnp is not None and ev.is_pta or s.hs_ctn is not None and ev.is_venous or s.hs_ctn is not None and ev.is_pta or s.na is not None and ev.is_venous or s.na is not None and ev.is_pta or s.hba1c is not None and ev.is_venous or s.hba1c is not None and ev.is_pta or s.albumin is not None and ev.is_venous or s.albumin is not None and ev.is_pta or s.urine_wbc is not None and ev.is_venous or s.urine_wbc is not None and ev.is_pta or s.liver_status and s.liver_status != 'normal' and ev.is_venous or s.liver_status and s.liver_status != 'normal' and ev.is_pta or s.cxr and s.cxr != 'pending' and s.cxr != 'normal' and ev.is_venous or s.cxr and s.cxr != 'pending' and s.cxr != 'normal' and ev.is_pta %}
+                    <div class="pt-2 border-top mt-2">
+                        <div class="small fw-semibold text-danger mb-2">გადმოტანილი წინა კვლევები (გზის შეცვლისას — გადაამოწმეთ ან გაასუფთავეთ):</div>
+                        <div class="grid-4">
+                            {% if ev.is_venous and s.abi_r is not None or ev.is_venous and s.abi_l is not None %}
+                            <label class="fld">ABI მარჯვენა (R)<input type="number" step="any" name="abi_r" value="{{ s.abi_r|default_if_none:'' }}" min="0" max="3.0" class="form-control border-danger"></label>
+                            <label class="fld">ABI მარცხენა (L)<input type="number" step="any" name="abi_l" value="{{ s.abi_l|default_if_none:'' }}" min="0" max="3.0" class="form-control border-danger"></label>
+                            {% endif %}
+                            {% if ev.is_venous and s.k is not None %}
+                            <label class="fld">კალიუმი — K⁺ (მმოლ/ლ)<input type="number" step="any" name="k" value="{{ s.k|default_if_none:'' }}" class="form-control border-danger"></label>
+                            {% endif %}
+                            {% if ev.pathway != 'aaa_infra' and s.aaa_mm is not None %}
+                            <label class="fld">AAA დიამეტრი (მმ)<input type="number" step="any" name="aaa_mm" value="{{ s.aaa_mm|default_if_none:'' }}" class="form-control border-danger"></label>
+                            {% endif %}
+                            {% if ev.is_venous or ev.is_pta %}
+                                {% if s.fibrinogen is not None %}<label class="fld">ფიბრინოგენი (გ/ლ)<input type="number" step="any" name="fibrinogen" value="{{ s.fibrinogen|default_if_none:'' }}" class="form-control border-danger"></label>{% endif %}
+                                {% if s.na is not None %}<label class="fld">ნატრიუმი — Na⁺<input type="number" step="any" name="na" value="{{ s.na|default_if_none:'' }}" class="form-control border-danger"></label>{% endif %}
+                                {% if s.hba1c is not None %}<label class="fld">HbA1c (%)<input type="number" step="any" name="hba1c" value="{{ s.hba1c|default_if_none:'' }}" class="form-control border-danger"></label>{% endif %}
+                                {% if s.albumin is not None %}<label class="fld">ალბუმინი (გ/ლ)<input type="number" step="any" name="albumin" value="{{ s.albumin|default_if_none:'' }}" class="form-control border-danger"></label>{% endif %}
+                                {% if s.lvef is not None %}<label class="fld">LVEF (%)<input type="number" step="any" name="lvef" value="{{ s.lvef|default_if_none:'' }}" min="5" max="95" class="form-control border-danger"></label>{% endif %}
+                                {% if s.carotid_r is not None %}<label class="fld">საძილე R (%)<input type="number" step="any" name="carotid_r" value="{{ s.carotid_r|default_if_none:'' }}" min="0" max="100" class="form-control border-danger"></label>{% endif %}
+                                {% if s.carotid_l is not None %}<label class="fld">საძილე L (%)<input type="number" step="any" name="carotid_l" value="{{ s.carotid_l|default_if_none:'' }}" min="0" max="100" class="form-control border-danger"></label>{% endif %}
+                                {% if s.nt_probnp is not None %}<label class="fld">NT-proBNP<input type="number" step="any" name="nt_probnp" value="{{ s.nt_probnp|default_if_none:'' }}" class="form-control border-danger"></label>{% endif %}
+                                {% if s.hs_ctn is not None %}<label class="fld">hs-cTn<input type="number" step="any" name="hs_ctn" value="{{ s.hs_ctn|default_if_none:'' }}" class="form-control border-danger"></label>{% endif %}
+                                {% if s.urine_wbc is not None %}<label class="fld">შარდის WBC<input type="number" step="any" name="urine_wbc" value="{{ s.urine_wbc|default_if_none:'' }}" class="form-control border-danger"></label>{% endif %}
+                                {% if s.liver_status and s.liver_status != 'normal' %}
+                                <label class="fld">ღვიძლის ფუნქცია (ALT/AST)
+                                    <select name="liver_status" class="form-select border-danger">
+                                        <option value="normal">ნორმა</option>
+                                        <option value="2x" {% if s.liver_status == '2x' %}selected{% endif %}>ზომიერი მატება (2x)</option>
+                                        <option value="3x" {% if s.liver_status == '3x' %}selected{% endif %}>მძიმე (&ge;3x ULN)</option>
+                                    </select>
+                                </label>
+                                {% endif %}
+                                {% if s.cxr and s.cxr != 'pending' and s.cxr != 'normal' %}
+                                <label class="fld">გულმკერდის რენტგენი (CXR)
+                                    <select name="cxr" class="form-select border-danger">
+                                        <option value="pending">არ არის ჩატარებული</option>
+                                        <option value="normal">ნორმა</option>
+                                        <option value="emphysema" {% if s.cxr == 'emphysema' %}selected{% endif %}>ემფიზემა / ფქოდ</option>
+                                        <option value="infiltrate" {% if s.cxr == 'infiltrate' %}selected{% endif %}>ინფილტრაცია / პნევმონია</option>
+                                    </select>
+                                </label>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                        {% if ev.is_venous or ev.is_pta %}
+                        <div class="d-flex flex-wrap gap-2 mt-2">
+                            {% if s.echo_valve_issue %}
+                            <input type="hidden" name="echo_valve_issue_presented" value="1">
+                            <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="echo_valve_issue" value="1" checked>მძიმე სარქვლოვანი მანკი / AS (გადმოტანილი)</label>
+                            {% endif %}
+                            {% if s.urine_nitrite %}
+                            <input type="hidden" name="urine_nitrite_presented" value="1">
+                            <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="urine_nitrite" value="1" checked>შარდში ნიტრიტები + (გადმოტანილი)</label>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                 {% endif %}
 
                 {% if not is_inactive_card %}

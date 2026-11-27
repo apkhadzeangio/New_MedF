@@ -410,11 +410,17 @@ class PreopMoveView(LoginRequiredMixin, generic.View):
 
     @staticmethod
     def _handle_delete(request, patient, ajax):
+        from ..constants import INACTIVE_CASE_OUTCOMES
         from .parsers import is_doctor_user
+        if patient.archived:
+            if ajax:
+                return JsonResponse({'ok': False, 'archived': True, 'deleted': False, 'error': 'archived_locked'}, status=403)
+            messages.error(request, 'დაარქივებული ბარათის წაშლა დაბლოკილია — წასაშლელად ჯერ ამოიღეთ არქივიდან!')
+            return HttpResponseRedirect(reverse('preop'))
         s_del = merged_studies(patient)
         is_audit_protected = (
-            patient.archived or bool(patient.approved_at)
-            or s_del.get('case_outcome_status') == 'operated'
+            bool(patient.approved_at)
+            or s_del.get('case_outcome_status') in INACTIVE_CASE_OUTCOMES
             or bool(s_del.get('board_patient_id'))
         )
         is_doc = request.user.is_superuser or request.user.is_staff or is_doctor_user(request.user)
@@ -422,7 +428,7 @@ class PreopMoveView(LoginRequiredMixin, generic.View):
             if not is_doc:
                 if ajax:
                     return JsonResponse({'ok': False, 'archived': patient.archived, 'deleted': False, 'error': 'forbidden'}, status=403)
-                messages.error(request, 'დადასტურებული/ნაოპერაციები/დაარქივებული ბარათის წაშლა ან დაარქივება დასაშვებია მხოლოდ ექიმისთვის!')
+                messages.error(request, 'დადასტურებული/არააქტიური/დაარქივებული ბარათის წაშლა ან დაარქივება დასაშვებია მხოლოდ ექიმისთვის!')
                 return HttpResponseRedirect(reverse('preop'))
             if not patient.archived:
                 patient.archived = True
@@ -430,7 +436,7 @@ class PreopMoveView(LoginRequiredMixin, generic.View):
                 patient.save(update_fields=['archived', 'updated_at', 'updated_by'])
             if ajax:
                 return JsonResponse({'ok': False, 'archived': True, 'deleted': False, 'error': 'audit_protected'}, status=403)
-            messages.info(request, f'{patient.patient_name} დადასტურებული/ნაოპერაციები/დაარქივებულია — სამედიცინო აუდიტის დაცვის მიზნით წაშლა დაბლოკილია (დაცულია არქივში).')
+            messages.info(request, f'{patient.patient_name} დადასტურებული/არააქტიურია — სამედიცინო აუდიტის დაცვის მიზნით წაშლა დაბლოკილია (დაცულია არქივში).')
             return HttpResponseRedirect(reverse('preop'))
         has_other_files = patient.files.exclude(created_by=request.user).exists()
         is_owner = (patient.created_by_id is None or patient.created_by_id == request.user.pk) and not has_other_files and patient.surgeon_id is None

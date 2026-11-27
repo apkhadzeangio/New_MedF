@@ -1,4 +1,6 @@
 """Structured Georgian preoperative anamnesis generator and Self-Fill highlights extractor."""
+import re
+
 from ..board import person_name
 from ..models import PreopPatient
 from .utils import (
@@ -116,13 +118,40 @@ def build_self_fill_highlights(q, patient=None):
     meds.extend(lbl for ck, lbl in _SF_MED_CHIP_LABELS if ck in med_chips)
     if meds:
         items.append(('warn', 'მედიკამენტები: ' + ', '.join(meds)))
+    _format_sf_freetext_med_and_allergy(q, items)
+    if q.get('smoker'):
+        items.append(('info', 'მწეველი'))
+    return [(lvl, scrub_plain_ka(txt, second_person=False, strip_quoted_ft=True) or txt) for lvl, txt in items]
+
+
+_SF_UNIT_ONLY_RE = re.compile(r'(?<![ა-ჰ])(?:მგ|მკგ|მლ|სე|გ|ტაბ|აბი|აბ|დღეში|დღ|კვ|სთ)(?![ა-ჰ])')
+_SF_KA_WORD_RE = re.compile(r'[ა-ჰ]{2,}')
+_SF_LONE_LATIN_RE = re.compile(r'(?<![A-Za-z0-9])[A-Za-z](?![A-Za-z0-9])')
+_SF_COMMON_MED_LABELS = (
+    (('ბისოპროლ', 'bisoprol', 'კონკორ', 'concor', 'მეტოპროლ', 'metoprol', 'ნებივოლ', 'nebivol', 'კარვედილ', 'carvedil'), 'ბეტა-ბლოკერი (გულის/წნევის წამალი)'),
+    (('ამლოდიპ', 'amlodip', 'ლერკანიდიპ', 'lercanidip', 'ნიფედიპ', 'nifedip'), 'წნევის წამალი (კალციუმის ბლოკერი)'),
+    (('ფუროსემ', 'furosem', 'ტორასემ', 'torasem', 'ინდაპამ', 'indapam', 'სპირონოლაქტ', 'spironolact', 'ჰიდროქლოროთიაზ', 'hydrochlorothiaz'), 'შარდმდენი'),
+    (('თიროქს', 'thyrox', 'ეუთიროქს', 'euthyrox', 'ლევოთიროქს', 'levothyrox'), 'ფარისებრი ჯირკვლის წამალი'),
+    (('პარაცეტამ', 'paracetam', 'acetaminophen', 'პანადოლ', 'panadol', 'ანალგინ', 'analgin', 'სპაზმალგ', 'spasmalg'), 'ტკივილგამაყუჩებელი / სიცხის დამწევი'),
+    (('ამოქსიც', 'amoxic', 'ოგმენტინ', 'augmentin', 'ცეფალექს', 'cephalex', 'cefalex', 'ცეფუროქს', 'cefurox', 'აზითრომ', 'azithrom', 'ციპროფლოქს', 'ciproflox'), 'ანტიბიოტიკი'),
+    (('ვიტამინი დ', 'vitamin d', 'vit d', 'ქოლეკალციფერ', 'cholecalcifer', 'დ ვიტამინ'), 'ვიტამინი დ'),
+    (('ვიტამინ', 'vitamin'), 'ვიტამინი'),
+)
+
+
+def _has_meaningful_ka_text(txt):
+    return bool(_SF_KA_WORD_RE.search(_SF_UNIT_ONLY_RE.sub(' ', txt or '')))
+
+
+def _format_sf_freetext_med_and_allergy(q, items):
+    from .constants import _FREETEXT_HIGH_RISK_MED_RULES
+    from .meds import _detect_freetext_high_risk_meds
+    from .meds_freetext import _detect_freetext_allergies, _positive_clauses_text
+    from .plain_ka import scrub_plain_ka
+    from .utils import _safe_display_str
+
     raw_other_meds = q.get('other_meds') if isinstance(q.get('other_meds'), str) else ''
     if raw_other_meds.strip():
-        import re
-
-        from .constants import _FREETEXT_HIGH_RISK_MED_RULES
-        from .meds import _detect_freetext_high_risk_meds
-        from .utils import _safe_display_str
         ft = _detect_freetext_high_risk_meds(raw_other_meds, q=q)
         lvl = 'urgent' if ft.get('unstructured_labels') else 'info'
         ft_lbls = [scrub_plain_ka(lbl, second_person=False, strip_quoted_ft=True) for lbl in (ft.get('unstructured_labels') or [])]
@@ -134,27 +163,30 @@ def build_self_fill_highlights(q, patient=None):
             for flag_k, ka_lbl in (('has_ft_statin', 'სტატინი'), ('has_ft_acei_arb', 'წნევის წამალი'), ('has_ft_nsaid', 'ტკივილგამაყუჩებელი'), ('has_omeprazole', 'კუჭის დამცავი')):
                 if ft.get(flag_k):
                     ft_lbls.append(ka_lbl)
+            pos_low = _positive_clauses_text(raw_other_meds)
+            for stems, ka_lbl in _SF_COMMON_MED_LABELS:
+                if any(st in pos_low for st in stems):
+                    if ka_lbl == 'ვიტამინი' and 'ვიტამინი დ' in ft_lbls:
+                        continue
+                    ft_lbls.append(ka_lbl)
         ft_lbls = [x for x in dict.fromkeys(ft_lbls) if x]
         if ft_lbls:
             clean_other = ', '.join(ft_lbls)
         else:
-            cand = scrub_plain_ka(_safe_display_str(raw_other_meds, max_len=160), second_person=False, strip_quoted_ft=True)
-            clean_other = cand if re.search(r'[ა-ჰ]', cand) else 'მითითებულია ტექსტში (გადაამოწმეთ ჩანაწერი)'
+            cand = _SF_LONE_LATIN_RE.sub('', scrub_plain_ka(_safe_display_str(raw_other_meds, max_len=160), second_person=False, strip_quoted_ft=True)).strip(' ,;:-')
+            clean_other = cand if _has_meaningful_ka_text(cand) else 'მითითებულია ტექსტში (გადაამოწმეთ ჩანაწერი)'
         items.append((lvl, f'სხვა წამალი: {clean_other}'))
     if q.get('allergy_iodine'):
         items.append(('urgent', 'ალერგია იოდზე / კონტრასტზე!'))
-    from .meds_freetext import _detect_freetext_allergies, _positive_clauses_text
-
     raw_alg_txt = q.get('allergy_text') if isinstance(q.get('allergy_text'), str) else ''
     pos_alg_txt = _positive_clauses_text(raw_alg_txt)
     if q.get('allergy_other') or q.get('allergy_chips') or pos_alg_txt:
         alg_chips_eff = list(dict.fromkeys([*_str_list(q.get('allergy_chips')), *(_detect_freetext_allergies(raw_alg_txt) - {'iodine'})]))
         alg_txt = chip_summary(alg_chips_eff, 'allergy_chips', raw_alg_txt if (pos_alg_txt and not alg_chips_eff) else '') or 'მედიკამენტური ალერგია'
-        clean_alg = scrub_plain_ka(alg_txt, second_person=False, strip_quoted_ft=True) or 'მედიკამენტური ალერგია'
+        clean_alg = _SF_LONE_LATIN_RE.sub('', scrub_plain_ka(alg_txt, second_person=False, strip_quoted_ft=True)).strip(' ,;:-')
+        if not _has_meaningful_ka_text(clean_alg):
+            clean_alg = 'მედიკამენტური ალერგია (გადაამოწმეთ ჩანაწერი)'
         items.append(('urgent', f'ალერგია: {clean_alg}'))
-    if q.get('smoker'):
-        items.append(('info', 'მწეველი'))
-    return [(lvl, scrub_plain_ka(txt, second_person=False, strip_quoted_ft=True) or txt) for lvl, txt in items]
 
 
 def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
@@ -430,6 +462,50 @@ def _anam_aaa(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt):
     return lines
 
 
+_CHRONIC_CV_MED_STEMS = (
+    'concor', 'კონკორ', 'bisoprol', 'ბისოპროლ', 'metoprol', 'მეტოპროლ', 'nebivol', 'ნებივოლ',
+    'amlodip', 'ამლოდიპ', 'prestarium', 'პრესტარიუმ', 'perindopril', 'პერინდოპრილ',
+    'ramipril', 'რამიპრილ', 'enalapril', 'ენალაპრილ', 'losartan', 'ლოზარტან', 'valsartan', 'ვალსარტან',
+    'furosem', 'ფუროსემ', 'torasem', 'ტორასემ', 'indapam', 'ინდაპამ',
+)
+
+
+def _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a):
+    from .meds_freetext import _positive_clauses_text
+    eff_ren = ev.get('eff_renal_sat') if ev.get('eff_renal_sat') is not None else ev.get('eff_renal')
+    if not q.get('on_dialysis') and eff_ren is not None and eff_ren < 60:
+        comorb.append(f'თირკმლის ფუნქციის დაქვეითება (eGFR/CrCl {eff_ren})')
+    if s_ev.get('liver_status') == '3x':
+        comorb.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN)')
+    fev1 = _num(s_ev.get('spiro_fev1'), 10, 150)
+    cxr_v = s_ev.get('cxr') or ''
+    if not (q.get('pulm') or q.get('pulm_chips')):
+        if (fev1 is not None and fev1 < 80) or cxr_v in ('emphysema', 'infiltrate', 'cardiomegaly'):
+            comorb.append('სასუნთქი სისტემის / რენტგენის პათოლოგია (სპირომეტრია/CXR)')
+    tsh_v = s_ev.get('tsh_status') or ''
+    if not q.get('thyroid_disease') and tsh_v in ('hyperthyroid', 'hypothyroid_severe', 'hypothyroid_mild'):
+        comorb.append('ფარისებრი ჯირკვლის ფუნქციის დარღვევა (TSH)')
+    sbp_vals = [v for v in (_num(s_ev.get('bp_sys'), 30, 320), _num(s_ev.get('bp_sys_l'), 30, 320)) if v is not None]
+    dbp_vals = [v for v in (_num(s_ev.get('bp_dia'), 20, 220), _num(s_ev.get('bp_dia_l'), 20, 220)) if v is not None]
+    eff_sys, eff_dia = (max(sbp_vals) if sbp_vals else None), (max(dbp_vals) if dbp_vals else None)
+    if not q.get('htn') and ((eff_sys is not None and eff_sys >= 160) or (eff_dia is not None and eff_dia >= 100)):
+        comorb.append(f'მომატებული არტერიული წნევა ({eff_sys or "—"}/{eff_dia or "—"} mmHg — გადაამოწმეთ ჰიპერტენზია!)')
+    hb_gl = ev.get('hb_gl')
+    if hb_gl is not None and hb_gl < 100:
+        comorb.append(f'ანემია (Hb {hb_gl} გ/ლ)')
+    pos_other = _positive_clauses_text(q.get('other_meds') or '')
+    has_unlisted_cv_rx = bool(
+        ev.get('has_full_oac') or ev.get('has_ft_full_oac') or ('rivaroxaban_2_5' in med_ch_set)
+        or any(q.get(k) for k in ('med_clopidogrel', 'med_ticagrelor', 'med_prasugrel'))
+        or bool(ft_keys_a & {'warfarin', 'doac', 'dabigatran', 'clopidogrel', 'ticagrelor', 'prasugrel', 'cilostazol', 'steroid', 'amiodarone', 'parenteral_oac', 'parenteral_dti'})
+        or bool(med_ch_set & {'amiodarone', 'cilostazol', 'steroid', 'beta_blocker', 'acei_arb', 'diuretic', 'ccb'})
+        or bool(ev.get('has_ft_acei_arb'))
+        or any(st in pos_other for st in _CHRONIC_CV_MED_STEMS)
+    )
+    if not comorb and has_unlisted_cv_rx:
+        comorb.append('დასაზუსტებელი კარდიო/ქრონიკული ჩვენება (მუდმივი თერაპიის ფონზე)')
+
+
 def _anam_comorb_meds_allergy(patient, pathway, ev, q):
     from .registry import rule_value
     gly_cfg = rule_value('GLY_GLUCOSE_HBA1C')
@@ -506,13 +582,7 @@ def _anam_comorb_meds_allergy(patient, pathway, ev, q):
     if q.get('smoker'):
         comorb.append('თამბაქოს მწეველი')
     med_ch_set = set(_str_list(q.get('med_chips')))
-    has_unlisted_cv_rx = bool(
-        ev.get('has_full_oac') or ev.get('has_ft_full_oac') or ('rivaroxaban_2_5' in med_ch_set)
-        or (q.get('med_aspirin') and any(q.get(k) for k in ('med_clopidogrel', 'med_ticagrelor', 'med_prasugrel')))
-        or ('amiodarone' in med_ch_set) or ('amiodarone' in ft_keys_a)
-    )
-    if not comorb and has_unlisted_cv_rx:
-        comorb.append('დასაზუსტებელი კარდიო/თრომბოზული ჩვენება (იღებს ანტიკოაგულანტს/DAPT/ამიოდარონს)')
+    _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a)
     lines.append(f"თანმხლები ფონი: {', '.join(comorb) if comorb else 'მნიშვნელოვანი ქრონიკული დაავადებების გარეშე'}.")
 
     med_pairs = (

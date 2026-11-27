@@ -368,17 +368,19 @@ PRIORITY_LABELS = {
 
 _FREETEXT_ALLERGY_STEMS = (
     ('beta_lactam', (
-        'პენიცილ', 'ამოქსი', 'აუგმენტ', 'ამპიცილ', 'ცეფაზოლ', 'კეფაზოლ', 'კეფზოლ',
+        'პენიცილ', 'ამოქსი', 'აუგმენტ', 'ამპიცილ', 'ცეფაზოლ', 'კეფაზოლ', 'კეფზოლ', 'ცეფალექს',
         'ცეფტრიაქს', 'როცეფინ', 'ცეფეპიმ', 'ცეფუროქს', 'მეროპენემ', 'ცეფალოსპ', 'ბეტა-ლაქტ', 'ბეტალაქტ',
-        'penicil', 'amoxi', 'augment', 'ampicil', 'cefazol', 'kefzol', 'ceftriax', 'rocephin',
-        'cefepim', 'meropenem', 'cephalosp', 'beta-lact', 'ოგმენტინ', 'ამოქსიკლავ', 'amoxiclav',
+        'penicil', 'amoxi', 'augment', 'ampicil', 'cefazol', 'kefzol', 'cephalex', 'cefalex', 'cefurox',
+        'ceftriax', 'rocephin', 'cefepim', 'meropenem', 'cephalosp', 'beta-lact', 'ოგმენტინ', 'ამოქსიკლავ', 'amoxiclav',
     )),
     ('vancomycin', (
         'ვანკომიც', 'vancomyc',
     )),
     ('hit_heparin', (
         'ჰეპარინ', 'კლექსან', 'ფრაქსიპარ', 'ენოქსაპარ', 'ნადროპარ', 'ციბორ', 'ფრაგმინ',
+        'თინზაპარ', 'ინოჰეპ', 'დაბალმოლეკულ',
         'heparin', 'clexane', 'fraxipar', 'enoxapar', 'nadropar', 'daltepar', 'bemipar', 'lovenox',
+        'tinzapar', 'innohep', 'low molecular', 'low-molecular',
     )),
     ('lidocaine', (
         'ლიდოკაინ', 'ნოვოკაინ', 'ბუპივაკაინ', 'როპივაკაინ', 'არტიკაინ', 'ულტრაკაინ', 'უბისტეზინ',
@@ -427,6 +429,7 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
         'კლექსან', 'clexane', 'ლოვენოქს', 'lovenox', 'ფრაქსიპარ', 'fraxipar',
         'ენოქსაპარ', 'enoxapar', 'ნადროპარ', 'nadropar', 'ფრაგმინ', 'fragmin',
         'დალტეპარ', 'daltepar', 'ციბორ', 'zibor', 'ბემიპარ', 'bemipar',
+        'თინზაპარ', 'tinzapar', 'ინოჰეპ', 'innohep', 'დაბალმოლეკულ', 'low molecular', 'low-molecular',
         'ჰეპარინ', 'heparin', 'არიქსტრ', 'arixtra', 'ფონდაპარინუქს', 'ფონდაპარინუკს', 'fondaparinux',
     )),
     ('parenteral_dti', 'პარენტერული პირდაპირი თრომბინის ინჰიბიტორი (არგატრობანი / ბივალირუდინი)', True, (

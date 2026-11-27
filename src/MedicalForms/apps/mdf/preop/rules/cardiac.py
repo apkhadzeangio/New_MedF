@@ -368,7 +368,7 @@ def _venous_vte_task_label(ctx, ren_red, eff_ren_t):
         if has_hit:
             return 'IPC / კონსილიუმი (ორსულობა + მექ. სარქველი + HIT — UFH/LMWH/DOAC არა!)'
         if ven_severe_renal_t:
-            return 'კონსილიუმი (ორსულობა + მექ. სარქველი + CrCl<30/დიალიზი: LMWH კუმულირდება, DOAC არა — IV/SC UFH ან ტრიმესტრით VKA!)'
+            return f'კონსილიუმი (ორსულობა + მექ. სარქველი + CrCl<{ren_red}/დიალიზი: LMWH კუმულირდება, DOAC არა — IV/SC UFH ან ტრიმესტრით VKA!)'
         return 'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (ორსულობა + მექ. სარქველი — DOAC არა!)'
     has_full_oac_t = bool(ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False))
     is_evla_vka_t, has_contra_oac_t = False, False
@@ -386,15 +386,15 @@ def _venous_vte_task_label(ctx, ren_red, eff_ren_t):
     if getattr(ctx, 'eff_pregnant', False):
         if has_hit:
             return 'IPC / არაჰეპარინული სქემა (ორსულობა + HIT — DOAC და ჰეპარინი არა!)'
-        return 'UFH (ორსულობა + CrCl<30: LMWH კუმულირდება, DOAC არა!)' if ven_severe_renal_t else 'LMWH / UFH (ორსულობაზე DOAC არა!)'
+        return f'UFH (ორსულობა + CrCl<{ren_red}: LMWH კუმულირდება, DOAC არა!)' if ven_severe_renal_t else 'LMWH / UFH (ორსულობაზე DOAC არა!)'
     if has_full_oac_t:
         if getattr(ctx, 'has_contra_full_oac', False) or has_contra_oac_t:
             return f'უკუნაჩვენები OAC არ განაახლოთ — უსაფრთხო ანტიკოაგულაციის სქემა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
         return f'მუდმივი OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე; ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
     if has_hit:
-        return f'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!){arg_liv_t}' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
+        return f'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<{ren_red}!){arg_liv_t}' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
     if ven_severe_renal_t and ctx.liver_3x:
-        return 'კანქვეშა UFH + IPC კოაგულოგრამით (CrCl<30 + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი არა, LMWH კუმულირდება!)'
+        return f'კანქვეშა UFH + IPC კოაგულოგრამით (CrCl<{ren_red} + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი არა, LMWH კუმულირდება!)'
     if ven_severe_renal_t:
         return 'კანქვეშა UFH / დოზა-კორექტირებული LMWH (DOAC არა!)'
     if ctx.liver_3x:

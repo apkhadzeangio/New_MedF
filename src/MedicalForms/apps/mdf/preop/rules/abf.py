@@ -190,8 +190,10 @@ def _eval_bypass_conduit(ctx, is_clti):
             'action': 'ალტერნატიული აუტოვენის რეფლექს-კარტირება (კონტრალატერალური GSV, SSV და ხელის ვენები — Cephalic/Basilic)',
             'done': (s.get('alt_vein_mapped') or 'pending') != 'pending',
         })
+    gsv_explicitly_adequate = (s.get('pad_gsv_status') == 'adequate') and not gsv_inadequate
+    ctx.gsv_explicitly_adequate = gsv_explicitly_adequate
     contra_abi, contra_tp, contra_tbi = ctx.contra_abi, ctx.contra_tp, ctx.contra_tbi
-    if s.get('alt_vein_mapped') == 'contra_gsv_ok':
+    if not gsv_explicitly_adequate and s.get('alt_vein_mapped') == 'contra_gsv_ok':
         if patient.side == 'B':
             ctx.red_flags.append('ორმხრივი შუნტირებისას (მხარე B) „კონტრალატერალური GSV“ წინააღმდეგობრივია — დააზუსტეთ საოპერაციო მხარე და კონდუიტი!')
         elif (
@@ -226,7 +228,7 @@ def _eval_bypass_conduit(ctx, is_clti):
             )
         elif contra_abi is None and contra_tp is None and contra_tbi is None:
             ctx.amber_flags.append('კონტრალატერალური GSV-ის აღებამდე გადაამოწმეთ დონორი კიდურის ABI / პულსაცია!')
-    if s.get('alt_vein_mapped') == 'no_autovein_prosthetic':
+    if not gsv_explicitly_adequate and s.get('alt_vein_mapped') == 'no_autovein_prosthetic':
         if not is_clti and not ctx.is_ali_acute and rule_value('PAD_PROSTHETIC_IC_STOP'):
             pros_ic_msg = (
                 'ხანგამოშვებითი კოჭლობის (IC) დროს აუტოვენის არარსებობისას სინთეზური ინფრაინგვინალური შუნტირება '

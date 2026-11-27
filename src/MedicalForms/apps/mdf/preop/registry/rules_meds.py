@@ -43,7 +43,7 @@ MEDS_RULES = (
         value_label='5 დღე · INR <= 1.5 (EVLA <= 3.0)',
         status=STATUS_LOCAL,
         match_patterns=(
-            'ვარფარინი შეჩერება 5 დღით ადრე', 'ვარფარინის ფონზე — EVLA-ს წინ',
+            'ვარფარინი შეჩერება {val[hold_days]} დღით ადრე', 'ვარფარინის ფონზე — EVLA-ს წინ',
             'სუპრათერაპიული INR ვარფარინის ფონზე', 'ვარფარინი ESVS 2022: EVLA',
             'ორსულობის დროს ვარფარინი', 'ამიოდარონი + ვარფარინი', 'ვარფარინი', 'ვარფარინის ფონზე',
         ),
@@ -281,7 +281,7 @@ MEDS_RULES = (
         source_wording='Discontinue canagliflozin, dapagliflozin, and empagliflozin at least 3 days (72h) and ertugliflozin at least 4 days (96h) before scheduled surgery; monitor ketones.',
         value={'std_days': 3, 'ertugliflozin_days': 4, 'ketone_max': 0.6},
         value_label='3 დღე (ერტუგლ. 4 დღე) · კეტონები < 0.6 მმოლ/ლ',
-        match_patterns=('SGLT2', 'ეუგლიკემიური DKA'),
+        match_patterns=('პროგრამულ დიალიზზე SGLT2', 'SGLT2', 'ეუგლიკემიური DKA'),
     ),
     RuleEntry(
         id='MED_GLP1_FASTING_PROTOCOL',
@@ -331,8 +331,8 @@ MEDS_RULES = (
         status=STATUS_LOCAL,
         match_patterns=(
             'ინსულინი', 'ბეტა-ბლოკატორი', 'ACEi / ARB (პრილი/სარტანი)', 'ACEi / ARB', 'ამლოდიპინი',
-            'სტატინი გრძელდება უწყვეტად', 'სტატინი ღვიძლის ფერმენტები', 'ორსულობის დროს სტატინი',
-            'ორსულობის დროს ACEi', 'ამიოდარონი გრძელდება უწყვეტად', 'ამიოდარონი',
+            'სტატინი გრძელდება უწყვეტად', 'სტატინი ღვიძლის ფერმენტები', 'მითითებულია სტატინი — ღვიძლის',
+            'ორსულობის დროს სტატინი', 'ორსულობის დროს ACEi', 'ამიოდარონი გრძელდება უწყვეტად', 'ამიოდარონი',
             'დიურეტიკი', 'სტეროიდი',
         ),
     ),

@@ -190,9 +190,11 @@ class PreopSelfFillView(generic.View):
                 return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?locked=1')
             uf = ['questionnaire', 'studies', 'side', 'started_on', 'updated_at']
             age_posted = _int(request.POST.get('age'), lo=12, hi=120) if request.POST.get('age') else None
+            age_cleared = False
             if age_posted and not patient.age:
                 patient.age = age_posted
                 uf.append('age')
+                age_cleared = True
             if not patient.sex and request.POST.get('sex') in ('M', 'F'):
                 patient.sex = request.POST.get('sex')
                 uf.append('sex')
@@ -214,19 +216,32 @@ class PreopSelfFillView(generic.View):
             raw_bd = (request.POST.get('birth_date') or '').strip()
             bd = _date(raw_bd)
             from ..utils import is_valid_birth_date
+            bd_cleared = False
             if raw_bd and not s_mut.get('birth_date'):
                 if bd and is_valid_birth_date(bd, today=timezone.localdate()):
                     dob_age = _age_from_dob(bd)
                     if dob_age is not None:
                         s_mut['birth_date'] = bd.isoformat()
+                        bd_cleared = True
                         if not patient.age:
                             patient.age = dob_age
                             if 'age' not in uf:
                                 uf.append('age')
+                            age_cleared = True
                 else:
                     inv_sf = dict(s_mut.get('_invalid_inputs') or {}) if isinstance(s_mut.get('_invalid_inputs'), dict) else {}
                     inv_sf['birth_date'] = raw_bd[:60]
                     s_mut['_invalid_inputs'] = inv_sf
+            if (age_cleared or bd_cleared) and isinstance(s_mut.get('_invalid_inputs'), dict):
+                inv_sf = dict(s_mut['_invalid_inputs'])
+                if age_cleared or bd_cleared:
+                    inv_sf.pop('age', None)
+                if bd_cleared:
+                    inv_sf.pop('birth_date', None)
+                if inv_sf:
+                    s_mut['_invalid_inputs'] = inv_sf
+                else:
+                    s_mut.pop('_invalid_inputs', None)
             if s_mut.get('med_hold_agreed') or s_mut.get('med_hold_agreed_date'):
                 s_mut['med_hold_agreed'] = False
                 s_mut['med_hold_agreed_date'] = ''

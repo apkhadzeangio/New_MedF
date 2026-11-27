@@ -63,7 +63,7 @@ def _eval_anatomic_anesth_mismatch(ctx, open_aortic, hard_nx_reasons, prewashout
 def _eval_early_neuraxial_gate(ctx):
     patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
     raw_s = getattr(ctx, 'raw_s', None) or {}
-    asra_cfg, ren_red = rule_value('ASRA_NEURAXIAL_COAG_GATE'), rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    asra_cfg, voy_min = rule_value('ASRA_NEURAXIAL_COAG_GATE'), rule_value('MED_VOYAGER_RIVAROXABAN_2_5')['min_egfr']
     doac_low, dabi_low = rule_value('MED_DOAC_HOLD_INTERVALS')['crcl_low'], rule_value('MED_DABIGATRAN_HOLD_INTERVALS')['crcl_low']
     shock_lim, vka_hold_d = rule_value('VIT_BP_HYPOTENSION_SHOCK')['shock_idx'], rule_value('MED_WARFARIN_HOLD_DAYS')['hold_days']
     open_aortic = (pathway == PreopPatient.Pathway.ABF) or (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
@@ -121,7 +121,7 @@ def _eval_early_neuraxial_gate(ctx):
     if 'hit_heparin' in ctx.allergy_chips and (not ctx.is_venous or 'mech_valve' in ctx.cad_chips):
         hard_nx_reasons.append('HIT არტერიულ/მექ. სარქვლის ოპერაციაზე (IV DTI) — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
     eff_ren_nx = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
-    doac_nx_lims = [lim for cond, lim in ((q.get('med_doac'), doac_low), (q.get('med_dabigatran'), dabi_low), ('rivaroxaban_2_5' in ctx.med_chips, ren_red)) if cond]
+    doac_nx_lims = [lim for cond, lim in ((q.get('med_doac'), doac_low), (q.get('med_dabigatran'), dabi_low), ('rivaroxaban_2_5' in ctx.med_chips, voy_min)) if cond]
     if doac_nx_lims and (ctx.on_dialysis or (eff_ren_nx is not None and eff_ren_nx < max(doac_nx_lims))):
         hard_nx_reasons.append(f'CrCl/eGFR < {max(doac_nx_lims)} ანტიკოაგულანტზე — ნეირაქსიული ბლოკადა მოერიდეთ!')
     elif doac_nx_lims and eff_ren_nx is None:

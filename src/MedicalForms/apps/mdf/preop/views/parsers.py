@@ -273,7 +273,7 @@ def _parse_s1_flags_and_selects(post, patient, s):
                 s[bf] = post.get(bf) in ('1', 'on', 'true')
         elif bf in post or bf in ('irregular_hr', 'aptt_prolonged', 'viral_positive'):
             s[bf] = post.get(bf) in ('1', 'on', 'true')
-        elif bf == 'echo_valve_issue' and patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
+        elif bf == 'echo_valve_issue' and (patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA) or 'echo_valve_issue_presented' in post):
             s[bf] = False
         elif bf == 'carotid_symp' and patient.pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS):
             s[bf] = False
@@ -285,7 +285,7 @@ def _parse_s1_flags_and_selects(post, patient, s):
             s[bf] = False
         elif bf in ('ven_epifascial', 'ven_tortuous', 'ven_perforator') and patient.pathway == PreopPatient.Pathway.VENOUS:
             s[bf] = False
-        elif bf == 'urine_nitrite' and patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
+        elif bf == 'urine_nitrite' and (patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA) or 'urine_nitrite_presented' in post):
             s[bf] = False
 
     if 'blood_group' in post:
@@ -293,6 +293,10 @@ def _parse_s1_flags_and_selects(post, patient, s):
     for sel_key, allowed in _S1_SELECT_FIELDS:
         if post.get(sel_key) in allowed:
             s[sel_key] = post.get(sel_key)
+    if post.get('pad_gsv_status') == 'adequate' and s.get('alt_vein_mapped') not in (None, '', 'pending'):
+        gsv_mm_v = _num(s.get('pad_gsv_mm'), 0.5, 30)
+        if gsv_mm_v is None or gsv_mm_v >= rule_value('PAD_GSV_MIN_MM')['gsv_min_mm']:
+            s['alt_vein_mapped'] = 'pending'
 
 
 def _set_planned_surgery_date_field(s, raw_val, today):

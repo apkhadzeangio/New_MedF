@@ -357,6 +357,7 @@ def _init_base_flags_and_pre_reflex(ctx):
     ctx.needs_brain_ct = ctx.needs_neuro = ctx.needs_laryngoscopy = ctx.needs_cea_antiplatelet = False
     ctx.needs_wound_care = ctx.needs_abi_check = ctx.needs_tbi_check = False
     ctx.needs_vte_prophylaxis = ctx.needs_ecg_venous = ctx.needs_alt_vein = False
+    ctx.gsv_explicitly_adequate = False
     ctx.cea_high_surg_risk = ctx.key_badge_urgent = False
     ctx.lidocaine_max_mg, ctx.key_badge = None, ''
 

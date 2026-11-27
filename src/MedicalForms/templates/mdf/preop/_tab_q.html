@@ -613,6 +613,14 @@
                                 <input type="hidden" name="ven_hormones_presented" value="1">
                                 <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="ven_hormones" value="1" checked>ჰორმონული პრეპარატი / კონტრაცეპტივი (გადმოტანილი ვენური გზიდან)</label>
                                 {% endif %}
+                                {% if not ev.is_venous and q.ven_thrombophilia %}
+                                <input type="hidden" name="ven_thrombophilia_presented" value="1">
+                                <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="ven_thrombophilia" value="1" checked>თრომბოფილია / ოჯახური VTE (გადმოტანილი ვენური გზიდან)</label>
+                                {% endif %}
+                                {% if not ev.is_venous and q.ven_cancer_immob %}
+                                <input type="hidden" name="ven_cancer_immob_presented" value="1">
+                                <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="ven_cancer_immob" value="1" checked>აქტიური სიმსივნე / იმობილიზაცია (გადმოტანილი ვენური გზიდან)</label>
+                                {% endif %}
                             </div>
                         </div>
                         {% if not ev.is_venous and q.ven_dvt_chips %}

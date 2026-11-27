@@ -211,7 +211,7 @@ _PATHWAY_PRIMARY_PREFIXES = (
     'ვენური პოსტოპ. რეჟიმი:',
 )
 _VTE_PREFIXES = ('VTE პროფილაქტიკა', 'HIT ანამნეზში!', 'VTE / ანტიკოაგულაცია:')
-_ABX_PREFIXES = ('მძიმე ბეტა-ლაქტამური ალერგია!', 'მძიმე β-ლაქტამსა')
+_ABX_PREFIXES = ('მძიმე ბეტა-ლაქტამური ალერგია!', 'მძიმე β-ლაქტამსა', 'მიკოზური AAA')
 _NEPH_PREFIXES = ('პროგრამული დიალიზი:', 'ნეფროპროტექცია:', 'ნეფროპროტექცია (')
 _ALL_MANAGED_PREFIXES = (
     *_PATHWAY_PRIMARY_PREFIXES,
@@ -292,9 +292,10 @@ def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_r
         if ev.get('is_evla_warfarin_only'):
             oac_res_board = f'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ {evla_inr_lim} — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ!)'
         elif q.get('med_warfarin') or ('warfarin' in ft_keys and not ev.get('has_full_oac')):
+            inr_fl = rule_value('MED_MECH_VALVE_SAFETY')
             br_txt = (
-                f'CrCl/eGFR <{ren_red} / დიალიზი: თერაპიული LMWH აკუმულირდება — მაღალი თრომბორისკისას IV UFH ხიდი (aPTT კონტროლით) INR ≥2.0-მდე!'
-                if sev_renal else 'მაღალი თრომბორისკისას ხიდი INR ≥2.0-მდე'
+                f'CrCl/eGFR <{ren_red} / დიალიზი: თერაპიული LMWH აკუმულირდება — მაღალი თრომბორისკისას IV UFH ხიდი (aPTT კონტროლით) INR ≥{inr_fl}-მდე!'
+                if sev_renal else f'მაღალი თრომბორისკისას ხიდი INR ≥{inr_fl}-მდე'
             )
             oac_res_board = f'ვარფარინის (VKA) აღდგენა 12–24 სთ-ში ჰემოსტაზით ({br_txt}) ქირურგთან შეთანხმებით'
         elif ev.get('is_venous') and not ev.get('is_phleb'):

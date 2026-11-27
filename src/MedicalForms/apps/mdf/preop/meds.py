@@ -95,7 +95,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     postop_oac_res = (
         ' · აღდგენა: ~24 სთ-ში ჰემოსტაზით' if (is_evla or is_pta)
         else (' · აღდგენა: თერაპ. დოზა 48–72 სთ-ში ჰემოსტაზით (ეპიდურული კათეტერიდან ≥24 სთ! HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit
-        else (' · აღდგენა: თერაპ. დოზა 48–72 სთ-ში ჰემოსტაზით (ეპიდურული კათეტერიდან ≥24 სთ! CrCl<30: UFH ან anti-Xa კორექტირებული LMWH)' if severe_renal
+        else (f' · აღდგენა: თერაპ. დოზა 48–72 სთ-ში ჰემოსტაზით (ეპიდურული კათეტერიდან ≥24 სთ! CrCl<{ren_red_lim}: UFH ან anti-Xa კორექტირებული LMWH)' if severe_renal
         else ' · აღდგენა: თერაპ. დოზა 48–72 სთ-ში ჰემოსტაზით (D+1 პროფილაქტ. LMWH; ეპიდურული კათეტერიდან ≥24 სთ!)'))
     )
     repro_pregnant = is_pregnancy_eligible(patient) and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
@@ -118,7 +118,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
         'is_cea_oac_p2y_stop': is_cea_ich or is_cea_rtpa_6d, 'is_cea_rtpa_asa_caution': is_cea_rtpa_6d and not is_cea_ich and not is_cea_rtpa_ap_stop,
         'anesth_plan': anesth_plan, 'is_neuraxial': is_neuraxial, 'on_dialysis': on_dialysis, 'eff_renal': eff_renal, 'renal_cl': eff_renal,
         'creat_mismatch': creat_mismatch, 'creat_ambig': creat_ambig, 'creat_extreme_hi': creat_extreme_hi,
-        'cl_label': cl_label, 'frail_no_wt_note': frail_no_wt_note, 'severe_renal': severe_renal, 'liver_3x': liver_3x,
+        'cl_label': cl_label, 'frail_no_wt_note': frail_no_wt_note, 'severe_renal': severe_renal, 'ren_red_lim': ren_red_lim, 'liver_3x': liver_3x,
         'rows': rows, 'd_str': d_str, 'hold_str': hold_str, 'add_row': add_row, 'med_chips': med_chips, 'cad_chips': cad_chips,
         'ven_dvt_chips': ven_dvt_chips, 'vasc_chips': vasc_chips, 'min_abi': min_abi, 'lido_alg': lido_alg, 'ven_dup': s.get('ven_duplex_status') or '',
         'eff_allergy_chips': eff_allergy_chips, 'ft_meds': ft_meds, 'has_ft_full_oac': has_ft_full_oac,
@@ -192,14 +192,14 @@ def _append_antiplatelet_rows(c):
             add_row('ასპირინი (75–100 მგ)', f'შეთანხმება ქირურგთან (დაბალი კარდიორისკისას შესაძლოა მოიხსნას {asa_ph_d}–{asa_ph_d + 2} დღით ადრე)', 'amber', f'შეათანხმეთ ({d_str(-asa_ph_d)}-დან?)', hold_or_skip=True, reconcile_only=True)
         else:
             asa_cont_d = asa_cfg['continue_days'] if isinstance(asa_cfg, dict) else 0
-            t3_warn = ' [≥3 ანტითრომბოზული — შეათანხმეთ დე-ესკალაცია ქირურგთან!]' if c['total_at_cnt'] >= triple_min else ''
+            t3_warn = f' [≥{triple_min} ანტითრომბოზული — შეათანხმეთ დე-ესკალაცია ქირურგთან!]' if c['total_at_cnt'] >= triple_min else ''
             add_row('ასპირინი (75–100 მგ)', f'გრძელდება უწყვეტად ოპერაციის დილის ჩათვლით (ESVS Class I){t3_warn}', 'amber' if t3_warn else 'ok', f'მიიღეთ {d_str(asa_cont_d)}-ის დილის ჩათვლით', hold_or_skip=False)
 
     if q.get('med_clopidogrel'):
         clop_intol_warn = ' [კლოპიდოგრელის აუტანლობა/ალერგია მონიშნულია — დაუყოვნებლივ გადაამოწმეთ დანიშნულება!]' if clop_intol else ''
         dup_p2y_red = c['p2y12_cnt'] >= 2
         dup_p2y_warn = ' [ყურადღება: ≥2 P2Y12 დუბლირება — გადაამოწმეთ სქემა!]' if dup_p2y_red else ''
-        t3_clop_warn = ' [≥3 ანტითრომბოზული — შეათანხმეთ დე-ესკალაცია ქირურგთან!]' if c['total_at_cnt'] >= triple_min else ''
+        t3_clop_warn = f' [≥{triple_min} ანტითრომბოზული — შეათანხმეთ დე-ესკალაცია ქირურგთან!]' if c['total_at_cnt'] >= triple_min else ''
         if c['is_cea_oac_p2y_stop']:
             add_row('კლოპიდოგრელი / P2Y12', f'{_cea_bleed_rule(c, "თვითნებურად არ გააგრძელოთ,")}{clop_intol_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif clop_intol:
@@ -541,15 +541,15 @@ def _append_warfarin_row(c):
             bridge_txt = f'მექანიკური სარქველი + HIT — უხიდოდ დატოვება და ჰეპარინი/LMWH აკრძალულია! სავალდებულოა სტაციონარული IV ბივალირუდინი ან არგატრობანი (aPTT კონტროლით){liver_arg}!'
         elif c['has_hit'] and high_thromb_vka:
             liver_hit_sfx = ' (ღვიძლის ≥3x-ზე უპირატესია ბივალირუდინი — არგატრობანი -75% / ფონდაპარინუქსს მოერიდეთ!)' if c['liver_3x'] else ''
-            bridge_txt = f'HIT ანამნეზში + მაღალი თრომბოემბოლიური რისკი — LMWH/ჰეპარინის ხიდი კატეგორიულად აკრძალულია! განიხილეთ არაჰეპარინული ხიდი (IV ბივალირუდინი/არგატრობანი ან ფონდაპარინუქსი CrCl ≥30-ზე) ჰემატოლოგთან{liver_hit_sfx}!'
+            bridge_txt = f'HIT ანამნეზში + მაღალი თრომბოემბოლიური რისკი — LMWH/ჰეპარინის ხიდი კატეგორიულად აკრძალულია! განიხილეთ არაჰეპარინული ხიდი (IV ბივალირუდინი/არგატრობანი ან ფონდაპარინუქსი CrCl ≥{c["ren_red_lim"]}-ზე) ჰემატოლოგთან{liver_hit_sfx}!'
         elif c['has_hit']:
             bridge_txt = 'HIT ანამნეზში — LMWH/ჰეპარინის ხიდი კატეგორიულად აკრძალულია!'
         elif high_thromb_vka and c['severe_renal']:
-            bridge_txt = 'მექანიკური სარქველი / მაღალი თრომბოემბოლიური რისკი + CrCl/eGFR <30 (ან დიალიზი) — თერაპიული LMWH აკუმულირდება! სავალდებულოა სტაციონარული IV UFH ხიდი (aPTT კონტროლით, შეჩერება ოპერაციამდე 4–6 სთ; პოსტოპ. აღდგენა 24–48 სთ-ში თერაპიულ INR-მდე) ან anti-Xa კონტროლირებადი LMWH ნეფროლოგ/კარდიოლოგთან!'
+            bridge_txt = f'მექანიკური სარქველი / მაღალი თრომბოემბოლიური რისკი + CrCl/eGFR <{c["ren_red_lim"]} (ან დიალიზი) — თერაპიული LMWH აკუმულირდება! სავალდებულოა სტაციონარული IV UFH ხიდი (aPTT კონტროლით, შეჩერება ოპერაციამდე 4–6 სთ; პოსტოპ. აღდგენა 24–48 სთ-ში თერაპიულ INR-მდე) ან anti-Xa კონტროლირებადი LMWH ნეფროლოგ/კარდიოლოგთან!'
         elif high_thromb_vka:
-            d3_lbl, d1_lbl = d_str(-3) or 'D-3', d_str(-1) or 'D-1'
+            d3_lbl, d1_lbl, mv_inr = d_str(-3) or 'D-3', d_str(-1) or 'D-1', rule_value('MED_MECH_VALVE_SAFETY')
             post_br = '48–72 სთ-ში' if c['is_open_major'] else '24–48 სთ-ში'
-            bridge_txt = f'მექანიკური სარქველი / მაღალი თრომბოემბოლიური რისკი — LMWH ხიდი (CHEST 2022 / ESC 2022): იწყება INR <2.0-ზე (~{d3_lbl}), წინა დილას ({d1_lbl}) კეთდება დღიური დოზის 50% (ნახევარი), წინა საღამოს დოზა გამოტოვეთ (ბოლო დოზა ≥24 სთ ოპერაციამდე); პოსტოპ. LMWH ხიდის აღდგენა {post_br} ჰემოსტაზით, თერაპიულ INR ≥2.0-მდე!'
+            bridge_txt = f'მექანიკური სარქველი / მაღალი თრომბოემბოლიური რისკი — LMWH ხიდი (CHEST 2022 / ESC 2022): იწყება INR <{mv_inr}-ზე (~{d3_lbl}), წინა დილას ({d1_lbl}) კეთდება დღიური დოზის 50% (ნახევარი), წინა საღამოს დოზა გამოტოვეთ (ბოლო დოზა ≥24 სთ ოპერაციამდე); პოსტოპ. LMWH ხიდის აღდგენა {post_br} ჰემოსტაზით, თერაპიულ INR ≥{mv_inr}-მდე!'
         else:
             bridge_txt = 'რუტინული LMWH ხიდი AFib-ზე არ ტარდება (ESC 2022 Class III); თუ დაინიშნა პროფილაქტიკური LMWH, ჩერდება -12 სთ, თერაპიული -24 სთ'
         vka_res_sfx = '' if dup_vka else ' · აღდგენა: 12–24 სთ-ში (საღამოს/D+1)'
@@ -560,7 +560,7 @@ def _append_warfarin_row(c):
             elif c['has_hit']:
                 bridge_dp = ' · მაღალი თრომბორისკი + HIT: არაჰეპარინული ხიდი ჰემატოლოგთან (LMWH/ჰეპარინი არა!)'
             elif c['severe_renal']:
-                bridge_dp = ' · სავალდებულოა სტაციონარული IV UFH ხიდი (CrCl<30/დიალიზი: თვითნებურად არ შეწყვიტოთ!)'
+                bridge_dp = f' · სავალდებულოა სტაციონარული IV UFH ხიდი (CrCl<{c["ren_red_lim"]}/დიალიზი: თვითნებურად არ შეწყვიტოთ!)'
             else:
                 bridge_dp = f' · სავალდებულო LMWH ხიდით (~{d_str(-3)}-დან, 50% დოზა {d_str(-1)} დილას)'
         vka_dp = _IMMED_STOP_PLAN if dup_vka else f'{hold_str(vka_cfg["hold_days"])} · INR კონტროლი {d_str(-1)}{bridge_dp}'
@@ -722,7 +722,7 @@ def _append_hormone_ppi_steroid_ft_rows(c):
         elif c['liver_3x'] or ('vte_recent_3m' in c['ven_dvt_chips']) or c['ven_dup'] == 'acute_dvt':
             add_row('ჰორმონული პრეპარატი / კონტრაცეპტივი', 'უკუნაჩვენებია ღვიძლის მძიმე დისფუნქციის (≥3x ULN) ან ახალი/მწვავე VTE (<3 თვე / DVT) ფონზე — დაუყოვნებლივ შეათანხმეთ შეწყვეტა ექიმთან!', 'red', 'უკუნაჩვენებია — შეათანხმეთ მოხსნა!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         else:
-            vte_opt = 'არაჰეპარინული პროფილაქტიკა (HIT: LMWH აკრძალულია!)' if c['has_hit'] else ('მექანიკური (IPC) ან კანქვეშა UFH პროფილაქტიკა (CrCl<30/დიალიზი: სტანდარტული LMWH აკრძალულია!)' if c['severe_renal'] else 'LMWH პროფილაქტიკა')
+            vte_opt = 'არაჰეპარინული პროფილაქტიკა (HIT: LMWH აკრძალულია!)' if c['has_hit'] else (f'მექანიკური (IPC) ან კანქვეშა UFH პროფილაქტიკა (CrCl<{c["ren_red_lim"]}/დიალიზი: სტანდარტული LMWH აკრძალულია!)' if c['severe_renal'] else 'LMWH პროფილაქტიკა')
             if c['is_evla']:
                 evla_vte_sfx = f' — {vte_opt}' if (c['has_hit'] or c['severe_renal']) else ''
                 horm_rule = f'EVLA-ზე შესაძლებელია გაგრძელება VTE რისკის შეფასებით (Caprini); ფლებექტომიაზე/მაღალ რისკზე შეათანხმეთ თრომბოპროფილაქტიკა (ESVS 2022){evla_vte_sfx}'

@@ -534,12 +534,13 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
     ft_keys_p = ctx.ft_meds.get('matched_keys') or set()
     if has_full_oac_p:
         if ctx.q.get('med_warfarin') or ('warfarin' in ft_keys_p and not ctx.on_oral_anticoag):
+            mv_inr = rule_value('MED_MECH_VALVE_SAFETY')
             if has_hit:
                 vka_br_note = 'HIT: ჰეპარინი/LMWH აკრძალულია'
             elif hit_severe_renal:
-                vka_br_note = f'CrCl/eGFR <{ren_red} / დიალიზი: თერაპიული LMWH აკუმულირდება — მაღალი თრომბორისკისას IV UFH ხიდი (aPTT კონტროლით) INR ≥2.0-მდე!'
+                vka_br_note = f'CrCl/eGFR <{ren_red} / დიალიზი: თერაპიული LMWH აკუმულირდება — მაღალი თრომბორისკისას IV UFH ხიდი (aPTT კონტროლით) INR ≥{mv_inr}-მდე!'
             else:
-                vka_br_note = 'მაღალი თრომბორისკისას ხიდი INR ≥2.0-მდე'
+                vka_br_note = f'მაღალი თრომბორისკისას ხიდი INR ≥{mv_inr}-მდე'
             return f'ვარფარინის (VKA) აღდგენა 12–24 სთ-ში ჰემოსტაზით ({vka_br_note}) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
         return f'მუდმივი ანტიკოაგულანტის (DOAC) აღდგენა {pause_oac_win} ჰემოსტაზით (PAUSE) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
     if ctx.has_active_stent_dapt:
@@ -555,6 +556,7 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
 def _build_anesthetic_neuraxial_and_bp(ctx):
     patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
     asra_cfg = rule_value('ASRA_NEURAXIAL_COAG_GATE')
+    fib_low = rule_value('LAB_WBC_PLT_COAG')['fib_low']
     arm_diff_lim = rule_value('VIT_BP_HYPOTENSION_SHOCK')['arm_diff']
     neuraxial_blockers = list(ctx.hard_nx_reasons)
     if ctx.solo_neuraxial_anatomic_mismatch:
@@ -567,6 +569,10 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
     vka_inr_caution = (
         f' [ვარფარინის ფონზე ASRA 5th Ed რეკომენდაციით სასურველია INR-ის სრული ნორმალიზება ≤{asra_cfg["inr_vka_norm"]} (მიმდინარე: {ctx.eff_inr_nx})!]'
         if (q.get('med_warfarin') and ctx.eff_inr_nx is not None and asra_cfg['inr_vka_norm'] < ctx.eff_inr_nx <= asra_cfg['inr_max']) else ''
+    )
+    fib_border_caution = (
+        f' [სასაზღვრო ჰიპოფიბრინოგენემია ({ctx.fib} < {fib_low} გ/ლ, თუმცა ≥{asra_cfg["fib_min"]} ASRA ზღვარი) — გადაამოწმეთ კოაგულოგრამა ანესთეზიოლოგთან!]'
+        if (ctx.fib is not None and asra_cfg['fib_min'] <= ctx.fib < fib_low) else ''
     )
     if ctx.has_neuraxial_plan:
         if ctx.plt is None:
@@ -585,9 +591,11 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
             if not (s.get('med_hold_agreed') or s.get('dos_med_hold_verified')):
                 neuraxial_blockers.append('ASRA წამლის შეჩერების ინტერვალი დასადასტურებელია')
         if ctx.neuraxial_hard_blocked:
-            neuraxial_gate = 'უკუნაჩვენებია (ASRA 5th Ed): ' + ', '.join(neuraxial_blockers) + vka_inr_caution + asra_ufh_note
+            neuraxial_gate = 'უკუნაჩვენებია (ASRA 5th Ed): ' + ', '.join(neuraxial_blockers) + vka_inr_caution + fib_border_caution + asra_ufh_note
         elif neuraxial_blockers:
-            neuraxial_gate = 'საყურადღებო/შეზღუდულია (ASRA 5th Ed): ' + ', '.join(neuraxial_blockers) + vka_inr_caution + asra_ufh_note
+            neuraxial_gate = 'საყურადღებო/შეზღუდულია (ASRA 5th Ed): ' + ', '.join(neuraxial_blockers) + vka_inr_caution + fib_border_caution + asra_ufh_note
+        elif fib_border_caution:
+            neuraxial_gate = f'საყურადღებოა (ASRA 5th Ed ზღვარი დაცულია: INR {ctx.eff_inr_nx}, PLT {ctx.plt}){vka_inr_caution}{fib_border_caution}{asra_ufh_note}'
         else:
             neuraxial_gate = f'ASRA 5th Ed კრიტერიუმები დაცულია (INR {ctx.eff_inr_nx}, PLT {ctx.plt}) ✓{vka_inr_caution}{asra_ufh_note}'
     elif ctx.auto_spinal_candidate and ctx.hard_nx_reasons:

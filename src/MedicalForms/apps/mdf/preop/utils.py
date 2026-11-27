@@ -249,7 +249,9 @@ def _alerts_signature(red_flags):
 
 def mask_person_id(pid):
     """Mask 11-digit personal number on unauthenticated pages (e.g. '010•••••001')."""
-    pid = str(pid or '').strip()
+    if pid is None or isinstance(pid, (dict, list, tuple, set, bytes)) or (isinstance(pid, int) and not isinstance(pid, bool) and abs(pid) > 10**15):
+        return ''
+    pid = str(pid).strip()
     if not pid:
         return ''
     if len(pid) >= 7:
@@ -259,7 +261,9 @@ def mask_person_id(pid):
 
 def mask_phone(phone):
     """Mask phone number on unauthenticated pages."""
-    ph = re.sub(r'\s+', '', str(phone or ''))
+    if phone is None or isinstance(phone, (dict, list, tuple, set, bytes)) or (isinstance(phone, int) and not isinstance(phone, bool) and abs(phone) > 10**18):
+        return ''
+    ph = re.sub(r'\s+', '', str(phone))
     if not ph:
         return ''
     if len(ph) >= 6:

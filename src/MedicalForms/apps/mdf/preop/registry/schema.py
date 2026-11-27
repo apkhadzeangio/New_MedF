@@ -1,7 +1,7 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.18'
+REGISTRY_VERSION = '1.2.19'
 REGISTRY_UPDATED_ON = '2026-11-27'
 
 STATUS_VERIFIED = 'source-verified'
@@ -78,6 +78,17 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.19',
+        'date': '2026-11-27',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-20: O(N) scrub_plain_ka ReDoS-ის აღმოფხვრა, LMWH/NLP/HIT+UFH/rAAA/მიკოზური დაფის, Catch-22 გეითების, STOP პარიტეტის, რეესტრისა და JS/HTML-ის სრული სინქრონიზაცია',
+        'changes_ka': (
+            'დაიხურა ყველა დარჩენილი S1 კლინიკური და უსაფრთხოების ხარვეზი: scrub_plain_ka გარდაიქმნა მკაცრად O(N) წრფივ რეგულარულ გამოსახულებებზე (0 ReDoS); free-text NLP სწორად არჩევს უპუნქტუაციო დოზიან/სიხშირიან გადართვებს, „stopped X but not Y“-სა და ქართულ პრეფიქს/სუფიქს უარყოფას („მოხსნილია ელიქვისი ვარფარინი 5მგ“); გამიჯნულია LMWH („დაბალმოლეკულური ჰეპარინი“, „low molecular weight heparin“, „LMWH“, „ლმვჰ“, „tinzaparin“) UFH-ისგან; HIT + CrCl<30-ზე LMWH/ფონდაპარინუქსი აღარ ურჩევს UFH-ს (ურჩევს IV ბივალირუდინს/არგატრობანს); მიკოზური AAA დაფის ხელახალი სინქრონიზაცია შლის ძველ ბეტა-ლაქტამის დავალებას ალერგიის დამატებისას; rAAA + თავისუფალი ტექსტის Xarelto 2.5 მგ და პარენტერული ანტიკოაგულანტები გასცემს გადაუდებელ რევერსიას; დაიხურა ყველა pathway-switch და GSV/alt_vein_mapped Catch-22 ჩიხი (_tab_s1, _tab_q, parsers, abf).',
+            'დაიხურა ყველა S2/S3 ფარმაკოლოგიური, ატრიბუციის, პარიტეტისა და ზედაპირული ხარვეზი: explicit DAPT + თავისუფალი ტექსტის Xarelto 2.5 მგ აღარ იარლიყდება სრულ OAC-ად; ven_duplex_status-ის „deep_patent_reflux“ სწორად ინახება; STOP-ლოკის ბანერები და რუტინული შეჩერების ტექსტი გაერთიანდა _tab_s2/passport/patient_new/build_phone_med_script-ში (acute_hold-ის ჩათვლით); standalone build_med_schedule და anaesthesia სინქრონიზდა უცნობ CrCl-სა და MED_VOYAGER_RIVAROXABAN_2_5 min_egfr-ზე; generate_anamnesis აღარ წერს ცრუ „ქრონიკული დაავადებების გარეშე“ eGFR<60/ღვიძლის 3x/FEV1/CXR/TSH/BP/Hb/P2Y12/ვაზოაქტიურ წამლებზე; თავისუფალი ტექსტის Effient/Brilinta/პარენტერულ წამლებზე და პრასუგრელის FDA Boxed Warning-ზე (≥75 წ./<60 კგ) გათანაბრდა წითელი გაფრთხილებები და პოსტოპ. დე-ესკალაცია.',
+            'დაიხურა ფაზერის, რეესტრის, სუფთა ქართული ინტერფეისისა და JS/HTML-ის ყველა ხარვეზი: დაიკეტა არქივისა და 5-ვე არააქტიური სტატუსის ბარათის წაშლა (week.py) და section=dos_vqi პრეოპ. მუტაცია (patient.py); self_fill-ში სწორი age/birth_date ასუფთავებს _invalid_inputs["age"]-ს; plain_ka და mask_* დაცულია 10**5000 რიცხვებისგან; build_self_fill_highlights აღარ შლის წამლის/ალერგენის სახელს დოზის გვერდით, patient_new ფაილების გალერეაში გასუფთავდა ABI და ინვერტირებულ წნევაში R/L; სრულად დინამიურია ren_red, triple_min, MED_MECH_VALVE_SAFETY და SGLT2/warfarin/statin ატრიბუცია; JS ვიტალების ზღვრები (SBP 90–99, HR 45–54, PP <20), გლუკოზის 0-დრიფტიანი კონვერსია და HTML step="any" სრულად სინქრონიზდა.',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC 2022 NCS · ASRA 5th Ed 2025 · CHEST 2022 · EHRA 2021 · ISTH 2021 · ACC/AHA 2024 · EMA · FDA',
+    },
     {
         'version': '1.2.18',
         'date': '2026-11-27',
