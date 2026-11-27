@@ -130,6 +130,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         with _PREOP_MUTATION_LOCK, transaction.atomic():
             _sqlite_acquire_write_lock(patient.pk)
             patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
+            if patient.archived:
+                messages.error(request, 'ბარათი დაარქივებულია — რედაქტირება და მოქმედებები დაბლოკილია!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
 
             if section == 'header':
                 ev_before = evaluate(patient)
@@ -144,9 +147,12 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
             if section in ('questionnaire', 'q'):
                 ev_before = evaluate(patient)
-                self._save_questionnaire(request, patient)
+                inv_q = self._save_questionnaire(request, patient)
                 _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
-                messages.success(request, 'კითხვარები შეინახა — განახლდა ანამნეზი და მომზადების გეგმა.')
+                if inv_q == 'ready_demoted':
+                    messages.warning(request, 'კითხვარები შეინახა, თუმცა ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
+                else:
+                    messages.success(request, 'კითხვარები შეინახა — განახლდა ანამნეზი და მომზადების გეგმა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1')
 
             if section == 'stage1':
@@ -154,26 +160,35 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 from ..nurse_ui import PREOP_UI_NEW, get_preop_ui_mode
 
                 ev_before = evaluate(patient)
-                self._save_stage1(request, patient)
+                inv_s1 = self._save_stage1(request, patient)
                 ev_after = evaluate(patient)
                 _sync_med_hold_after_mutation(patient, ev_before, ev_after)
                 if get_preop_ui_mode(request) == PREOP_UI_NEW:
                     deltas = summarize_stage1_clinical_delta(ev_before, ev_after)
-                    if deltas:
+                    if inv_s1 == 'ready_demoted':
+                        sfx = (' · ' + ' · '.join(deltas)) if deltas else ''
+                        messages.warning(request, f'ვიტალები/ანალიზები შეინახა — დადასტურება და „მზა“ სტატუსი მოიხსნა{sfx}')
+                    elif deltas:
                         messages.warning(request, 'ვიტალები/ანალიზები შეინახა — განახლდა გამოთვლა: ' + ' · '.join(deltas))
                     else:
                         messages.success(request, 'ვიტალები და ანალიზები შეინახა.')
                     return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-vitals-card')
-                messages.success(request, 'საფეხური 1-ის ანალიზები და კვლევები შეინახა.')
+                if inv_s1 == 'ready_demoted':
+                    messages.warning(request, 'საფეხური 1-ის ანალიზები შეინახა, თუმცა ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
+                else:
+                    messages.success(request, 'საფეხური 1-ის ანალიზები და კვლევები შეინახა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
 
             if section == 'stage2':
                 ev_before = evaluate(patient)
-                had_s2_err = self._save_stage2(request, patient)
+                had_s2_err, inv_s2 = self._save_stage2(request, patient)
                 if request.POST.get('med_hold_agreed') not in ('1', 'on', 'true'):
                     _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
                 if not had_s2_err:
-                    messages.success(request, 'მომზადების გეგმა და კონსულტაციები შეინახა.')
+                    if inv_s2 == 'ready_demoted':
+                        messages.warning(request, 'მომზადების გეგმა შეინახა, თუმცა ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
+                    else:
+                        messages.success(request, 'მომზადების გეგმა და კონსულტაციები შეინახა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
 
             if section == 'signoff':
@@ -192,10 +207,12 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         raw_inv = s.get('_invalid_inputs')
         inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
         age_in = _int(request.POST.get('age'), lo=12, hi=120)
+        had_bad_age = False
         if 'age' in request.POST:
             raw_age = (request.POST.get('age') or '').strip()
             if raw_age and age_in is None:
                 inv['age'] = clean_text(raw_age, 24)
+                had_bad_age = True
             else:
                 inv.pop('age', None)
         if 'person_id' in request.POST:
@@ -213,7 +230,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 dob_age = _age_from_dob(bd)
                 if dob_age is not None:
                     age_in = dob_age
-                    inv.pop('age', None)
+                    if not had_bad_age:
+                        inv.pop('age', None)
+        if had_bad_age:
+            messages.warning(request, 'ასაკი უნდა იყოს 12–120 წლამდე — არასწორი მნიშვნელობა უარყოფილია.')
         if inv:
             s['_invalid_inputs'] = inv
         else:
@@ -222,6 +242,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             patient.age = age_in
         if 'planned_surgery_date' in request.POST:
             _set_planned_surgery_date_field(s, request.POST.get('planned_surgery_date'), today)
+        return had_bad_age
 
     def _save_header(self, request, patient):
         from .. import evaluate
@@ -234,7 +255,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         name = clean_text(request.POST.get('patient_name'), 150).replace('\n', ' ')
         if name:
             patient.patient_name = name
-        self._parse_header_demographics_and_dates(request, patient, s, today)
+        if self._parse_header_demographics_and_dates(request, patient, s, today):
+            had_err = True
 
         if 'sex' in request.POST and (request.POST.get('sex') or '') in ('M', 'F', ''):
             patient.sex = request.POST.get('sex') or ''
@@ -284,39 +306,25 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                     if not patient.started_on:
                         patient.started_on = vd
 
-        _update_hold_pause(
-            s, old_someday, patient.someday_list, today=today,
-            started_on=(None if was_unstarted else patient.started_on),
-        )
+        _update_hold_pause(s, old_someday, patient.someday_list, today=today, started_on=(None if was_unstarted else patient.started_on))
 
         new_pw = PreopPatient.SUBTYPE_PATHWAY.get(patient.op_subtype, patient.pathway)
-        uf = [
-            'patient_name', 'age', 'sex', 'side', 'phone', 'op_subtype', 'pathway',
-            'surgeon', 'visit_date', 'someday_list', 'started_on', 'studies',
-            'updated_at', 'updated_by',
-        ]
+        uf = ['patient_name', 'age', 'sex', 'side', 'phone', 'op_subtype', 'pathway', 'surgeon', 'visit_date', 'someday_list', 'started_on', 'studies', 'updated_at', 'updated_by']
         if s.get('planned_surgery_date') != old_op_dt:
-            s['med_hold_agreed'] = False
-            s['med_hold_agreed_date'] = ''
+            s['med_hold_agreed'], s['med_hold_agreed_date'] = False, ''
         inv_now = s.get('_invalid_inputs') or {}
         someday_before_inv = patient.someday_list
         if patient.side != old_side or patient.op_subtype != old_sub:
-            s['dos_site_marked'] = False
-            s['alerts_ack_sig'] = ''
+            s['dos_site_marked'], s['alerts_ack_sig'] = False, ''
             patient.alerts_ack_at = patient.alerts_ack_by = None
             uf.extend(['alerts_ack_at', 'alerts_ack_by'])
             _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
-        elif (
-            patient.age != old_age or patient.sex != old_sex or s.get('planned_surgery_date') != old_op_dt
-            or any(k in inv_now for k in ('birth_date', 'age', 'planned_surgery_date'))
-        ):
+        elif patient.age != old_age or patient.sex != old_sex or s.get('planned_surgery_date') != old_op_dt or any(k in inv_now for k in ('birth_date', 'age', 'planned_surgery_date')):
             _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
         self._migrate_header_pathway_flags(patient, old_pw, new_pw, s, uf)
         patient.studies = s
         ready_val = PreopPatient.SomedayList.READY
-        if (someday_before_inv == ready_val and patient.someday_list != ready_val) or (
-            patient.someday_list == ready_val and not can_enter_ready_queue(patient, evaluate(patient))
-        ):
+        if (someday_before_inv == ready_val and patient.someday_list != ready_val) or (patient.someday_list == ready_val and not can_enter_ready_queue(patient, evaluate(patient))):
             patient.someday_list = PreopPatient.SomedayList.CONF
             messages.warning(request, 'პაციენტის მონაცემები განახლდა, თუმცა ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
             had_err = True
@@ -326,8 +334,6 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
     @staticmethod
     def _migrate_header_pathway_flags(patient, old_pw, new_pw, s, uf):
-        if new_pw != old_pw and new_pw in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
-            s['carotid_symp'] = False
         if old_pw == PreopPatient.Pathway.VENOUS and new_pw != PreopPatient.Pathway.VENOUS:
             q_mig = merged_q(patient)
             q_changed = False
@@ -369,8 +375,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         patient.studies = s
         patient.updated_by = request.user
         patient.anamnesis = ''
-        _invalidate_approval_if_needed(patient, uf)
+        inv_res = _invalidate_approval_if_needed(patient, uf)
         patient.save(update_fields=list(dict.fromkeys(uf)))
+        return inv_res
 
     def _save_stage1(self, request, patient):
         s = merged_studies(patient)
@@ -382,8 +389,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         patient.studies = s
         patient.updated_by = request.user
         uf = ['studies', 'started_on', 'updated_at', 'updated_by']
-        _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
+        inv_res = _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
         patient.save(update_fields=list(dict.fromkeys(uf)))
+        return inv_res
 
     def _save_stage2(self, request, patient):
         from .. import evaluate
@@ -423,9 +431,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['med_hold_agreed_date'] = timezone.localdate().isoformat()
             patient.studies = s
         patient.updated_by = request.user
-        _invalidate_approval_if_needed(patient, uf)
+        inv_res = _invalidate_approval_if_needed(patient, uf)
         patient.save(update_fields=list(dict.fromkeys(uf)))
-        return had_err
+        return had_err, inv_res
 
     @staticmethod
     def _apply_dos_vqi_post(post, s, today, dos_check_keys, form_present, dos_partial):
@@ -539,13 +547,16 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s['outcome_recorded_on'] = ''
 
         uf = ['studies', 'updated_at', 'updated_by']
+        was_ready_demoted = False
         if s.get('planned_surgery_date') != old_op_dt:
             s['med_hold_agreed'] = False
             s['med_hold_agreed_date'] = ''
-            _invalidate_approval_if_needed(patient, uf)
+            if _invalidate_approval_if_needed(patient, uf) == 'ready_demoted':
+                was_ready_demoted = True
         out_st = s.get('case_outcome_status') or ''
         if out_st.startswith('cancelled_') or out_st == 'deferred':
-            _invalidate_approval_if_needed(patient, uf)
+            if _invalidate_approval_if_needed(patient, uf) == 'ready_demoted':
+                was_ready_demoted = True
         patient.studies = s
         patient.updated_by = request.user
         ev_after = evaluate(patient)
@@ -556,11 +567,15 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             or ev_after.get('has_unacked_red')
             or ev_after['alerts_sig'] != ev_before['alerts_sig']
         ):
-            _invalidate_approval_if_needed(patient, uf)
+            if _invalidate_approval_if_needed(patient, uf) == 'ready_demoted':
+                was_ready_demoted = True
         _sync_med_hold_after_mutation(patient, ev_before, ev_after, save=False)
         patient.save(update_fields=list(dict.fromkeys(uf)))
         if not operated_blocked:
-            messages.success(request, 'ოპერაციის დილის კარიბჭე და 30-დღიანი VQI მონიტორინგი შეინახა.')
+            if was_ready_demoted:
+                messages.warning(request, 'ოპერაციის დილის მონაცემები შეინახა, თუმცა ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
+            else:
+                messages.success(request, 'ოპერაციის დილის კარიბჭე და 30-დღიანი VQI მონიტორინგი შეინახა.')
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
 
     def _save_signoff(self, request, patient):
@@ -647,41 +662,30 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
     def _save_self_link(self, request, patient):
         act = request.POST.get('action') or 'rotate'
         s = merged_studies(patient)
-        uf = ['studies', 'updated_at', 'updated_by']
+        if patient.archived or (s.get('case_outcome_status') or 'scheduled') != 'scheduled':
+            messages.error(request, 'დაარქივებულ, გაუქმებულ, გადადებულ ან ნაოპერაციებ ბარათზე თვითშევსების ბმულის შეცვლა დაბლოკილია!')
+            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
         if act == 'revoke':
-            s['self_fill_revoked'] = True
-            s['self_fill_reopened'] = False
+            s['self_fill_revoked'], s['self_fill_reopened'] = True, False
             messages.info(request, 'პაციენტის თვითშევსების ბმული გაუქმდა.')
         else:
-            s['self_fill_nonce'] = secrets.token_hex(4)
-            s['self_fill_revoked'] = False
-            s['self_fill_reopened'] = True
-            s['self_link_sent_at'] = ''
-            s['self_link_sent_via'] = ''
-            s['self_link_sent_by'] = ''
+            s.update({'self_fill_nonce': secrets.token_hex(4), 'self_fill_revoked': False, 'self_fill_reopened': True,
+                      'self_link_sent_at': '', 'self_link_sent_via': '', 'self_link_sent_by': ''})
             messages.success(request, 'ახალი ერთჯერადი ბმული გენერირდა (წინა ბმული გაუქმდა).')
-        patient.studies = s
-        patient.updated_by = request.user
-        patient.save(update_fields=uf)
-        tab_ret = request.POST.get('tab') or 'q'
-        if tab_ret not in ('q', 's1', 's2', 'doc', 'dos'):
-            tab_ret = 'q'
+        patient.studies, patient.updated_by = s, request.user
+        patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
+        tab_ret = request.POST.get('tab') if request.POST.get('tab') in ('q', 's1', 's2', 'doc', 'dos') else 'q'
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + f'?tab={tab_ret}')
 
     @staticmethod
     def _build_rule_citations(ev):
-        red_items = annotate_texts(ev['red_flags'])
-        amber_items = annotate_texts(ev['amber_flags'])
-        reflex_items = annotate_reflex_orders(ev['reflex_orders'])
-        med_items = annotate_med_rows(ev['med_schedule'])
+        red_items, amber_items = annotate_texts(ev['red_flags']), annotate_texts(ev['amber_flags'])
+        reflex_items, med_items = annotate_reflex_orders(ev['reflex_orders']), annotate_med_rows(ev['med_schedule'])
         dos_items = annotate_texts(ev['dos_warnings'], domain_hint='anaesthesia')
         score_rules = {
-            'asa': 'SCORE_ASA_PHYSICAL_STATUS',
-            'rcri': 'SCORE_RCRI_LEE_1999',
-            'vsg_cri': 'SCORE_VSG_CRI_BERTGES_2010',
-            'ariscat': 'SCORE_ARISCAT_CANET_2010',
-            'caprini': 'SCORE_CAPRINI_VTE',
-            'renal': 'SCORE_RENAL_CKDEPI_CG',
+            'asa': 'SCORE_ASA_PHYSICAL_STATUS', 'rcri': 'SCORE_RCRI_LEE_1999',
+            'vsg_cri': 'SCORE_VSG_CRI_BERTGES_2010', 'ariscat': 'SCORE_ARISCAT_CANET_2010',
+            'caprini': 'SCORE_CAPRINI_VTE', 'renal': 'SCORE_RENAL_CKDEPI_CG',
         }
         rules_map = {rid: rule_meta(rid) for rid in score_rules.values()}
         if ev['clearance_seal'].get('code') == 'stop':
@@ -690,23 +694,15 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             rules_map['WF_UNKNOWN_STATE_FAILSAFE'] = rule_meta('WF_UNKNOWN_STATE_FAILSAFE')
         for group in (red_items, amber_items, reflex_items, dos_items):
             for item in group:
-                meta = item.get('rule')
-                if meta:
-                    rules_map[meta['id']] = meta
+                if item.get('rule'):
+                    rules_map[item['rule']['id']] = item['rule']
         for item in med_items:
-            meta = item.get('rule_meta')
-            if meta:
-                rules_map[meta['id']] = meta
-        ordered_map = {k: rules_map[k] for k in sorted(rules_map)}
+            if item.get('rule_meta'):
+                rules_map[item['rule_meta']['id']] = item['rule_meta']
         return {
-            'red_flag_items': red_items,
-            'amber_flag_items': amber_items,
-            'reflex_order_items': reflex_items,
-            'med_schedule_items': med_items,
-            'dos_warning_items': dos_items,
-            'score_rules': score_rules,
-            'page_rules_map': ordered_map,
-            'rules_catalog_url': reverse('preop-rules'),
+            'red_flag_items': red_items, 'amber_flag_items': amber_items, 'reflex_order_items': reflex_items,
+            'med_schedule_items': med_items, 'dos_warning_items': dos_items, 'score_rules': score_rules,
+            'page_rules_map': {k: rules_map[k] for k in sorted(rules_map)}, 'rules_catalog_url': reverse('preop-rules'),
         }
 
     def _render(self, request, patient):
@@ -715,50 +711,46 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
         ev = evaluate(patient)
         tab = request.GET.get('tab') or ('q' if not ev['q'].get('filled') else 's1')
-        if tab not in ('q', 's1', 's2', 'doc', 'dos'):
-            tab = 'q'
+        tab = tab if tab in ('q', 's1', 's2', 'doc', 'dos') else 'q'
         auto_anamnesis = generate_anamnesis(patient, ev)
         files = list(patient.files.select_related('created_by', 'created_by__profile'))
-        files_by_cat = []
-        for key, label in PreopFile.Category.choices:
-            cat_items = [f for f in files if f.category == key]
-            if cat_items:
-                files_by_cat.append({'key': key, 'label': label, 'files': cat_items})
-
-        self_token = make_self_fill_token(patient)
-        board_patient = resolve_board_patient(patient)
+        files_by_cat = [
+            {'key': k, 'label': lbl, 'files': ci}
+            for k, lbl in PreopFile.Category.choices if (ci := [f for f in files if f.category == k])
+        ]
+        self_token, board_patient = make_self_fill_token(patient), resolve_board_patient(patient)
         default_board_unit = board_patient.unit if board_patient else (BoardPatient.ICU if ev['needs_icu_bed'] else BoardPatient.WARD)
+        is_doc = is_doctor_user(request.user)
+        is_inactive_card = bool(patient.archived or ev.get('case_outcome', 'scheduled') != 'scheduled')
+        is_audit_prot = bool(patient.archived or patient.approved_at or ev.get('case_outcome') == 'operated' or ev['s'].get('board_patient_id'))
+        can_delete_card = bool(
+            request.user.is_superuser or request.user.is_staff or (is_doc and not is_audit_prot)
+            or (not is_audit_prot and patient.surgeon_id is None and (patient.created_by_id is None or patient.created_by_id == request.user.pk) and not any(f.created_by_id != request.user.pk for f in files))
+        )
         ctx = {
             'p': patient, 'ev': ev, 'q': ev['q'], 's': ev['s'], 'tab': tab,
-            'auto_anamnesis': auto_anamnesis,
-            'shown_anamnesis': patient.anamnesis or auto_anamnesis,
+            'is_doctor': is_doc, 'is_inactive_card': is_inactive_card, 'can_delete_card': can_delete_card,
+            'auto_anamnesis': auto_anamnesis, 'shown_anamnesis': patient.anamnesis or auto_anamnesis,
             'self_fill_path': reverse('preop-self-fill', args=[self_token]),
-            'self_fill_revoked': bool(ev['s'].get('self_fill_revoked')),
-            'self_fill_used': is_self_filled_q(ev['q']),
-            'consent_url': consent_url_for_preop(patient),
-            'board_patient': board_patient,
-            'default_board_unit': default_board_unit,
-            'chips': CHIP_CATALOGS, 'cfs_choices': CFS_CHOICES,
+            'self_fill_revoked': bool(ev['s'].get('self_fill_revoked')), 'self_fill_used': is_self_filled_q(ev['q']),
+            'consent_url': consent_url_for_preop(patient), 'board_patient': board_patient,
+            'default_board_unit': default_board_unit, 'chips': CHIP_CATALOGS, 'cfs_choices': CFS_CHOICES,
             'anesth_plan_choices': ANESTH_PLAN_CHOICES, 'asa_choices': ASA_CHOICES,
             'mallampati_choices': MALLAMPATI_CHOICES, 'stop_bang_choices': STOP_BANG_CHOICES,
             'surg_duration_choices': SURG_DURATION_CHOICES, 'cied_plan_choices': CIED_PLAN_CHOICES,
             'case_outcome_choices': CASE_OUTCOME_CHOICES, 'vqi_30d_choices': VQI_30D_CHOICES,
             'aaa_morphology_choices': AAA_MORPHOLOGY_CHOICES, 'aaa_neck_choices': AAA_NECK_CHOICES,
-            'popliteal_screen_choices': POPLITEAL_SCREEN_CHOICES,
-            'post_antithrombotic_choices': POST_ANTITHROMBOTIC_CHOICES,
+            'popliteal_screen_choices': POPLITEAL_SCREEN_CHOICES, 'post_antithrombotic_choices': POST_ANTITHROMBOTIC_CHOICES,
             'mets_limit_choices': METS_LIMIT_CHOICES, 'duration_chips': DURATION_CHIPS,
-            'ceap_choices': CEAP_CHOICES, 'doctors': doctors(),
-            'op_subtype_groups': OP_SUBTYPE_GROUPS, 'side_choices': Case.Side.choices,
-            'someday_choices': PreopPatient.SomedayList.choices[1:],
-            'cardio_decisions': PreopPatient.CardioDecision.choices,
-            'cardiologists': _cardiologist_choices(),
+            'ceap_choices': CEAP_CHOICES, 'doctors': doctors(), 'op_subtype_groups': OP_SUBTYPE_GROUPS,
+            'side_choices': Case.Side.choices, 'someday_choices': PreopPatient.SomedayList.choices[1:],
+            'cardio_decisions': PreopPatient.CardioDecision.choices, 'cardiologists': _cardiologist_choices(),
             'file_categories': PreopFile.Category.choices, 'files_by_cat': files_by_cat,
             'total_files': len(files), 'blood_groups': BG_LIST, 'today': timezone.localdate(),
         }
         ctx.update(self._build_rule_citations(ev))
         from ..nurse_ui import PREOP_UI_NEW, build_nurse_patient_context, get_preop_ui_mode
         if get_preop_ui_mode(request) == PREOP_UI_NEW:
-            ev_with_path = dict(ev, self_fill_path=ctx['self_fill_path'])
-            ctx.update(build_nurse_patient_context(request, patient, ev_with_path))
+            ctx.update(build_nurse_patient_context(request, patient, dict(ev, self_fill_path=ctx['self_fill_path'])))
             return render(request, 'mdf/preop/patient_new.html', ctx)
         return render(request, self.template_name, ctx)

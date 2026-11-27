@@ -74,6 +74,7 @@
                 </button>
                 <a class="x-btn sm" href="{{ self_fill_path }}" target="_blank" rel="noopener" title="პაციენტის კითხვარის გახსნა პლანშეტზე / ცალკე ფანჯარაში">↗</a>
                 {% endif %}
+                {% if not is_inactive_card %}
                 <form method="post" class="d-inline-flex align-items-center gap-1 m-0">
                     {% csrf_token %}
                     <input type="hidden" name="section" value="self_link">
@@ -85,15 +86,18 @@
                     <button type="submit" name="action" value="revoke" class="x-btn sm" title="პაციენტის თვითშევსების ბმულის დაუყოვნებელი გაუქმება">✕</button>
                     {% endif %}
                 </form>
+                {% endif %}
                 {% if board_patient %}
                 <a class="x-btn sm ok" href="{% url 'board-patient' board_patient.pk %}" title="პაციენტი უკვე მიღებულია განყოფილების დაფაზე">
                     ✓ დაფაზეა ({{ board_patient.bed|default:board_patient.get_unit_display }}) →
                 </a>
+                {% if not is_inactive_card %}
                 <form method="post" action="{% url 'preop-admit-board' p.pk %}" class="d-inline m-0">
                     {% csrf_token %}
                     <button type="submit" class="x-btn sm" title="წინასაოპერაციო ანალიზებისა და დავალებების სინქრონიზაცია დაფაზე">↻ ჰენდოფი</button>
                 </form>
-                {% else %}
+                {% endif %}
+                {% elif not is_inactive_card %}
                 <form method="post" action="{% url 'preop-admit-board' p.pk %}" class="d-inline-flex align-items-center gap-1 m-0">
                     {% csrf_token %}
                     <select name="unit" class="form-select form-select-sm" style="width:112px;height:32px;padding-top:2px;padding-bottom:2px" title="განყოფილება მიღებისას">
@@ -137,7 +141,7 @@
                     </label>
                     <div class="d-flex gap-2">
                         <label class="fld" style="flex:1">ასაკი
-                            <input type="number" name="age" value="{{ p.age|default_if_none:'' }}" min="1" max="120" class="form-control">
+                            <input type="number" name="age" value="{{ p.age|default_if_none:'' }}" min="12" max="120" class="form-control">
                         </label>
                         <label class="fld" style="flex:1">სქესი
                             <select name="sex" class="form-select">
@@ -191,7 +195,7 @@
                         </select>
                     </label>
                     <label class="fld" id="visit-date-wrap" style="width:152px" {% if p.someday_list %}hidden{% endif %}>მოსვლის თარიღი
-                        <input type="date" name="visit_date" value="{{ p.visit_date|date:'Y-m-d'|default:today|date:'Y-m-d' }}" class="form-control">
+                        <input type="date" name="visit_date" value="{% if p.visit_date %}{{ p.visit_date|date:'Y-m-d' }}{% else %}{{ today|date:'Y-m-d' }}{% endif %}" class="form-control">
                     </label>
                     <label class="fld" style="width:158px" title="ავტომატურად ითვლის წამლების შეჩერების კალენდარულ თარიღებს">ოპერაციის თარიღი
                         <input type="date" name="planned_surgery_date" value="{{ s.planned_surgery_date }}" class="form-control">
@@ -199,15 +203,21 @@
                     <label class="fld" style="width:150px">ტელეფონი
                         <input type="text" name="phone" value="{{ p.phone }}" placeholder="5XX XX XX XX" class="form-control">
                     </label>
+                    {% if not p.archived %}
                     <button type="submit" class="x-btn sm">განახლება</button>
+                    {% endif %}
                     <div class="ms-auto d-flex gap-2">
+                        {% if is_doctor %}
                         <button type="submit" formaction="{% url 'preop-move' p.pk %}" name="action" value="archive" class="x-btn sm">
                             {% if p.archived %}არქივიდან დაბრუნება{% else %}არქივში{% endif %}
                         </button>
+                        {% endif %}
+                        {% if can_delete_card %}
                         <button type="submit" formaction="{% url 'preop-move' p.pk %}" name="action" value="delete" class="x-btn sm danger"
                                 onclick="return confirm('წავშალოთ {{ p.patient_name|escapejs }} წინასაოპერაციო სიიდან?');">
                             წაშლა
                         </button>
+                        {% endif %}
                     </div>
                 </div>
             </form>

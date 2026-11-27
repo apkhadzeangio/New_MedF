@@ -67,7 +67,15 @@ _IMPLAUSIBLE_SPEC = (
 
 
 def _has_raw(val):
-    return val is not None and (isinstance(val, bool) or str(val).strip() != '')
+    if val is None:
+        return False
+    if isinstance(val, bool):
+        return True
+    if isinstance(val, int) and abs(val) > 10**18:
+        return True
+    if isinstance(val, (dict, list, tuple, set)):
+        return bool(val)
+    return str(val).strip() != ''
 
 
 def _has_nonfinite(obj):
@@ -86,54 +94,21 @@ def _has_nonfinite(obj):
 
 
 def _fmt_bad_val(lbl, raw):
+    from ..utils import _safe_display_str
+    lbl_s = _safe_display_str(lbl, max_len=32, default='ველი')
     if _has_nonfinite(raw):
-        return f'{lbl} (არასწორი რიცხვი)'
-    return f'{lbl}={str(raw).strip()[:24]}'
+        return f'{lbl_s} (არასწორი რიცხვი)'
+    if isinstance(raw, (dict, list, tuple, set)):
+        return f'{lbl_s} (არასწორი ფორმატი)'
+    if isinstance(raw, int) and not isinstance(raw, bool) and abs(raw) > 10**12:
+        return f'{lbl_s} (დიაპაზონს გარეთ)'
+    if isinstance(raw, float) and abs(raw) > 1e12:
+        return f'{lbl_s} (დიაპაზონს გარეთ)'
+    return f'{lbl_s}={str(raw).strip()[:24]}'
 
 
-def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=None, q=None):
+def _detect_date_and_bp_implausible(src, s, inv, q_d, today, bad, seen):
     from ..utils import is_valid_birth_date
-    src = raw_s if isinstance(raw_s, dict) else {}
-    inv = src.get('_invalid_inputs') if isinstance(src.get('_invalid_inputs'), dict) else {}
-    q_d = q if isinstance(q, dict) else {}
-    bad = []
-    seen = set()
-    for key, lbl, lo, hi in _IMPLAUSIBLE_SPEC:
-        raw = src[key] if key in src else s.get(key)
-        if _has_raw(raw) and _num(raw, lo=lo, hi=hi) is None:
-            bad.append(_fmt_bad_val(lbl, raw))
-            seen.add(key)
-        elif key in inv and _has_raw(inv[key]):
-            bad.append(_fmt_bad_val(lbl, inv[key]))
-            seen.add(key)
-    from ..registry import rule_value
-    unit_cfg = rule_value('LAB_UNIT_AUTO_CONVERSION')
-    for key, lbl, check_fn in (
-        ('creat', 'კრეატინინი', None),
-        ('fibrinogen', 'ფიბრინოგენი', None),
-        ('wbc', 'WBC', lambda v: _num(v, lo=0.1, hi=150000) is not None),
-        ('plt', 'PLT', lambda v: (pv := _num(v, lo=1, hi=2000000)) is not None and not (unit_cfg['plt_ambig_lo'] < pv < unit_cfg['plt_ul_ge'])),
-    ):
-        raw = src[key] if key in src else s.get(key)
-        if key == 'creat' and _has_raw(raw):
-            scr_mg, ambig = _parse_scr_mgdl(raw, creat_unit)
-            if scr_mg is None and (not creat_unit_ambiguous or creat_unit in ('umol', 'mgdl')):
-                bad.append(_fmt_bad_val(lbl, raw))
-                seen.add(key)
-            elif ambig and creat_unit in ('umol', 'mgdl'):
-                bad.append(f'{_fmt_bad_val(lbl, raw)} ({creat_unit})')
-                seen.add(key)
-        elif key == 'fibrinogen' and _has_raw(raw):
-            from ..calculators import normalize_fibrinogen_gl
-            if normalize_fibrinogen_gl(raw) is None:
-                bad.append(_fmt_bad_val(lbl, raw))
-                seen.add(key)
-        elif check_fn and _has_raw(raw) and not check_fn(raw):
-            bad.append(_fmt_bad_val(lbl, raw))
-            seen.add(key)
-        elif key not in seen and key in inv and _has_raw(inv[key]):
-            bad.append(_fmt_bad_val(lbl, inv[key]))
-            seen.add(key)
     raw_cta_dt = src['cta_date'] if 'cta_date' in src else s.get('cta_date')
     raw_op_dt = src['planned_surgery_date'] if 'planned_surgery_date' in src else s.get('planned_surgery_date')
     for dkey, dlbl, raw_val in (
@@ -171,7 +146,7 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today
     }
     for ik, iv in inv.items():
         if ik not in seen and _has_raw(iv):
-            bad.append(_fmt_bad_val(extra_inv_labels.get(ik, str(ik)), iv))
+            bad.append(_fmt_bad_val(extra_inv_labels.get(ik, ik), iv))
             seen.add(ik)
     for sk, dk, lbl_bp in (
         ('bp_sys', 'bp_dia', 'წნევა (R)'),
@@ -181,7 +156,57 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today
         sv = _num(src[sk] if (sk in src and _has_raw(src[sk])) else (inv[sk] if (sk in inv and _has_raw(inv[sk])) else s.get(sk)))
         dv = _num(src[dk] if (dk in src and _has_raw(src[dk])) else (inv[dk] if (dk in inv and _has_raw(inv[dk])) else s.get(dk)))
         if sv is not None and dv is not None and sv <= dv:
-            bad.append(f'{lbl_bp} ინვერტირებულია ({int(sv)}/{int(dv)})')
+            bp_disp = f'{int(round(sv))}/{int(round(dv))}' if (abs(sv) <= 9999 and abs(dv) <= 9999) else 'დიაპაზონს გარეთ'
+            bad.append(f'{lbl_bp} ინვერტირებულია ({bp_disp})')
+
+
+def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=None, q=None, raw_age=None):
+    from ..registry import rule_value
+    from ..utils import parse_plt_k, parse_wbc_k
+    src = raw_s if isinstance(raw_s, dict) else {}
+    inv = src.get('_invalid_inputs') if isinstance(src.get('_invalid_inputs'), dict) else {}
+    q_d = q if isinstance(q, dict) else {}
+    unit_cfg = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    bad, seen = [], set()
+    if _has_raw(raw_age) and _int(raw_age, lo=12, hi=120) is None:
+        bad.append(_fmt_bad_val('ასაკი', raw_age))
+        seen.add('age')
+    for key, lbl, lo, hi in _IMPLAUSIBLE_SPEC:
+        eff_lo = unit_cfg['hb_gdl_lo'] if key == 'hb' else lo
+        raw = src[key] if key in src else s.get(key)
+        if _has_raw(raw) and _num(raw, lo=eff_lo, hi=hi) is None:
+            bad.append(_fmt_bad_val(lbl, raw))
+            seen.add(key)
+        elif key in inv and _has_raw(inv[key]):
+            bad.append(_fmt_bad_val(lbl, inv[key]))
+            seen.add(key)
+    for key, lbl, check_fn in (
+        ('creat', 'კრეატინინი', None),
+        ('fibrinogen', 'ფიბრინოგენი', None),
+        ('wbc', 'WBC', lambda v: parse_wbc_k(v) is not None),
+        ('plt', 'PLT', lambda v: parse_plt_k(v) is not None),
+    ):
+        raw = src[key] if key in src else s.get(key)
+        if key == 'creat' and _has_raw(raw):
+            scr_mg, ambig = _parse_scr_mgdl(raw, creat_unit)
+            if scr_mg is None and (not creat_unit_ambiguous or creat_unit in ('umol', 'mgdl')):
+                bad.append(_fmt_bad_val(lbl, raw))
+                seen.add(key)
+            elif ambig and creat_unit in ('umol', 'mgdl'):
+                bad.append(f'{_fmt_bad_val(lbl, raw)} ({creat_unit})')
+                seen.add(key)
+        elif key == 'fibrinogen' and _has_raw(raw):
+            from ..calculators import normalize_fibrinogen_gl
+            if normalize_fibrinogen_gl(raw) is None:
+                bad.append(_fmt_bad_val(lbl, raw))
+                seen.add(key)
+        elif check_fn and _has_raw(raw) and not check_fn(raw):
+            bad.append(_fmt_bad_val(lbl, raw))
+            seen.add(key)
+        elif key not in seen and key in inv and _has_raw(inv[key]):
+            bad.append(_fmt_bad_val(lbl, inv[key]))
+            seen.add(key)
+    _detect_date_and_bp_implausible(src, s, inv, q_d, today, bad, seen)
     return bad
 
 
@@ -197,8 +222,8 @@ def _init_limb_hemodynamics(ctx):
     abi_noncomp_thresh = art_cfg['abi_noncomp']
     abi_r = _num(s.get('abi_r'), lo=0.0, hi=3.0)
     abi_l = _num(s.get('abi_l'), lo=0.0, hi=3.0)
-    tp_r = _int(s.get('tp_r'), lo=0, hi=400)
-    tp_l = _int(s.get('tp_l'), lo=0, hi=400)
+    tp_r = _num(s.get('tp_r'), lo=0, hi=400)
+    tp_l = _num(s.get('tp_l'), lo=0, hi=400)
     tbi_r = _num(s.get('tbi_r'), lo=0.0, hi=3.0)
     tbi_l = _num(s.get('tbi_l'), lo=0.0, hi=3.0)
     abi_r_s = abi_r if abi_r is not None else _sat_num(_s_raw(s, 'abi_r'), 0.0, 3.0)
@@ -297,7 +322,18 @@ def _init_base_flags_and_pre_reflex(ctx):
     ctx.ldl_val = normalize_ldl_mmol(s.get('ldl'))
     ctx.weight_num = _num(s.get('weight_kg'), lo=25, hi=260)
     ctx.weight_sat = _sat_num(_s_raw(s, 'weight_kg'), 25, 260)
-    ctx.has_known_dm = bool(q.get('dm') or q.get('dm_insulin') or q.get('metformin'))
+    lvef_dm = _sat_num(_s_raw(s, 'lvef'), 5, 95)
+    lvef_red_dm = rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red']
+    ren_hyd_dm = rule_value('REN_CKD_NEPHRO_HYDRATION')['hydration']
+    sglt2_likely_dm = bool(
+        q.get('sglt2')
+        and 'hf' not in set(q.get('cad_chips') or [])
+        and (lvef_dm is None or lvef_dm >= lvef_red_dm)
+        and not ctx.on_dialysis
+        and (ctx.eff_renal_sat is None or ctx.eff_renal_sat >= ren_hyd_dm)
+    )
+    ctx.has_known_dm = bool(q.get('dm') or q.get('dm_insulin') or q.get('metformin') or sglt2_likely_dm)
+    ctx.sglt2_unlisted_dm = bool(sglt2_likely_dm and not (q.get('dm') or q.get('dm_insulin') or q.get('metformin')))
     ctx.active_gi_bleed = bool(s.get('gastro_result') == 'acute_ulcer' or (q.get('ulcer_active_symp') and s.get('gastro_result') != 'remission'))
     ctx.eff_pregnant = bool(is_pregnancy_eligible(ctx.patient) and (q.get('pregnant_possible') or q.get('ven_pregnant')))
     ctx.is_ali_acute = bool(
@@ -336,6 +372,7 @@ def _init_base_flags_and_pre_reflex(ctx):
         | ({'iodine'} if ('iodine' in ctx.ft_allergy_matched and not q.get('allergy_iodine')) else set())
     )
     ctx.ft_meds = _detect_freetext_high_risk_meds(q.get('other_meds') or '', q=q)
+    ctx.has_ft_full_oac = bool(ctx.ft_meds.get('has_ft_full_oac'))
     has_unmatched_allergy_text = _has_unrecognized_allergy_clause(q.get('allergy_text') or '')
     ctx.unclarified_allergy_other = bool(
         (q.get('allergy_other') and not ctx.allergy_chips and not ctx.eff_allergy_iodine)
@@ -359,9 +396,13 @@ def _init_base_flags_and_pre_reflex(ctx):
     ctx.has_any_antithrombotic = bool(
         ctx.has_antiplatelet or q.get('med_aspirin') or q.get('med_clopidogrel') or q.get('med_prasugrel')
         or q.get('med_doac') or q.get('med_dabigatran')
-        or q.get('med_warfarin') or ('rivaroxaban_2_5' in ctx.med_chips)
+        or q.get('med_warfarin') or ('rivaroxaban_2_5' in ctx.med_chips) or ctx.has_ft_full_oac
     )
 
+    _init_pre_reflex_orders(ctx, s, is_rup_pre)
+
+
+def _init_pre_reflex_orders(ctx, s, is_rup_pre):
     if s.get('case_wifi_unsalvageable') and ctx.pathway in (
         PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA,
     ):
@@ -374,9 +415,10 @@ def _init_base_flags_and_pre_reflex(ctx):
         ctx.needs_tbi_check = True
         nc_side_lbl = f" ({'/'.join(ctx.nc_legs)})" if ctx.nc_legs else ''
         abi_disp = ctx.max_abi if ctx.max_abi is not None else ctx.max_abi_sat
+        abi_nc_lim = rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')['abi_noncomp']
         ctx.reflex_orders.append({
             'key': 'tbi',
-            'trigger': f'არაკომპრესირებადი არტერია{nc_side_lbl} (ABI {abi_disp} > 1.40 — მონკებერგის კალციფიკაცია)',
+            'trigger': f'არაკომპრესირებადი არტერია{nc_side_lbl} (ABI {abi_disp} > {abi_nc_lim:.2f} — მონკებერგის კალციფიკაცია)',
             'action': 'სამიზნე კიდურზე თითის წნევის (Toe Pressure, mmHg) ან თით-მხრის ინდექსის (TBI) განსაზღვრა რეალური პერფუზიის შესაფასებლად',
             'done': ctx.tbi_measured,
         })
@@ -408,14 +450,16 @@ def _compute_core_metrics(patient, q, s, today):
         raw_creat, patient.age, patient.sex or '', raw_weight,
         creat_unit, on_dialysis=on_dialysis, height_cm=s.get('height_cm'),
     )
-    car_r, car_l = _int(s.get('carotid_r'), lo=0, hi=100), _int(s.get('carotid_l'), lo=0, hi=100)
+    car_r, car_l = _num(s.get('carotid_r'), lo=0, hi=100), _num(s.get('carotid_l'), lo=0, hi=100)
     car_r_sat = _sat_num(_s_raw(s, 'carotid_r'), 0, 100)
     car_l_sat = _sat_num(_s_raw(s, 'carotid_l'), 0, 100)
     car_r_si = int(round(car_r_sat)) if car_r_sat is not None else None
     car_l_si = int(round(car_l_sat)) if car_l_sat is not None else None
     raw_s = patient.studies if isinstance(patient.studies, dict) else {}
     raw_q = patient.questionnaire if isinstance(patient.questionnaire, dict) else q
-    implausible_fields = _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=today, q=raw_q)
+    implausible_fields = _detect_implausible_fields(
+        raw_s, s, creat_unit, creat_unit_ambiguous, today=today, q=raw_q, raw_age=patient.age,
+    )
     bmi_val = calc_bmi(s.get('weight_kg'), s.get('height_cm'))
     hb_unit_ambiguous = is_hb_unit_ambiguous(_s_raw(s, 'hb'))
     age_val = _int(patient.age, lo=12, hi=120)
@@ -476,10 +520,17 @@ def init_eval_context(patient, today=None):
         cta_months=cta_live_months_age(s, today=today),
         **m,
     )
-    if m['implausible_fields']:
+    non_bp_inv = [x for x in m['implausible_fields'] if 'ინვერტირებულია' not in x]
+    if non_bp_inv:
         ctx.red_flags.append(
-            f'შეყვანილია დაუშვებელი / დიაპაზონს გარეთა მნიშვნელობა ({", ".join(m["implausible_fields"][:4])}) — '
+            f'შეყვანილია დაუშვებელი / დიაპაზონს გარეთა მნიშვნელობა ({", ".join(non_bp_inv[:4])}) — '
             'გადაამოწმეთ ლაბორატორიული ერთეული და მაჩვენებლები!'
+        )
+    elif any('დილის წნევა ინვერტირებულია' in x for x in m['implausible_fields']):
+        inv_dos = [x for x in m['implausible_fields'] if 'დილის წნევა ინვერტირებულია' in x]
+        ctx.red_flags.append(
+            f'არტერიული წნევის არასწორი ჩანაწერი ({", ".join(inv_dos)}) — '
+            'გადაამოწმეთ სისტოლური და დიასტოლური მაჩვენებლები!'
         )
     _init_limb_hemodynamics(ctx)
     _init_base_flags_and_pre_reflex(ctx)

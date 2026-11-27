@@ -331,11 +331,11 @@ class Round14WorkflowSecurityAndFuzzTests(TestCase):
         url_app = reverse('preop-move', args=[p_app.pk])
         r1 = c_nurse.post(url_app, {'action': 'delete'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         self.assertEqual(r1.status_code, 403)
-        self.assertTrue(PreopPatient.objects.filter(pk=p_app.pk, archived=True).exists())
+        self.assertTrue(PreopPatient.objects.filter(pk=p_app.pk, archived=False).exists())
         self.assertTrue(PreopFile.objects.filter(pk=f_app.pk).exists())
         r2 = c_doc.post(url_app, {'action': 'delete'}, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
         self.assertEqual(r2.status_code, 403)
-        self.assertTrue(PreopPatient.objects.filter(pk=p_app.pk).exists())
+        self.assertTrue(PreopPatient.objects.filter(pk=p_app.pk, archived=True).exists())
         self.assertTrue(PreopFile.objects.filter(pk=f_app.pk).exists())
 
         # 2. Archived patient with doctor file: plain_nurse blocked

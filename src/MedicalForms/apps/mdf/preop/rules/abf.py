@@ -126,7 +126,7 @@ def eval_abf(ctx):
         ctx.key_badge = f'ABI {ctx.min_comp_abi}'
         ctx.key_badge_urgent = bool(is_clti or ctx.min_comp_abi < hemo_cfg['abi_severe'])
         if ctx.min_comp_abi < hemo_cfg['abi_severe'] and not is_clti:
-            ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < 0.40) — შეესაბამება მძიმე იშემიას.')
+            ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < {hemo_cfg["abi_severe"]:.2f}) — შეესაბამება მძიმე იშემიას.')
         elif (
             not is_clti and abi_norm_lo < ctx.min_comp_abi <= abi_norm_hi
             and not ctx.abi_non_compressible
@@ -134,7 +134,7 @@ def eval_abf(ctx):
             and not (ctx.min_tbi is not None and ctx.min_tbi < hemo_cfg['normal_tbi'])
         ):
             ctx.red_flags.append(
-                f'ფიქსირდება ნორმალური ABI ({ctx.min_comp_abi} — 0.91–1.40) ორივე კიდურზე კოჭლობის ფონზე — '
+                f'ფიქსირდება ნორმალური ABI ({ctx.min_comp_abi} — {abi_norm_lo + 0.01:.2f}–{abi_norm_hi:.2f}) ორივე კიდურზე კოჭლობის ფონზე — '
                 'გადაამოწმეთ დატვირთვის შემდგომი ABI ან აორტო-ილიაკური ჩვენება ქირურგთან!'
             )
     elif ctx.min_tp is not None:
@@ -173,17 +173,19 @@ def eval_abf(ctx):
 def _eval_bypass_conduit(ctx, is_clti):
     patient, s = ctx.patient, ctx.s
     gsv_cfg = rule_value('PAD_GSV_MIN_MM')
+    gsv_min_mm = gsv_cfg['gsv_min_mm']
+    abi_noncomp = rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')['abi_noncomp']
     gsv_st = s.get('pad_gsv_status') or 'pending'
     gsv_inadequate = (
         gsv_st == 'inadequate'
-        or (ctx.pad_gsv_mm is not None and ctx.pad_gsv_mm < gsv_cfg['gsv_min_mm'])
+        or (ctx.pad_gsv_mm is not None and ctx.pad_gsv_mm < gsv_min_mm)
         or ('vein_strip' in ctx.vasc_chips)
     )
     if gsv_inadequate:
         ctx.needs_alt_vein = True
         ctx.reflex_orders.append({
             'key': 'alt_vein',
-            'trigger': 'იფსილატერალური GSV უვარგისია (< 3.0 მმ ან ამოღებულია)',
+            'trigger': f'იფსილატერალური GSV უვარგისია (< {gsv_min_mm} მმ ან ამოღებულია)',
             'action': 'ალტერნატიული აუტოვენის რეფლექს-კარტირება (კონტრალატერალური GSV, SSV და ხელის ვენები — Cephalic/Basilic)',
             'done': (s.get('alt_vein_mapped') or 'pending') != 'pending',
         })
@@ -212,14 +214,14 @@ def _eval_bypass_conduit(ctx, is_clti):
             )
         elif (
             contra_abi is not None
-            and contra_abi > rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')['abi_noncomp']
+            and contra_abi > abi_noncomp
             and not (
                 (contra_tp is not None and contra_tp >= gsv_cfg['donor_tp_amb'])
                 or (contra_tbi is not None and contra_tbi >= gsv_cfg['donor_tbi_amb'])
             )
         ):
             ctx.amber_flags.append(
-                f'დონორ კიდურზე არაკომპრესირებადი ABI ({contra_abi} > 1.40) — კონტრალატერალური GSV-ის აღებამდე გადაამოწმეთ Toe Pressure ≥60 mmHg / TBI ≥0.50!'
+                f'დონორ კიდურზე არაკომპრესირებადი ABI ({contra_abi} > {abi_noncomp:.2f}) — კონტრალატერალური GSV-ის აღებამდე გადაამოწმეთ Toe Pressure ≥{gsv_cfg["donor_tp_amb"]} mmHg / TBI ≥{gsv_cfg["donor_tbi_amb"]:.2f}!'
             )
         elif contra_abi is None and contra_tp is None and contra_tbi is None:
             ctx.amber_flags.append('კონტრალატერალური GSV-ის აღებამდე გადაამოწმეთ დონორი კიდურის ABI / პულსაცია!')
@@ -248,13 +250,13 @@ def _eval_pad_bypass_side_and_hemo(ctx, is_clti, hemo_cfg, abi_norm_lo, abi_norm
         )
         if t_normal_hemo and (not is_clti or (ctx.contra_abi is not None and ctx.contra_abi < hemo_cfg['wrong_side_contra_abi'])):
             ctx.red_flags.append(
-                f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_byp} — 0.91–1.40)'
+                f'საოპერაციო კიდურზე ({patient.side}) ფიქსირდება ნორმალური ABI ({t_abi_byp} — {abi_norm_lo + 0.01:.2f}–{abi_norm_hi:.2f})'
                 + (f', ხოლო კონტრალატერალურზე ABI {ctx.contra_abi}!' if ctx.contra_abi is not None and ctx.contra_abi < hemo_cfg['wrong_side_contra_abi'] else ' კოჭლობის ფონზე')
                 + ' — გადაამოწმეთ არჩეული მხარე (R/L) ან დატვირთვის შემდგომი პერფუზია ქირურგთან!'
             )
     _eval_pad_hemo_discordance(ctx, hemo_cfg)
     if ctx.min_comp_abi is not None and ctx.min_comp_abi < hemo_cfg['abi_severe'] and not is_clti:
-        ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < 0.40) — შეესაბამება მძიმე იშემიას.')
+        ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < {hemo_cfg["abi_severe"]:.2f}) — შეესაბამება მძიმე იშემიას.')
     if patient.op_subtype == PreopPatient.OpSubtype.BYPASS_CLAUD and q_filled and (
         q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips') or q.get('abf_wet_infection')
     ):
@@ -312,7 +314,7 @@ def eval_pad_bypass(ctx):
         else:
             ctx.red_flags.append('CTA/ანგიოგრაფიით კრიტიკულად დაზიანებული დისტალური კალაპოტი (Desert foot) — შუნტის ადრეული თრომბოზის უმაღლესი რისკი! აცნობეთ ქირურგს.')
     elif runoff == 'tibial_single':
-        ctx.amber_flags.append('დისტალური მიმღები მხოლოდ წვივის ერთი არტერიაა — აუცილებელია ხარისხიანი აუტოვენა (GSV ≥ 3.0 მმ).')
+        ctx.amber_flags.append(f'დისტალური მიმღები მხოლოდ წვივის ერთი არტერიაა — აუცილებელია ხარისხიანი აუტოვენა (GSV ≥ {gsv_min} მმ).')
 
     _eval_bypass_conduit(ctx, is_clti)
     _eval_pad_bypass_side_and_hemo(ctx, is_clti, hemo_cfg, abi_norm_lo, abi_norm_hi)

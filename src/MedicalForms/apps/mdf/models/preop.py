@@ -197,8 +197,10 @@ class PreopPatient(models.Model):
             stage = 'კრიტიკული იშემია (CLTI)' if is_clti else 'ხანგამოშვებითი კოჭლობა'
             return f'{side_word}ქვემო კიდურის არტერიების მაობლიტერირებელი ათეროსკლეროზი, {stage}'
         if self.pathway == self.Pathway.VENOUS:
+            import re as _re
             side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა ', 'B': 'ორმხრივი '}.get(side_s, '')
-            ceap = (q.get('ven_ceap') or '') if q.get('filled') else ''
+            raw_ceap = q.get('ven_ceap') if q.get('filled') else ''
+            ceap = raw_ceap.strip() if (isinstance(raw_ceap, str) and _re.match(r'^C[0-6][a-zA-Z]{0,3}$', raw_ceap.strip())) else ''
             ceap_str = f' (CEAP {ceap})' if ceap else ''
             return f'{side_word}ქვემო კიდურების ვენების ვარიკოზული დაავადება{ceap_str}'
         mm = _int(s.get('aaa_mm'), 10, 200)

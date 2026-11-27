@@ -450,3 +450,6 @@ def _invalidate_approval_if_needed(patient, uf, clear_anamnesis=False):
         if patient.someday_list == PreopPatient.SomedayList.READY:
             patient.someday_list = PreopPatient.SomedayList.CONF
             uf.append('someday_list')
+            return 'ready_demoted'
+        return 'approval_cleared'
+    return ''

@@ -16,8 +16,11 @@ def _s_raw(s, key):
     if not isinstance(s, dict):
         return None
     v = s.get(key)
-    if v is not None and str(v).strip() != '':
-        return v
+    if v is not None:
+        if isinstance(v, int) and not isinstance(v, bool) and abs(v) > 10**18:
+            return None
+        if str(v).strip() != '':
+            return v
     inv = s.get('_invalid_inputs')
     return inv.get(key) if isinstance(inv, dict) else None
 
@@ -166,13 +169,26 @@ def normalize_hb_gl(hb):
     v = _num(hb, lo=u['hb_gdl_lo'], hi=260)
     if v is None or (u['hb_gdl_hi'] < v < u['hb_ambig_hi']):
         return None
-    return _clean_num(round(v * 10, 1) if u['hb_gdl_lo'] <= v <= u['hb_gdl_hi'] else v)
+    return _clean_num(round(v * 10, 4) if u['hb_gdl_lo'] <= v <= u['hb_gdl_hi'] else v)
 
 
 def normalize_glucose_mmol(gl):
-    """Return glucose in mmol/L (converts mg/dL > 35.0 with 2-decimal precision for unit-boundary parity)."""
+    """Return glucose in mmol/L (conservative floor <gl_red_lo / ceil >gl_hba1c when converting mg/dL)."""
+    from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
     v = _num(gl, lo=0.5, hi=1000)
-    return None if v is None else _clean_num(round(v / 18.0, 2) if v > rule_value('GLY_UNIT_CONVERSION_MGDL') else v)
+    if v is None:
+        return None
+    if v <= rule_value('GLY_UNIT_CONVERSION_MGDL'):
+        return _clean_num(v)
+    gly = rule_value('GLY_GLUCOSE_HBA1C')
+    d = Decimal(str(v)) / Decimal('18')
+    if d < Decimal(str(gly['gl_red_lo'])):
+        q = d.quantize(Decimal('0.01'), rounding=ROUND_FLOOR)
+    elif d > Decimal(str(gly['gl_hba1c'])):
+        q = d.quantize(Decimal('0.01'), rounding=ROUND_CEILING)
+    else:
+        q = d.quantize(Decimal('0.01'))
+    return _clean_num(float(q))
 
 
 def normalize_albumin_gl(alb):
@@ -181,13 +197,13 @@ def normalize_albumin_gl(alb):
     if v is None:
         return None
     u = rule_value('LAB_UNIT_AUTO_CONVERSION')
-    return _clean_num(round(v * 10, 1) if u['alb_gdl_lo'] <= v <= u['alb_gdl_hi'] else v)
+    return _clean_num(round(v * 10, 4) if u['alb_gdl_lo'] <= v <= u['alb_gdl_hi'] else v)
 
 
 def normalize_fibrinogen_gl(fib):
     """Return plasma fibrinogen in g/L (idempotent across 15.01..1500 mg/dL via lo=0.15)."""
     v = _num(fib, lo=0.15, hi=1500)
-    return None if v is None else _clean_num(round(v / 100.0, 2) if v > rule_value('LAB_UNIT_AUTO_CONVERSION')['fib_mgdl_gt'] else v)
+    return None if v is None else _clean_num(round(v / 100.0, 4) if v > rule_value('LAB_UNIT_AUTO_CONVERSION')['fib_mgdl_gt'] else v)
 
 
 def normalize_ldl_mmol(ldl):
@@ -309,7 +325,9 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     spo2, eff_sbp, eff_dbp = _sat_num(_s_raw(s, 'spo2'), 30, 100), _valid_bilateral_sbp(s), _valid_bilateral_dbp(s)
     inv_bp_all = _inverted_bp_arms(s)
     inv_bp = inv_bp_all if eff_sbp is None else []
-    inv_max_all, inv_min = max((max(a, b) for a, b in inv_bp_all), default=None), min((min(a, b) for a, b in inv_bp), default=None)
+    inv_max_no_valid = max((max(a, b) for a, b in inv_bp), default=None)
+    inv_strict_htn = any(max(a, b) >= asa['sbp_iii'] or min(a, b) >= asa['dbp_iii'] for a, b in inv_bp_all)
+    inv_min = min((min(a, b) for a, b in inv_bp), default=None)
     raw_sbp_low = min([v for v in (_sat_num(_s_raw(s, 'bp_sys'), 30, 320), _sat_num(_s_raw(s, 'bp_sys_l'), 30, 320)) if v is not None], default=None)
     hr_val, k_val, plt_val = _sat_num(_s_raw(s, 'hr'), 15, 260), _sat_num(_s_raw(s, 'k'), 1.0, 12.0), _parse_plt_k(_s_raw(s, 'plt'))
     fib_val, inr_val = _sat_fib_gl(_s_raw(s, 'fibrinogen')), _sat_num(_s_raw(s, 'inr'), 0.4, 20.0)
@@ -317,6 +335,7 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     cea_d = cea_live_days_since_event(q, today=today, s=s)
     is_symp_cea = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=False)
     is_pad_pw = pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
+    from .utils import has_prior_stroke_or_tia
 
     if (
         (pw == PreopPatient.Pathway.AAA_INFRA and (bool(q.get('aaa_pain')) or s.get('aaa_morphology') == 'inflammatory_mycotic'))
@@ -345,21 +364,26 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
     if (
         pw != PreopPatient.Pathway.VENOUS or bool(q.get('on_dialysis'))
         or (egfr_v is not None and egfr_v < asa['egfr_iii']) or bool(q.get('cad')) or bool(cad_chips)
-        or bool(q.get('neuro')) or (s.get('ecg') == 'afib_controlled')
+        or has_prior_stroke_or_tia(patient, q=q, s=s, today=today) or (s.get('ecg') == 'afib_controlled')
         or bool(q.get('ven_dvt_history')) or bool(_str_list(q.get('ven_dvt_chips'))) or bool(q.get('ven_cancer_immob'))
         or (s.get('liver_status') == '3x') or (hb_gl is not None and hb_gl < asa['hb_iii'])
         or (hba1c is not None and hba1c >= asa['hba1c_iii']) or (gl_mmol is not None and gl_mmol >= asa['gl_iii'])
         or bool(q.get('dm_insulin')) or (bmi_v is not None and bmi_v >= asa['bmi_iii'])
         or bool(q.get('pacemaker')) or ('copd' in _str_list(q.get('pulm_chips')))
         or (spo2 is not None and spo2 < asa['spo2_iii']) or (eff_sbp is not None and eff_sbp >= asa['sbp_iii'])
-        or (eff_dbp is not None and eff_dbp >= asa['dbp_iii']) or (inv_max_all is not None and inv_max_all >= asa['dbp_iii'])
+        or (eff_dbp is not None and eff_dbp >= asa['dbp_iii']) or inv_strict_htn
+        or (inv_max_no_valid is not None and inv_max_no_valid >= asa['dbp_iii'])
         or (k_val is not None and (k_val >= asa['k_iii_hi'] or k_val < asa['k_iii_lo'])) or (q.get('cfs_level') == '5_plus')
     ):
         return 'III'
 
+    med_ch_asa = set(_str_list(q.get('med_chips')))
     if (
         bool(q.get('htn')) or bool(q.get('dm')) or bool(q.get('metformin')) or bool(q.get('smoker'))
         or bool(q.get('pulm')) or bool(_str_list(q.get('pulm_chips'))) or bool(q.get('thyroid_disease'))
+        or bool(q.get('med_warfarin')) or bool(q.get('med_doac')) or bool(q.get('med_dabigatran'))
+        or bool(q.get('med_clopidogrel')) or bool(q.get('med_ticagrelor')) or bool(q.get('med_prasugrel'))
+        or ('amiodarone' in med_ch_asa)
         or (hba1c is not None and hba1c >= asa['hba1c_ii'])
         or (is_pregnancy_eligible(patient) and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible'))))
         or (bmi_v is not None and bmi_v >= asa['bmi_ii'])
@@ -376,7 +400,8 @@ def build_surveillance_plan(patient):
             return 'ESVS 2024 EVAR მეთვალყურეობა (რისკ-სტრატიფიცირებული): კტ-ანგიოგრაფია (CTA) 30 დღეში; დაბალი რისკისას (ენდოლიკის გარეშე, IFU-ში) — კონტროლი 5 წელიწადში, მაღალი რისკისას — ყოველწლიური CTA/დუპლექსი.'
         return 'ESVS 2024 ღია AAA მეთვალყურეობა: კლინიკური და დუპლექს-შეფასება 6–12 თვეში, შემდეგ აორტა-თეძოს CTA/დუპლექსი ყოველ 5 წელიწადში.'
     if pw == PreopPatient.Pathway.CEA:
-        return 'ESVS 2023 CEA მეთვალყურეობა: საძილე არტერიების დუპლექს-სკანირება 1–3 თვეში, 6–12 თვეში და შემდეგ წელიწადში ერთხელ + BP და LDL (<1.4 მმოლ/ლ) კონტროლი.'
+        ldl_lim = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
+        return f'ESVS 2023 CEA მეთვალყურეობა: საძილე არტერიების დუპლექს-სკანირება 1–3 თვეში, 6–12 თვეში და შემდეგ წელიწადში ერთხელ + BP და LDL (<{ldl_lim} მმოლ/ლ) კონტროლი.'
     if pw == PreopPatient.Pathway.ABF:
         return 'ESVS 2024 ABF მეთვალყურეობა: კლინიკური შეფასება, ABI და ბარძაყის ანასტომოზების დუპლექსი 1, 6 და 12 თვეში, შემდეგ წელიწადში ერთხელ.'
     if pw == PreopPatient.Pathway.PAD_BYPASS:
@@ -412,8 +437,8 @@ def calc_rcri(patient, q, s, is_symp_cea=False, today=None):
     q = q if isinstance(q, dict) else {}
     s = s if isinstance(s, dict) else {}
     rcri_cfg = rule_value('SCORE_RCRI_LEE_1999')
+    lvef_red = rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red']
     pathway = _resolve_pathway(patient)
-    q_filled = bool(q.get('filled'))
     ihd, chf = _ihd_and_chf_flags(q, s)
     scr_mgdl = _sat_scr_mgdl(_s_raw(s, 'creat'), s.get('creat_unit') or '')
 
@@ -429,22 +454,18 @@ def calc_rcri(patient, q, s, is_symp_cea=False, today=None):
     if ihd:
         factors.append('გულის იშემიური დაავადება (IHD)')
     if chf:
-        factors.append('გულის უკმარისობა (CHF / LVEF <40%)')
+        factors.append(f'გულის უკმარისობა (CHF / LVEF <{lvef_red}%)')
     from .utils import has_prior_stroke_or_tia
 
-    has_prior_cvd = (
-        is_symp_cea
-        or (q_filled and has_prior_stroke_or_tia(patient, q=q, s=s, today=today))
-        or (pathway == PreopPatient.Pathway.CEA and patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP)
-        or (pathway != PreopPatient.Pathway.VENOUS and bool(s.get('carotid_symp')))
-        or (s.get('brain_imaging') == 'large_or_hemorrhage')
-    )
+    has_prior_cvd = is_symp_cea or has_prior_stroke_or_tia(patient, q=q, s=s, today=today)
     if has_prior_cvd:
         factors.append('ინსულტი / TIA ანამნეზში')
     if bool(q.get('dm_insulin')):
         factors.append('ინსულინოთერაპია')
-    if bool(q.get('on_dialysis')) or (scr_mgdl is not None and scr_mgdl > rcri_cfg['scr_mgdl']):
-        factors.append('კრეატინინი >2.0 მგ/დლ (>177 მკმოლ/ლ) / დიალიზი')
+    rcri_scr = rcri_cfg['scr_mgdl']
+    rcri_umol = int(round(rcri_scr * rule_value('SCORE_RENAL_CKDEPI_CG')['umol_factor']))
+    if bool(q.get('on_dialysis')) or (scr_mgdl is not None and scr_mgdl > rcri_scr):
+        factors.append(f'კრეატინინი >{rcri_scr} მგ/დლ (>{rcri_umol} მკმოლ/ლ) / დიალიზი')
 
     score = len(factors)
     band_map = dict(rcri_cfg['bands'])
@@ -511,9 +532,10 @@ def calc_vsg_cri(patient, q, s):
     if has_copd:
         pts += 2
         factors.append('ფქოდ / COPD (+2)')
-    if bool(q.get('on_dialysis')) or (scr_mgdl is not None and scr_mgdl >= vsg_cfg['scr_mgdl']):
+    vsg_scr = vsg_cfg['scr_mgdl']
+    if bool(q.get('on_dialysis')) or (scr_mgdl is not None and scr_mgdl >= vsg_scr):
         pts += 2
-        factors.append('კრეატინინი ≥1.8 მგ/დლ / დიალიზი (+2)')
+        factors.append(f'კრეატინინი ≥{vsg_scr} მგ/დლ / დიალიზი (+2)')
     if 'beta_blocker' in med_chips:
         pts += 1
         factors.append('მუდმივი β-ბლოკატორი (+1)')
@@ -576,9 +598,10 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
         pts += 17
         factors.append('რესპირატორული ინფექცია / ინფილტრაცია (+17)')
 
-    if eff_hb is not None and eff_hb <= ari_cfg['hb_max']:
+    ari_hb_max = ari_cfg['hb_max']
+    if eff_hb is not None and eff_hb <= ari_hb_max:
         pts += 11
-        factors.append('ანემია Hb ≤100 გ/ლ (+11)')
+        factors.append(f'ანემია Hb ≤{ari_hb_max} გ/ლ (+11)')
 
     if open_aortic:
         pts += 15

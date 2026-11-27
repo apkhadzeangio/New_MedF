@@ -102,7 +102,7 @@
     {% endif %}
 
     <section class="nw-card">
-        <h2 class="nw-card-title">4. რომელი წამალი აუცილებლად დალიოთ დილას (ყლუპი წყლით)</h2>
+        <h2 class="nw-card-title">{% if guide.stop_locked %}4. მიმდინარე წამლები — გააგრძელეთ ექიმთან შეთანხმებით (ოპერაცია დროებით შეჩერებულია){% else %}4. რომელი წამალი აუცილებლად დალიოთ დილას (ყლუპი წყლით){% endif %}</h2>
         {% if guide.keep_meds %}
         <div class="d-flex flex-column gap-2">
             {% for m in guide.keep_meds %}

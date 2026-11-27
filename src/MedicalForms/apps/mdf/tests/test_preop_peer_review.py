@@ -764,15 +764,13 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         clerk_client.post(reverse('preop-patient', args=[p_sec.pk]), {'section': 'signoff', 'action': 'approve'})
         p_sec.refresh_from_db()
         self.assertIsNone(p_sec.approved_at)
-
         s_op = merged_studies(p_sec)
         s_op['case_outcome_status'] = 'operated'
         p_sec.studies = s_op
         p_sec.save()
         clerk_client.post(reverse('preop-move', args=[p_sec.pk]), {'action': 'delete'})
         p_sec.refresh_from_db()
-        self.assertTrue(p_sec.archived)
-
+        self.assertFalse(p_sec.archived)
         valid_pdf = b'%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n'
         self.client.post(reverse('preop-files', args=[p_sec.pk]), {
             'category': 'labs',
@@ -783,3 +781,6 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         self.assertTrue('sandbox' not in r_pdf['Content-Security-Policy'] and "object-src 'self'" in r_pdf['Content-Security-Policy'])
         self.assertIn('inline;', r_pdf['Content-Disposition'])
         self.assertEqual(r_pdf['X-Frame-Options'], 'SAMEORIGIN')
+        self.client.post(reverse('preop-move', args=[p_sec.pk]), {'action': 'delete'})
+        p_sec.refresh_from_db()
+        self.assertTrue(p_sec.archived)

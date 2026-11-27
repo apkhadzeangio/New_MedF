@@ -176,6 +176,7 @@ def self_fill_status_info(ev):
 
 def get_nurse_readiness_verdict(patient, ev):
     """Single unmistakable 03:00 night-shift verdict: STOP / ექიმის ნახვა / მზადაა ✓ / პირობითი / აკლია N პუნქტი."""
+    from .plain_ka import scrub_plain_ka
     seal_code = ev['clearance_seal']['code']
     open_tasks = [t for t in ev['tasks'] if not t['done']]
     missing_cnt = max(len(ev['missing_items']), len(open_tasks))
@@ -187,13 +188,15 @@ def get_nurse_readiness_verdict(patient, ev):
         )
         return {
             'code': 'stop', 'badge': 'STOP — დაბლოკილია',
-            'detail': reason, 'missing_cnt': missing_cnt, 'rank': 0,
+            'detail': scrub_plain_ka(reason, second_person=False, strip_quoted_ft=True),
+            'missing_cnt': missing_cnt, 'rank': 0,
         }
     if ev['status'] == STATUS_ALERT or ev.get('has_unacked_red'):
         reason = ev['red_flags'][0] if ev['red_flags'] else 'საჭიროებს ექიმის შეფასებას'
         return {
             'code': 'alert', 'badge': 'საჭიროა ექიმის ნახვა',
-            'detail': reason, 'missing_cnt': max(1, missing_cnt), 'rank': 1,
+            'detail': scrub_plain_ka(reason, second_person=False, strip_quoted_ft=True),
+            'missing_cnt': max(1, missing_cnt), 'rank': 1,
         }
     if ev['status'] == STATUS_NO_Q and not ev.get('has_blocking_unknown_state'):
         return {
@@ -210,7 +213,7 @@ def get_nurse_readiness_verdict(patient, ev):
         return {
             'code': 'pending',
             'badge': f'აკლია {total_cnt} პუნქტი',
-            'detail': detail,
+            'detail': scrub_plain_ka(detail, second_person=False, strip_quoted_ft=True),
             'missing_cnt': total_cnt,
             'rank': 2,
         }
@@ -219,7 +222,7 @@ def get_nurse_readiness_verdict(patient, ev):
         return {
             'code': 'conditional',
             'badge': f'პირობითი — აკლია {len(open_tasks)} დავალება',
-            'detail': ' · '.join(top_open),
+            'detail': scrub_plain_ka(' · '.join(top_open), second_person=False, strip_quoted_ft=True),
             'missing_cnt': len(open_tasks),
             'rank': 2,
         }
@@ -230,10 +233,11 @@ def get_nurse_readiness_verdict(patient, ev):
             'detail': sub, 'missing_cnt': 0, 'rank': 3,
         }
     top_missing = [m['label'] for m in ev['missing_items'][:2]] or [t['label'] for t in open_tasks[:2]]
+    raw_det = ' · '.join(top_missing) if top_missing else 'მომზადება მიმდინარეობს'
     return {
         'code': 'pending',
         'badge': f'აკლია {max(1, missing_cnt)} პუნქტი',
-        'detail': ' · '.join(top_missing) if top_missing else 'მომზადება მიმდინარეობს',
+        'detail': scrub_plain_ka(raw_det, second_person=False, strip_quoted_ft=True),
         'missing_cnt': max(1, missing_cnt),
         'rank': 2,
     }
@@ -398,9 +402,10 @@ def plain_risk_badges(ev):
     else:
         badges.append({'label': 'თირკმლის გაფილტვრა', 'value': 'კრეატინინი აკლია', 'tone': 'muted'})
 
+    from .plain_ka import plain_asa_ka
     asa = ev['effective_asa']
     asa_tone = 'danger' if 'IV' in asa or '-E' in asa else ('warn' if 'III' in asa else 'ok')
-    badges.append({'label': 'ზოგადი სიმძიმე', 'value': asa, 'tone': asa_tone})
+    badges.append({'label': 'ზოგადი სიმძიმე', 'value': plain_asa_ka(asa), 'tone': asa_tone})
     return badges
 
 

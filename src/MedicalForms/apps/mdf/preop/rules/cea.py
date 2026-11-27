@@ -2,7 +2,7 @@
 from ...models import PreopPatient
 from ..calculators import _s_raw, _sat_num
 from ..registry import rule_value
-from ..utils import cea_live_days_since_event, is_symp_cea_patient
+from ..utils import cea_live_days_since_event, has_prior_stroke_or_tia, is_symp_cea_patient
 
 
 def _eval_cea_symptoms_and_clocks(ctx):
@@ -27,7 +27,7 @@ def _eval_cea_symptoms_and_clocks(ctx):
         )
     elif patient.op_subtype == PreopPatient.OpSubtype.CEA_ASYMP and (q.get('cea_symp_event') or q.get('cea_event_chips')) and not q.get('cea_crescendo'):
         ctx.amber_flags.append(
-            'კითხვარით დაფიქსირდა ნევროლოგიური სიმპტომი ბოლო 6 თვეში — გადაამოწმეთ სიმპტომური CEA-ს სტატუსი (14-დღიანი ფანჯარა)!'
+            f'კითხვარით დაფიქსირდა ნევროლოგიური სიმპტომი ბოლო 6 თვეში — გადაამოწმეთ სიმპტომური CEA-ს სტატუსი ({win_days}-დღიანი ფანჯარა)!'
         )
     if q.get('cea_crescendo'):
         ctx.red_flags.append(
@@ -89,6 +89,7 @@ def _eval_cea_stenosis_and_imaging(ctx):
     max_car = max([v for v in (car_r, car_l) if v is not None], default=None)
     st_cfg = rule_value('CEA_STENOSIS_THRESHOLDS')
     occ_pct = rule_value('CEA_OCCLUSION_100_STOP')
+    win_days = rule_value('CEA_SYMP_WINDOW_DAYS')[0]
 
     if patient.side == rule_value('CEA_BILATERAL_STOP'):
         bilat_cea_msg = (
@@ -114,14 +115,14 @@ def _eval_cea_stenosis_and_imaging(ctx):
         ctx.key_badge_urgent = bool(is_symp_cea or ipsi_car >= st_cfg['urgent_badge'])
         if side_known and ipsi_car >= occ_pct:
             occ_msg = (
-                'საოპერაციო მხარეს ICA-ს სრული ოკლუზია (100%) — CEA სრულ ქრონიკულ ოკლუზიაზე არ ტარდება! '
+                f'საოპერაციო მხარეს ICA-ს სრული ოკლუზია ({occ_pct}%) — CEA სრულ ქრონიკულ ოკლუზიაზე არ ტარდება! '
                 'სასწრაფოდ გადაამოწმეთ CTA ქირურგთან (near-occlusion vs ოკლუზია).'
             )
             ctx.red_flags.append(occ_msg)
             ctx.hard_contraindications.append(occ_msg)
         elif not side_known and ipsi_car >= occ_pct:
             ctx.red_flags.append(
-                'ერთ-ერთ საძილე არტერიაზე ფიქსირდება 100% ოკლუზია — დაუყოვნებლივ მიუთითეთ დაგეგმილი CEA-ს მხარე (R ან L), '
+                f'ერთ-ერთ საძილე არტერიაზე ფიქსირდება {occ_pct}% ოკლუზია — დაუყოვნებლივ მიუთითეთ დაგეგმილი CEA-ს მხარე (R ან L), '
                 'რომ გამოირიცხოს ოკლუზირებულ მხარეზე ჩარევა!'
             )
         elif side_known and ipsi_car < st_cfg['symp_min'] and contra_car is not None and contra_car >= st_cfg['wrong_side_contra']:
@@ -135,11 +136,11 @@ def _eval_cea_stenosis_and_imaging(ctx):
             ctx.red_flags.append(f'ასიმპტომურ საოპერაციო მხარეს სტენოზი ({ipsi_car}%) < {st_cfg["asymp_min"]}% (NASCET) — გადაამოწმეთ CEA-ს ჩვენება ქირურგთან.')
         elif not is_symp_cea and st_cfg['asymp_min'] <= ipsi_car < occ_pct:
             ctx.amber_flags.append(
-                f'ასიმპტომური სტენოზი {ipsi_car}% (60–99% NASCET — ESVS 2023 Rec 19): '
+                f'ასიმპტომური სტენოზი {ipsi_car}% ({st_cfg["asymp_min"]}–{occ_pct - 1}% NASCET — ESVS 2023 Rec 19): '
                 'გადაამოწმეთ მაღალი რისკის ბალთის ნიშნები CTA/დუპლექსზე და >5-წლიანი მოსალოდნელი სიცოცხლის ხანგრძლივობა.'
             )
     elif is_symp_cea and ctx.days_since_ev is not None:
-        ctx.key_badge = f'{ctx.days_since_ev}/14დღ'
+        ctx.key_badge = f'{ctx.days_since_ev}/{win_days}დღ'
         ctx.key_badge_urgent = True
 
     if contra_car is not None:
@@ -154,6 +155,8 @@ def _eval_cea_stenosis_and_imaging(ctx):
 
 def eval_cea(ctx):
     q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
+    tl_days = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
+    lvef_red_lim = rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red']
     _eval_cea_symptoms_and_clocks(ctx)
     _eval_cea_stenosis_and_imaging(ctx)
 
@@ -164,7 +167,8 @@ def eval_cea(ctx):
         ctx.amber_flags.append('კისრის გაშლა მკვეთრად შეზღუდულია — საყურადღებოა საოპერაციო პოზიციონირებისა და ინტუბაციისთვის.')
 
     has_cea_neuro_flags = bool(q.get('cea_thrombolysis') or q.get('cea_crescendo') or q.get('cea_disabling_stroke'))
-    ctx.needs_brain_ct = ctx.is_symp_cea or has_cea_neuro_flags or (q_filled and bool(q.get('neuro')))
+    has_stroke_hx = has_prior_stroke_or_tia(ctx.patient, q=q, s=s, today=ctx.today)
+    ctx.needs_brain_ct = ctx.is_symp_cea or has_cea_neuro_flags or has_stroke_hx
     brain_im = s.get('brain_imaging') or 'pending'
     if brain_im == rule_value('CEA_BRAIN_HEMORRHAGE_STOP'):
         hem_msg = (
@@ -176,7 +180,7 @@ def eval_cea(ctx):
     if q_filled and not s.get('cta_disc'):
         ctx.amber_flags.append('კისრის/თავის ტვინის CTA/MRI DICOM დისკი ჯერ არ არის მოტანილი / შემოწმებული.')
 
-    ctx.needs_neuro = ctx.is_symp_cea or has_cea_neuro_flags or (q_filled and bool(q.get('neuro')))
+    ctx.needs_neuro = ctx.is_symp_cea or has_cea_neuro_flags or has_stroke_hx
     ctx.needs_laryngoscopy = q_filled and (bool(q.get('cea_prior_neck')) or bool(q.get('cea_neck_chips')) or bool(q.get('cea_hoarseness')))
     laryng_res = s.get('laryngoscopy_res') or 'pending'
     if laryng_res == 'palsy':
@@ -190,11 +194,11 @@ def eval_cea(ctx):
     ctx.cea_high_surg_risk = bool(
         ('neck_rad' in cea_neck_set) or ('ipsi_restenosis' in cea_neck_set)
         or laryng_res == 'palsy' or cea_cta == 'high_calcified'
-        or (lvef_prelim is not None and lvef_prelim < rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red'])
+        or (lvef_prelim is not None and lvef_prelim < lvef_red_lim)
     )
     if ctx.cea_high_surg_risk:
         ctx.amber_flags.append(
-            'ESVS 2023 მაღალი ქირურგიული რისკი ღია CEA-სთვის (დასხივება / რესტენოზი / C2 მაღალი ბიფურკაცია / სახმო იოგი / LVEF <40%) — '
+            f'ESVS 2023 მაღალი ქირურგიული რისკი ღია CEA-სთვის (დასხივება / რესტენოზი / C2 მაღალი ბიფურკაცია / სახმო იოგი / LVEF <{lvef_red_lim}%) — '
             'ქირურგთან განიხილეთ კაროტიდული სტენტირება (CAS / TCAR).'
         )
 
@@ -211,14 +215,14 @@ def eval_cea(ctx):
     has_valid_cea_ap = ctx.has_safe_aspirin if is_rtpa_asa_only else ctx.has_antiplatelet
     if q_filled and not has_valid_cea_ap and not antiplatelet_prohibited_cea:
         ctx.needs_cea_antiplatelet = True
-        has_oac_only = bool(q.get('med_doac') or q.get('med_dabigatran') or q.get('med_warfarin'))
+        has_oac_only = bool(q.get('med_doac') or q.get('med_dabigatran') or q.get('med_warfarin') or getattr(ctx, 'has_ft_full_oac', False))
         ap_trigger = (
             'პაციენტი იღებს მხოლოდ ანტიკოაგულანტს (რომელიც ოპერაციამდე ჩერდება) ანტიაგრეგანტის გარეშე!'
             if has_oac_only else 'CEA-ს წინ პაციენტი არ იღებს ანტიაგრეგანტს (ESVS 2023 Class I)'
         )
         if is_rtpa_asa_only:
-            ap_opt = 'ასპირინი 75–100 მგ მონოთერაპია (თრომბოლიზისი ≤6 დღე — P2Y12/DAPT დაბლოკილია!)'
-            ap_name = 'ასპირინი 75–100 მგ (rt-PA ≤6 დღე — P2Y12 დაბლოკილია)'
+            ap_opt = f'ასპირინი 75–100 მგ მონოთერაპია (თრომბოლიზისი ≤{tl_days} დღე — P2Y12/DAPT დაბლოკილია!)'
+            ap_name = f'ასპირინი 75–100 მგ (rt-PA ≤{tl_days} დღე — P2Y12 დაბლოკილია)'
         elif 'nsaid' in ctx.allergy_chips:
             ap_opt = 'ალტერნატიული P2Y12 კონსილიუმით (ასპირინზე და კლოპიდოგრელზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი 75 მგ (ასპირინზე/აასს-ზე ალერგია!)'
             ap_name = 'ალტერნატიული P2Y12 (ასპირინზე ალერგია!)' if 'clopidogrel_intol' in ctx.allergy_chips else 'კლოპიდოგრელი (ასპირინზე ალერგია!)'

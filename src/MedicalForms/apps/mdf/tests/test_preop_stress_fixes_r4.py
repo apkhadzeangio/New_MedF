@@ -124,8 +124,9 @@ class PreopStressFixesRound4UnitTests(SimpleTestCase):
         self.assertNotEqual(evaluate(_go('evla', s={'bp_sys': 85, 'bp_dia': 120, 'bp_sys_l': 120, 'bp_dia_l': 80, 'hr': 72}), today=TODAY)['auto_asa'], 'IV')
 
     def test_f3_f6_f7_f9_f10_failsafe_and_unhashable(self):
-        # F3: pregnant_possible=True + dos_bhcg_negative=False blocks GO on ALL arterial subtypes
-        for sub in ('open', 'cea_symp', 'cea_asymp', 'abf_clti', 'bypass_clti'):
+        # F3: pregnant_possible=True + dos_bhcg_negative=False permanently blocks GO on elective arterial subtypes
+        # and blocks GO before multidisciplinary consilium ack on urgent CLTI/symp-CEA without Catch-22 deadlock
+        for sub in ('open', 'evar', 'cea_asymp', 'abf_claud', 'bypass_claud', 'pta_claud'):
             p = _go(sub, sex='F', age=30, q={'pregnant_possible': True}, s={'dos_bhcg_negative': False})
             ev0 = evaluate(p, today=TODAY)
             p.alerts_ack_at = timezone.now()
@@ -134,6 +135,11 @@ class PreopStressFixesRound4UnitTests(SimpleTestCase):
             self.assertNotEqual(ev1['clearance_seal']['code'], 'go', f'F3 failed on {sub}')
             self.assertNotEqual(ev1['status'], STATUS_READY, f'F3 status failed on {sub}')
             self.assertTrue(ev1['has_blocking_unknown_state'], f'F3 blocking unknown failed on {sub}')
+        for sub in ('cea_symp', 'abf_clti', 'bypass_clti', 'pta_clti'):
+            p = _go(sub, sex='F', age=30, q={'pregnant_possible': True}, s={'dos_bhcg_negative': False})
+            ev0 = evaluate(p, today=TODAY)
+            self.assertNotEqual(ev0['clearance_seal']['code'], 'go', f'F3 urgent unacked failed on {sub}')
+            self.assertTrue(ev0['has_unacked_red'], f'F3 urgent red flag failed on {sub}')
 
         # F6: Unhashable dict in chip list never crashes build_self_fill_highlights / chip_summary
         hi = build_self_fill_highlights({'filled': True, 'allergy_chips': [{'bad': 1}]})

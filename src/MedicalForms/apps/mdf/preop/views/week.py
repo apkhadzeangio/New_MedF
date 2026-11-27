@@ -274,9 +274,12 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
                     uf = ['studies', 'alerts_ack_at', 'alerts_ack_by', 'updated_at', 'updated_by']
                     if side_changed:
                         uf.append('side')
-                    _invalidate_approval_if_needed(existing, uf, clear_anamnesis=True)
+                    inv_res = _invalidate_approval_if_needed(existing, uf, clear_anamnesis=True)
                     existing.updated_by = request.user
                     existing.save(update_fields=list(dict.fromkeys(uf)))
+                    if inv_res == 'ready_demoted':
+                        messages.warning(request, 'კონფერენციის მონაცემები განახლდა, თუმცა ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
+                        return HttpResponseRedirect(reverse('preop-patient', args=[existing.pk]))
                 messages.success(request, 'კონფერენციის ქეისიდან სტადირება და ანატომიური მონაცემები განახლდა.')
             return HttpResponseRedirect(reverse('preop-patient', args=[existing.pk]))
 
@@ -320,6 +323,12 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
             messages.error(request, 'ერთდროული ორმხრივი CEA აკრძალულია (ESVS) — მიუთითეთ მარჯვენა ან მარცხენა მხარე!')
             return HttpResponseRedirect(reverse('preop'))
 
+        raw_age = (request.POST.get('age') or '').strip()
+        age_v = _int(raw_age, lo=12, hi=120)
+        if raw_age and age_v is None:
+            messages.error(request, 'ასაკი უნდა იყოს 12–120 წლამდე დიაპაზონში.')
+            return HttpResponseRedirect(reverse('preop'))
+
         surgeon = resolve_doctor_user(request.POST.get('surgeon'))
         if surgeon is None and is_doctor_user(request.user):
             surgeon = request.user
@@ -349,7 +358,7 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
 
         p = PreopPatient.objects.create(
             patient_name=name,
-            age=_int(request.POST.get('age'), lo=1, hi=120),
+            age=age_v,
             sex=sex,
             side=side,
             op_subtype=op_subtype,
@@ -370,6 +379,60 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
 class PreopMoveView(LoginRequiredMixin, generic.View):
     """Move a patient between dates / Someday lists (drag & drop AJAX or form POST), archive, or delete."""
 
+    @staticmethod
+    def _handle_archive(request, patient, ajax):
+        from .parsers import is_doctor_user
+        if not is_doctor_user(request.user):
+            if ajax:
+                return JsonResponse({'ok': False, 'error': 'forbidden'}, status=403)
+            messages.error(request, 'პაციენტის დაარქივების/არქივიდან დაბრუნების უფლება აქვს მხოლოდ ექიმს ან ადმინისტრატორს!')
+            return HttpResponseRedirect(reverse('preop'))
+        patient.archived = not patient.archived
+        patient.updated_by = request.user
+        patient.save(update_fields=['archived', 'updated_at', 'updated_by'])
+        if ajax:
+            return JsonResponse({'ok': True, 'archived': patient.archived})
+        messages.info(request, f'{patient.patient_name} {"გადავიდა არქივში" if patient.archived else "დაბრუნდა სიაში"}.')
+        return HttpResponseRedirect(reverse('preop'))
+
+    @staticmethod
+    def _handle_delete(request, patient, ajax):
+        from .parsers import is_doctor_user
+        s_del = merged_studies(patient)
+        is_audit_protected = (
+            patient.archived or bool(patient.approved_at)
+            or s_del.get('case_outcome_status') == 'operated'
+            or bool(s_del.get('board_patient_id'))
+        )
+        is_doc = request.user.is_superuser or request.user.is_staff or is_doctor_user(request.user)
+        if is_audit_protected and not (request.user.is_superuser or request.user.is_staff):
+            if not is_doc:
+                if ajax:
+                    return JsonResponse({'ok': False, 'archived': patient.archived, 'deleted': False, 'error': 'forbidden'}, status=403)
+                messages.error(request, 'დადასტურებული/ნაოპერაციები/დაარქივებული ბარათის წაშლა ან დაარქივება დასაშვებია მხოლოდ ექიმისთვის!')
+                return HttpResponseRedirect(reverse('preop'))
+            if not patient.archived:
+                patient.archived = True
+                patient.updated_by = request.user
+                patient.save(update_fields=['archived', 'updated_at', 'updated_by'])
+            if ajax:
+                return JsonResponse({'ok': False, 'archived': True, 'deleted': False, 'error': 'audit_protected'}, status=403)
+            messages.info(request, f'{patient.patient_name} დადასტურებული/ნაოპერაციები/დაარქივებულია — სამედიცინო აუდიტის დაცვის მიზნით წაშლა დაბლოკილია (დაცულია არქივში).')
+            return HttpResponseRedirect(reverse('preop'))
+        has_other_files = patient.files.exclude(created_by=request.user).exists()
+        is_owner = (patient.created_by_id is None or patient.created_by_id == request.user.pk) and not has_other_files and patient.surgeon_id is None
+        if not (is_doc or is_owner):
+            if ajax:
+                return JsonResponse({'ok': False, 'deleted': False, 'error': 'forbidden'}, status=403)
+            messages.error(request, 'პაციენტის წაშლა სხვა მომხმარებლის ფაილებით ან დანიშნული ქირურგით დასაშვებია მხოლოდ ექიმისთვის/ადმინისტრატორისთვის!')
+            return HttpResponseRedirect(reverse('preop'))
+        name = patient.patient_name
+        patient.delete()
+        if ajax:
+            return JsonResponse({'ok': True, 'deleted': True})
+        messages.success(request, f'{name} წაიშალა წინასაოპერაციო სიიდან.')
+        return HttpResponseRedirect(reverse('preop'))
+
     def post(self, request, pk):
         from .. import evaluate
 
@@ -382,55 +445,20 @@ class PreopMoveView(LoginRequiredMixin, generic.View):
             patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
 
             if action == 'archive':
-                from .parsers import is_doctor_user
-                if not is_doctor_user(request.user):
-                    if ajax:
-                        return JsonResponse({'ok': False, 'error': 'forbidden'}, status=403)
-                    messages.error(request, 'პაციენტის დაარქივების/არქივიდან დაბრუნების უფლება აქვს მხოლოდ ექიმს ან ადმინისტრატორს!')
-                    return HttpResponseRedirect(reverse('preop'))
-                patient.archived = not patient.archived
-                patient.updated_by = request.user
-                patient.save(update_fields=['archived', 'updated_at', 'updated_by'])
-                if ajax:
-                    return JsonResponse({'ok': True, 'archived': patient.archived})
-                messages.info(request, f'{patient.patient_name} {"გადავიდა არქივში" if patient.archived else "დაბრუნდა სიაში"}.')
-                return HttpResponseRedirect(reverse('preop'))
-
+                return self._handle_archive(request, patient, ajax)
             if action == 'delete':
-                from .parsers import is_doctor_user
-                s_del = merged_studies(patient)
-                is_audit_protected = (
-                    patient.archived
-                    or bool(patient.approved_at)
-                    or s_del.get('case_outcome_status') == 'operated'
-                    or bool(s_del.get('board_patient_id'))
-                )
-                if is_audit_protected and not (request.user.is_superuser or request.user.is_staff):
-                    if not patient.archived:
-                        patient.archived = True
-                        patient.updated_by = request.user
-                        patient.save(update_fields=['archived', 'updated_at', 'updated_by'])
-                    if ajax:
-                        return JsonResponse({'ok': False, 'archived': True, 'deleted': False, 'error': 'audit_protected'}, status=403)
-                    messages.info(request, f'{patient.patient_name} დადასტურებული/ნაოპერაციები/დაარქივებულია — სამედიცინო აუდიტის დაცვის მიზნით წაშლა დაბლოკილია (დაცულია არქივში).')
-                    return HttpResponseRedirect(reverse('preop'))
-                has_other_files = patient.files.exclude(created_by=request.user).exists()
-                is_owner = (patient.created_by_id is None or patient.created_by_id == request.user.pk) and not has_other_files and patient.surgeon_id is None
-                if not (request.user.is_superuser or request.user.is_staff or is_doctor_user(request.user) or is_owner):
-                    if ajax:
-                        return JsonResponse({'ok': False, 'deleted': False, 'error': 'forbidden'}, status=403)
-                    messages.error(request, 'პაციენტის წაშლა სხვა მომხმარებლის ფაილებით ან დანიშნული ქირურგით დასაშვებია მხოლოდ ექიმისთვის/ადმინისტრატორისთვის!')
-                    return HttpResponseRedirect(reverse('preop'))
-                name = patient.patient_name
-                patient.delete()
+                return self._handle_delete(request, patient, ajax)
+
+            s_mut = merged_studies(patient)
+            out_st = s_mut.get('case_outcome_status') or 'scheduled'
+            if patient.archived or out_st != 'scheduled':
                 if ajax:
-                    return JsonResponse({'ok': True, 'deleted': True})
-                messages.success(request, f'{name} წაიშალა წინასაოპერაციო სიიდან.')
+                    return JsonResponse({'ok': False, 'error': 'inactive_card'}, status=400)
+                messages.error(request, 'დაარქივებულ, გაუქმებულ, გადადებულ ან ნაოპერაციებ ბარათზე გადაადგილება დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop'))
 
             old_someday = patient.someday_list
             was_unstarted = (patient.started_on is None)
-            s_mut = merged_studies(patient)
             slot = (request.POST.get('slot') or '').strip()
             if slot.startswith('someday:'):
                 key = slot.split(':', 1)[1]

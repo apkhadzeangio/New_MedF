@@ -80,8 +80,9 @@ def _result_clinical_part(ctx):
         'has_known_dm': getattr(ctx, 'has_known_dm', False),
         'uses_contrast': getattr(ctx, 'uses_contrast', False),
         'creat_display_raw': (
-            ctx.s.get('creat') if ctx.s.get('creat') is not None
-            else _safe_display_str(getattr(ctx, 'raw_creat', None), max_len=40, default=None)
+            ctx.s.get('creat')
+            if (ctx.s.get('creat') is not None and not (isinstance(ctx.s.get('creat'), (int, float)) and abs(ctx.s.get('creat')) > 1e6))
+            else _safe_display_str(getattr(ctx, 'raw_creat', None), max_len=24, default=None)
         ),
         'na_val_sat': getattr(ctx, 'na_val_sat', None),
         'is_acute_emergency': ctx.is_acute_emergency,
@@ -98,7 +99,9 @@ def _result_clinical_part(ctx):
         'open_aortic': ctx.open_aortic,
         'has_synthetic_implant': ctx.has_synthetic_implant,
         'has_full_oac': ctx.has_full_oac,
+        'has_ft_full_oac': getattr(ctx, 'has_ft_full_oac', False),
         'has_contra_oac': getattr(ctx, 'has_contra_oac', False),
+        'has_contra_full_oac': getattr(ctx, 'has_contra_full_oac', False),
         'active_gi_bleed': bool(getattr(ctx, 'active_gi_bleed', False)),
         'has_elapsed_hold_window': getattr(ctx, 'has_elapsed_hold_window', False),
         'has_neuraxial_plan': ctx.has_neuraxial_plan,
@@ -187,6 +190,7 @@ def _result_flags_and_needs_part(ctx):
         'egfr': ctx.egfr,
         'crcl': ctx.crcl,
         'eff_renal': ctx.eff_renal,
+        'eff_renal_sat': getattr(ctx, 'eff_renal_sat', None),
         'eff_allergy_chips': sorted(ctx.allergy_chips),
         'compression_contra': ctx.compression_contra,
         'tbi_reduced_comp': ctx.tbi_reduced_comp,

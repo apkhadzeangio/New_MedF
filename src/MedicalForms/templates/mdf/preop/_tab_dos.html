@@ -63,11 +63,15 @@
                             <option value="ward" {% if default_board_unit == 'ward' %}selected{% endif %}>პალატა (სტაც.)</option>
                         </select>
                         <input type="text" name="bed" value="{{ board_patient.bed|default:'' }}" placeholder="საწოლი" maxlength="20" class="form-control form-control-sm" style="width:86px">
+                        {% if not is_inactive_card %}
                         <button type="submit" name="action" value="complete_and_board" class="x-btn ok">
                             ✓ ოპერაცია შესრულდა → გადაყვანა დაფაზე
                         </button>
+                        {% endif %}
                     </div>
+                    {% if not p.archived %}
                     <button type="submit" name="action" value="save_dos" class="x-btn primary">დილის ჩეკლისტის შენახვა</button>
+                    {% endif %}
                 </div>
             </section>
 

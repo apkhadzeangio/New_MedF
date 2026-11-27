@@ -90,7 +90,7 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
     q, s, q_filled = ctx.q, ctx.s, ctx.q_filled
     vte_cfg = rule_value('VEN_VTE_CAPRINI_PROPHYLAXIS')
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
-    high_vte = q_filled and (
+    high_vte = (
         bool(q.get('ven_dvt_history')) or bool(q.get('ven_dvt_chips'))
         or bool(q.get('ven_thrombophilia'))
         or bool(q.get('ven_cancer_immob')) or bool(q.get('ven_acute_svt'))
@@ -112,7 +112,11 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv = ' (ღვიძლის ≥3x: არგატრობანი −75% / უპირატესია ბივალირუდინი!)' if ctx.liver_3x else ''
         evla_inr_lim = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
-        has_full_oac_v, is_evla_vka_v, has_contra_oac_v = _oac_venous_vte_flags(ctx.patient, q, s, ven_severe_renal, ctx.liver_3x)
+        has_full_oac_v, is_evla_vka_v, has_contra_oac_v = _oac_venous_vte_flags(
+            ctx.patient, q, s, ven_severe_renal, ctx.liver_3x,
+            active_gi_bleed=getattr(ctx, 'active_gi_bleed', False),
+            eff_preg=getattr(ctx, 'eff_pregnant', False),
+        )
         if getattr(ctx, 'active_gi_bleed', False):
             hit_gi_v = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit else ''
             vte_agents = f'მხოლოდ მექანიკური პროფილაქტიკა (IPC) — აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის გამო ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!{hit_gi_v}'
@@ -231,13 +235,13 @@ def _eval_venous_arterial_and_vte(ctx, ceap):
             )
         elif ctx.tbi_reduced_comp:
             ctx.amber_flags.append(
-                f'არაკომპრესირებადი არტერია (ABI {max_abi_disp} > 1.40) + სასაზღვრო TP/TBI '
+                f'არაკომპრესირებადი არტერია (ABI {max_abi_disp} > {art_cfg["abi_noncomp"]:.2f}) + სასაზღვრო TP/TBI '
                 f'(TP {ctx.min_tp if ctx.min_tp is not None else "—"} / TBI {ctx.min_tbi if ctx.min_tbi is not None else "—"}) — '
                 '2 კლასის ნაცვლად დასაშვებია მხოლოდ მსუბუქი I კლასის კომპრესია (<20 mmHg) ქირურგთან შეთანხმებით!'
             )
         elif not ctx.tbi_comp_safe:
             ctx.amber_flags.append(
-                f'არაკომპრესირებადი არტერია (ABI {max_abi_disp} > 1.40) — 2 კლასის კომპრესიული წინდის დანიშვნამდე '
+                f'არაკომპრესირებადი არტერია (ABI {max_abi_disp} > {art_cfg["abi_noncomp"]:.2f}) — 2 კლასის კომპრესიული წინდის დანიშვნამდე '
                 f'სამიზნე კიდურზე სავალდებულოა Toe Pressure (≥{art_cfg["tp_comp_ok"]} mmHg) ან TBI (≥{art_cfg["tbi_comp_ok"]:.2f})!'
             )
     elif not tp_is_stop and not ctx.compression_contra and ctx.tbi_reduced_comp:
@@ -312,7 +316,7 @@ def _eval_cross_pathway_urgency_flags(ctx, aaa_eff):
         ctx.is_acute_emergency
         or ctx.is_septic_or_mycotic_urgent
         or is_ali_urgent
-        or (aaa_eff is not None and aaa_eff >= rule_value('AAA_GIANT_MM'))
+        or (pathway == PreopPatient.Pathway.AAA_INFRA and aaa_eff is not None and aaa_eff >= rule_value('AAA_GIANT_MM'))
         or ctx.is_symp_cea
         or ctx.is_clti_any
         or (ctx.min_comp_abi_sat is not None and ctx.min_comp_abi_sat < hemo_cfg['abi_severe'])
@@ -356,6 +360,7 @@ def eval_cross_pathway_and_urgency(ctx):
         )
 
     ctx.show_pregnancy_check = bool(patient.sex == 'F' and is_pregnancy_eligible(patient))
+    ctx.is_urgent_preg = False
     eff_pregnant = bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
     if eff_pregnant and not ctx.is_venous:
         if not is_pregnancy_eligible(patient):
@@ -367,15 +372,24 @@ def eval_cross_pathway_and_urgency(ctx):
                 ctx.is_ali_acute
                 or ctx.is_clti_any
                 or ctx.is_symp_cea
-                or q.get('cea_crescendo')
-                or q.get('aaa_pain')
-                or s.get('aaa_morphology') == 'inflammatory_mycotic'
-                or (ctx.aaa_mm_sat is not None and ctx.aaa_mm_sat >= rule_value('AAA_GIANT_MM'))
+                or (pathway == PreopPatient.Pathway.CEA and bool(q.get('cea_crescendo')))
+                or (pathway == PreopPatient.Pathway.AAA_INFRA and (
+                    bool(q.get('aaa_pain'))
+                    or s.get('aaa_morphology') == 'inflammatory_mycotic'
+                    or (ctx.aaa_mm_sat is not None and ctx.aaa_mm_sat >= rule_value('AAA_GIANT_MM'))
+                ))
             )
+            ctx.is_urgent_preg = is_urgent_preg
             if ctx.is_ali_acute:
                 preg_art_msg = (
                     'ორსულობა / შესაძლო ორსულობა მწვავე იშემიის (ALI) ფონზე — '
                     'სასწრაფო მულტიდისციპლინური შეთანხმება მეან-გინეკოლოგთან და სისხლძარღვთა ქირურგთან (ნაყოფის დაცვით)!'
+                )
+            elif is_urgent_preg:
+                rad_note = ' (ნაყოფის დასხივებისა და კონტრასტის მინიმიზაცია — რადიაციული დაცვა!)' if ((patient.op_subtype in ('evar', 'tbd')) or ctx.is_pta) else ' (ნაყოფის დაცვით!)'
+                preg_art_msg = (
+                    f'ორსულობა / შესაძლო ორსულობა გადაუდებელი სისხლძარღვოვანი ჩვენების ფონზე — '
+                    f'სავალდებულოა სასწრაფო მულტიდისციპლინური კონსილიუმი მეან-გინეკოლოგთან, ქირურგთან და ანესთეზიოლოგთან{rad_note}'
                 )
             elif (patient.op_subtype in ('evar', 'tbd')) or ctx.is_pta:
                 preg_art_msg = (

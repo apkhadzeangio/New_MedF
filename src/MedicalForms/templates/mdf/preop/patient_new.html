@@ -155,7 +155,6 @@
                     <div class="nw-med-script-row tone-{{ mr.tone }}">
                         <div class="nw-med-drug">{{ mr.drug }}</div>
                         <div class="nw-med-spoken">{{ mr.spoken }}</div>
-                        <div class="nw-med-rule">{{ mr.rule }}</div>
                     </div>
                     {% endfor %}
                 </div>
@@ -167,7 +166,6 @@
                 <div class="nw-med-script-row tone-{{ mr.tone }}">
                     <div class="nw-med-drug">{{ mr.drug }}</div>
                     <div class="nw-med-spoken">{{ mr.spoken }}</div>
-                    <div class="nw-med-rule">{{ mr.rule }}</div>
                 </div>
                 {% endfor %}
             </div>
@@ -180,7 +178,6 @@
                 <div class="nw-med-script-row tone-{{ mr.tone }}">
                     <div class="nw-med-drug">{{ mr.drug }}</div>
                     <div class="nw-med-spoken">{{ mr.spoken }}</div>
-                    <div class="nw-med-rule">{{ mr.rule }}</div>
                 </div>
                 {% endfor %}
             </div>
@@ -200,7 +197,7 @@
 
             <div class="nw-row-actions">
                 {% if p.phone %}<a class="nw-btn soft" href="tel:{{ p.phone }}">დარეკვა: {{ p.phone }}</a>{% endif %}
-                {% if not nw_med_script.stop_locked and ev.needs_med_hold %}
+                {% if not is_inactive_card and not nw_med_script.stop_locked and ev.needs_med_hold %}
                 <form method="post" action="{% url 'preop-med-call' p.pk %}" class="m-0 flex-grow-1">
                     {% csrf_token %}
                     {% if nw_med_script.called_valid %}
@@ -224,6 +221,7 @@
     <!-- B3: Fast Surgery Date / Postponement Control -->
     <section class="nw-card" id="nw-reschedule-card">
         <h2 class="nw-card-title">ოპერაციის თარიღი / გადადება</h2>
+        {% if not is_inactive_card %}
         <form method="post" action="{% url 'preop-reschedule' p.pk %}" class="d-flex flex-wrap align-items-end gap-2">
             {% csrf_token %}
             <div class="nw-field" style="flex:1 1 180px">
@@ -233,6 +231,9 @@
             <button type="submit" name="action" value="set_date" class="nw-btn primary" id="btn-save-op-date">თარიღის შენახვა</button>
             <button type="submit" name="action" value="shift_3d" class="nw-btn soft" id="btn-postpone-3d">გადადება +3 დღით</button>
         </form>
+        {% else %}
+        <p class="nw-meta-line m-0">ბარათი დაარქივებული ან არააქტიურია — თარიღის შეცვლა დაბლოკილია.</p>
+        {% endif %}
     </section>
 
     <!-- 4-State Self-Fill Link Tracker & 1-Tap Send -->
@@ -244,7 +245,9 @@
         {% if s.self_link_sent_at %}
         <p class="nw-meta-line mb-2" id="nw-sf-sent-meta">გაგზავნილია: {{ s.self_link_sent_at }}{% if s.self_link_sent_by %} ({{ s.self_link_sent_by }}){% endif %}</p>
         {% endif %}
-        {% if not self_fill_revoked %}
+        {% if is_inactive_card %}
+        <p class="nw-meta-line m-0">ბარათი დაარქივებული ან არააქტიურია — ბმულის გაგზავნა და განახლება დაბლოკილია.</p>
+        {% elif not self_fill_revoked %}
         <div class="nw-row-actions">
             <a class="nw-btn ok js-sf-track" data-via="whatsapp" data-track-url="{% url 'preop-self-link-sent' p.pk %}"
                href="{{ nw_wa_url }}" target="_blank" rel="noopener" id="btn-sf-whatsapp">WhatsApp-ით გაგზავნა</a>
@@ -575,8 +578,12 @@
                 </div>
 
                 <div class="nw-row-actions">
+                    {% if not p.archived %}
                     <button type="submit" name="action" value="save_dos" class="nw-btn primary" id="btn-nw-save-dos" style="flex:1 1 220px">დილის შემოწმების შენახვა</button>
+                    {% endif %}
+                    {% if not is_inactive_card %}
                     <button type="submit" name="action" value="complete_and_board" class="nw-btn ok" id="btn-nw-complete-board">✓ ოპერაცია შესრულდა → დაფაზე</button>
+                    {% endif %}
                 </div>
             </form>
         </div>

@@ -13,7 +13,8 @@ from ...models import BoardEntry, BoardPatient, PreopPatient
 from ..constants import _PREOP_MUTATION_LOCK, _sqlite_acquire_write_lock
 from ..meds import _effective_allergy_state
 from ..registry import rule_value
-from ..utils import _int, _num, merged_studies
+from ..utils import _num, merged_studies
+from .parsers import is_doctor_user
 
 
 def _valid_db_pk(val):
@@ -63,7 +64,7 @@ def _upsert_board_patient(patient, user, ev, s, unit, bed, now):
     bed_clean = clean_text(bed, 20).replace('\n', ' ')
     diag_raw = ev.get('effective_operation_label') or patient.planned_operation_label
     diag_str = clean_text(diag_raw, 255).replace('\n', ' ')
-    attending = patient.surgeon or user
+    attending = patient.surgeon or (user if is_doctor_user(user) else None)
 
     bp = resolve_board_patient(patient)
     if bp is None:
@@ -115,10 +116,10 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
         f"[წინასაოპერაციო ჰენდოფი] {op_verb}: {diag_str} · {ev['effective_asa']} · {ev['effective_anesth_label']}{anesth_line_sfx}."
     ]
     vitals_labs = []
-    bp_s = _int(s.get('bp_sys'), 30, 320)
-    bp_d = _int(s.get('bp_dia'), 20, 220)
-    bp_sl = _int(s.get('bp_sys_l'), 30, 320)
-    bp_dl = _int(s.get('bp_dia_l'), 20, 220)
+    bp_s = _num(s.get('bp_sys'), 30, 320)
+    bp_d = _num(s.get('bp_dia'), 20, 220)
+    bp_sl = _num(s.get('bp_sys_l'), 30, 320)
+    bp_dl = _num(s.get('bp_dia_l'), 20, 220)
     has_r_bp = bp_s is not None and bp_d is not None and bp_s > bp_d
     has_l_bp = bp_sl is not None and bp_dl is not None and bp_sl > bp_dl
     if has_r_bp and has_l_bp:
@@ -145,7 +146,7 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
         vitals_labs.append(f"ABI {ev['min_abi']}")
     if ev.get('min_tp') is not None:
         vitals_labs.append(f"TP {ev['min_tp']} mmHg")
-    lvef_b = _int(s.get('lvef'), 5, 95)
+    lvef_b = _num(s.get('lvef'), 5, 95)
     if lvef_b is not None:
         vitals_labs.append(f'LVEF {lvef_b}%')
     if ev.get('nt_probnp') is not None:
@@ -226,8 +227,10 @@ _ALL_MANAGED_PREFIXES = (
 
 def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
     task_candidates = []
+    ldl_max = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
+    abi_noncomp = rule_value('VEN_ARTERIAL_ISCHEMIA_COMPRESSION')['abi_noncomp']
     statin_contra = (s.get('liver_status') == '3x' or bool(ev.get('eff_pregnant')))
-    board_statin_tail = '' if statin_contra else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ)'
+    board_statin_tail = '' if statin_contra else f' + მაღალი ინტენსივობის სტატინი (LDL <{ldl_max} მმოლ/ლ)'
     pad_task_pfx = 'ანტითრომბოზული სქემა:' if statin_contra else 'ანტითრომბოზული სქემა და სტატინი:'
     if pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
         task_candidates.append((
@@ -250,7 +253,7 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
         elif ev.get('tbi_reduced_comp'):
             comp_txt = 'მსუბუქი I კლასის კომპრესია (<20 mmHg — სასაზღვრო TP/TBI)'
         elif ev.get('abi_non_compressible') and not ev.get('tbi_comp_safe'):
-            comp_txt = 'კომპრესიამდე სავალდებულოა TP/TBI შეფასება (არაკომპრესირებადი ABI >1.40!)'
+            comp_txt = f'კომპრესიამდე სავალდებულოა TP/TBI შეფასება (არაკომპრესირებადი ABI >{abi_noncomp:.2f}!)'
         else:
             comp_txt = 'ელასტიური კომპრესია პროტოკოლით'
         task_candidates.append((
@@ -258,15 +261,86 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
             f'ვენური პოსტოპ. რეჟიმი: ადრეული აქტიური სიარული · {comp_txt}',
         ))
 
+    if eff_renal_board is None and not ev.get('creat_unit_mismatch'):
+        eff_renal_board = ev.get('eff_renal_sat')
     _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board)
     _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board)
     return task_candidates
 
 
+def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_red, has_full_oac_b, has_contra_full_oac_b):
+    evla_inr_lim = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
+    ft_keys = set(ev.get('ft_meds_keys') or ())
+    if ev.get('has_mech_valve') and ev.get('eff_pregnant'):
+        mv_preg_board = (
+            'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი + თირკმლის მძიმე უკმარისობა/დიალიზი — DOAC აკრძალულია, LMWH კუმულირდება; სავალდებულოა მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (IV/SC UFH ან ტრიმესტრით VKA)!'
+            if sev_renal else
+            'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი — DOAC აკრძალულია; VKA თვითნებურად არ მოხსნათ — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (VKA vs LMWH/UFH ტრიმესტრით)!'
+        )
+        task_candidates.append((_VTE_PREFIXES, mv_preg_board))
+    elif has_contra_full_oac_b or (ev.get('eff_pregnant') and has_full_oac_b):
+        if ev.get('eff_pregnant'):
+            preg_agent = (
+                'არასფრაქციული ჰეპარინი (UFH — თირკმლის მძიმე უკმარისობის/დიალიზის გამო LMWH კუმულირდება!)'
+                if sev_renal else 'LMWH/UFH'
+            )
+            oac_board_msg = f'VTE / ანტიკოაგულაცია: ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_agent} მეან-გინეკოლოგთან და კარდიოლოგთან!'
+        else:
+            oac_board_msg = 'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!'
+        task_candidates.append((_VTE_PREFIXES, oac_board_msg))
+    elif has_full_oac_b:
+        if ev.get('is_evla_warfarin_only'):
+            oac_res_board = f'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ {evla_inr_lim} — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ!)'
+        elif q.get('med_warfarin') or ('warfarin' in ft_keys and not ev.get('has_full_oac')):
+            br_txt = (
+                f'CrCl/eGFR <{ren_red} / დიალიზი: თერაპიული LMWH აკუმულირდება — მაღალი თრომბორისკისას IV UFH ხიდი (aPTT კონტროლით) INR ≥2.0-მდე!'
+                if sev_renal else 'მაღალი თრომბორისკისას ხიდი INR ≥2.0-მდე'
+            )
+            oac_res_board = f'ვარფარინის (VKA) აღდგენა 12–24 სთ-ში ჰემოსტაზით ({br_txt}) ქირურგთან შეთანხმებით'
+        elif ev.get('is_venous') and not ev.get('is_phleb'):
+            oac_res_board = 'DOAC-ის აღდგენა ~24 სთ-ში ჰემოსტაზით ქირურგთან შეთანხმებით'
+        else:
+            oac_res_board = 'DOAC-ის აღდგენა 48–72 სთ-ში ჰემოსტაზით (PAUSE; PTA: ~24 სთ) ქირურგთან შეთანხმებით'
+        task_candidates.append((
+            _VTE_PREFIXES,
+            f'VTE / ანტიკოაგულაცია: პაციენტი მუდმივ ანტიკოაგულანტზეა (OAC) — {oac_res_board} (ორმაგი ანტიკოაგულაციის გარეშე!)',
+        ))
+    elif ev.get('has_mech_valve'):
+        mv_br = (
+            f'CrCl/eGFR <{ren_red} / დიალიზი: IV UFH ხიდი (თერაპიული LMWH აკუმულირდება!)'
+            if sev_renal else 'ხიდური სქემა კარდიოლოგთან'
+        )
+        task_candidates.append((
+            _VTE_PREFIXES,
+            f'VTE / ანტიკოაგულაცია: მექანიკური სარქველი — სავალდებულოა თერაპიული ვარფარინი (VKA) / {mv_br} (პროფილაქტიკური LMWH ან DOAC არასაკმარისია/აკრძალულია!)',
+        ))
+    elif ev['caprini_score'] > cap_low_max or not ev['is_venous']:
+        if ev.get('eff_pregnant'):
+            if sev_renal:
+                vte_board_drug = f'კანქვეშა UFH + IPC მეან-გინეკოლოგის შეფასებით (ორსულობა + CrCl/eGFR <{ren_red}/დიალიზი: LMWH კუმულირდება, DOAC უკუნაჩვენებია!)'
+            else:
+                vte_board_drug = 'LMWH / კანქვეშა UFH მეან-გინეკოლოგის შეფასებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
+        elif s.get('liver_status') == '3x' and sev_renal:
+            vte_board_drug = f'კანქვეშა UFH + IPC კოაგულოგრამის კონტროლით (ღვიძლის ≥3x + CrCl<{ren_red}/დიალიზი: DOAC აკრძალულია, სტანდარტული LMWH კუმულირდება!)'
+        elif s.get('liver_status') == '3x':
+            vte_board_drug = 'LMWH / UFH კოაგულოგრამის კონტროლით (ღვიძლის ≥3x-ზე DOAC არა!)'
+        elif sev_renal:
+            vte_board_drug = 'კანქვეშა UFH 5000 სე ×2–3 ან თირკმელზე კორექტირებული LMWH'
+        else:
+            vte_board_drug = 'LMWH პროფილაქტიკური დოზით'
+        task_candidates.append((
+            _VTE_PREFIXES,
+            f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): ადრეული მობილიზაცია + {vte_board_drug} ჰემოსტაზის შემდეგ",
+        ))
+
+
 def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board):
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
     cap_low_max = rule_value('SCORE_CAPRINI_VTE')['low_max']
+    rtpa_d = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
     sev_renal = bool(q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < ren_red))
+    has_full_oac_b = bool(ev.get('has_full_oac') or ev.get('has_ft_full_oac'))
+    has_contra_full_oac_b = bool(ev.get('has_contra_full_oac'))
     cea_bleed_board = (
         pathway == PreopPatient.Pathway.CEA
         and (s.get('brain_imaging') == 'large_or_hemorrhage' or bool(ev.get('active_thrombolysis_window')))
@@ -275,7 +349,7 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
         hit_cea_sfx = ' (ასევე HIT ანამნეზში — UFH/LMWH კატეგორიულად აკრძალულია!)' if 'hit_heparin' in allergy_chips else ''
         task_candidates.append((
             _VTE_PREFIXES,
-            f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): მხოლოდ მექანიკური პროფილაქტიკა (IPC) — ფარმაკოლოგიური ანტიკოაგულაცია უკუნაჩვენებია თავის ტვინის სისხლჩაქცევის / rt-PA ≤6 დღის გამო!{hit_cea_sfx}",
+            f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): მხოლოდ მექანიკური პროფილაქტიკა (IPC) — ფარმაკოლოგიური ანტიკოაგულაცია უკუნაჩვენებია თავის ტვინის სისხლჩაქცევის / rt-PA ≤{rtpa_d} დღის გამო!{hit_cea_sfx}",
         ))
     elif ev.get('active_gi_bleed'):
         extra_gi = []
@@ -301,14 +375,14 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
                 if liver_3x else 'ბივალირუდინი / არგატრობანი → ვარფარინი (VKA) — ფონდაპარინუქსი/DOAC არა!'
             )
         elif liver_3x and sev_renal:
-            hit_board_agents = 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი CrCl<30/დიალიზზე და ღვიძლის ≥3x-ზე აკრძალულია!)'
+            hit_board_agents = f'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი CrCl<{ren_red}/დიალიზზე და ღვიძლის ≥3x-ზე აკრძალულია!)'
         elif sev_renal:
-            hit_board_agents = 'ბივალირუდინი / არგატრობანი (ფონდაპარინუქსი CrCl<30/დიალიზზე აკრძალულია!)'
+            hit_board_agents = f'ბივალირუდინი / არგატრობანი (ფონდაპარინუქსი CrCl<{ren_red}/დიალიზზე აკრძალულია!)'
         elif liver_3x:
             hit_board_agents = 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი არარეკომენდებულია!)'
-        elif ev.get('has_contra_oac'):
+        elif has_contra_full_oac_b:
             hit_board_agents = 'უკუნაჩვენები/დუბლირებული OAC არ განაახლოთ — შეარჩიეთ ერთი უსაფრთხო არაჰეპარინული სქემა (ფონდაპარინუქსი ან ერთი OAC ჰემატოლოგ/კარდიოლოგთან — ორმაგი ანტიკოაგულაციის გარეშე!)'
-        elif ev.get('has_full_oac'):
+        elif has_full_oac_b:
             if ev.get('is_evla_warfarin_only'):
                 hit_board_agents = 'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
             else:
@@ -319,56 +393,15 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
             _VTE_PREFIXES,
             f'HIT ანამნეზში! არაფრაქციული ჰეპარინი და LMWH აკრძალულია — არაჰეპარინული ანტიკოაგულაცია ({hit_board_agents})',
         ))
-    elif ev.get('has_mech_valve') and ev.get('eff_pregnant'):
-        mv_preg_board = (
-            'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი + თირკმლის მძიმე უკმარისობა/დიალიზი — DOAC აკრძალულია, LMWH კუმულირდება; სავალდებულოა მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (IV/SC UFH ან ტრიმესტრით VKA)!'
-            if sev_renal else
-            'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი — DOAC აკრძალულია; VKA თვითნებურად არ მოხსნათ — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (VKA vs LMWH/UFH ტრიმესტრით)!'
-        )
-        task_candidates.append((_VTE_PREFIXES, mv_preg_board))
-    elif ev.get('has_contra_oac') or (ev.get('eff_pregnant') and ev.get('has_full_oac')):
-        if ev.get('eff_pregnant'):
-            preg_agent = (
-                'არასფრაქციული ჰეპარინი (UFH — თირკმლის მძიმე უკმარისობის/დიალიზის გამო LMWH კუმულირდება!)'
-                if sev_renal else 'LMWH/UFH'
-            )
-            oac_board_msg = f'VTE / ანტიკოაგულაცია: ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_agent} მეან-გინეკოლოგთან და კარდიოლოგთან!'
-        else:
-            oac_board_msg = 'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!'
-        task_candidates.append((_VTE_PREFIXES, oac_board_msg))
-    elif ev.get('has_full_oac'):
-        if q.get('med_warfarin'):
-            oac_res_board = 'ვარფარინის (VKA) აღდგენა 12–24 სთ-ში ჰემოსტაზით (მაღალი თრომბორისკისას ხიდი INR ≥2.0-მდე) ქირურგთან შეთანხმებით'
-        else:
-            oac_res_board = 'DOAC-ის აღდგენა 48–72 სთ-ში ჰემოსტაზით (PAUSE; PTA: ~24 სთ) ქირურგთან შეთანხმებით'
-        task_candidates.append((
-            _VTE_PREFIXES,
-            f'VTE / ანტიკოაგულაცია: პაციენტი მუდმივ ანტიკოაგულანტზეა (OAC) — {oac_res_board} (ორმაგი ანტიკოაგულაციის გარეშე!)',
-        ))
-    elif ev.get('has_mech_valve'):
-        task_candidates.append((
-            _VTE_PREFIXES,
-            'VTE / ანტიკოაგულაცია: მექანიკური სარქველი — სავალდებულოა თერაპიული ვარფარინი (VKA) / ხიდური სქემა კარდიოლოგთან (პროფილაქტიკური LMWH ან DOAC არასაკმარისია/აკრძალულია!)',
-        ))
-    elif ev['caprini_score'] > cap_low_max or not ev['is_venous']:
-        if s.get('liver_status') == '3x' and sev_renal:
-            vte_board_drug = 'კანქვეშა UFH + IPC კოაგულოგრამის კონტროლით (ღვიძლის ≥3x + CrCl<30/დიალიზი: DOAC აკრძალულია, სტანდარტული LMWH კუმულირდება!)'
-        elif s.get('liver_status') == '3x':
-            vte_board_drug = 'LMWH / UFH კოაგულოგრამის კონტროლით (ღვიძლის ≥3x-ზე DOAC არა!)'
-        elif sev_renal:
-            vte_board_drug = 'კანქვეშა UFH 5000 სე ×2–3 ან თირკმელზე კორექტირებული LMWH'
-        else:
-            vte_board_drug = 'LMWH პროფილაქტიკური დოზით'
-        task_candidates.append((
-            _VTE_PREFIXES,
-            f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): ადრეული მობილიზაცია + {vte_board_drug} ჰემოსტაზის შემდეგ",
-        ))
+    else:
+        _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_red, has_full_oac_b, has_contra_full_oac_b)
 
 
 def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board):
     gent_avoid = rule_value('ALLERGY_HIT_ABX_PROPHYLAXIS')['gentamicin_avoid_renal']
     na_hi = rule_value('REN_ELECTROLYTES_K_NA')['na_hi']
     hyd_egfr = rule_value('REN_CKD_NEPHRO_HYDRATION')['hydration']
+    lvef_red = rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red']
     abx_reg = (ev.get('surgical_brief') or {}).get('abx_regimen') or ''
     if 'beta_lactam' in allergy_chips and 'არ ესაჭიროება' not in abx_reg:
         groin_abx_sfx = ''
@@ -411,7 +444,7 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
             hf_tail = ' · HFrEF სითხის შეზღუდვით!' if ev.get('chf_hyd_flag') else ''
             hyd_b = f'ჰიპერნატრიემია — 0.9% NaCl-ის გარეშე, ნელი ჰიპოტონური კორექცია{hf_tail}'
         elif ev.get('chf_hyd_flag'):
-            hyd_b = 'შეზღუდული იზოტონური ჰიდრატაცია (0.5 მლ/კგ/სთ — გულის უკმარისობა / LVEF <40%!)'
+            hyd_b = f'შეზღუდული იზოტონური ჰიდრატაცია (0.5 მლ/კგ/სთ — გულის უკმარისობა / LVEF <{lvef_red}%!)'
         else:
             hyd_b = 'იზოტონური ჰიდრატაცია'
         task_candidates.append((
@@ -457,7 +490,10 @@ def _admit_preop_to_board_locked(patient, user, unit='', bed=''):
 
     bp, was_created, diag_str = _upsert_board_patient(patient, user, ev, s, unit, bed, now)
     allergy_chips, eff_iod_board, _ = _effective_allergy_state(q)
-    eff_renal_board = min([v for v in (ev.get('crcl'), ev.get('egfr')) if v is not None], default=None)
+    eff_renal_board = (
+        None if ev.get('creat_unit_mismatch')
+        else (ev.get('eff_renal_sat') if ev.get('eff_renal_sat') is not None else min([v for v in (ev.get('crcl'), ev.get('egfr')) if v is not None], default=None))
+    )
 
     status_text = _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
     existing_handoff = (

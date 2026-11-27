@@ -112,15 +112,16 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
             'შეყვანილია ფიზიოლოგიურ დიაპაზონს გარეთა ან არასწორი ფორმატის მონაცემი — შეფასება ვერ დადასტურდება.',
             blocking=True,
         )
+    from ..registry import rule_value
     if getattr(ctx, 'creat_unit_ambiguous', False) and not ctx.on_dialysis:
+        ren_am = rule_value('SCORE_RENAL_CKDEPI_CG')
         add(
             'ambiguous_creat_unit', 's1', 'creat',
-            'კრეატინინის ერთეული დაუზუსტებელია (15–35 ზონა)',
+            f'კრეატინინის ერთეული დაუზუსტებელია ({int(ren_am["ambig_lo"])}–{int(ren_am["ambig_hi"])} ზონა)',
             'მიუთითეთ კრეატინინის ერთეული (µmol/L ან mg/dL) — ერთეულის გარეშე eGFR/CrCl ვერ ფასდება და GO ბეჭედი დაბლოკილია.',
             blocking=True,
         )
     if getattr(ctx, 'hb_unit_ambiguous', False):
-        from ..registry import rule_value
         u_cfg = rule_value('LAB_UNIT_AUTO_CONVERSION')
         hb_span = f'{u_cfg["hb_gdl_hi"] + 0.1:.1f}–{u_cfg["hb_ambig_hi"] - 0.1:.1f}'
         add(
@@ -133,7 +134,6 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
     if has_any_lab:
         labs_dt = _date(s.get('labs_date'))
         if labs_dt is None or labs_dt > ctx.today:
-            from ..registry import rule_value
             stale_d = rule_value('INF_STALE_LABS_DAYS')
             add(
                 'labs_missing_date', 's1', 'labs_date',
@@ -176,15 +176,17 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
 
 def _eval_pregnancy_unknowns(ctx, add):
     from ..constants import STATUS_ALERT
+    from ..registry import rule_value
     from ..utils import _alerts_signature, is_pregnancy_eligible
     patient, q, s = ctx.patient, ctx.q, ctx.s
+    preg_lo, preg_hi = rule_value('VEN_PREGNANCY_STOP')
     preg_claimed = bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
     if not is_pregnancy_eligible(patient):
         if preg_claimed:
             add(
                 'contradictory_pregnancy_sex_age', 'q', 'pregnant_possible',
                 'ორსულობა მონიშნულია არათავსებად სქესზე/ასაკზე',
-                'კითხვარში მონიშნულია ორსულობა, მაგრამ პაციენტის სქესი ან ასაკი (12–55 წ.) არ შეესაბამება — გადაამოწმეთ და შეასწორეთ GO დაშვებამდე.',
+                f'კითხვარში მონიშნულია ორსულობა, მაგრამ პაციენტის სქესი ან ასაკი ({preg_lo}–{preg_hi} წ.) არ შეესაბამება — გადაამოწმეთ და შეასწორეთ GO დაშვებამდე.',
                 blocking=True,
             )
         return
@@ -216,12 +218,12 @@ def _eval_pregnancy_unknowns(ctx, add):
     if not repro_female_risk:
         return
     is_acute_emergency_preg = preg_claimed and (
-        ctx.is_ali_acute or ctx.is_acute_emergency or ctx.is_rupture_suspect
+        ctx.is_ali_acute or ctx.is_acute_emergency or ctx.is_rupture_suspect or getattr(ctx, 'is_urgent_preg', False)
     )
     if not is_acute_emergency_preg:
         add(
             'reproductive_pregnancy_unverified', 'dos', 'dos_bhcg_negative',
-            'ორსულობის გამორიცხვა დაუზუსტებელია (12–55 წ. ქალი)',
+            f'ორსულობის გამორიცხვა დაუზუსტებელია ({preg_lo}–{preg_hi} წ. ქალი)',
             'ორსულობის სტატუსის დაზუსტების / უარყოფითი β-hCG-ის გარეშე ოპერაციაზე GO დაშვება არ გაიცემა.',
             blocking=True,
         )

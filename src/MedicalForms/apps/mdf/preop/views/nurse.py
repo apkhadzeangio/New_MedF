@@ -140,6 +140,12 @@ class PreopNurseSelfFillSentView(LoginRequiredMixin, generic.View):
             _sqlite_acquire_write_lock(patient.pk)
             patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
             s = merged_studies(patient)
+            out_st_sf = s.get('case_outcome_status') or 'scheduled'
+            if patient.archived or out_st_sf != 'scheduled':
+                if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+                    return JsonResponse({'ok': False, 'error': 'inactive_card'}, status=400)
+                messages.error(request, 'დაარქივებულ, გაუქმებულ, გადადებულ ან ნაოპერაციებ ბარათზე ბმულის გაგზავნა დაბლოკილია!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
             if s.get('self_fill_revoked'):
                 if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                     return JsonResponse({'ok': False, 'error': 'revoked'}, status=400)
@@ -188,8 +194,11 @@ class PreopNurseMedCallView(LoginRequiredMixin, generic.View):
                 s['nurse_med_called_sig'] = ''
                 s['med_hold_agreed'] = False
                 s['med_hold_agreed_date'] = ''
-                _invalidate_approval_if_needed(patient, uf)
-                messages.info(request, 'დარეკვის მონიშვნა მოიხსნა.')
+                inv_mc = _invalidate_approval_if_needed(patient, uf)
+                if inv_mc == 'ready_demoted':
+                    messages.warning(request, 'დარეკვის მონიშვნა მოიხსნა — ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა!')
+                else:
+                    messages.info(request, 'დარეკვის მონიშვნა მოიხსნა.')
             elif not ev.get('needs_med_hold'):
                 messages.info(request, 'ამ პაციენტს შესაჩერებელი წამლების გრაფიკი არ აქვს.')
             elif block_msg:
@@ -221,11 +230,17 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
 
         patient = get_object_or_404(PreopPatient, pk=pk)
         action = request.POST.get('action') or 'set_date'
+        was_ready_demoted = False
 
         with _PREOP_MUTATION_LOCK, transaction.atomic():
             _sqlite_acquire_write_lock(patient.pk)
             patient = PreopPatient.objects.select_for_update().get(pk=patient.pk)
             s = merged_studies(patient)
+
+            out_st = s.get('case_outcome_status') or 'scheduled'
+            if patient.archived or out_st != 'scheduled':
+                messages.error(request, 'დაარქივებულ, გადადებულ, გაუქმებულ ან უკვე ნაოპერაციებ პაციენტზე ოპერაციის თარიღის შეცვლა დაბლოკილია!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
 
             if action == 'ack_postpone':
                 s['postpone_ack_sig'] = (request.POST.get('sig') or '').strip()[:40]
@@ -233,11 +248,6 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                 patient.updated_by = request.user
                 patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
-
-            out_st = s.get('case_outcome_status') or 'scheduled'
-            if patient.archived or out_st != 'scheduled':
-                messages.error(request, 'დაარქივებულ, გადადებულ, გაუქმებულ ან უკვე ნაოპერაციებ პაციენტზე ოპერაციის თარიღის შეცვლა დაბლოკილია!')
-                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
 
             old_dt = _date(s.get('planned_surgery_date'))
             today = timezone.localdate()
@@ -272,6 +282,7 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                     if patient.someday_list == PreopPatient.SomedayList.READY:
                         patient.someday_list = PreopPatient.SomedayList.CONF
                         uf.append('someday_list')
+                        was_ready_demoted = True
             s['planned_surgery_date'] = new_dt.isoformat()
             raw_inv = s.get('_invalid_inputs')
             if isinstance(raw_inv, dict) and 'planned_surgery_date' in raw_inv:
@@ -290,7 +301,10 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
             patient.updated_by = request.user
             patient.save(update_fields=uf)
 
-        messages.success(request, f'ოპერაციის თარიღი განახლდა ({new_dt.strftime("%d.%m.%Y")}) — შეამოწმეთ რა უნდა გაკეთდეს თავიდან.')
+        if was_ready_demoted:
+            messages.warning(request, f'ოპერაციის თარიღი განახლდა ({new_dt.strftime("%d.%m.%Y")}), თუმცა დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
+        else:
+            messages.success(request, f'ოპერაციის თარიღი განახლდა ({new_dt.strftime("%d.%m.%Y")}) — შეამოწმეთ რა უნდა გაკეთდეს თავიდან.')
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-postpone-banner')
 
 

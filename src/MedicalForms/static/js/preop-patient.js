@@ -273,7 +273,8 @@
         var isDosGl = el.name === 'dos_glucose';
         attachLiveGuard(el, function (v) {
             if (v < 0.5 || v > 1000) return { level: 'crit', msg: 'დაუჯერებელი გლუკოზა (' + v + ') — გადაამოწმეთ!' };
-            var mmol = v > 35 ? Math.round((v / 18.0) * 100) / 100 : v;
+            var rawM = v / 18.0;
+            var mmol = v > 35 ? (rawM < 3.9 ? Math.floor(rawM * 100) / 100 : (rawM > 10.0 ? Math.ceil(rawM * 100) / 100 : Math.round(rawM * 100) / 100)) : v;
             if (mmol >= 14.0 || mmol < 3.9) return { level: 'crit', msg: 'კრიტიკული გლიკემია (' + mmol + ' მმოლ/ლ)!' };
             if (isDosGl) {
                 if (mmol > 10.0) return { level: 'warn', msg: 'მომატებული დილის გლუკოზა (>10.0 მმოლ/ლ — გლიკემიური კონტროლი)' };

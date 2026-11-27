@@ -418,21 +418,23 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
         'მარკუმარ', 'marcoumar', 'ფენპროკუმონ', 'phenprocoumon',
     )),
     ('doac', 'Xa-DOAC (ქსარელტო / ელიქვისი / ედიქსანი)', True, (
-        'ქსარელტ', 'კსარელტ', 'xarelto', 'რივაროქს', 'rivarox', 'ელიქვის', 'ელიკვის', 'eliquis',
-        'აპიქსაბ', 'apixab', 'ედიქსან', 'ედოქსაბ', 'edoxab', 'ლიქსიან', 'lixiana', 'სავაის', 'savaysa',
+        'ქსარელტ', 'კსარელტ', 'xarelto', 'რივაროქს', 'რივაროკს', 'rivarox', 'ელიქვის', 'ელიკვის', 'eliquis',
+        'აპიქსაბ', 'აპიკსაბ', 'apixab', 'ედიქსან', 'ედოქსაბ', 'ედოკსაბ', 'edoxab', 'ლიქსიან', 'lixiana', 'სავაის', 'savaysa',
     )),
-    ('dabigatran', 'დაბიგატრანი (პრადაქსა)', True, ('პრადაქს', 'pradaxa', 'დაბიგატრ', 'dabigatr')),
+    ('dabigatran', 'დაბიგატრანი (პრადაქსა)', True, ('პრადაქს', 'პრადაკს', 'pradaxa', 'დაბიგატრ', 'dabigatr')),
     ('parenteral_oac', 'პარენტერული ანტიკოაგულანტი (LMWH / ჰეპარინი / ფონდაპარინუქსი)', True, (
         'კლექსან', 'clexane', 'ლოვენოქს', 'lovenox', 'ფრაქსიპარ', 'fraxipar',
         'ენოქსაპარ', 'enoxapar', 'ნადროპარ', 'nadropar', 'ფრაგმინ', 'fragmin',
         'დალტეპარ', 'daltepar', 'ციბორ', 'zibor', 'ბემიპარ', 'bemipar',
-        'ჰეპარინ', 'heparin', 'არიქსტრ', 'arixtra', 'ფონდაპარინუქს', 'fondaparinux',
+        'ჰეპარინ', 'heparin', 'არიქსტრ', 'arixtra', 'ფონდაპარინუქს', 'ფონდაპარინუკს', 'fondaparinux',
+    )),
+    ('parenteral_dti', 'პარენტერული პირდაპირი თრომბინის ინჰიბიტორი (არგატრობანი / ბივალირუდინი)', True, (
         'არგატრობან', 'argatroban', 'ბივალირუდინ', 'bivalirudin',
     )),
     ('clopidogrel', 'კლოპიდოგრელი (პლავიქსი)', True, (
-        'პლავიქს', 'plavix', 'კლოპიდოგ', 'clopidog', 'ზილტ', 'zylt', 'ტრომბექს', 'trombex',
-        'ლოპირელ', 'lopirel', 'პლოგრილ', 'plogril', 'კლოპიდექს', 'clopidex', 'ეგითრომბ', 'egithromb',
-        'დუოპლავინ', 'duoplavin', 'კოპლავიქს', 'coplavix',
+        'პლავიქს', 'პლავიკს', 'plavix', 'კლოპიდოგ', 'clopidog', 'ზილტ', 'zylt', 'ტრომბექს', 'ტრომბეკს', 'trombex',
+        'ლოპირელ', 'lopirel', 'პლოგრილ', 'plogril', 'კლოპიდექს', 'კლოპიდეკს', 'clopidex', 'ეგითრომბ', 'egithromb',
+        'დუოპლავინ', 'duoplavin', 'კოპლავიქს', 'კოპლავიკს', 'coplavix',
     )),
     ('ticagrelor', 'ტიკაგრელორი (ბრილინტა / ბრილიქი)', True, (
         'ბრილინტ', 'brilinta', 'ბრილიქ', 'brilique', 'ტიკაგრელ', 'ticagrel',

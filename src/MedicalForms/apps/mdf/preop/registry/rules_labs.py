@@ -16,7 +16,7 @@ LABS_RULES = (
         source_wording='Deferring elective surgery is not recommended for stage 1-2 hypertension (<180/110 mmHg); >=180/110 mmHg requires preoperative stabilisation; CEA requires tighter preoperative DBP control (<=90 mmHg, ESVS 2023).',
         value={'red_sbp': 180, 'red_dbp': 110, 'amb_sbp': 160, 'amb_dbp': 100, 'cea_dia_amber': 90},
         value_label='წითელი >= 180/110 · ყვითელი >= 160/100 (CEA DBP > 90) mmHg',
-        match_patterns=('მაღალი არტერიული წნევა', 'მომატებული არტერიული წნევა'),
+        match_patterns=('მაღალი არტერიული წნევა', 'მომატებული არტერიული წნევა', 'მომატებული დიასტოლური წნევა CEA-ზე'),
     ),
     RuleEntry(
         id='VIT_BP_HYPOTENSION_SHOCK',

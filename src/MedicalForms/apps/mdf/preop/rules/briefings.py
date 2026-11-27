@@ -239,14 +239,14 @@ def _eval_missing_s2_and_clearance_seal(ctx):
 
 
 def _build_surgical_anatomy_brief(ctx):
-    patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
+    patient, pathway, q, s = ctx.patient, ctx.pathway, ctx.q, ctx.s
     if pathway == PreopPatient.Pathway.CEA:
         cea_cta_lbl = {'concordant': 'ტიპური ბიფურკაცია, დუპლექსთან შესაბამისი', 'high_calcified': 'მაღალი ბიფურკაცია (C2) / მძიმე კალციფიკაცია / კინკინგი (!)', 'pending': 'CTA შესატანია'}.get(s.get('cea_cta_status') or 'pending', 'ზუსტდება')
         br_lbl = {'normal_small': 'სისხლჩაქცევის გარეშე / მცირე კერა', 'large_or_hemorrhage': 'ფართო ინფარქტი (>1/3 MCA) ან ჰემორაგია — უკუჩვენება!', 'pending': 'შესატანია' if ctx.needs_brain_ct else 'არ იყო ნაჩვენები'}.get(s.get('brain_imaging') or 'pending', 'ზუსტდება')
         contra_crit = rule_value('CEA_STENOSIS_THRESHOLDS')['contra_crit']
         shunt_note = (
             f'ინტრაოპერაციული შუნტის (Shunt) სავალდებულო მზადყოფნა (კონტრალატ. სტენოზი/ოკლუზია ≥{contra_crit}% ან გადატანილი ინსულტი)!'
-            if ((ctx.contra_car is not None and ctx.contra_car >= contra_crit) or (q_filled and q.get('neuro')) or ctx.is_symp_cea)
+            if ((ctx.contra_car is not None and ctx.contra_car >= contra_crit) or has_prior_stroke_or_tia(patient, q=q, s=s, today=ctx.today) or ctx.is_symp_cea)
             else 'სტანდარტული ცერებრული მონიტორინგი / სელექციური შუნტირება'
         )
         return (
@@ -263,14 +263,14 @@ def _build_surgical_anatomy_brief(ctx):
         return f"საკლამპე ზონა: {clamp_lbl} · Outflow: {out_lbl}", tactical_note
     if ctx.is_pad_bypass:
         gsv_min = rule_value('PAD_GSV_MIN_MM')['gsv_min_mm']
-        run_lbl = {'popliteal_patent': 'მუხლქვეშა არტერია + ≥2 წვივის არტერია გამავალია', 'tibial_single': 'ერთადერთი გამავალი წვივის/ტერფის არტერია (აუცილებელია აუტოვენა ≥3.0 მმ!)', 'desert_foot': 'Desert Foot — მძიმე დისტალური ოკლუზია (!)', 'pending': 'Runoff შესატანია'}.get(s.get('pad_runoff_status') or 'pending', 'ზუსტდება')
+        run_lbl = {'popliteal_patent': 'მუხლქვეშა არტერია + ≥2 წვივის არტერია გამავალია', 'tibial_single': f'ერთადერთი გამავალი წვივის/ტერფის არტერია (აუცილებელია აუტოვენა ≥{gsv_min} მმ!)', 'desert_foot': 'Desert Foot — მძიმე დისტალური ოკლუზია (!)', 'pending': 'Runoff შესატანია'}.get(s.get('pad_runoff_status') or 'pending', 'ზუსტდება')
         alt_vein_lbl = {'pending': 'შესაფასებელია', 'contra_gsv_ok': 'კონტრალატერალური GSV ვარგისია', 'arm_ssv_ok': 'ხელის ვენა (Cephalic/Basilic) / SSV ვარგისია', 'no_autovein_prosthetic': 'აუტოვენა არ მოიძებნა — სინთეზური/კომპოზიტური პროთეზი'}.get(s.get('alt_vein_mapped') or 'pending', 'შესაფასებელია')
         gsv_is_small = (ctx.pad_gsv_mm is not None and ctx.pad_gsv_mm < gsv_min)
         gsv_stripped = 'vein_strip' in ctx.vasc_chips
         gsv_raw_st = 'inadequate' if (gsv_is_small or gsv_stripped) else (s.get('pad_gsv_status') or 'pending')
         gsv_inad_why = 'ამოღებულია/აბლაცია; ' if gsv_stripped else (f'{ctx.pad_gsv_mm} მმ < {gsv_min} მმ; ' if gsv_is_small else '')
         gsv_lbl = {
-            'adequate': f"იფსილატერალური GSV ვარგისია ({ctx.pad_gsv_mm if ctx.pad_gsv_mm is not None else '≥3.0'} მმ)",
+            'adequate': f"იფსილატერალური GSV ვარგისია ({ctx.pad_gsv_mm if ctx.pad_gsv_mm is not None else f'≥{gsv_min}'} მმ)",
             'inadequate': f"იფსილატერალური GSV უვარგისია ({gsv_inad_why}ალტ. ვენა: {alt_vein_lbl})",
             'pending': 'GSV კარტირება შესატანია',
         }.get(gsv_raw_st, 'ზუსტდება')
@@ -313,14 +313,15 @@ def _build_surgical_anatomy_brief(ctx):
     rv_part = ' · რეტროაორტული/ცირკუმაორტული მარცხენა თირკმლის ვენა (!)' if s.get('aaa_renal_vein_anom') else ''
     myc_part = ' · მიკოზური AAA: სისხლის ნათესები ×2 + ემპირიული IV ანტიბიოტიკი!' if s.get('aaa_morphology') == 'inflammatory_mycotic' else ''
     rup_oac_bits = []
-    if ctx.is_rupture_suspect and (ctx.on_oral_anticoag or 'rivaroxaban_2_5' in ctx.med_chips):
-        if q.get('med_warfarin'):
+    ft_keys_r = ctx.ft_meds.get('matched_keys') or set()
+    if ctx.is_rupture_suspect and (ctx.on_oral_anticoag or getattr(ctx, 'has_ft_full_oac', False) or 'rivaroxaban_2_5' in ctx.med_chips or 'rivaroxaban_2_5' in ft_keys_r):
+        if q.get('med_warfarin') or 'warfarin' in ft_keys_r:
             rup_oac_bits.append('4F-PCC 25–50 სე/კგ IV + ვიტამინი K 10 მგ IV')
-        if q.get('med_dabigatran'):
+        if q.get('med_dabigatran') or 'dabigatran' in ft_keys_r:
             rup_oac_bits.append('იდარუციზუმაბი (Praxbind) 5 გ IV')
-        if q.get('med_doac'):
+        if q.get('med_doac') or 'doac' in ft_keys_r:
             rup_oac_bits.append('Xa-DOAC: 4F-PCC 50 სე/კგ IV (მოერიდეთ ანდექსანეტ ალფას კლამპირებამდე — ESVS 2024)')
-        elif 'rivaroxaban_2_5' in ctx.med_chips:
+        elif 'rivaroxaban_2_5' in ctx.med_chips or 'rivaroxaban_2_5' in ft_keys_r:
             rup_oac_bits.append('რივაროქსაბანი 2.5 მგ (Xa): საჭიროებისას 4F-PCC კლინიკური სისხლდენის მიხედვით')
     rup_oac_part = f' · სასწრაფო OAC რევერსია: {" + ".join(rup_oac_bits)}!' if rup_oac_bits else ''
     return anat_summary, f"{neck_part}მუხლქვეშა სკრინინგი: {pop_map.get(s.get('popliteal_screen_status') or 'pending', '—')}{rv_part}{myc_part}{rup_oac_part}"
@@ -352,13 +353,13 @@ def _build_surgical_abx_regimen(ctx):
             if getattr(ctx, 'eff_pregnant', False):
                 gram_neg_addon = '+ აზტრეონამი 2 გ IV საზარდულის/მუცლის მიდგომისას — ორსულობაზე გენტამიცინი და ფტორქინოლონები (ციპროფლოქსაცინი) აკრძალულია!'
             elif avoid_gent:
-                gram_neg_addon = '+ აზტრეონამი 2 გ ან ციპროფლოქსაცინი 400 მგ IV საზარდულის/მუცლის მიდგომისას — დიალიზზე, CrCl/eGFR <45-სა და ღია აორტაზე გენტამიცინს მოერიდეთ (გენტამიცინი აკრძალულია)!'
+                gram_neg_addon = f'+ აზტრეონამი 2 გ ან ციპროფლოქსაცინი 400 მგ IV საზარდულის/მუცლის მიდგომისას — დიალიზზე, CrCl/eGFR <{abx_cfg["gentamicin_avoid_renal"]}-სა და ღია აორტაზე გენტამიცინს მოერიდეთ (გენტამიცინი აკრძალულია)!'
             else:
                 gram_neg_addon = '+ გენტამიცინი 5 მგ/კგ IV საზარდულის მიდგომისას (ან აზტრეონამი 2 გ / ციპროფლოქსაცინი 400 მგ IV)'
             abx_regimen = f'{core_alt} ({gram_neg_addon})'
     else:
         cefaz_3g_kg = abx_cfg['cefazolin_3g_kg']
-        redose_str = 'ყოველ 8–12 სთ-ში (CrCl/eGFR <30 / დიალიზი)' if (ctx.on_dialysis or (eff_ren_abx is not None and eff_ren_abx < abx_cfg['cefazolin_redose_renal'])) else 'ყოველ 4 სთ-ში'
+        redose_str = f'ყოველ 8–12 სთ-ში (CrCl/eGFR <{abx_cfg["cefazolin_redose_renal"]} / დიალიზი)' if (ctx.on_dialysis or (eff_ren_abx is not None and eff_ren_abx < abx_cfg['cefazolin_redose_renal'])) else 'ყოველ 4 სთ-ში'
         cef_dose_str = f'3 გ IV (წონა ≥ {cefaz_3g_kg} კგ)' if (wt_num is not None and wt_num >= cefaz_3g_kg) else '2 გ IV'
         abx_regimen = f'ცეფაზოლინი {cef_dose_str} განაკვეთამდე 30–60 წთ-ით ადრე (რე-დოზირება {redose_str} ან >1500 მლ სისხლის დანაკარგზე)'
         if 'penicillin_mild' in ctx.allergy_chips:
@@ -374,16 +375,18 @@ def _build_surgical_brief(ctx):
     patient, pathway, s = ctx.patient, ctx.pathway, ctx.s
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
     na_hi = rule_value('REN_ELECTROLYTES_K_NA')['na_hi']
+    rtpa_d = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
     anat_summary, tactical_note = _build_surgical_anatomy_brief(ctx)
     abx_regimen = _build_surgical_abx_regimen(ctx)
 
     eff_ren_b = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
     hit_severe_renal = ctx.on_dialysis or (eff_ren_b is not None and eff_ren_b < ren_red)
     has_hit = 'hit_heparin' in ctx.allergy_chips
+    has_full_oac_b = bool(getattr(ctx, 'has_full_oac', False) or getattr(ctx, 'has_ft_full_oac', False))
     cea_bleed_b = pathway == PreopPatient.Pathway.CEA and (s.get('brain_imaging') == 'large_or_hemorrhage' or getattr(ctx, 'active_thrombolysis_window', False))
     if cea_bleed_b:
         hit_cea_sfx = ' (ასევე HIT ანამნეზში — UFH/LMWH კატეგორიულად აკრძალულია!)' if has_hit else ''
-        heparin_plan = f'ყურადღება! ტვინის ჰემორაგია / ფართო ინფარქტი ან თრომბოლიზისი ≤6 დღეში — ნაადრევი სისტემური ანტიკოაგულაცია/ჰეპარინიზაცია საშიშია ჰემორაგიული ტრანსფორმაციის გამო (ESVS 2023)!{hit_cea_sfx}'
+        heparin_plan = f'ყურადღება! ტვინის ჰემორაგია / ფართო ინფარქტი ან თრომბოლიზისი ≤{rtpa_d} დღეში — ნაადრევი სისტემური ანტიკოაგულაცია/ჰეპარინიზაცია საშიშია ჰემორაგიული ტრანსფორმაციის გამო (ESVS 2023)!{hit_cea_sfx}'
     elif getattr(ctx, 'active_gi_bleed', False):
         hit_gi_b = ' · HIT ანამნეზში: UFH/LMWH კატეგორიულად აკრძალულია!' if has_hit else ''
         if ctx.is_venous:
@@ -391,10 +394,13 @@ def _build_surgical_brief(ctx):
         else:
             heparin_plan = f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — გეგმური ინტრაოპ./პოსტოპ. სისტემური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე (მხოლოდ IPC; გადაუდებელ რევასკულარიზაციაზე გასტროენტეროლოგისა და {"ჰემატოლოგ/ქირურგის" if has_hit else "ქირურგის"} კონსილიუმი)!{hit_gi_b}'
     elif has_hit:
-        if ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.needs_vte_prophylaxis:
+        if (
+            ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.needs_vte_prophylaxis
+            and not getattr(ctx, 'eff_pregnant', False) and not ctx.has_mech_valve and not hit_severe_renal and not ctx.liver_3x
+        ):
             heparin_plan = 'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH კატეგორიულად აკრძალულია · სტანდარტულ EVLA-ზე ინტრაოპ. ანტიკოაგულაცია არ ესაჭიროება (საჭიროებისას — ბივალირუდინი ან არგატრობანი; ადრეული აქტივაცია)'
         elif getattr(ctx, 'eff_pregnant', False):
-            p_tags = [t for cond, t in ((ctx.has_mech_valve, 'მექანიკური სარქველი'), (hit_severe_renal, 'CrCl/eGFR <30 / დიალიზი'), (ctx.liver_3x, 'ღვიძლის ≥3x')) if cond]
+            p_tags = [t for cond, t in ((ctx.has_mech_valve, 'მექანიკური სარქველი'), (hit_severe_renal, f'CrCl/eGFR <{ren_red} / დიალიზი'), (ctx.liver_3x, 'ღვიძლის ≥3x')) if cond]
             p_sfx = f' + {" + ".join(p_tags)}' if p_tags else ''
             c_team = 'ჰემატოლოგის, მეან-გინეკოლოგისა და კარდიოლოგის' if ctx.has_mech_valve else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
             heparin_plan = f'HIT ანამნეზში + ორსულობა{p_sfx}! UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {c_team} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!'
@@ -403,18 +409,18 @@ def _build_surgical_brief(ctx):
             heparin_plan = f'HIT ანამნეზში + მექანიკური სარქველი! UFH, LMWH და DOAC აკრძალულია → IV ბივალირუდინი ან არგატრობანი{liver_arg} პოსტოპ. ვარფარინზე (VKA) გადასვლით!'
         elif hit_severe_renal:
             liver_arg = ' (ღვიძლის ≥3x-ზე არგატრობანის დოზა მცირდება 75%-ით!)' if ctx.liver_3x else ''
-            heparin_plan = f'HIT ანამნეზში! UFH, LMWH, ფონდაპარინუქსი და DOAC (CrCl/eGFR <30 / დიალიზი) კატეგორიულად აკრძალულია → ინტრაოპ./პოსტოპ. ბივალირუდინი ან არგატრობანი{liver_arg}!'
+            heparin_plan = f'HIT ანამნეზში! UFH, LMWH, ფონდაპარინუქსი და DOAC (CrCl/eGFR <{ren_red} / დიალიზი) კატეგორიულად აკრძალულია → ინტრაოპ./პოსტოპ. ბივალირუდინი ან არგატრობანი{liver_arg}!'
         elif ctx.liver_3x:
             heparin_plan = 'HIT ანამნეზში + ღვიძლის ≥3x დაზიანება! UFH და LMWH კატეგორიულად აკრძალულია (DOAC და ფონდაპარინუქსი არარეკომენდებულია) → უპირატესია ბივალირუდინი (არგატრობანის დოზა მცირდება 75%-ით!) და პოსტოპ. IPC / IV ბივალირუდინი!'
-        elif getattr(ctx, 'has_full_oac', False):
+        elif has_full_oac_b:
             if ctx.is_venous:
                 heparin_plan = f'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH აკრძალულია · ინტრაოპერაციული ანტიკოაგულაცია არ ესაჭიროება · VTE პროფილაქტიკა: Caprini {ctx.caprini_score} ქ. ({ctx.caprini_tier}) — {ctx.caprini_advice}'
-            elif getattr(ctx, 'has_contra_oac', False):
+            elif getattr(ctx, 'has_contra_full_oac', False):
                 heparin_plan = 'HIT ანამნეზში + უკუნაჩვენები/დუბლირებული OAC! არაფრაქციული ჰეპარინი (UFH) და LMWH აკრძალულია → ინტრაოპ. ბივალირუდინი ან არგატრობანი · უკუნაჩვენები OAC არ განაახლოთ, შეარჩიეთ ერთი უსაფრთხო არაჰეპარინული სქემა ჰემატოლოგ/კარდიოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!)!'
             else:
                 heparin_plan = 'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH კატეგორიულად აკრძალულია → ინტრაოპ. ბივალირუდინი ან არგატრობანი · პოსტოპ. მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (დამატებითი პროფილაქტიკური ფონდაპარინუქსი/DOAC არ დაუმატოთ — ორმაგი ანტიკოაგულაციის გარეშე!)!'
         else:
-            heparin_plan = 'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH კატეგორიულად აკრძალულია → ბივალირუდინი ან არგატრობანი (პოსტოპ. ფონდაპარინუქსი/DOAC CrCl ≥30-ზე)!'
+            heparin_plan = f'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH კატეგორიულად აკრძალულია → ბივალირუდინი ან არგატრობანი (პოსტოპ. ფონდაპარინუქსი/DOAC CrCl ≥{ren_red}-ზე)!'
     elif ctx.is_venous:
         heparin_plan = f'ინტრაოპერაციული UFH არ ესაჭიროება · VTE პროფილაქტიკა: Caprini {ctx.caprini_score} ქ. ({ctx.caprini_tier}) — {ctx.caprini_advice}'
     else:
@@ -424,14 +430,14 @@ def _build_surgical_brief(ctx):
     contrast_plan = ''
     na_eff = getattr(ctx, 'na_val_sat', ctx.na_val)
     hyd_fluid_note = (
-        'ჰიპერნატრიემია Na+ ≥150 — 0.9% NaCl-ით დატვირთვა აკრძალულია!' + (' · HFrEF სითხით გადატვირთვის რისკი!' if ctx.chf_hyd_flag else '')
+        f'ჰიპერნატრიემია Na+ ≥{na_hi} — 0.9% NaCl-ით დატვირთვა აკრძალულია!' + (' · HFrEF სითხით გადატვირთვის რისკი!' if ctx.chf_hyd_flag else '')
         if (na_eff is not None and na_eff >= na_hi) else
         ('ფრთხილი 0.9% NaCl 0.5 მლ/კგ/სთ (HFrEF!)' if ctx.chf_hyd_flag else 'პერიპროცედურული 0.9% NaCl 1 მლ/კგ/სთ ჰიდრატაცია')
     )
     if ctx.max_contrast_ml is not None:
         contrast_plan = f'მაქს. იოდის კონტრასტის ბიუჯეტი (Gurm): ≤ {ctx.max_contrast_ml} მლ'
         if ctx.co2_angio_advised:
-            contrast_plan += f' · CrCl/eGFR < 30: უპირატესია CO2 ანგიოგრაფია / IVUS + {hyd_fluid_note}!'
+            contrast_plan += f' · CrCl/eGFR < {ren_red}: უპირატესია CO2 ანგიოგრაფია / IVUS + {hyd_fluid_note}!'
         elif ctx.needs_hydration:
             contrast_plan += f' + {hyd_fluid_note}'
         if ctx.eff_allergy_iodine:
@@ -448,16 +454,19 @@ def _build_surgical_brief(ctx):
 
 
 def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
-    from .meds import _gi_bleed_postop_msg, _preg_mech_valve_postop_msg
+    from .meds import _contra_full_oac_postop_label, _gi_bleed_postop_msg, _preg_mech_valve_postop_msg
 
     pathway, s = ctx.pathway, ctx.s
-    statin_tail = '' if (ctx.liver_3x or getattr(ctx, 'eff_pregnant', False)) else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ — ESVS Class I)'
+    ldl_max = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
+    rtpa_d = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
+    ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    statin_tail = '' if (ctx.liver_3x or getattr(ctx, 'eff_pregnant', False)) else f' + მაღალი ინტენსივობის სტატინი (LDL <{ldl_max} მმოლ/ლ — ESVS Class I)'
     if ctx.is_pta:
         pause_oac_win = '~24 სთ-ში'
     elif has_hit:
         pause_oac_win = '48–72 სთ-ში (HIT: ჰეპარინი/კლექსანი აკრძალულია — IPC / არაჰეპარინული სქემა!)'
     elif hit_severe_renal:
-        pause_oac_win = '48–72 სთ-ში (CrCl<30: D+1 პროფილაქტ. კანქვეშა UFH / IPC)'
+        pause_oac_win = f'48–72 სთ-ში (CrCl<{ren_red}: D+1 პროფილაქტ. კანქვეშა UFH / IPC)'
     else:
         pause_oac_win = '48–72 სთ-ში (D+1 პროფილაქტ. LMWH)'
     asa_allergy = 'nsaid' in ctx.allergy_chips
@@ -467,14 +476,12 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
     if is_cea_ich_b or (is_cea_rtpa_b and not (s.get('brain_imaging') == 'normal_small' and ctx.days_since_ev is not None and ctx.days_since_ev >= 1)):
         return 'ტვინის სისხლჩაქცევის / თრომბოლიზისის ფონზე ანტიკოაგულაციისა და ანტიაგრეგანტების აღდგენა დაბლოკილია — სავალდებულოა ნეიროქირურგისა და ნევროლოგის კონსილიუმი!'
     if getattr(ctx, 'active_gi_bleed', False):
-        if ctx.is_venous:
-            return ctx.caprini_advice
-        return _gi_bleed_postop_msg(ctx)
+        return ctx.caprini_advice if ctx.is_venous else _gi_bleed_postop_msg(ctx)
     if is_cea_rtpa_b:
         return (
-            'თრომბოლიზისი ≤6 დღე + ასპირინზე ალერგია: სისტემური ანტიკოაგულაცია/LMWH/P2Y12 და ასპირინი დაბლოკილია — შეათანხმეთ ინდივიდუალური რეჟიმი ნევროლოგთან!'
+            f'თრომბოლიზისი ≤{rtpa_d} დღე + ასპირინზე ალერგია: სისტემური ანტიკოაგულაცია/LMWH/P2Y12 და ასპირინი დაბლოკილია — შეათანხმეთ ინდივიდუალური რეჟიმი ნევროლოგთან!'
             if asa_allergy else
-            'თრომბოლიზისი ≤6 დღე: სისტემური ანტიკოაგულაციის/LMWH/DAPT აღდგენა დაბლოკილია — CT-ზე ჰემორაგიის გამორიცხვისას დასაშვებია მხოლოდ ასპირინი 75–100 მგ ნევროლოგთან შეთანხმებით!'
+            f'თრომბოლიზისი ≤{rtpa_d} დღე: სისტემური ანტიკოაგულაციის/LMWH/DAPT აღდგენა დაბლოკილია — CT-ზე ჰემორაგიის გამორიცხვისას დასაშვებია მხოლოდ ასპირინი 75–100 მგ ნევროლოგთან შეთანხმებით!'
         )
     if ctx.is_venous:
         return ctx.caprini_advice
@@ -485,20 +492,18 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
     if ctx.has_mech_valve:
         mv_ap_b = f' + ჩვენებისას {ctx.oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
         return f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap_b} (DOAC აკრძალულია!){statin_tail}'
-    if getattr(ctx, 'has_contra_oac', False):
-        if getattr(ctx, 'eff_pregnant', False):
-            preg_oac_alt = (
-                'არაჰეპარინული სქემა (HIT: LMWH/UFH აკრძალულია!)'
-                if has_hit else (
-                    'არასფრაქციული ჰეპარინი (UFH — თირკმლის მძიმე უკმარისობის/დიალიზის გამო LMWH კუმულირდება!)'
-                    if hit_severe_renal else 'LMWH/UFH'
-                )
-            )
-            return f'ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_oac_alt} მეან-გინეკოლოგთან და კარდიოლოგთან!'
-        return f'უკუნაჩვენები OAC არ განაახლოთ (თირკმლის/ღვიძლის/სისხლდენის/დუბლირების უკუჩვენება) — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა კარდიოლოგ/ნეფროლოგთან!{statin_tail}'
-    if ctx.has_full_oac:
-        if ctx.q.get('med_warfarin'):
-            vka_br_note = 'HIT: ჰეპარინი/LMWH აკრძალულია' if has_hit else 'მაღალი თრომბორისკისას ხიდი INR ≥2.0-მდე'
+    if getattr(ctx, 'has_contra_full_oac', False):
+        return _contra_full_oac_postop_label(ctx, ctx.oac_partner_lbl) + ('' if getattr(ctx, 'eff_pregnant', False) else statin_tail)
+    has_full_oac_p = bool(ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False))
+    ft_keys_p = ctx.ft_meds.get('matched_keys') or set()
+    if has_full_oac_p:
+        if ctx.q.get('med_warfarin') or ('warfarin' in ft_keys_p and not ctx.on_oral_anticoag):
+            if has_hit:
+                vka_br_note = 'HIT: ჰეპარინი/LMWH აკრძალულია'
+            elif hit_severe_renal:
+                vka_br_note = f'CrCl/eGFR <{ren_red} / დიალიზი: თერაპიული LMWH აკუმულირდება — მაღალი თრომბორისკისას IV UFH ხიდი (aPTT კონტროლით) INR ≥2.0-მდე!'
+            else:
+                vka_br_note = 'მაღალი თრომბორისკისას ხიდი INR ≥2.0-მდე'
             return f'ვარფარინის (VKA) აღდგენა 12–24 სთ-ში ჰემოსტაზით ({vka_br_note}) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
         return f'მუდმივი ანტიკოაგულანტის (DOAC) აღდგენა {pause_oac_win} ჰემოსტაზით (PAUSE) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
     if ctx.has_active_stent_dapt:
@@ -597,7 +602,8 @@ def _build_anesthetic_disposition(ctx, sb_cfg, cb_cfg, ren_hyd):
         (age_eff or 0) >= sb_cfg['mins_age']
         or ctx.ihd_flag or ctx.chf_flag or ctx.on_dialysis
         or (egfr_mins is not None and egfr_mins < ren_hyd)
-        or (q_filled and (ctx.has_known_dm or has_prior_stroke_or_tia(patient, q=q, s=s, today=ctx.today) or q.get('htn')))
+        or has_prior_stroke_or_tia(patient, q=q, s=s, today=ctx.today)
+        or (q_filled and (ctx.has_known_dm or q.get('htn')))
     )
     if not ctx.is_venous and (
         ctx.open_aortic
@@ -634,14 +640,14 @@ def _build_anesthetic_brief(ctx):
     coag_pbm_bits = []
     if ctx.plt is not None and ctx.plt < coag_cfg['plt_red']:
         if 'hit_heparin' in ctx.allergy_chips:
-            coag_pbm_bits.append('PLT <100 + HIT: პროფილაქტიკური თრომბოკონცენტრატის გადასხმა უკუნაჩვენებია (მხოლოდ სიცოცხლისთვის საშიშ სისხლდენაზე)!')
+            coag_pbm_bits.append(f'PLT <{coag_cfg["plt_red"]} + HIT: პროფილაქტიკური თრომბოკონცენტრატის გადასხმა უკუნაჩვენებია (მხოლოდ სიცოცხლისთვის საშიშ სისხლდენაზე)!')
         else:
-            coag_pbm_bits.append(f'თრომბოკონცენტრატის მზადყოფნა (PLT {ctx.plt} <100 — სამიზნე ≥80–100)')
+            coag_pbm_bits.append(f'თრომბოკონცენტრატის მზადყოფნა (PLT {ctx.plt} <{coag_cfg["plt_red"]} — სამიზნე ≥80–{coag_cfg["plt_red"]})')
     if ctx.fib is not None and ctx.fib < coag_cfg['fib_low']:
-        coag_pbm_bits.append(f'ფიბრინოგენის კონცენტრატი 3–4 გ IV / კრიოპრეციპიტატი (Fib {ctx.fib} <1.8 გ/ლ — ESAIC 2023)')
+        coag_pbm_bits.append(f'ფიბრინოგენის კონცენტრატი 3–4 გ IV / კრიოპრეციპიტატი (Fib {ctx.fib} <{coag_cfg["fib_low"]} გ/ლ — ESAIC 2023)')
     inr_pbm = ctx.inr if ctx.inr is not None else getattr(ctx, 'inr_sat', None)
     if inr_pbm is not None and inr_pbm > inr_std and not ctx.on_oral_anticoag:
-        coag_pbm_bits.append(f'კოაგულოპათია OAC-ის გარეშე (INR {ctx.inr if ctx.inr is not None else inr_pbm} >1.5): ვიტამინი K 10 მგ IV ± 4F-PCC (ESAIC 2023)')
+        coag_pbm_bits.append(f'კოაგულოპათია OAC-ის გარეშე (INR {ctx.inr if ctx.inr is not None else inr_pbm} >{inr_std}): ვიტამინი K 10 მგ IV ± 4F-PCC (ESAIC 2023)')
     if coag_pbm_bits:
         transfusion_pbm += ' · ' + ' · '.join(coag_pbm_bits)
     airway_bits = [ctx.mallampati_label, f'STOP-Bang: {ctx.stop_bang_label}']
@@ -674,6 +680,7 @@ def _build_anesthetic_brief(ctx):
     needs_glycemic_corridor = bool(ctx.has_known_dm or (gl_eff is not None and gl_eff >= gly_cfg['gl_hba1c']) or (hba1c_eff is not None and hba1c_eff >= gly_cfg['hba1c_dm']) or (dos_gl_eff is not None and dos_gl_eff >= gly_cfg['dos_corridor_mmol']))
     needs_vriii = bool((q_filled and q.get('dm_insulin') and ctx.open_aortic) or (gl_eff is not None and gl_eff >= gly_cfg['vriii_mmol']) or (dos_gl_eff is not None and dos_gl_eff >= gly_cfg['vriii_mmol']))
     vriii_sfx = ' · ინტრაოპ./ICU: IV ინსულინის ინფუზია (VRIII) საათობრივი გლუკოზისა და K+ კონტროლით!' if needs_vriii else ''
+    gl_hi_c = gly_cfg['dos_corridor_mmol']
     ctx.anesthetic_brief = {
         'modality': f'{ctx.effective_asa} · {ctx.effective_anesth_label}',
         'neuraxial_gate': neuraxial_gate,
@@ -682,8 +689,8 @@ def _build_anesthetic_brief(ctx):
         'lines_and_cied': (ctx.anesth_lines_txt or default_lines_lbl) + cied_brief_sfx + fistula_sfx,
         'transfusion_pbm': transfusion_pbm,
         'glycemic_target': (
-            f'პერიოპერაციული გლიკემიური კორიდორი 5.5–10.0 მმოლ/ლ (ჰიპოგლიკემიის <3.9 და >10.0 თავიდან აცილება — ESC/ESAIC){vriii_sfx}'
-            if needs_glycemic_corridor else 'სტანდარტული ნორმოგლიკემია (<10.0 მმოლ/ლ)'
+            f'პერიოპერაციული გლიკემიური კორიდორი 5.5–{gl_hi_c} მმოლ/ლ (ჰიპოგლიკემიის <{gly_cfg["gl_red_lo"]} და >{gl_hi_c} თავიდან აცილება — ESC/ESAIC){vriii_sfx}'
+            if needs_glycemic_corridor else f'სტანდარტული ნორმოგლიკემია (<{gl_hi_c} მმოლ/ლ)'
         ),
         'disposition': _build_anesthetic_disposition(ctx, sb_cfg, cb_cfg, ren_hyd),
     }

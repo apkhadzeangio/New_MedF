@@ -124,7 +124,7 @@ class PreopRulesCatalogAndCitationUITests(TestCase):
         resp_local = self.client.get(url + f'?status={STATUS_LOCAL}')
         self.assertEqual(resp_local.status_code, 200)
         self.assertContains(resp_local, 'INF_STALE_LABS_DAYS')
-        self.assertNotContains(resp_local, 'id="rule-AAA_MALE_MIN_MM"')
+        self.assertNotContains(resp_local, 'id="rule-MED_RECENT_STENT_DAPT"')
 
         resp_q = self.client.get(url + '?domain=meds&q=ASRA')
         self.assertEqual(resp_q.status_code, 200)

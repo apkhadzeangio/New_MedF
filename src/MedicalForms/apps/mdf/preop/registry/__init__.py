@@ -82,7 +82,14 @@ def match_rule_for_text(text, domain_hint=None):
     best_key = None
     for idx, entry in enumerate(RULES):
         max_len = 0
-        for pat in entry.match_patterns:
+        live_entry = RULES_BY_ID.get(entry.id, entry)
+        ev_val = live_entry.value
+        for pat in live_entry.match_patterns:
+            if '{val' in pat:
+                if '{val}' in pat and isinstance(ev_val, (int, float, str)):
+                    pat = pat.replace('{val}', str(ev_val))
+                elif '{val0}' in pat and isinstance(ev_val, (tuple, list)) and ev_val:
+                    pat = pat.replace('{val0}', str(ev_val[0]))
             if pat in haystack and len(pat) > max_len:
                 max_len = len(pat)
         if max_len:

@@ -271,7 +271,7 @@ class PreopStressFixesR12ClinicalEngineTests(SimpleTestCase):
             'planned_surgery_date': (TODAY - datetime.timedelta(days=2)).isoformat(),
         })
         imp_cta = nurse_plan.detect_postponement_impacts(p_cta, evaluate(p_cta, today=TODAY), TODAY)
-        self.assertTrue(any(i['tone'] == 'danger' and 'CTA' in i['text'] for i in imp_cta['impacts']))
+        self.assertTrue(any(i['tone'] == 'danger' and 'კტ-ანგიოგრაფი' in i['text'] for i in imp_cta['impacts']))
 
         # Combos S3-1 & Clin S3-02: Patient plain-Georgian guide scrubs clinician prompts & abbreviations
         for p_case in (

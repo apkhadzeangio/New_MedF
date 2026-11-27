@@ -25,7 +25,7 @@ from ..preop import (
 )
 from ..preop.calculators import _parse_scr_mgdl
 from ..preop.meds import _detect_freetext_high_risk_meds
-from ..preop.registry import RULES_BY_ID, STATUS_LOCAL, STATUS_VERIFIED, match_rule_for_text
+from ..preop.registry import RULES_BY_ID, STATUS_LOCAL, match_rule_for_text
 from ..preop.utils import target_prep_days
 from ..preop.views.patient import _parse_s1_numbers_and_dates
 
@@ -415,5 +415,5 @@ class StressPathwayAndContradictionTests(TestCase):
         self.assertEqual(RULES_BY_ID['AAA_GIANT_MM'].status, STATUS_LOCAL)
         self.assertEqual(RULES_BY_ID['VEN_VTE_CAPRINI_PROPHYLAXIS'].section.find('Rec 34'), -1)
         self.assertNotEqual(match_rule_for_text('პაციენტს უჭირს ზურგზე გაუნძრევლად წოლა').id, 'PTA_BTK_IC_STOP')
-        self.assertEqual(RULES_BY_ID['PTA_BTK_IC_STOP'].status, STATUS_VERIFIED)
+        self.assertEqual(RULES_BY_ID['PTA_BTK_IC_STOP'].status, STATUS_LOCAL)
         self.assertIn('Level C', RULES_BY_ID['PTA_BTK_IC_STOP'].class_level)

@@ -1,7 +1,15 @@
 """Structured Georgian preoperative anamnesis generator and Self-Fill highlights extractor."""
 from ..board import person_name
 from ..models import PreopPatient
-from .utils import _int, _num, _str_list, cea_live_days_since_event, chip_summary, is_self_filled_q
+from .utils import (
+    _int,
+    _num,
+    _str_list,
+    cea_live_days_since_event,
+    chip_summary,
+    has_prior_stroke_or_tia,
+    is_self_filled_q,
+)
 
 _SF_SIMPLE_FLAGS = (
     ('aaa_pain', 'urgent', 'მუცლის/წელის ტკივილი (AAA)!'),
@@ -169,8 +177,8 @@ def _anam_cea(patient, ev, q, s, head_prefix, surgeon_str):
         'pending': 'ზუსტდება',
     }
     disc_str = 'DICOM დისკი ადგილზეა' if s.get('cta_disc') else 'DICOM დისკი მოსატანია'
-    car_r_c = _int(s.get('carotid_r'), 0, 100)
-    car_l_c = _int(s.get('carotid_l'), 0, 100)
+    car_r_c = _num(s.get('carotid_r'), 0, 100)
+    car_l_c = _num(s.get('carotid_l'), 0, 100)
     lines.append(
         f"საძილეები და ვიზუალიზაცია (NASCET): R ICA {car_r_c if car_r_c is not None else '—'}% / "
         f"L ICA {car_l_c if car_l_c is not None else '—'}%; "
@@ -265,7 +273,7 @@ def _anam_pad(patient, ev, pathway, q, s, head_prefix, surgeon_str, ulcer_txt):
     abi_l_s = abi_l_v if abi_l_v is not None else '—'
     if pathway == PreopPatient.Pathway.PAD_BYPASS:
         run_map = {'popliteal_patent': 'მუხლქვეშა არტერია გამავალია', 'tibial_single': 'წვივის არტერიაზე დისტალური მიმღები', 'desert_foot': 'არადამაკმაყოფილებელი კალაპოტი (!)', 'pending': 'ზუსტდება'}
-        gsv_map = {'adequate': 'ვარგისია (≥3.0 მმ)', 'inadequate': 'უვარგისია (<3.0 მმ / ამოღებულია!)', 'pending': 'ზუსტდება'}
+        gsv_map = {'adequate': f'ვარგისია (≥{gsv_min} მმ)', 'inadequate': f'უვარგისია (<{gsv_min} მმ / ამოღებულია!)', 'pending': 'ზუსტდება'}
         gsv_val = _num(s.get('pad_gsv_mm'), 0.5, 30.0)
         gsv_stripped = 'vein_strip' in _str_list(q.get('vasc_chips'))
         gsv_eff_st = 'inadequate' if (gsv_stripped or (gsv_val is not None and gsv_val < gsv_min)) else (s.get('pad_gsv_status') or 'pending')
@@ -400,7 +408,7 @@ def _anam_aaa(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt):
     return lines
 
 
-def _anam_comorb_meds_allergy(pathway, ev, q):
+def _anam_comorb_meds_allergy(patient, pathway, ev, q):
     from .registry import rule_value
     hba1c_dm = rule_value('GLY_GLUCOSE_HBA1C')['hba1c_dm']
     lvef_red = rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red']
@@ -417,7 +425,7 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
     if q.get('htn'):
         comorb.append('არტერიული ჰიპერტენზია')
     cad_ch_set = set(_str_list(q.get('cad_chips')))
-    lvef_c = _int((ev.get('s') or {}).get('lvef'), 5, 95)
+    lvef_c = _num((ev.get('s') or {}).get('lvef'), 5, 95)
     if q.get('cad') or q.get('recent_stent') or cad_ch_set:
         has_ihd_chip = bool((cad_ch_set & {'mi', 'angina', 'cabg', 'stent_old', 'stent_6_12m'}) or q.get('recent_stent') or not cad_ch_set)
         c_det = chip_summary(q.get('cad_chips'), 'cad_chips', q.get('cad_detail'))
@@ -440,7 +448,7 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
         comorb.append(f"ფილტვების ქრ. დაავადება{f' ({p_det})' if p_det else ''}")
     if q.get('thyroid_disease'):
         comorb.append('ფარისებრი ჯირკვლის პათოლოგია')
-    if q.get('neuro'):
+    if has_prior_stroke_or_tia(patient, q=q, s=ev.get('s') or {}):
         comorb.append('ანამნეზში ინსულტი/TIA')
     if q.get('ulcer') or q.get('ulcer_active_symp'):
         comorb.append('წყლულოვანი დაავადება (აქტიური ჩივილით)' if q.get('ulcer_active_symp') else 'წყლულოვანი დაავადება ანამნეზში')
@@ -451,6 +459,14 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
         comorb.append('ორსულობა / შესაძლო ორსულობა (!)')
     if q.get('smoker'):
         comorb.append('თამბაქოს მწეველი')
+    med_ch_set = set(_str_list(q.get('med_chips')))
+    has_unlisted_cv_rx = bool(
+        ev.get('has_full_oac') or ev.get('has_ft_full_oac')
+        or (q.get('med_aspirin') and any(q.get(k) for k in ('med_clopidogrel', 'med_ticagrelor', 'med_prasugrel')))
+        or 'amiodarone' in med_ch_set
+    )
+    if not comorb and has_unlisted_cv_rx:
+        comorb.append('დასაზუსტებელი კარდიო/თრომბოზული ჩვენება (იღებს ანტიკოაგულანტს/DAPT/ამიოდარონს)')
     lines.append(f"თანმხლები ფონი: {', '.join(comorb) if comorb else 'მნიშვნელოვანი ქრონიკული დაავადებების გარეშე'}.")
 
     med_pairs = (
@@ -466,9 +482,13 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
     if med_extra:
         meds.append(med_extra)
     lines.append(f"მუდმივი მედიკამენტები: {', '.join(meds) if meds else 'არ იღებს'}.")
+    lines.extend(_anam_allergies_line(pathway, ev, q))
+    return lines
 
+
+def _anam_allergies_line(pathway, ev, q):
     from .meds_freetext import _positive_clauses_text
-    allergies = []
+    lines, allergies = [], []
     raw_alg_chips = _str_list(q.get('allergy_chips'))
     alg_txt_raw = _positive_clauses_text(q.get('allergy_text') or '').strip()
     alg_txt_low = alg_txt_raw.lower()
@@ -520,10 +540,10 @@ def _anam_anesth_labs(pathway, ev, q, s):
     lines.append(f"ანესთეზიოლოგიური სტატუსი: {'; '.join(anesth_flags)}.")
 
     lab_bits = []
-    bp_s = _int(s.get('bp_sys'), 30, 320)
-    bp_d = _int(s.get('bp_dia'), 20, 220)
-    bp_sl = _int(s.get('bp_sys_l'), 30, 320)
-    bp_dl = _int(s.get('bp_dia_l'), 20, 220)
+    bp_s = _num(s.get('bp_sys'), 30, 320)
+    bp_d = _num(s.get('bp_dia'), 20, 220)
+    bp_sl = _num(s.get('bp_sys_l'), 30, 320)
+    bp_dl = _num(s.get('bp_dia_l'), 20, 220)
     if bp_s is not None and bp_d is not None and bp_s > bp_d:
         bp_str = f'BP {bp_s}/{bp_d}'
         if bp_sl is not None and bp_dl is not None and bp_sl > bp_dl:
@@ -551,7 +571,7 @@ def _anam_anesth_labs(pathway, ev, q, s):
         lab_bits.append(f"ალბუმინი {ev['alb_gl']} გ/ლ")
     if ev.get('ldl') is not None:
         lab_bits.append(f"LDL {ev['ldl']} მმოლ/ლ")
-    lvef_a = _int(s.get('lvef'), 5, 95)
+    lvef_a = _num(s.get('lvef'), 5, 95)
     if lvef_a is not None:
         lab_bits.append(f'LVEF {lvef_a}%')
     if ev.get('nt_probnp') is not None:
@@ -560,8 +580,8 @@ def _anam_anesth_labs(pathway, ev, q, s):
         lab_bits.append(f"hs-cTn {ev['hs_ctn']} ng/L")
     if ev.get('tsat') is not None:
         lab_bits.append(f"TSAT {ev['tsat']}%")
-    car_r_a = _int(s.get('carotid_r'), 0, 100)
-    car_l_a = _int(s.get('carotid_l'), 0, 100)
+    car_r_a = _num(s.get('carotid_r'), 0, 100)
+    car_l_a = _num(s.get('carotid_l'), 0, 100)
     if pathway not in (PreopPatient.Pathway.CEA, PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA) and (car_r_a is not None or car_l_a is not None):
         car_r_s = car_r_a if car_r_a is not None else '—'
         car_l_s = car_l_a if car_l_a is not None else '—'
@@ -572,7 +592,7 @@ def _anam_anesth_labs(pathway, ev, q, s):
         lab_bits.append(f"TP min {ev['min_tp']} mmHg")
     elif ev.get('min_tbi') is not None:
         lab_bits.append(f"TBI min {ev['min_tbi']}")
-    fev1_a = _int(s.get('spiro_fev1'), 10, 160)
+    fev1_a = _num(s.get('spiro_fev1'), 10, 160)
     if fev1_a is not None:
         lab_bits.append(f'FEV1 {fev1_a}%')
     if lab_bits:
@@ -610,6 +630,6 @@ def generate_anamnesis(patient, ev=None):
     else:
         lines = _anam_aaa(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt)
 
-    lines.extend(_anam_comorb_meds_allergy(pathway, ev, q))
+    lines.extend(_anam_comorb_meds_allergy(patient, pathway, ev, q))
     lines.extend(_anam_anesth_labs(pathway, ev, q, s))
     return '\n'.join(lines)

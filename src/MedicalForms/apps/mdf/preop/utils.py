@@ -65,22 +65,22 @@ def _raw_finite_decimal(val):
     if val is None or val == '' or isinstance(val, (bool, list, tuple, dict, set)):
         return None
     if isinstance(val, int):
-        return Decimal(val)
+        return None if abs(val) > 10**18 else Decimal(val)
     if isinstance(val, float):
-        if not math.isfinite(val):
+        if not math.isfinite(val) or abs(val) > 1e18:
             return None
         try:
             return Decimal(str(val))
         except InvalidOperation:
             return None
     s_val = str(val).strip().replace(',', '.')
-    if not _ASCII_NUM_RE.match(s_val):
+    if len(s_val) > 40 or not _ASCII_NUM_RE.match(s_val):
         return None
     try:
         d = Decimal(s_val)
     except InvalidOperation:
         return None
-    return d if d.is_finite() else None
+    return d if (d.is_finite() and abs(d) <= Decimal('1e18')) else None
 
 
 def parse_plt_k(raw, allow_negative_zero=False):
@@ -133,26 +133,27 @@ def parse_wbc_k(raw):
 def _num(val, lo=None, hi=None):
     if val is None or val == '' or isinstance(val, (bool, list, tuple, dict, set)):
         return None
-    if isinstance(val, (int, float)):
-        try:
-            v = float(val)
-        except OverflowError:
+    if isinstance(val, int):
+        if abs(val) > 10**15:
             return None
+        v = float(val)
+    elif isinstance(val, float):
+        v = val
     else:
         s_val = str(val).strip().replace(',', '.')
-        if not _ASCII_NUM_RE.match(s_val):
+        if len(s_val) > 40 or not _ASCII_NUM_RE.match(s_val):
             return None
         try:
             v = float(s_val)
         except (ValueError, TypeError, OverflowError):
             return None
-    if not math.isfinite(v):
+    if not math.isfinite(v) or abs(v) > 1e15:
         return None
     if lo is not None and v < lo:
         return None
     if hi is not None and v > hi:
         return None
-    return round(v, 2) if v % 1 else int(v)
+    return int(v) if (v % 1 == 0) else v
 
 
 def _int(val, lo=None, hi=None):
@@ -283,18 +284,18 @@ def has_prior_stroke_or_tia(patient, q=None, s=None, today=None):
     ev_dt = _date(q_d.get('cea_event_date'))
     has_ev_date = ev_dt is not None and ev_dt <= today_dt
     has_ev_chips = any(isinstance(c, str) and c.strip() for c in _str_list(q_d.get('cea_event_chips')))
-    pw = _resolve_pathway(patient) if patient is not None else None
+    is_cea_ctx = patient is None or _resolve_pathway(patient) == PreopPatient.Pathway.CEA
     return bool(
         q_d.get('neuro')
         or q_d.get('cea_symp_event')
-        or q_d.get('cea_crescendo')
+        or (is_cea_ctx and q_d.get('cea_crescendo'))
         or q_d.get('cea_disabling_stroke')
         or q_d.get('cea_thrombolysis')
         or has_ev_chips
         or has_ev_date
         or has_ev_days
         or (patient is not None and patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP)
-        or (pw != PreopPatient.Pathway.VENOUS and bool(s_d.get('carotid_symp')))
+        or bool(s_d.get('carotid_symp'))
         or s_d.get('brain_imaging') == 'large_or_hemorrhage'
     )
 
@@ -472,8 +473,17 @@ def _strip_non_finite(obj):
     return obj
 
 
+_CEAP_CODE_RE = re.compile(r'^C[0-6][a-zA-Z]{0,3}$')
+_BOUNDED_STR_KEYS = {
+    'blood_group': 24,
+    'abf_duration': 60,
+    'nurse_note': 500,
+    'cardio_note_custom': 500,
+}
+
+
 def _sanitize_merged_dict(defaults, raw_dict):
-    """Merge JSON payload against typed defaults, stripping NaN/Inf, booleans-as-numbers, and corrupt non-iterables."""
+    """Merge JSON payload against typed defaults, stripping NaN/Inf, huge ints, and unbounded display strings."""
     data = {}
     src = raw_dict if isinstance(raw_dict, dict) else {}
     for k, dv in defaults.items():
@@ -486,7 +496,15 @@ def _sanitize_merged_dict(defaults, raw_dict):
         elif isinstance(dv, bool):
             data[k] = bool(rv)
         elif isinstance(dv, str):
-            data[k] = rv if isinstance(rv, str) else ''
+            if not isinstance(rv, str):
+                data[k] = ''
+            elif k == 'ven_ceap':
+                s_ceap = rv.strip()
+                data[k] = s_ceap if _CEAP_CODE_RE.match(s_ceap) else ''
+            elif k in _BOUNDED_STR_KEYS:
+                data[k] = _safe_display_str(rv, max_len=_BOUNDED_STR_KEYS[k])
+            else:
+                data[k] = rv
         elif isinstance(dv, int):
             iv = _int(rv, lo=0, hi=36500)
             data[k] = iv if iv is not None else dv
@@ -497,10 +515,16 @@ def _sanitize_merged_dict(defaults, raw_dict):
                 except OverflowError:
                     data[k] = None
                 else:
-                    data[k] = (0.0 if (isinstance(rv, float) and rv == 0) else rv) if math.isfinite(rv_f) else None
+                    if not math.isfinite(rv_f) or abs(rv_f) > 1e12:
+                        data[k] = None
+                    else:
+                        data[k] = 0.0 if (isinstance(rv, float) and rv == 0) else rv
             elif k in ('plt', 'wbc'):
                 dec_v = _raw_finite_decimal(rv)
-                data[k] = (int(dec_v) if dec_v == int(dec_v) else float(dec_v)) if dec_v is not None else None
+                if dec_v is None or abs(dec_v) > Decimal('1e12'):
+                    data[k] = None
+                else:
+                    data[k] = int(dec_v) if dec_v == int(dec_v) else float(dec_v)
             else:
                 data[k] = _num(rv)
     for k, rv in src.items():

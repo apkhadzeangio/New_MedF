@@ -201,7 +201,7 @@ class Round13ClinicalSafetyTests(TestCase):
         self.assertTrue(any('ASRA 5th Ed' in r for r in ev_nx['red_flags']))
         self.assertFalse(any('± ეპიდურული ანალგეზია ღია აორტაზე' in r for r in ev_nx['red_flags']))
         items = build_plain_georgian_missing_items(p_nx, ev_nx, TODAY)
-        self.assertTrue(any('ASRA 5th Ed' in item['label'] for item in items))
+        self.assertTrue(any('არჩეული ნეირაქსიული ბლოკადა უკუნაჩვენებია' in item['label'] for item in items))
 
     def test_registry_attribution_dynamic_messages_standalone_parity_and_vignettes(self):
         # 1. Explicit dapt/sapt + active GI bleed maps cleanly in rule registry

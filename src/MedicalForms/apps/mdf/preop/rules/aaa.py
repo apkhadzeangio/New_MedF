@@ -119,3 +119,9 @@ def eval_aaa(ctx):
             'action': 'საბაზისო გოჯ-მხრის ინდექსი (ABI) + მუხლქვეშა არტერიების ექო-სკრინინგი ოპერაციამდე',
             'done': ctx.min_abi is not None,
         })
+    ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
+    if not getattr(ctx, 'is_rup_pre', False) and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
+        if q_filled and not ctx.has_statin:
+            ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინი AAA-ს წინ (ESVS 2024: რეკომენდებულია გულ-სისხლძარღვთა რისკის შემცირება / ლიპიდების ოპტიმიზაცია).')
+        if ctx.ldl_val is not None and ctx.ldl_val >= ldl_target:
+            ctx.amber_flags.append(f'LDL ქოლესტერინი {ctx.ldl_val} მმოლ/ლ (>= {ldl_target} მმოლ/ლ) — განიხილეთ სტატინის დაწყება/ინტენსიფიკაცია ± ეზეტიმიბი (ESVS 2024).')

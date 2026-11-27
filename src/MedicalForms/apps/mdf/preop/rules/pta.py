@@ -114,6 +114,13 @@ def _eval_pta_access_and_meds(ctx, is_clti, hemo_cfg, ldl_target):
                 alt_pta_txt = f'ინდივიდუალური უსაფრთხო ანტიკოაგულაციის რეჟიმი კონსილიუმით ({", ".join(c_tags)} — DOAC/რივაროქსაბანი 2.5 მგ და OAC + ტიკაგრელორი უკუნაჩვენებია!)'
             elif has_oac_pta:
                 alt_pta_txt = 'უსაფრთხო OAC + ასპირინი 75–100 მგ (OAC / რივაროქსაბანი 2.5 მგ + ტიკაგრელორი ESC Class III სისხლდენის რისკის გამო აკრძალულია!)'
+            elif ctx.liver_3x or has_preg_pta:
+                blk_rsn = 'ღვიძლის ≥3x დისფუნქცია (EMA SmPC 4.3)' if ctx.liver_3x else 'ორსულობა (EMA SmPC 4.6)'
+                alt_pta_txt = (
+                    f'ინდივიდუალური რეჟიმი კონსილიუმით ({blk_rsn} — ტიკაგრელორი უკუნაჩვენებია; ასპირინზეც ალერგია!)'
+                    if asa_allergy_pta else
+                    f'უსაფრთხო ალტერნატიული რეჟიმი კონსილიუმით / ასპირინი 75–100 მგ ({blk_rsn} — ტიკაგრელორი უკუნაჩვენებია!)'
+                )
             else:
                 alt_pta_txt = 'ალტერნატიული P2Y12 (ტიკაგრელორი)'
             ctx.red_flags.append(f'ანამნეზში კლოპიდოგრელის აუტანლობა — სტენტირებამდე შეათანხმეთ {alt_pta_txt} ქირურგთან!')

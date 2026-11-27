@@ -18,6 +18,9 @@ class PreopFileUploadView(LoginRequiredMixin, generic.View):
 
     def post(self, request, pk):
         patient = get_object_or_404(PreopPatient, pk=pk)
+        if patient.archived:
+            messages.error(request, 'დაარქივებულ ბარათზე ფაილის ატვირთვა დაბლოკილია!')
+            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
         category = request.POST.get('category') or PreopFile.Category.LABS
         caption = request.POST.get('caption') or ''
         uploaded_on = _date(request.POST.get('uploaded_on'))

@@ -16,7 +16,17 @@ VASCULAR_RULES = (
         source_wording='In men, elective AAA repair should be considered at diameter >= 55 mm; routine repair below 55 mm is not recommended.',
         value=55,
         value_label='>= 55 მმ',
-        match_patterns=('(< 55 მმ)', 'სტანდარტულ დიამეტრამდეც (55', '>= 55 მმ)', 'საკულარული მორფოლოგია'),
+        status=STATUS_LOCAL,
+        match_patterns=(
+            'სტანდარტულ ზღვარზე (< {val} მმ)',
+            'მმ >= {val} მმ) — შეათანხმეთ პრიორიტეტულობა',
+            '(< {val} მმ)',
+            'სტანდარტულ დიამეტრამდეც ({val}',
+            '>= {val} მმ)',
+            'საკულარული მორფოლოგია',
+            'სტანდარტულ ზღვარზე (< ',
+            'თანმხლები მუცლის აორტის ანევრიზმა',
+        ),
     ),
     RuleEntry(
         id='AAA_FEMALE_MIN_MM',
@@ -31,7 +41,14 @@ VASCULAR_RULES = (
         source_wording='In women with acceptable surgical risk, elective AAA repair may be considered at diameter >= 50 mm.',
         value=50,
         value_label='>= 50 მმ',
-        match_patterns=('(< 50 მმ)', 'სტანდარტულ დიამეტრამდეც (50', '>= 50 მმ)'),
+        status=STATUS_LOCAL,
+        match_patterns=(
+            'სტანდარტულ ზღვარზე (< {val} მმ)',
+            'მმ >= {val} მმ) — შეათანხმეთ პრიორიტეტულობა',
+            '(< {val} მმ)',
+            'სტანდარტულ დიამეტრამდეც ({val}',
+            '>= {val} მმ)',
+        ),
     ),
     RuleEntry(
         id='AAA_GIANT_MM',
@@ -62,6 +79,7 @@ VASCULAR_RULES = (
         source_wording='Symptomatic non-ruptured and mycotic/infected AAAs require urgent surgical assessment, blood cultures/antibiotics, and expedited repair.',
         value=True,
         value_label='დაუყოვნებლივი შეტყობინება',
+        status=STATUS_LOCAL,
         match_patterns=('საეჭვოა სიმპტომური AAA', 'საეჭვოა მიკოზური', 'სტერილური ანთებითი AAA', 'სწრაფი ზრდა', 'სწრაფი ზრდის დინამიკა', 'სწრაფი ზრდის დინამიკა (≥10 მმ/წ'),
     ),
     RuleEntry(
@@ -77,6 +95,7 @@ VASCULAR_RULES = (
         source_wording='Standard EVAR outside device IFU in hostile proximal neck anatomy increases type Ia endoleak and reintervention; open repair or complex EVAR should be considered.',
         value='hostile_neck',
         value_label='IFU-ს გარეთ (ყელი <10–15 მმ / >60°)',
+        status=STATUS_LOCAL,
         match_patterns=('Hostile Neck', 'რთული პროქსიმალური ყელი', 'პროქსიმალური ყელის (IFU)'),
     ),
     RuleEntry(
@@ -92,6 +111,7 @@ VASCULAR_RULES = (
         source_wording='Patients presenting with AAA at young age (<50 years) should be evaluated for hereditary connective tissue disorders or vasculitis.',
         value=50,
         value_label='< 50 წელი',
+        status=STATUS_LOCAL,
         match_patterns=('ახალგაზრდა ასაკში გამოვლენილი აორტის ანევრიზმა',),
     ),
     RuleEntry(
@@ -107,6 +127,7 @@ VASCULAR_RULES = (
         source_wording='Screening for synchronous popliteal and femoral aneurysms is reasonable in patients with AAA given 10-15% coexistence.',
         value=True,
         value_label='ABI + მუხლქვეშა ექო',
+        status=STATUS_LOCAL,
         match_patterns=('თანმხლები მუხლქვეშა/ბარძაყის ანევრიზმა', 'ტერფის პულსაცია მიღებისას'),
     ),
     RuleEntry(
@@ -172,7 +193,17 @@ VASCULAR_RULES = (
         value=(14, 10, 180),
         value_label='<= 14 დღე (გაფრთხილება >=10 დღე; სიმპტ. <=180 დღე)',
         status=STATUS_LOCAL,
-        match_patterns=('14-დღიანი ოპტიმალური ფანჯარა', 'ESVS 14-დღიანი ფანჯრიდან', 'სიმპტომიდან გასულია', 'სიმპტომიდან 14-დღიან ფანჯარას', 'ნევროლოგიური ეპიზოდიდან გასულია', 'ნევროლოგიური სიმპტომი ბოლო 6 თვეში'),
+        match_patterns=(
+            '{val0}-დღიანი ოპტიმალური ფანჯარა',
+            '-დღიანი ოპტიმალური ფანჯარა',
+            'ESVS {val0}-დღიანი ფანჯრიდან',
+            '-დღიანი ფანჯრიდან',
+            'სიმპტომიდან გასულია',
+            'სიმპტომიდან {val0}-დღიან ფანჯარას',
+            '-დღიან ფანჯარას',
+            'ნევროლოგიური ეპიზოდიდან გასულია',
+            'ნევროლოგიური სიმპტომი ბოლო 6 თვეში',
+        ),
     ),
     RuleEntry(
         id='CEA_BILATERAL_STOP',
@@ -203,7 +234,8 @@ VASCULAR_RULES = (
         source_wording='Carotid revascularisation is not recommended for chronic complete internal carotid artery occlusion (100%).',
         value=100,
         value_label='>= 100% = STOP',
-        match_patterns=('ICA-ს სრული ოკლუზია (100%)', 'ერთ-ერთ საძილე არტერიაზე ფიქსირდება 100% ოკლუზია'),
+        status=STATUS_LOCAL,
+        match_patterns=('ICA-ს სრული ოკლუზია ({val}%)', 'ICA-ს სრული ოკლუზია (', 'ერთ-ერთ საძილე არტერიაზე ფიქსირდება {val}% ოკლუზია', 'საძილე არტერიაზე ფიქსირდება'),
     ),
     RuleEntry(
         id='CEA_BRAIN_HEMORRHAGE_STOP',
@@ -218,6 +250,7 @@ VASCULAR_RULES = (
         source_wording='Early CEA is contraindicated in acute intracranial haemorrhage or large (>1/3 MCA) acute cerebral infarction due to haemorrhagic transformation risk.',
         value='large_or_hemorrhage',
         value_label='სისხლჩაქცევა / >1/3 MCA = STOP',
+        status=STATUS_LOCAL,
         match_patterns=('თავის ტვინის CT/MRI-ზე სისხლჩაქცევა', 'თავის ტვინის სისხლჩაქცევა / >1/3 MCA'),
     ),
     RuleEntry(
@@ -265,10 +298,11 @@ VASCULAR_RULES = (
         source_wording='Delay CEA for 6 days after IV thrombolysis (ESVS 2023 Rec 49, Class IIa, Level B) unless selected after haemorrhage excluded; urgent intervention for crescendo TIA; avoid CEA in severe disabling stroke (mRS >=3).',
         value=6,
         value_label='თრომბოლიზისი <= 6 დღე · mRS >= 3',
+        status=STATUS_LOCAL,
         match_patterns=(
-            'Crescendo TIA', 'ინტრავენური თრომბოლიზისი ბოლო 6 დღეში', 'ინტრავენური თრომბოლიზისი',
+            'Crescendo TIA', 'ინტრავენური თრომბოლიზისი ბოლო {val} დღეში', 'ინტრავენური თრომბოლიზისი',
             'მძიმე ნარჩენი ნევროლოგიური დეფიციტი',
-            'თრომბოლიზიდან (rt-PA) <24 სთ', 'თრომბოლიზისი (rt-PA, 1–6 დღე',
+            'თრომბოლიზიდან (rt-PA) <24 სთ', 'თრომბოლიზისი (rt-PA, 1–{val} დღე',
             'თრომბოლიზისი (rt-PA,', 'საკონტროლო თავის ტვინის CT-ით სისხლჩაქცევის',
         ),
     ),
@@ -285,6 +319,7 @@ VASCULAR_RULES = (
         source_wording='Antiplatelet therapy and high-intensity statin (LDL-C target <1.4 mmol/L) are mandatory in carotid and peripheral arterial disease unless contraindicated.',
         value=1.4,
         value_label='ანტიაგრეგანტი + სტატინი · LDL < 1.4 მმოლ/ლ',
+        status=STATUS_LOCAL,
         match_patterns=('პაციენტი არ იღებს ანტიაგრეგანტს', 'არ იღებს ანტიაგრეგანტს', 'CEA-ს წინ პაციენტი არ იღებს', 'მხოლოდ ანტიკოაგულანტს', 'პაციენტს არ უფიქსირდება სტატინი', 'სტატინის მიღება', 'LDL ქოლესტერინი'),
     ),
     RuleEntry(
@@ -300,6 +335,7 @@ VASCULAR_RULES = (
         source_wording='In patients with hostile neck (radiation, restenosis, high C2 lesion, contralateral vocal cord palsy) or LVEF <40%, CAS/TCAR may be considered over open CEA.',
         value=True,
         value_label='ლარინგოსკოპია / CAS-TCAR შეფასება',
+        status=STATUS_LOCAL,
         match_patterns=('სახმო იოგის პარეზი', 'მაღალი ქირურგიული რისკი ღია CEA', 'მაღალი ბიფურკაცია (C2)', 'კისრის გაშლა მკვეთრად შეზღუდულია'),
     ),
     # --- ABF & PAD Bypass (ESVS 2024 / Global Vascular Guidelines) ---
@@ -384,6 +420,7 @@ VASCULAR_RULES = (
         source_wording='Wet foot sepsis and groin intertrigo carry high synthetic graft infection risk (GVG 2019 / ESVS 2020 VGEI); juxtarenal clamp, poor profunda outflow, and SMA stenosis require specific surgical planning (ESVS 2024 PAD).',
         value=True,
         value_label='სანაცია / ანატომიური გეგმა',
+        status=STATUS_LOCAL,
         match_patterns=('ტერფის სველი', 'საზარდულის არეში', 'იუქსტარენალური აორტის', 'არადამაკმაყოფილებელი დისტალური Outflow', 'ზემო ჯორჯლის არტერიის', 'დომინანტური IMA', 'თირკმლის არტერიის სტენოზი', 'CFA / Profunda', 'ერთდროული ორმხრივი ინფრაინგვინალური', 'ქვემო კიდურების CTA DICOM დისკი', 'ანგიოგრაფიის / CTA DICOM დისკი'),
     ),
     RuleEntry(
@@ -415,6 +452,7 @@ VASCULAR_RULES = (
         source_wording='Endovascular treatment of isolated infrapopliteal disease for intermittent claudication is not recommended due to risk of limb deterioration (ESVS 2024 Section 6.4.2.4 / ACC-AHA 2024).',
         value='infrapopliteal',
         value_label='IC + BTK = STOP',
+        status=STATUS_LOCAL,
         match_patterns=('წვივის/ტერფის არტერიებზე (BTK', 'იზოლირებული წვივის (BTK)'),
     ),
     RuleEntry(
