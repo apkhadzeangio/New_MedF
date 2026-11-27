@@ -7,7 +7,7 @@ def _effective_operation_label(ctx):
     if ctx.pathway == 'cea':
         if ctx.is_symp_cea and 'ასიმპტომური' in eff_op_lbl:
             return eff_op_lbl.replace('ასიმპტომური', 'სიმპტომური')
-        if not ctx.is_symp_cea and 'სიმპტომური' in eff_op_lbl:
+        if not ctx.is_symp_cea and 'სიმპტომური' in eff_op_lbl and 'ასიმპტომური' not in eff_op_lbl:
             return eff_op_lbl.replace('სიმპტომური', 'ასიმპტომური (>180 დღე)')
     elif ctx.pathway in ('abf', 'pad_bypass', 'pad_pta') and ctx.is_clti_any:
         return eff_op_lbl.replace('ლერიშის სინდრომი', 'კრიტიკული იშემია (CLTI)').replace('კოჭლობა', 'CLTI')
@@ -135,6 +135,7 @@ def _result_flags_and_needs_part(ctx):
         'status': ctx.status,
         'status_label': STATUS_LABELS[ctx.status],
         'all_tasks_done': ctx.all_tasks_done,
+        'has_bad_med': has_bad_med,
         'workup_ready': bool(
             ctx.q_filled
             and ctx.all_tasks_done

@@ -361,6 +361,24 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="po-q-item">
+                        <input type="hidden" name="active_infection_presented" value="1">
+                        <div class="po-q-main">
+                            <span class="po-q-text">6. ამჟამად მწვავე ინფექციური კერა (სიცხე, რესპირატორული ინფექცია, შარდვის წვა, კბილი)?</span>
+                            <div class="yn-switch" data-toggle-sub="sub-ven-inf">
+                                <label><input type="radio" name="active_infection" value="0" {% if not q.active_infection %}checked{% endif %}>არა</label>
+                                <label><input type="radio" name="active_infection" value="1" {% if q.active_infection %}checked{% endif %}>კი</label>
+                            </div>
+                        </div>
+                        <div class="po-q-sub" id="sub-ven-inf" {% if not q.active_infection and not q.inf_chips %}hidden{% endif %}>
+                            <div class="po-chip-row">
+                                {% for ck, cl in chips.inf_chips %}
+                                <label class="chip-check"><input type="checkbox" name="inf_chips" value="{{ ck }}" {% if ck in q.inf_chips %}checked{% endif %}>{{ cl }}</label>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
 

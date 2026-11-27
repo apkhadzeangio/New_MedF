@@ -1,6 +1,7 @@
 """Peripheral Angioplasty / Stenting (PAD PTA) pathway clinical rules (ESVS 2024 / ACC-AHA)."""
 from ...models import PreopPatient
 from ..registry import rule_value
+from .abf import _eval_pad_hemo_discordance
 
 
 def eval_pta(ctx):
@@ -54,7 +55,10 @@ def eval_pta(ctx):
             )
     if ctx.min_comp_abi is not None and ctx.min_comp_abi < hemo_cfg['abi_severe'] and not is_clti:
         ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < {hemo_cfg["abi_severe"]:.2f}) — შეესაბამება მძიმე იშემიას.')
-    if patient.op_subtype == PreopPatient.OpSubtype.PTA_CLAUD and q_filled and (q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips')):
+    _eval_pad_hemo_discordance(ctx, hemo_cfg)
+    if patient.op_subtype == PreopPatient.OpSubtype.PTA_CLAUD and q_filled and (
+        q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips') or q.get('abf_wet_infection')
+    ):
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
         )

@@ -236,13 +236,21 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
         if 'sex' in request.POST and (request.POST.get('sex') or '') in ('M', 'F', ''):
             patient.sex = request.POST.get('sex') or ''
-        if 'side' in request.POST and request.POST.get('side') in ('', 'R', 'L', 'B'):
-            patient.side = request.POST.get('side')
-        if 'phone' in request.POST:
-            patient.phone = clean_text(request.POST.get('phone'), 50).replace('\n', ' ')
         op_sub = request.POST.get('op_subtype') or ''
         if op_sub in PreopPatient.OpSubtype.values:
             patient.op_subtype = op_sub
+        new_pw = _resolve_pathway(patient)
+        if 'side' in request.POST and request.POST.get('side') in ('', 'R', 'L', 'B'):
+            cand_side = request.POST.get('side')
+            if new_pw == PreopPatient.Pathway.CEA and cand_side == 'B':
+                messages.error(request, 'ერთდროული ორმხრივი CEA (მხარე B) აკრძალულია — მიუთითეთ მარჯვენა (R) ან მარცხენა (L) მხარე!')
+            else:
+                patient.side = cand_side
+        if new_pw == PreopPatient.Pathway.CEA and patient.side == 'B':
+            patient.side = ''
+            messages.warning(request, 'CEA-ზე ორმხრივი მხარე (B) მოიხსნა — მიუთითეთ საოპერაციო მხარე (R ან L)!')
+        if 'phone' in request.POST:
+            patient.phone = clean_text(request.POST.get('phone'), 50).replace('\n', ' ')
         if 'surgeon' in request.POST:
             surg_id = _int(request.POST.get('surgeon'), lo=1)
             patient.surgeon = get_user_model().objects.filter(pk=surg_id).first() if surg_id is not None else None
@@ -294,6 +302,15 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             or 'planned_surgery_date' in inv_now
         ):
             _invalidate_approval_if_needed(patient, uf, clear_anamnesis=True)
+        self._migrate_header_pathway_flags(patient, old_pw, new_pw, s, uf)
+        patient.studies = s
+        if patient.someday_list == PreopPatient.SomedayList.READY and not can_enter_ready_queue(patient, evaluate(patient)):
+            patient.someday_list = PreopPatient.SomedayList.CONF
+        patient.updated_by = request.user
+        patient.save(update_fields=list(dict.fromkeys(uf)))
+
+    @staticmethod
+    def _migrate_header_pathway_flags(patient, old_pw, new_pw, s, uf):
         if new_pw != old_pw and new_pw in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
             s['carotid_symp'] = False
         if old_pw == PreopPatient.Pathway.VENOUS and new_pw != PreopPatient.Pathway.VENOUS:
@@ -312,12 +329,6 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             if q_changed:
                 patient.questionnaire = q_mig
                 uf.append('questionnaire')
-
-        patient.studies = s
-        if patient.someday_list == PreopPatient.SomedayList.READY and not can_enter_ready_queue(patient, evaluate(patient)):
-            patient.someday_list = PreopPatient.SomedayList.CONF
-        patient.updated_by = request.user
-        patient.save(update_fields=list(dict.fromkeys(uf)))
 
     def _save_questionnaire(self, request, patient):
         med_keys = (
@@ -459,7 +470,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         if action == 'complete_and_board':
             patient.studies = s
             ev_cur = evaluate(patient)
-            if ev_cur.get('has_hard_contraindication') or ev_cur['clearance_seal']['code'] == 'stop' or ev_cur.get('dos_hold_danger'):
+            if ev_cur.get('has_hard_contraindication') or ev_cur['clearance_seal']['code'] == 'stop' or ev_cur.get('dos_hold_danger') or ev_cur.get('neuraxial_hard_blocked'):
                 messages.error(request, 'STOP-სიგნალის ან ოპერაციის დილის კრიტიკული ბლოკირების ფონზე ოპერაციის დასრულება და დაფაზე გადაყვანა დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
             s['case_outcome_status'] = 'operated'
@@ -480,6 +491,12 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             )
             return HttpResponseRedirect(reverse('board-patient', args=[bp.pk]))
 
+        if s.get('case_outcome_status') == 'operated':
+            patient.studies = s
+            ev_chk = evaluate(patient)
+            if ev_chk.get('has_hard_contraindication') or ev_chk['clearance_seal']['code'] == 'stop' or ev_chk.get('dos_hold_danger') or ev_chk.get('neuraxial_hard_blocked'):
+                s['case_outcome_status'] = ev_before.get('case_outcome') or 'scheduled'
+                messages.error(request, 'STOP-სიგნალის ან კრიტიკული ბლოკირების ფონზე პაციენტის „ოპერირებულად“ მონიშვნა დაბლოკილია!')
         if s.get('case_outcome_status') == 'operated' and not s.get('operated_date'):
             plan_dt = _date(s.get('planned_surgery_date'))
             s['operated_date'] = (plan_dt.isoformat() if (plan_dt and plan_dt <= today) else today.isoformat())
@@ -522,8 +539,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             or hasattr(request.user, 'profile')
             or patient.surgeon_id == request.user.pk
         )
-        if action in ('approve', 'unapprove') and not can_approve_signoff:
-            messages.error(request, 'ოპერაციაზე ქირურგის დასტურის/მოხსნის უფლება აქვს მხოლოდ მკურნალ ქირურგს ან ექიმს!')
+        if action in ('approve', 'unapprove', 'ack_alerts') and not can_approve_signoff:
+            messages.error(request, 'ოპერაციაზე დასტურის/მოხსნის და გაფრთხილებების დადასტურების უფლება აქვს მხოლოდ მკურნალ ქირურგს ან ექიმს!')
             return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
 
         uf = ['updated_at', 'updated_by']

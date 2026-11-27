@@ -183,7 +183,7 @@ class PreopPatient(models.Model):
             pct = _int(raw_pct, 0, 100)
             pct_str = f' ({pct}%)' if pct is not None else ''
             return f'{side_word}შიგნითა საძილე არტერიის {symp_word}სტენოზი{pct_str}'
-        clti_symp = bool(
+        clti_symp = bool(q.get('filled')) and bool(
             q.get('abf_rest_pain') or q.get('abf_ulcer')
             or q.get('ulcer_chips') or q.get('abf_wet_infection')
         )

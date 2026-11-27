@@ -175,7 +175,7 @@ def _eval_early_neuraxial_gate(ctx):
     )
     op_dt_nx = _date(s.get('planned_surgery_date'))
     prewashout_vka = bool(q.get('med_warfarin') and not dos_inr_present)
-    prewashout_vka_plan = bool(prewashout_vka and eff_inr_nx is not None and asra_cfg['inr_max'] < eff_inr_nx <= 4.5 and (op_dt_nx is None or op_dt_nx > ctx.today))
+    prewashout_vka_plan = bool(prewashout_vka and eff_inr_nx is not None and asra_cfg['inr_max'] < eff_inr_nx <= asra_cfg['vka_prewashout_inr_max'] and (op_dt_nx is None or op_dt_nx > ctx.today))
     hard_nx_reasons, inv_in = [], (s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {})
     def _has_bad(k, parsed):
         rv = raw_s[k] if k in raw_s else s.get(k)
@@ -215,10 +215,10 @@ def _eval_early_neuraxial_gate(ctx):
     raw_hr_v = _num(_s_raw(raw_s, 'hr') if _s_raw(raw_s, 'hr') is not None else _s_raw(s, 'hr'))
     if (ctx.eff_sys is not None and ctx.eff_sys < asra_cfg['sbp_min']) or raw_sbp_low or (ctx.shock_index is not None and ctx.shock_index >= shock_lim) or (raw_hr_v is not None and (raw_hr_v > 260 or raw_hr_v < 15)):
         hard_nx_reasons.append('ჰიპოტენზია / შოკი (SBP <95 ან SI ≥1.0) — სიმპათექტომია საშიშია!')
-    solo_neuraxial_anatomic_mismatch = (ctx.anesth_plan_raw == 'neuraxial') and (pathway == PreopPatient.Pathway.CEA or (open_aortic and 'epidural' not in ctx.anesth_lines_set))
+    solo_neuraxial_anatomic_mismatch = (ctx.anesth_plan_raw == 'neuraxial') and (pathway == PreopPatient.Pathway.CEA or open_aortic)
     if solo_neuraxial_anatomic_mismatch:
         ctx.red_flags.append('არჩეულია მხოლოდ სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ღია აორტის ოპერაციაზე — ანატომიურად შეუსაბამოა! შეარჩიეთ ზოგადი ენდოტრაქეული ანესთეზია (± ეპიდურული ანალგეზია ღია აორტაზე) ან კისრის წნულის ბლოკადა.')
-    auto_nx_blockers = [r for r in hard_nx_reasons if not (prewashout_vka and r.startswith('INR '))]
+    auto_nx_blockers = [r for r in hard_nx_reasons if not (prewashout_vka_plan and r.startswith('INR '))]
     explicit_nx_blockers = [r for r in hard_nx_reasons if not (prewashout_vka_plan and r.startswith('INR '))]
     ctx.hard_nx_reasons, ctx.auto_nx_blockers = hard_nx_reasons, auto_nx_blockers
     ctx.solo_neuraxial_anatomic_mismatch = solo_neuraxial_anatomic_mismatch
@@ -228,7 +228,7 @@ def _eval_early_neuraxial_gate(ctx):
     if ctx.neuraxial_hard_blocked and not solo_neuraxial_anatomic_mismatch:
         ctx.red_flags.append(f"არჩეული ნეირაქსიული / ეპიდურული გაუტკივარება უკუნაჩვენებია ({', '.join(explicit_nx_blockers)}) — სპინალური ჰემატომის / ანაფილაქსიის უმაღლესი რისკი! შეცვალეთ ანესთეზიის გეგმა (ASRA 5th Ed)!")
     elif ctx.explicit_neuraxial and prewashout_vka_plan and not solo_neuraxial_anatomic_mismatch:
-        ctx.amber_flags.append(f'ვარფარინის საბაზისო INR ({eff_inr_nx}) > 1.4 — ნეირაქსიული / ეპიდურული ბლოკადისთვის სავალდებულოა {vka_hold_d}-დღიანი შეჩერება და ოპერაციის დილას საკონტროლო INR ≤ 1.4 (ASRA 5th Ed)!')
+        ctx.amber_flags.append(f'ვარფარინის ფონზე დაგეგმილია ნეირაქსიული / ეპიდურული ბლოკადა (INR {eff_inr_nx} > 1.4) — სავალდებულოა {vka_hold_d}-დღიანი შეჩერება და ოპერაციის დილას საკონტროლო INR ≤ 1.4 (ASRA 5th Ed)!')
 
 
 def eval_hematology_coag(ctx):

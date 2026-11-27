@@ -138,14 +138,17 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
         or (bnp_early is not None and bnp_early >= cilo_cfg['bnp_max']) or ctx.on_dialysis
         or (eff_ren_c is not None and eff_ren_c <= cilo_min_crcl)
         or ((s.get('ecg') or 'pending') == 'ischemia_arrhythmia') or (hr_eff is not None and hr_eff > cilo_cfg['hr_max'])
-        or ctx.liver_3x or bool(q.get('ulcer_active_symp')) or (s.get('gastro_result') == 'acute_ulcer')
+        or ctx.liver_3x or (bool(q.get('ulcer_active_symp')) and s.get('gastro_result') != 'remission') or (s.get('gastro_result') == 'acute_ulcer')
         or bool(q.get('recent_stent')) or ctx.has_acs_stent_12m or repro_preg
     )
     if 'cilostazol' in ctx.med_chips and cilostazol_contra:
         ctx.red_flags.append('ცილოსტაზოლი უკუნაჩვენებია გულის უკმარისობის / LVEF <50% / CrCl ≤25 / ღვიძლის ≥3x / სტენტის / წყლულის / ტაქიარითმიის / სისხლჩაქცევის დროს (FDA Black Box / EMA) — შეათანხმეთ მოხსნა!')
     ven_dvt_set = set(q.get('ven_dvt_chips') or [])
-    if q.get('ven_hormones') and (ctx.liver_3x or ('vte_recent_3m' in ven_dvt_set) or (s.get('ven_duplex_status') == 'acute_dvt')):
-        ctx.red_flags.append('ჰორმონული/ესტროგენული პრეპარატი უკუნაჩვენებია ღვიძლის მძიმე დისფუნქციის (≥3x ULN) ან ახალი/მწვავე VTE (<3 თვე / DVT) ფონზე — დაუყოვნებლივ შეათანხმეთ შეწყვეტა ექიმთან!')
+    if q.get('ven_hormones') and (ctx.liver_3x or ('vte_recent_3m' in ven_dvt_set) or (s.get('ven_duplex_status') == 'acute_dvt') or repro_preg):
+        if repro_preg:
+            ctx.red_flags.append('ორსულობის დროს ჰორმონული/ესტროგენული პრეპარატი უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ მეან-გინეკოლოგთან!')
+        else:
+            ctx.red_flags.append('ჰორმონული/ესტროგენული პრეპარატი უკუნაჩვენებია ღვიძლის მძიმე დისფუნქციის (≥3x ULN) ან ახალი/მწვავე VTE (<3 თვე / DVT) ფონზე — დაუყოვნებლივ შეათანხმეთ შეწყვეტა ექიმთან!')
     if ctx.on_dialysis and q.get('med_dabigatran'):
         ctx.red_flags.append('დაბიგატრანი (პრადაქსა) უკუნაჩვენებია პროგრამული დიალიზის ფონზე (EHRA 2021) — სავალდებულოა შეჩერება, თრომბინის დროის (TT) კონტროლი და კარდიოლოგ/ნეფროლოგის კონსილიუმი!')
     elif eff_ren_c is not None and eff_ren_c < dabi_low and q.get('med_dabigatran'):
@@ -158,15 +161,23 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
         ctx.red_flags.append(f'რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) უკუნაჩვენებია/საშიშია თირკმლის მძიმე უკმარისობისას (CrCl/eGFR <{voy_min_egfr} ან დიალიზი) — გადაამოწმეთ სქემა!')
     if 'rivaroxaban_2_5' in ctx.med_chips and 'nsaid' in ctx.allergy_chips:
         ctx.red_flags.append('რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) მოითხოვს ასპირინთან კომბინაციას, მაგრამ პაციენტს აქვს ასპირინზე / აასს-ზე ალერგია — დაუყოვნებლივ შეცვალეთ სქემა ქირურგთან!')
-    if 'rivaroxaban_2_5' in ctx.med_chips and (q.get('ulcer_active_symp') or s.get('gastro_result') == 'acute_ulcer'):
+    active_gi_bleed = (s.get('gastro_result') == 'acute_ulcer') or (bool(q.get('ulcer_active_symp')) and s.get('gastro_result') != 'remission')
+    if 'rivaroxaban_2_5' in ctx.med_chips and active_gi_bleed:
         ctx.red_flags.append('რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) აბსოლუტურად უკუნაჩვენებია აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის დროს — შეწყვიტეთ დაუყოვნებლივ და შეათანხმეთ ქირურგთან!')
     if 'rivaroxaban_2_5' in ctx.med_chips and getattr(ctx, 'has_prior_stroke_tia', False):
         ctx.red_flags.append('რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) უკუნაჩვენებია გადატანილი ინსულტის / TIA-ს ანამნეზში (ქალასშიდა სისხლდენის რისკი) — გადაამოწმეთ სქემის შეცვლა ქირურგთან!')
+    has_hit_preg = 'hit_heparin' in ctx.allergy_chips
+    preg_alt_lbl = 'არაჰეპარინული ალტერნატივით (HIT: LMWH/UFH აკრძალულია!) ჰემატოლოგთან და მეან-გინეკოლოგთან!' if has_hit_preg else 'LMWH/UFH-ით მეან-გინეკოლოგთან და კარდიოლოგთან!'
     if repro_preg and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips):
-        ctx.red_flags.append('ორსულობის დროს DOAC / დაბიგატრანი / რივაროქსაბანი 2.5 მგ აბსოლუტურად უკუნაჩვენებია (პლაცენტური გადასვლა / ნაყოფის რისკი) — დაუყოვნებლივ შეცვალეთ LMWH/UFH-ით მეან-გინეკოლოგთან!')
-    if repro_preg and 'statin' in ctx.med_chips:
+        ctx.red_flags.append(f'ორსულობის დროს DOAC / დაბიგატრანი / რივაროქსაბანი 2.5 მგ აბსოლუტურად უკუნაჩვენებია (პლაცენტური გადასვლა / ნაყოფის რისკი) — დაუყოვნებლივ შეცვალეთ {preg_alt_lbl}')
+    if repro_preg and q.get('med_warfarin'):
+        if 'mech_valve' in ctx.cad_chips:
+            ctx.red_flags.append('ორსულობა + მექანიკური სარქველი ვარფარინის ფონზე (ტერატოგენული vs სარქვლის თრომბოზის რისკი) — თვითნებურად არ შეწყვიტოთ, დაუყოვნებლივ ჩართეთ მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი!')
+        else:
+            ctx.red_flags.append(f'ორსულობის დროს ვარფარინი (VKA) ტერატოგენულია (ნაყოფის ვარფარინის სინდრომი) — დაუყოვნებლივ შეცვალეთ {preg_alt_lbl}')
+    if repro_preg and ('statin' in ctx.med_chips or ctx.ft_meds.get('has_ft_statin')):
         ctx.red_flags.append('ორსულობის დროს სტატინი უკუნაჩვენებია (ტერატოგენული რისკი) — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ექიმთან!')
-    if repro_preg and 'acei_arb' in ctx.med_chips:
+    if repro_preg and ('acei_arb' in ctx.med_chips or ctx.ft_meds.get('has_ft_acei_arb')):
         ctx.red_flags.append('ორსულობის დროს ACEi / ARB (პრილი/სარტანი) აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!')
     if ctx.liver_3x and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips):
         ctx.red_flags.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN) ანტიკოაგულანტის ფონზე: კოაგულოპათიის / Child-Pugh B–C დროს DOAC უკუნაჩვენებია (EHRA 2021) — გადაამოწმეთ სქემა!')
@@ -202,16 +213,17 @@ def _eval_antithrombotic_conflicts(ctx):
     ctx.has_prior_stroke_tia = has_prior_stroke_tia
     eff_preg_m = bool(getattr(ctx, 'eff_pregnant', False))
     eff_ren_c = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
+    active_gi_bleed = (s.get('gastro_result') == 'acute_ulcer') or (bool(q.get('ulcer_active_symp')) and s.get('gastro_result') != 'remission')
     ctx.has_contra_oac = bool(
         oac_count >= 2
         or (has_mech_valve and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips))
-        or (eff_preg_m and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips))
-        or (q.get('med_dabigatran') and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < dabi_low) or ctx.liver_3x))
-        or (q.get('med_doac') and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < doac_low) or ctx.liver_3x))
+        or (eff_preg_m and (q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips))
+        or (q.get('med_dabigatran') and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < dabi_low) or ctx.liver_3x or active_gi_bleed))
+        or (q.get('med_doac') and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < doac_low) or ctx.liver_3x or active_gi_bleed))
+        or (q.get('med_warfarin') and active_gi_bleed)
         or ('rivaroxaban_2_5' in ctx.med_chips and (
             ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < voy_min_egfr) or ctx.liver_3x
-            or 'nsaid' in ctx.allergy_chips or bool(q.get('ulcer_active_symp'))
-            or s.get('gastro_result') == 'acute_ulcer' or has_prior_stroke_tia
+            or 'nsaid' in ctx.allergy_chips or active_gi_bleed or has_prior_stroke_tia
         ))
     )
     ctx.has_mech_valve, ctx.has_acs_stent_12m, ctx.has_afib = has_mech_valve, has_acs_stent_12m, has_afib
@@ -332,7 +344,9 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
                 'არჩეულია პოსტოპ. DAPT პაციენტთან, რომელიც იღებს რივაროქსაბან 2.5 მგ ×2-ს — სამმაგი თერაპიისა და რივაროქსაბანი 2.5 + ტიკაგრელორის სისხლდენის მაღალი რისკი (ESC Class III)! '
                 'შეარჩიეთ VOYAGER PAD (რივაროქსაბანი 2.5 + ასპირინი) ან შეაჩერეთ რივაროქსაბანი DAPT-ისთვის.'
             )
-            return f'DAPT უკუნაჩვენებია რივაროქსაბან 2.5 მგ-თან (სამმაგი თერაპია)! შეცვალეთ: რივაროქსაბანი 2.5 + {oac_partner_lbl}'
+            if asa_allergy:
+                return 'DAPT და რივაროქსაბანი 2.5 მგ უკუნაჩვენებია ასპირინზე ალერგიისას — შეარჩიეთ უსაფრთხო სქემა ქირურგთან!'
+            return 'DAPT უკუნაჩვენებია რივაროქსაბან 2.5 მგ-თან (სამმაგი თერაპია)! შეცვალეთ: რივაროქსაბანი 2.5 + ასპირინი 75–100 მგ (VOYAGER PAD) ან DAPT რივაროქსაბანის გარეშე!'
         ctx.red_flags.append(
             'არჩეულია პოსტოპ. VOYAGER / DAPT პაციენტთან, რომელიც მუდმივ ანტიკოაგულანტზეა (OAC) — სამმაგი თერაპიის სისხლდენის მაღალი რისკი! შეცვალეთ OAC + მონო-ანტიაგრეგანტით.'
         )
@@ -452,11 +466,17 @@ def _eval_postop_voyager(ctx):
             post_antithrombotic_label = _eval_explicit_postop_plan(
                 ctx, post_at_raw, asa_allergy, voyager_safe, alt_p2y12_lbl, oac_partner_lbl, has_active_stent_dapt,
             )
+        elif ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
+            post_antithrombotic_label = 'ორსულობა + მექანიკური სარქველი — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (DOAC / VOYAGER აკრძალულია; VKA vs LMWH/UFH ტრიმესტრით)!'
         elif ctx.has_mech_valve:
             mv_ap = f' + ჩვენებისას {oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
             post_antithrombotic_label = f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap} (DOAC / VOYAGER აკრძალულია!)'
         elif getattr(ctx, 'has_contra_oac', False):
-            post_antithrombotic_label = f'უკუნაჩვენები ანტიკოაგულანტი (OAC) არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა (+ ჩვენებისას {oac_partner_lbl}) კარდიოლოგ/ნეფროლოგთან!'
+            if getattr(ctx, 'eff_pregnant', False):
+                preg_oac_alt = 'არაჰეპარინული სქემა (HIT: LMWH/UFH აკრძალულია!)' if 'hit_heparin' in ctx.allergy_chips else 'LMWH/UFH'
+                post_antithrombotic_label = f'ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_oac_alt} მეან-გინეკოლოგთან და კარდიოლოგთან!'
+            else:
+                post_antithrombotic_label = f'უკუნაჩვენები ანტიკოაგულანტი (OAC) არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა (+ ჩვენებისას {oac_partner_lbl}) კარდიოლოგ/ნეფროლოგთან!'
         elif ctx.has_full_oac:
             post_antithrombotic_label = f'OAC + {oac_partner_lbl} (სამმაგი თერაპიის გარეშე — ESC/ESVS)'
         elif has_active_stent_dapt:

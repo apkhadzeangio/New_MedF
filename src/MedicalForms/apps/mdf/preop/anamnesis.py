@@ -50,7 +50,7 @@ _SF_CHIP_FALLBACKS = {
 }
 
 
-def build_self_fill_highlights(q):
+def build_self_fill_highlights(q, patient=None):
     """Extract concise positive findings reported by the patient via Self-Fill link for 5-second nurse reconciliation."""
     if not isinstance(q, dict) or not (q.get('filled') or is_self_filled_q(q)):
         return []
@@ -68,7 +68,11 @@ def build_self_fill_highlights(q):
         else:
             items.append(('warn', f'თრომბოლიზისი ანამნეზში (>{rtpa_d} დღე)'))
     if q.get('ven_pregnant') or q.get('pregnant_possible'):
-        items.append(('urgent', 'ორსულობა / შესაძლო ორსულობა / ლაქტაცია!'))
+        from .utils import is_pregnancy_eligible
+        if patient is not None and not is_pregnancy_eligible(patient):
+            items.append(('warn', 'მონიშნულია ორსულობა — გადაამოწმეთ სქესი და ასაკი!'))
+        else:
+            items.append(('urgent', 'ორსულობა / შესაძლო ორსულობა / ლაქტაცია!'))
     cad_ch = set(_str_list(q.get('cad_chips')))
     if q.get('recent_stent'):
         items.append(('urgent', 'კორონარული სტენტი <6 თვეში!'))
@@ -355,7 +359,8 @@ def _anam_aaa(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt):
         'evar': 'მუცლის აორტის ინფრარენალური ანევრიზმის ენდოვასკულური პროთეზირება (EVAR)',
         'tbd': 'მუცლის აორტის ინფრარენალური ანევრიზმის ოპერაციული მკურნალობა (ღია / EVAR)',
     }
-    lines.append(f'{head_prefix}, დაგეგმილია {op_map.get(patient.op_subtype, "")}{surgeon_str}.')
+    sub_k = patient.op_subtype if isinstance(patient.op_subtype, str) else ''
+    lines.append(f'{head_prefix}, დაგეგმილია {op_map.get(sub_k, "")}{surgeon_str}.')
 
     mm_str = f"{ev['aaa_mm']} მმ" if ev['aaa_mm'] is not None else 'ზუსტდება'
     morph_lbl = {
@@ -374,7 +379,7 @@ def _anam_aaa(patient, ev, q, s, head_prefix, surgeon_str, abdo_txt):
     lines.append(f'ანევრიზმა: მაქს. დიამეტრი {mm_str}{morph_lbl} (CTA: {cta_str}, {disc_str}). {pain_str}')
 
     surg_extras = []
-    if patient.op_subtype in ('evar', 'tbd') and (s.get('aaa_neck_status') or 'pending') != 'pending':
+    if sub_k in ('evar', 'tbd') and (s.get('aaa_neck_status') or 'pending') != 'pending':
         neck_lbl = 'პროქსიმალური ყელი IFU-ს ფარგლებშია' if s.get('aaa_neck_status') == 'friendly_ifu' else 'Hostile Neck — IFU-ს გარეთ (!)'
         surg_extras.append(f'CTA ყელი: {neck_lbl}')
     if (s.get('popliteal_screen_status') or 'pending') != 'pending':
@@ -438,6 +443,8 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
     if q.get('active_infection') or q.get('inf_chips'):
         inf_det = chip_summary(q.get('inf_chips'), 'inf_chips', q.get('infection_text'))
         comorb.append(f"აქტიური ინფექციური კერა{f' ({inf_det})' if inf_det else ''} (!)")
+    if pathway != PreopPatient.Pathway.VENOUS and ev.get('eff_pregnant'):
+        comorb.append('ორსულობა / შესაძლო ორსულობა (!)')
     if q.get('smoker'):
         comorb.append('თამბაქოს მწეველი')
     lines.append(f"თანმხლები ფონი: {', '.join(comorb) if comorb else 'მნიშვნელოვანი ქრონიკული დაავადებების გარეშე'}.")

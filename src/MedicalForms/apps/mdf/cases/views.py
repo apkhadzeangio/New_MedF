@@ -147,6 +147,7 @@ class CaseView(LoginRequiredMixin, generic.TemplateView):
             'limb_metrics': limb_metrics,
             'manual_doppler_rows': [row for row in limb_metrics if row['has_manual_doppler']],
             'plan_items': plan_info['items'], 'plan_show_side': plan_info['show_side'],
+            'linked_preop': case.preops.filter(archived=False).order_by('-pk').first(),
             'kind': self.request.GET.get('kind') or CasePhoto.Kind.WOUND,
             'today': timezone.localdate(),
         })

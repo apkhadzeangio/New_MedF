@@ -388,31 +388,36 @@ _FREETEXT_ALLERGY_STEMS = (
         'ლატექს', 'ქლორჰექს', 'latex', 'chlorhex',
     )),
     ('iodine', (
-        'იოდ', 'კონტრასტ', 'ომნიპაკ', 'ულტრავისტ', 'ვიზიპაკ', 'ბეტადინ', 'პოვიდონ',
-        'iodin', 'contrast', 'omnipaque', 'ultravist', 'visipaque', 'betadin', 'povidon',
+        'კონტრასტ', 'ომნიპაკ', 'ულტრავისტ', 'ვიზიპაკ', 'ბეტადინ', 'პოვიდონ', 'უროგრაფინ', 'იოჰექსოლ', 'იოპამიდოლ',
+        'contrast', 'omnipaque', 'ultravist', 'visipaque', 'betadin', 'povidon', 'urografin', 'iohexol', 'iopamidol',
     )),
     ('nsaid', (
         'ანალგინ', 'კეტოროლ', 'კეტონალ', 'დექსკეტო', 'დექსალგინ', 'დიკლოფენ', 'იბუპროფ', 'აასს',
         'ასპირინ', 'კარდიომაგნ', 'ასპიკარდ', 'თრომბო-ას', 'თრომბოას', 'ნიმესილ', 'ნიმესულ', 'მელოქსიკ',
+        'ვოლტარენ', 'ნუროფენ', 'ნაფროქსენ',
         'nsaid', 'ketorol', 'ketonal', 'dexketo', 'dexalgin', 'diclofen', 'ibuprof', 'analgin',
-        'aspirin', 'cardiomagn', 'aspicard', 'nimesil', 'nimesul',
+        'aspirin', 'cardiomagn', 'aspicard', 'nimesil', 'nimesul', 'voltaren', 'nurofen', 'naproxen',
     )),
     ('clopidogrel_intol', (
         'კლოპიდოგ', 'პლავიქს', 'ზილტ', 'ტრომბექს', 'ლოპირელ', 'პლოგრილ', 'კლოპიდექს', 'ეგითრომბ',
+        'დუოპლავინ', 'კოპლავიქს',
         'clopidog', 'plavix', 'zylt', 'trombex', 'lopirel', 'plogril', 'clopidex', 'egithromb',
+        'duoplavin', 'coplavix',
     )),
 )
 _HIT_WORD_RE = re.compile(r'(?<![a-zA-Zა-ჰ])hit(?![a-zA-Zა-ჰ])', re.IGNORECASE)
+_IODINE_WORD_RE = re.compile(r'(?<![ა-ჰa-zA-Z])(?:იოდ|iodin)', re.IGNORECASE)
 
 
 _FREETEXT_HIGH_RISK_MED_RULES = (
     ('warfarin', 'ვარფარინი / აცენოკუმაროლი (VKA)', True, (
         'ვარფარინ', 'ვარფარექს', 'ვარფარეკს', 'warfarin', 'warfarex', 'კუმადინ', 'coumadin', 'მარევან', 'marevan',
         'სინკუმარ', 'სინტრომ', 'აცენოკუმარ', 'sintrom', 'acenocoumar', 'syncumar',
+        'მარკუმარ', 'marcoumar', 'ფენპროკუმონ', 'phenprocoumon',
     )),
     ('doac', 'Xa-DOAC (ქსარელტო / ელიქვისი / ედიქსანი)', True, (
-        'ქსარელტ', 'xarelto', 'რივაროქს', 'rivarox', 'ელიქვის', 'eliquis',
-        'აპიქსაბ', 'apixab', 'ედიქსან', 'ედოქსაბ', 'edoxab', 'ლიქსიან', 'lixiana',
+        'ქსარელტ', 'კსარელტ', 'xarelto', 'რივაროქს', 'rivarox', 'ელიქვის', 'ელიკვის', 'eliquis',
+        'აპიქსაბ', 'apixab', 'ედიქსან', 'ედოქსაბ', 'edoxab', 'ლიქსიან', 'lixiana', 'სავაის', 'savaysa',
     )),
     ('dabigatran', 'დაბიგატრანი (პრადაქსა)', True, ('პრადაქს', 'pradaxa', 'დაბიგატრ', 'dabigatr')),
     ('parenteral_oac', 'პარენტერული ანტიკოაგულანტი (LMWH / ჰეპარინი / ფონდაპარინუქსი)', True, (
@@ -425,6 +430,7 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
     ('clopidogrel', 'კლოპიდოგრელი (პლავიქსი)', True, (
         'პლავიქს', 'plavix', 'კლოპიდოგ', 'clopidog', 'ზილტ', 'zylt', 'ტრომბექს', 'trombex',
         'ლოპირელ', 'lopirel', 'პლოგრილ', 'plogril', 'კლოპიდექს', 'clopidex', 'ეგითრომბ', 'egithromb',
+        'დუოპლავინ', 'duoplavin', 'კოპლავიქს', 'coplavix',
     )),
     ('ticagrelor', 'ტიკაგრელორი (ბრილინტა / ბრილიქი)', True, (
         'ბრილინტ', 'brilinta', 'ბრილიქ', 'brilique', 'ტიკაგრელ', 'ticagrel',
@@ -432,7 +438,7 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
     ('prasugrel', 'პრასუგრელი (ეფიენტი)', True, ('ეფიენტ', 'effient', 'efient', 'პრასუგრელ', 'prasugrel')),
     ('cilostazol', 'ცილოსტაზოლი (პლეტალი)', True, ('ცილოსტაზოლ', 'cilostazol', 'პლეტალ', 'pletal')),
     ('sglt2', 'SGLT2 ინჰიბიტორი (ჯარდიანსი / ფორსიგა / სტეგლატრო)', False, (
-        'ჯარდიანს', 'jardiance', 'ფორსიგ', 'ფორქსიგ', 'forxiga', 'farxiga', 'სინჯარდ', 'synjardy',
+        'ჯარდიანს', 'jardiance', 'ფორსიგ', 'ფორქსიგ', 'ფარქსიგ', 'forxiga', 'farxiga', 'სინჯარდ', 'synjardy',
         'ქსიგდუო', 'xigduo', 'ვოკანამეტ', 'vokanamet', 'ინვოკამეტ', 'invokamet', 'სეგლურომეტ', 'segluromet',
         'სტეგლუჯან', 'steglujan', 'გლიქსამბ', 'glyxambi',
         'ინვოკან', 'invokana', 'ემპაგლიფ', 'empaglif',
@@ -443,6 +449,7 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
         'მუნჯარ', 'mounjaro', 'ზეპბაუნდ', 'zepbound', 'საქსენდ', 'saxenda', 'ვიქტოზ', 'victoza',
         'სემაგლუტ', 'semaglut', 'ლირაგლუტ', 'liraglut', 'ტირზეპატ', 'tirzepat',
         'დულაგლუტ', 'dulaglut', 'ტრულიციტ', 'ტრულისიტ', 'trulicity',
+        'ბიეტა', 'byetta', 'ბიდურეონ', 'bydureon', 'ექსენატიდ', 'exenatid', 'ლიქსისენატიდ', 'lixisenatid',
     )),
     ('insulin', 'ინსულინი', False, (
         'ინსულინ', 'insulin', 'ლანტუს', 'lantus', 'ტუჯეო', 'toujeo', 'ტრესიბ', 'tresiba',
@@ -452,10 +459,13 @@ _FREETEXT_HIGH_RISK_MED_RULES = (
     ('metformin', 'მეტფორმინი (გლუკოფაჟი / სიოფორი)', False, (
         'მეტფორმინ', 'metformin', 'გლუკოფაჟ', 'glucophage', 'სიოფორ', 'siofor',
         'სინჯარდ', 'synjardy', 'ქსიგდუო', 'xigduo', 'ვოკანამეტ', 'vokanamet', 'ინვოკამეტ', 'invokamet',
-        'სეგლურომეტ', 'segluromet', 'იანუმეტ', 'janumet',
+        'სეგლურომეტ', 'segluromet', 'იანუმეტ', 'ჯანუმეტ', 'janumet',
+        'გალვუს მეტ', 'გალვუსმეტ', 'galvus met', 'galvusmet', 'ეუკრეას', 'eucreas',
+        'ტრაჯენტა დუო', 'jentadueto', 'გლუკოვანს', 'glucovance',
     )),
     ('steroid', 'სტეროიდი (პრედნიზოლონი / მედროლი)', False, (
-        'პრედნიზოლ', 'prednisol', 'მედროლ', 'medrol', 'მეთილპრედ', 'methylpred', 'დექსამეტაზ', 'dexamethas',
+        'პრედნიზოლ', 'პრედნიზონ', 'prednisol', 'prednison', 'მედროლ', 'medrol',
+        'მეთილპრედ', 'methylpred', 'დექსამეტაზ', 'dexamethas', 'ჰიდროკორტიზონ', 'hydrocortison',
     )),
     ('amiodarone', 'ამიოდარონი (კორდარონი)', False, (
         'ამიოდარონ', 'amiodaron', 'კორდარონ', 'cordarone',

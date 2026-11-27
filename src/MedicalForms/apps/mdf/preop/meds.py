@@ -62,6 +62,9 @@ def _make_med_row_helpers(op_dt):
     def add_row(drug, rule, tone, date_plan='', hold_or_skip=False, force_date_plan=False,
                 acute_hold=False, contraindicated=False, glp1_diet=False, unstructured=False,
                 mandatory_hold_days=0, reconcile_only=False):
+        if contraindicated and ('ბოლო:' in (date_plan or '') or 'მიიღეთ' in (date_plan or '')):
+            date_plan = _IMMED_STOP_PLAN
+            force_date_plan = True
         row = {
             'drug': drug,
             'rule': rule,
@@ -190,6 +193,11 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     )
 
     repro_pregnant = is_pregnancy_eligible(patient) and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
+    active_gi_bleed = (s.get('gastro_result') == 'acute_ulcer') or (bool(q.get('ulcer_active_symp')) and s.get('gastro_result') != 'remission')
+    preg_oac_alt = (
+        'არაჰეპარინული ალტერნატივით (HIT: LMWH/UFH აკრძალულია!) ჰემატოლოგთან და მეან-გინეკოლოგთან!'
+        if has_hit else 'LMWH/UFH-ით მეან-გინეკოლოგთან და კარდიოლოგთან!'
+    )
     tl_days = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
     is_cea_ich = (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
     is_cea_rtpa_6d = (pw == PreopPatient.Pathway.CEA and bool(q.get('cea_thrombolysis')) and (cea_d is None or cea_d <= tl_days))
@@ -212,7 +220,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
         'eff_allergy_chips': eff_allergy_chips, 'ft_meds': ft_meds, 'has_hit': has_hit,
         'has_mech_valve': has_mech_valve, 'has_acs_stent_12m': has_acs_stent_12m,
         'has_full_oac': has_full_oac, 'p2y12_cnt': p2y12_cnt, 'total_at_cnt': total_at_cnt,
-        'repro_pregnant': repro_pregnant,
+        'repro_pregnant': repro_pregnant, 'active_gi_bleed': active_gi_bleed, 'preg_oac_alt': preg_oac_alt,
         'bp_sys_cur': bp_sys_cur, 'bp_inverted_only': bp_inverted_only,
         'hr_cur': hr_cur, 'lvef_cur': lvef_cur, 'k_cur': k_cur,
         'chf_any': chf_any, 'has_true_hfref': has_true_hfref, 'oac_count': oac_count,
@@ -263,6 +271,8 @@ def _append_antiplatelet_rows(c):
             add_row('ასპირინი (75–100 მგ)', _cea_bleed_rule(c, 'ანტიაგრეგანტის რეჟიმი'), 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif asa_allergy:
             add_row('ასპირინი (75–100 მგ)', 'ასპირინზე / აასს-ზე ალერგია — პრეპარატი საშიშია, დაუყოვნებლივ შეცვალეთ ალტერნატივით ექიმთან!', 'red', 'შეცვალეთ ექიმთან (ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+        elif c['active_gi_bleed']:
+            add_row('ასპირინი (75–100 მგ)', 'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან (სტენტისას — კარდიოლოგის კონსილიუმი)!', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif c['is_cea_rtpa_asa_caution']:
             rtpa_asa_dp = f'გრძელდება ნევროლოგთან ({d_str(0)})' if d_str(0) else 'გრძელდება ნევროლოგთან'
             add_row('ასპირინი (75–100 მგ)', f'თრომბოლიზისი (rt-PA, 1–6 დღე; მე-{c["cea_d"]} დღე) — CT-ზე სისხლჩაქცევის გამორიცხვისას ასპირინი გრძელდება ნევროლოგთან შეთანხმებით!', 'amber', rtpa_asa_dp, hold_or_skip=False, force_date_plan=True)
@@ -283,6 +293,8 @@ def _append_antiplatelet_rows(c):
             add_row('კლოპიდოგრელი / P2Y12', f'{_cea_bleed_rule(c, "თვითნებურად არ გააგრძელოთ,")}{clop_intol_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif clop_intol:
             add_row('კლოპიდოგრელი / P2Y12', f'კლოპიდოგრელის აუტანლობა/ალერგია — პრეპარატი საშიშია, დაუყოვნებლივ შეცვალეთ ალტერნატივით ექიმთან!{clop_intol_warn}', 'red', 'შეცვალეთ ექიმთან (ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+        elif c['active_gi_bleed']:
+            add_row('კლოპიდოგრელი / P2Y12', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან (სტენტისას — კარდიოლოგის კონსილიუმი)!{dup_p2y_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif q.get('recent_stent') or has_acs_stent_12m:
             stent_note = 'სტენტი <6 თვ' if q.get('recent_stent') else 'ინფარქტის შემდგომი სტენტი 6–12 თვ (DAPT 12 თვე)'
             add_row('კლოპიდოგრელი / P2Y12', f'{stent_note} — თვითნებური მოხსნა აკრძალულია! კარდიოლოგ-ქირურგის კონსილიუმი{dup_p2y_warn}', 'red', 'არ მოხსნათ კონსილიუმის გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=dup_p2y_red)
@@ -320,6 +332,8 @@ def _append_potent_p2y12_rows(c, p2y_cfg, asa_allergy, clop_intol, asa_sub_txt):
         tica_bad_combo = c['has_full_oac'] or c['p2y12_cnt'] >= 2 or ('rivaroxaban_2_5' in med_chips)
         if is_bleed:
             add_row('ტიკაგრელორი (ბრილინტა)', _cea_bleed_rule(c, 'ტიკაგრელორი'), 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+        elif c['active_gi_bleed']:
+            add_row('ტიკაგრელორი (ბრილინტა)', 'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და კარდიოლოგთან!', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif q.get('recent_stent') or has_acs_stent_12m:
             add_row('ტიკაგრელორი (ბრილინტა)', 'კორონარული სტენტი DAPT რეჟიმში — თვითნებური მოხსნა აკრძალულია! კარდიოლოგ-ქირურგის კონსილიუმი', 'red', 'არ მოხსნათ კონსილიუმის გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=tica_bad_combo)
         elif is_symp_cea:
@@ -331,7 +345,7 @@ def _append_potent_p2y12_rows(c, p2y_cfg, asa_allergy, clop_intol, asa_sub_txt):
         elif solo_p2y_asa_alg:
             add_row('ტიკაგრელორი (ბრილინტა)', 'ასპირინზე/აასს-ზე ალერგია — ტიკაგრელორის მონოთერაპია თვითნებურად არ მოხსნათ (უანტიაგრეგანტოდ დატოვება საშიშია)! შეათანხმეთ ქირურგთან/კარდიოლოგთან!', 'red', 'შეათანხმეთ ქირურგთან (ასპირინზე ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=tica_bad_combo)
         elif is_neuraxial:
-            add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება სპინალურ/ეპიდურულ ანესთეზიამდე 5–7 დღით ადრე (ASRA 5th Ed: 5–7 დღე) — {asa_sub_txt}', 'red' if (tica_bad_combo or asa_allergy) else 'amber', hold_str(p2y_cfg['tica_nx'], ' (5–7 დღე)'), hold_or_skip=True, contraindicated=tica_bad_combo, mandatory_hold_days=p2y_cfg['tica_nx'])
+            add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება სპინალურ/ეპიდურულ ანესთეზიამდე 5 დღით ადრე (ASRA 5th Ed) — {asa_sub_txt}', 'red' if (tica_bad_combo or asa_allergy) else 'amber', hold_str(p2y_cfg['tica_nx'], ' (5 დღე)'), hold_or_skip=True, contraindicated=tica_bad_combo, mandatory_hold_days=p2y_cfg['tica_nx'])
         else:
             add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება ოპერაციამდე 3–5 დღით ადრე (ESC 2022 / FDA; {asa_sub_txt})', 'red' if (tica_bad_combo or asa_allergy) else 'amber', hold_str(p2y_cfg['tica_std']), hold_or_skip=True, contraindicated=tica_bad_combo, mandatory_hold_days=p2y_cfg['tica_std'])
 
@@ -342,6 +356,8 @@ def _append_potent_p2y12_rows(c, p2y_cfg, asa_allergy, clop_intol, asa_sub_txt):
         pras_contra = bool(stroke_warn or pras_bad_combo)
         if is_bleed:
             add_row('პრასუგრელი (ეფიენტი)', f'{_cea_bleed_rule(c, "პრასუგრელი")}{stroke_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+        elif c['active_gi_bleed']:
+            add_row('პრასუგრელი (ეფიენტი)', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და კარდიოლოგთან!{stroke_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif q.get('recent_stent') or has_acs_stent_12m:
             add_row('პრასუგრელი (ეფიენტი)', f'კორონარული სტენტი — თვითნებური მოხსნა აკრძალულია! კარდიოლოგ-ქირურგის კონსილიუმი{stroke_warn}', 'red', 'არ მოხსნათ კონსილიუმის გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=pras_contra)
         elif has_stroke_hx:
@@ -360,6 +376,7 @@ def _append_potent_p2y12_rows(c, p2y_cfg, asa_allergy, clop_intol, asa_sub_txt):
 
 
 _IMMED_STOP_PLAN = 'შეწყვიტეთ დაუყოვნებლივ (ექიმთან შეთანხმებით)!'
+_GI_BLEED_PLAN = 'აქტიური სისხლდენა/წყლული — სასწრაფოდ შეათანხმეთ ექიმთან!'
 
 
 def _append_cilostazol_row(c, cilo_cfg):
@@ -404,7 +421,9 @@ def _append_doac_dabigatran_rows(c):
         elif has_mech_valve:
             add_row('DOAC (ქსარელტო / ელიქვისი)', f'მექანიკურ სარქველზე DOAC აბსოლუტურად უკუნაჩვენებია (ESC Class III — სარქვლის თრომბოზის რისკი)! სასწრაფოდ გადაამოწმეთ ვარფარინი (VKA) კარდიოლოგთან!{dup_oac_warn}', 'red', 'უკუნაჩვენებია — კარდიოლოგი!', hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif c['repro_pregnant']:
-            add_row('DOAC (ქსარელტო / ელიქვისი)', f'ორსულობის დროს DOAC აბსოლუტურად უკუნაჩვენებია (პლაცენტური გადასვლა / ნაყოფის რისკი) — დაუყოვნებლივ შეცვალეთ LMWH/UFH-ით მეან-გინეკოლოგთან და კარდიოლოგთან!{dup_oac_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+            add_row('DOAC (ქსარელტო / ელიქვისი)', f'ორსულობის დროს DOAC აბსოლუტურად უკუნაჩვენებია (პლაცენტური გადასვლა / ნაყოფის რისკი) — დაუყოვნებლივ შეცვალეთ {c["preg_oac_alt"]}{dup_oac_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        elif c['active_gi_bleed']:
+            add_row('DOAC (ქსარელტო / ელიქვისი)', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — DOAC სასწრაფოდ შეათანხმეთ შეჩერება/ჰემოსტაზზე ექიმთან!{doac_extra_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif on_dialysis:
             add_row('DOAC (ქსარელტო / ელიქვისი)', f'დიალიზი / თირკმლის ტერმინალური უკმარისობა — შეჩერება ≥96–120 სთ + ანტი-Xa კონტროლი და ნეფროლოგ/ქირურგის კონსილიუმი!{doac_extra_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=True, force_date_plan=True, contraindicated=True, mandatory_hold_days=doac_cfg['dialysis_days'])
         elif c['creat_mismatch']:
@@ -432,7 +451,9 @@ def _append_doac_dabigatran_rows(c):
         elif has_mech_valve:
             add_row('დაბიგატრანი (პრადაქსა)', f'მექანიკურ სარქველზე დაბიგატრანი აბსოლუტურად უკუნაჩვენებია (RE-ALIGN / ESC Class III — თრომბოზის რისკი)! სასწრაფოდ გადაამოწმეთ ვარფარინი (VKA)!{dup_oac_warn}', 'red', 'უკუნაჩვენებია — კარდიოლოგი!', hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif c['repro_pregnant']:
-            add_row('დაბიგატრანი (პრადაქსა)', f'ორსულობის დროს დაბიგატრანი აბსოლუტურად უკუნაჩვენებია (პლაცენტური გადასვლა / ნაყოფის რისკი) — დაუყოვნებლივ შეცვალეთ LMWH/UFH-ით მეან-გინეკოლოგთან და კარდიოლოგთან!{dup_oac_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+            add_row('დაბიგატრანი (პრადაქსა)', f'ორსულობის დროს დაბიგატრანი აბსოლუტურად უკუნაჩვენებია (პლაცენტური გადასვლა / ნაყოფის რისკი) — დაუყოვნებლივ შეცვალეთ {c["preg_oac_alt"]}{dup_oac_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        elif c['active_gi_bleed']:
+            add_row('დაბიგატრანი (პრადაქსა)', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — დაბიგატრანი სასწრაფოდ შეათანხმეთ შეჩერება/ჰემოსტაზზე ექიმთან!{doac_extra_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif on_dialysis:
             add_row('დაბიგატრანი (პრადაქსა)', f'დიალიზი — დაბიგატრანი უკუნაჩვენებია (EHRA 2021), სავალდებულოა თრომბინის დროის (TT) კონტროლი და კონსილიუმი!{doac_extra_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=True, force_date_plan=True, contraindicated=True, reconcile_only=True, mandatory_hold_days=d_map['lt30'])
         elif c['creat_mismatch']:
@@ -459,7 +480,7 @@ def _append_doac_dabigatran_rows(c):
 def _append_rivaroxaban_row(c):
     from .registry import rule_value
     voy_cfg, triple_min = rule_value('MED_VOYAGER_RIVAROXABAN_2_5'), rule_value('MED_ANTITHROMBOTIC_CONFLICTS')
-    q, s, add_row, d_str, hold_str = c['q'], c['s'], c['add_row'], c['d_str'], c['hold_str']
+    q, add_row, d_str, hold_str = c['q'], c['add_row'], c['d_str'], c['hold_str']
     if 'rivaroxaban_2_5' not in c['med_chips']:
         return
     potent_p2y_riva = bool(q.get('med_ticagrelor') or q.get('med_prasugrel'))
@@ -471,11 +492,11 @@ def _append_rivaroxaban_row(c):
     elif c['has_mech_valve']:
         add_row('ქსარელტო 2.5 მგ x2', f'მექანიკურ სარქველზე რივაროქსაბანი აბსოლუტურად უკუნაჩვენებია (ESC Class III)! გადაამოწმეთ ვარფარინი!{c["dup_oac_warn"]}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
     elif c['repro_pregnant']:
-        add_row('ქსარელტო 2.5 მგ x2', f'ორსულობის დროს რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) აბსოლუტურად უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ მეან-გინეკოლოგთან!{doac_extra_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        add_row('ქსარელტო 2.5 მგ x2', f'ორსულობის დროს რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) აბსოლუტურად უკუნაჩვენებია — დაუყოვნებლივ შეცვალეთ {c["preg_oac_alt"]}{doac_extra_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
     elif 'nsaid' in c['eff_allergy_chips']:
         add_row('ქსარელტო 2.5 მგ x2', f'ასპირინზე / აასს-ზე ალერგია — VOYAGER PAD რეჟიმი უკუნაჩვენებია (მოითხოვს ასპირინს)! დაუყოვნებლივ შეცვალეთ ალტერნატივით ქირურგთან!{doac_extra_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
-    elif q.get('ulcer_active_symp') or s.get('gastro_result') == 'acute_ulcer':
-        add_row('ქსარელტო 2.5 მგ x2', f'აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის დროს რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) აბსოლუტურად უკუნაჩვენებია — შეწყვიტეთ დაუყოვნებლივ და შეათანხმეთ ქირურგთან!{doac_extra_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+    elif c['active_gi_bleed']:
+        add_row('ქსარელტო 2.5 მგ x2', f'აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის დროს რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) აბსოლუტურად უკუნაჩვენებია — შეწყვიტეთ დაუყოვნებლივ და შეათანხმეთ ქირურგთან!{doac_extra_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
     elif c['has_stroke_hx']:
         add_row('ქსარელტო 2.5 მგ x2', f'გადატანილი ინსულტის / TIA-ს ანამნეზში რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) უკუნაჩვენებია (ქალასშიდა სისხლდენის რისკი) — შეათანხმეთ მოხსნა/შეცვლა ქირურგთან!{doac_extra_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
     elif c['creat_mismatch']:
@@ -519,6 +540,13 @@ def _append_warfarin_row(c):
     eff_inr_vka = dos_inr_cur if dos_inr_cur is not None else inr_cur
     if c['is_cea_oac_p2y_stop']:
         add_row('ვარფარინი', f'{_cea_bleed_rule(c, "ვარფარინი / ანტიკოაგულაცია")}{liver_vka_warn}{dup_oac_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+    elif c['repro_pregnant']:
+        if has_mech_valve:
+            add_row('ვარფარინი', f'ორსულობა + მექანიკური სარქველი — ვარფარინი ტერატოგენულია, თვითნებური მოხსნა იწვევს თრომბოზს! სასწრაფოდ მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი!{dup_oac_warn}', 'red', 'ორსულობა + მექ. სარქველი — კონსილიუმი!', hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        else:
+            add_row('ვარფარინი', f'ორსულობის დროს ვარფარინი (VKA) ტერატოგენულია (ნაყოფის ვარფარინის სინდრომი) — დაუყოვნებლივ შეცვალეთ {c["preg_oac_alt"]}{dup_oac_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+    elif c['active_gi_bleed']:
+        add_row('ვარფარინი', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ვარფარინი სასწრაფოდ შეათანხმეთ შეჩერება/ჰემოსტაზზე ექიმთან (მექ. სარქველზე — კარდიოლოგის კონსილიუმი)!{liver_vka_warn}{dup_oac_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
     elif is_evla and not is_neuraxial and not dup_vka:
         if eff_inr_vka is not None and eff_inr_vka > vka_cfg['inr_evla_max']:
             add_row('ვარფარინი', f'სუპრათერაპიული INR ({eff_inr_vka} > {vka_cfg["inr_evla_max"]}) EVLA-ს წინ — სისხლდენის რისკი, გადაამოწმეთ/შეაჩერეთ დოზა ქირურგთან!{liver_vka_warn}{dup_oac_warn}', 'red', f'INR {eff_inr_vka} > {vka_cfg["inr_evla_max"]} — გადაამოწმეთ!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
@@ -642,17 +670,13 @@ def _append_cardio_other_rows(c):
         if c['repro_pregnant']:
             add_row('სტატინი', 'ორსულობის დროს სტატინი უკუნაჩვენებია (ტერატოგენული რისკი) — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ექიმთან!', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif c['liver_3x']:
-            add_row('სტატინი', 'ღვიძლის ფერმენტები ≥3x ULN — გადაამოწმეთ მწვავე ტრანსამინიტი ექიმთან სტატინის გაგრძელებამდე!', 'amber', f'შეათანხმეთ ექიმთან ({d_str(0)})', hold_or_skip=False)
+            add_row('სტატინი', 'ღვიძლის ფერმენტები ≥3x ULN — გადაამოწმეთ მწვავე ტრანსამინიტი ექიმთან სტატინის გაგრძელებამდე!', 'red', 'ღვიძლი ≥3x — შეათანხმეთ ექიმთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         else:
             add_row('სტატინი', 'გრძელდება უწყვეტად ოპერაციის დილის ჩათვლით (ESVS/ESC Class I)', 'ok', f'მიიღეთ {d_str(0)}-ის დილის ჩათვლით', hold_or_skip=False)
     if 'beta_blocker' in med_chips:
         bb_hold_vitals = bp_inv_only or (bp_sys_cur is not None and bp_sys_cur < vaso_cfg['bb_min_sbp']) or (hr_cur is not None and hr_cur < vaso_cfg['bb_min_hr'])
         bb_plan = 'გადაამოწმეთ წნევა დილის დოზამდე! (SBP≤DBP)' if bp_inv_only else ('გამოტოვეთ დილას! (SBP<100 ან HR<55)' if bb_hold_vitals else f'მიიღეთ {d_str(0)}-ის დილას (თუ SBP≥100, HR≥55)')
-        add_row(
-            'ბეტა-ბლოკატორი',
-            'გრძელდება უწყვეტად ოპერაციის დილას ყლუპი წყლით, თუ SBP ≥ 100 mmHg და HR ≥ 55/წთ (დაბალ წნევა/პულსზე დილის დოზა გამოტოვეთ! — ESC 2022 Class I)',
-            'amber' if bb_hold_vitals else 'ok', bb_plan, hold_or_skip=bb_hold_vitals, force_date_plan=bb_hold_vitals, acute_hold=bb_hold_vitals,
-        )
+        add_row('ბეტა-ბლოკატორი', 'გრძელდება უწყვეტად ოპერაციის დილას ყლუპი წყლით, თუ SBP ≥ 100 mmHg და HR ≥ 55/წთ (დაბალ წნევა/პულსზე დილის დოზა გამოტოვეთ! — ESC 2022 Class I)', 'amber' if bb_hold_vitals else 'ok', bb_plan, hold_or_skip=bb_hold_vitals, force_date_plan=bb_hold_vitals, acute_hold=bb_hold_vitals)
     if 'acei_arb' in med_chips:
         ace_hold_vitals = bp_inv_only or (bp_sys_cur is not None and bp_sys_cur < vaso_cfg['bb_min_sbp']) or (k_cur is not None and k_cur >= vaso_cfg['ace_max_k'])
         if c['repro_pregnant']:
@@ -669,11 +693,7 @@ def _append_cardio_other_rows(c):
     if 'ccb' in med_chips:
         ccb_hold = bp_inv_only or (bp_sys_cur is not None and bp_sys_cur < vaso_cfg['ccb_min_sbp'])
         ccb_plan = 'გადაამოწმეთ წნევა დილის დოზამდე! (SBP≤DBP)' if bp_inv_only else ('გამოტოვეთ დილას! (SBP<110)' if ccb_hold else f'მიიღეთ {d_str(0)}-ის დილას (SBP≥110)')
-        add_row(
-            'ამლოდიპინი / CCB',
-            'გამოტოვეთ დილის დოზა დაბალი/არასწორი წნევის (SBP < 110 / SBP≤DBP) გამო!' if ccb_hold else 'გრძელდება ჩვეულ რეჟიმში ოპერაციის დილას, თუ SBP ≥ 110 mmHg',
-            'amber' if ccb_hold else 'ok', ccb_plan, hold_or_skip=ccb_hold, force_date_plan=ccb_hold, acute_hold=ccb_hold,
-        )
+        add_row('ამლოდიპინი / CCB', 'გამოტოვეთ დილის დოზა დაბალი/არასწორი წნევის (SBP < 110 / SBP≤DBP) გამო!' if ccb_hold else 'გრძელდება ჩვეულ რეჟიმში ოპერაციის დილას, თუ SBP ≥ 110 mmHg', 'amber' if ccb_hold else 'ok', ccb_plan, hold_or_skip=ccb_hold, force_date_plan=ccb_hold, acute_hold=ccb_hold)
     if 'amiodarone' in med_chips:
         amio_doac = (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in med_chips) and (c['on_dialysis'] or (eff_renal is not None and eff_renal < amio_renal))
         amio_pgp_warn = ' [P-gp ურთიერთქმედება: DOAC/დაბიგატრანთან და CrCl <60/დიალიზზე ზრდის სისხლდენის რისკს!]' if amio_doac else ''
@@ -690,26 +710,22 @@ def _append_hormone_ppi_steroid_ft_rows(c):
     patient, q, s = c['patient'], c['q'], c['s']
     add_row, d_str, med_chips = c['add_row'], c['d_str'], c['med_chips']
     if q.get('ven_hormones'):
-        horm_contra = bool(c['liver_3x'] or ('vte_recent_3m' in c['ven_dvt_chips']) or c['ven_dup'] == 'acute_dvt')
-        if horm_contra:
-            add_row(
-                'ჰორმონული პრეპარატი / კონტრაცეპტივი',
-                'უკუნაჩვენებია ღვიძლის მძიმე დისფუნქციის (≥3x ULN) ან ახალი/მწვავე VTE (<3 თვე / DVT) ფონზე — დაუყოვნებლივ შეათანხმეთ შეწყვეტა ექიმთან!',
-                'red', 'უკუნაჩვენებია — შეათანხმეთ მოხსნა!', hold_or_skip=False, force_date_plan=True, contraindicated=True,
-            )
+        if c['repro_pregnant']:
+            add_row('ჰორმონული პრეპარატი / კონტრაცეპტივი', 'ორსულობის დროს ესტროგენული/ჰორმონული პრეპარატები უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ მეან-გინეკოლოგთან!', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        elif c['liver_3x'] or ('vte_recent_3m' in c['ven_dvt_chips']) or c['ven_dup'] == 'acute_dvt':
+            add_row('ჰორმონული პრეპარატი / კონტრაცეპტივი', 'უკუნაჩვენებია ღვიძლის მძიმე დისფუნქციის (≥3x ULN) ან ახალი/მწვავე VTE (<3 თვე / DVT) ფონზე — დაუყოვნებლივ შეათანხმეთ შეწყვეტა ექიმთან!', 'red', 'უკუნაჩვენებია — შეათანხმეთ მოხსნა!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         else:
-            if c['has_hit']:
-                vte_opt = 'არაჰეპარინული პროფილაქტიკა (HIT: LMWH აკრძალულია!)'
-            elif c['severe_renal']:
-                vte_opt = 'მექანიკური (IPC) ან კანქვეშა UFH პროფილაქტიკა (CrCl<30/დიალიზი: სტანდარტული LMWH აკრძალულია!)'
-            else:
-                vte_opt = 'LMWH პროფილაქტიკა'
+            vte_opt = 'არაჰეპარინული პროფილაქტიკა (HIT: LMWH აკრძალულია!)' if c['has_hit'] else ('მექანიკური (IPC) ან კანქვეშა UFH პროფილაქტიკა (CrCl<30/დიალიზი: სტანდარტული LMWH აკრძალულია!)' if c['severe_renal'] else 'LMWH პროფილაქტიკა')
             if c['is_evla']:
                 evla_vte_sfx = f' — {vte_opt}' if (c['has_hit'] or c['severe_renal']) else ''
                 horm_rule = f'EVLA-ზე შესაძლებელია გაგრძელება VTE რისკის შეფასებით (Caprini); ფლებექტომიაზე/მაღალ რისკზე შეათანხმეთ თრომბოპროფილაქტიკა (ESVS 2022){evla_vte_sfx}'
             else:
                 horm_rule = f'ესტროგენული/ჰორმონული პრეპარატი ზრდის VTE რისკს — შეათანხმეთ ქირურგთან (4 კვ-ით ადრე მოხსნა ან {vte_opt})'
             add_row('ჰორმონული პრეპარატი / კონტრაცეპტივი', horm_rule, 'amber', f'VTE შეფასება ({d_str(0)})', hold_or_skip=True, reconcile_only=True)
+    if c['repro_pregnant'] and c['ft_meds'].get('has_ft_statin') and 'statin' not in med_chips:
+        add_row('სტატინი (ტექსტიდან)', 'ორსულობის დროს სტატინი უკუნაჩვენებია (ტერატოგენული რისკი) — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ექიმთან!', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+    if c['repro_pregnant'] and c['ft_meds'].get('has_ft_acei_arb') and 'acei_arb' not in med_chips:
+        add_row('ACEi / ARB (ტექსტიდან)', 'ორსულობის დროს ACEi / ARB აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
     has_dapt_med = (bool(q.get('med_aspirin')) and c['p2y12_cnt'] >= 1) or (c['p2y12_cnt'] >= 2)
     has_ap_any_med = bool(q.get('med_aspirin') or c['p2y12_cnt'] >= 1 or 'cilostazol' in med_chips)
     has_high_gi_ppi_ind = (
@@ -719,19 +735,12 @@ def _append_hormone_ppi_steroid_ft_rows(c):
     )
     if 'ppi' in med_chips or c['ft_meds']['has_omeprazole'] or has_high_gi_ppi_ind or s.get('ppi_started'):
         ft_keys = c['ft_meds'].get('matched_keys') or set()
-        cyp_ppi_sensitive = bool(
-            q.get('med_clopidogrel') or 'cilostazol' in med_chips
-            or 'clopidogrel' in ft_keys or 'cilostazol' in ft_keys
-        )
+        cyp_ppi_sensitive = bool(q.get('med_clopidogrel') or 'cilostazol' in med_chips or 'clopidogrel' in ft_keys or 'cilostazol' in ft_keys)
         ppi_drug_lbl = 'პანტოპრაზოლი 40 მგ (PPI)' if cyp_ppi_sensitive else 'ომეპრაზოლი / პანტოპრაზოლი (PPI)'
         ppi_cyp_note = ' — ომეპრაზოლი/ეზომეპრაზოლი შეცვალეთ პანტოპრაზოლით (CYP2C19)!' if cyp_ppi_sensitive else ''
         add_row(ppi_drug_lbl, f'გრძელდება / ინიშნება უწყვეტად პერიოპერაციულად კუჭის დაცვისთვის (ESC Class I){ppi_cyp_note}', 'amber' if (cyp_ppi_sensitive and ('ppi' in med_chips or c['ft_meds']['has_omeprazole'])) else 'ok', f'მიიღეთ {d_str(0)}-ის დილას', hold_or_skip=False)
     if 'steroid' in med_chips:
-        add_row(
-            'სტეროიდი / იმუნოსუპრესანტი',
-            'არ მოხსნათ! სტრეს-დოზა (Assoc. of Anaesthetists 2020): არტერიულ/დიდ ოპერაციაზე — ჰიდროკორტიზონი 100 მგ IV ინდუქციაზე + 200 მგ/24 სთ ინფუზია (ან 50 მგ IV ყოველ 6 სთ-ში; მცირე ვენურზე — ჩვეული დოზა + 25–50 მგ IV); მოერიდეთ ეტომიდატს!',
-            'amber', f'არ შეწყვიტოთ ({d_str(0)} IV სტრეს-დოზა)', hold_or_skip=False,
-        )
+        add_row('სტეროიდი / იმუნოსუპრესანტი', 'არ მოხსნათ! სტრეს-დოზა (Assoc. of Anaesthetists 2020): არტერიულ/დიდ ოპერაციაზე — ჰიდროკორტიზონი 100 მგ IV ინდუქციაზე + 200 მგ/24 სთ ინფუზია (ან 50 მგ IV ყოველ 6 სთ-ში; მცირე ვენურზე — ჩვეული დოზა + 25–50 მგ IV); მოერიდეთ ეტომიდატს!', 'amber', f'არ შეწყვიტოთ ({d_str(0)} IV სტრეს-დოზა)', hold_or_skip=False)
     if c['ft_meds']['unstructured_labels']:
         labels = ', '.join(c['ft_meds']['unstructured_labels'])
         ft_bleed_contra = bool(c['is_cea_oac_p2y_stop'] and c['ft_meds']['unstructured_antithrombotic'])
@@ -740,11 +749,7 @@ def _append_hormone_ppi_steroid_ft_rows(c):
             if ft_bleed_contra else
             f"თავისუფალ ტექსტში („{q.get('other_meds')}“) მითითებულია მაღალი რისკის პრეპარატი — მონიშნეთ ჩამრთველი შეჩერების ზუსტი თარიღისთვის!"
         )
-        add_row(
-            f'დასაზუსტებელი წამალი ({labels})', ft_rule, 'red',
-            'დააზუსტეთ ექიმთან — არასტრუქტურირებულია!', hold_or_skip=(not ft_bleed_contra),
-            force_date_plan=True, contraindicated=ft_bleed_contra, unstructured=True, reconcile_only=True,
-        )
+        add_row(f'დასაზუსტებელი წამალი ({labels})', ft_rule, 'red', 'დააზუსტეთ ექიმთან — არასტრუქტურირებულია!', hold_or_skip=(not ft_bleed_contra), force_date_plan=True, contraindicated=ft_bleed_contra, unstructured=True, reconcile_only=True)
 
 
 def build_med_schedule(patient, q, s, egfr, crcl=None, stop_blocked=False, has_neuraxial_override=None, today=None):

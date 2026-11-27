@@ -140,7 +140,8 @@ def _check_pathway_and_risk_guards(patient, ev, q, s, pw, q_filled, cad_chips, v
         prohibited = brain_bleed or (bool(q.get('cea_thrombolysis')) and (days_ev is None or days_ev < 1))
         if prohibited and ev['needs_cea_antiplatelet']:
             violations.append('INV-08_CEA_AP_ORDERED_ON_BLEED_OR_RTPA')
-        if ev['is_symp_cea'] and not brain_bleed and not rtpa_prohibited and 'nsaid' not in eff_alg:
+        active_gi_bleed = (s.get('gastro_result') == 'acute_ulcer') or (bool(q.get('ulcer_active_symp')) and s.get('gastro_result') != 'remission')
+        if ev['is_symp_cea'] and not brain_bleed and not rtpa_prohibited and not active_gi_bleed and 'nsaid' not in eff_alg:
             for row in ev['med_schedule']:
                 if row['drug'] == 'ასპირინი (75–100 მგ)' and 'გრძელდება' not in row['rule']:
                     violations.append('INV-08_SYMP_CEA_ASPIRIN_HELD')

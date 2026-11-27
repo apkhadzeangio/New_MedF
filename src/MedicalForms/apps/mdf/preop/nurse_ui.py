@@ -124,7 +124,11 @@ def _med_call_status(ev, today):
     ]
     reconcile_rows = [
         r for r in ev['med_schedule']
-        if r.get('hold_or_skip') and r.get('reconcile_only') and not r.get('contraindicated') and not r.get('unstructured')
+        if (
+            (r.get('hold_or_skip') and r.get('reconcile_only'))
+            or (ev.get('is_evla_warfarin_only') and 'ვარფარინი' in (r.get('drug') or ''))
+        )
+        and not r.get('contraindicated') and not r.get('unstructured')
     ]
     if not dated_hold_rows and not reconcile_rows:
         return {'needs_call': False, 'urgent_call': False, 'called_valid': False, 'outdated_call': False, 'drugs': []}
@@ -252,7 +256,7 @@ def _relative_op_label(op_dt, today):
 
 def _plain_procedure_ka(patient, ev):
     pw = ev['pathway']
-    sub = patient.op_subtype
+    sub = patient.op_subtype if isinstance(patient.op_subtype, str) else ''
     if pw == 'cea':
         return PLAIN_SUBTYPE_KA['cea_symp'] if ev.get('is_symp_cea') else PLAIN_SUBTYPE_KA['cea_asymp']
     if ev.get('is_clti_any'):
@@ -412,7 +416,9 @@ def build_nurse_patient_context(request, patient, ev):
     op_dt = _date(ev['s'].get('planned_surgery_date'))
     self_path = request.build_absolute_uri(ev.get('self_fill_path') or '') if ev.get('self_fill_path') else ''
 
-    phone_digits = re.sub(r'[^0-9]', '', patient.phone or '')
+    phone_s = patient.phone if isinstance(patient.phone, str) else ''
+    side_s = patient.side if isinstance(patient.side, str) else ''
+    phone_digits = re.sub(r'[^0-9]', '', phone_s)
     if len(phone_digits) == 9 and phone_digits.startswith('5'):
         wa_phone = '995' + phone_digits
     else:
@@ -423,7 +429,7 @@ def build_nurse_patient_context(request, patient, ev):
         if self_path else ''
     )
     wa_url = f'https://wa.me/{wa_phone}?text={quote(share_text)}' if (wa_phone and self_path) else f'https://wa.me/?text={quote(share_text)}'
-    sms_url = f'sms:{patient.phone}?body={quote(share_text)}' if (patient.phone and self_path) else f'sms:?body={quote(share_text)}'
+    sms_url = f'sms:{phone_s}?body={quote(share_text)}' if (phone_s and self_path) else f'sms:?body={quote(share_text)}'
 
     from .nurse_plan import (
         build_phone_med_script,
@@ -434,7 +440,7 @@ def build_nurse_patient_context(request, patient, ev):
     return {
         'nw_verdict': verdict,
         'nw_procedure_ka': _plain_procedure_ka(patient, ev),
-        'nw_side_ka': PLAIN_SIDE_KA.get(patient.side or '', ''),
+        'nw_side_ka': PLAIN_SIDE_KA.get(side_s, ''),
         'nw_op_label': _relative_op_label(op_dt, today),
         'nw_risk_badges': plain_risk_badges(ev),
         'nw_self_fill': sf_info,

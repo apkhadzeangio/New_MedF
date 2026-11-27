@@ -383,13 +383,14 @@ def _eval_dos_and_vqi(ctx):
     is_evla_warfarin_only = (
         ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
         and not ctx.has_neuraxial_plan and bool(q.get('med_warfarin'))
+        and not getattr(ctx, 'eff_pregnant', False)
         and not (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips)
     )
     ctx.is_evla_warfarin_only = is_evla_warfarin_only
     inr_lim = dos_cfg['inr_evla'] if is_evla_warfarin_only else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
     inr_eff_dos = ctx.inr if ctx.inr is not None else getattr(ctx, 'inr_sat', None)
     dos_inr_eff = dos_inr if dos_inr is not None else getattr(ctx, 'dos_inr_sat', None)
-    any_dos_ticked = any(c['done'] for c in dos_checks)
+    any_dos_ticked = any(c['done'] for c in dos_checks if c.get('key') != 'icu_bed_booked')
     if dos_inr_eff is not None:
         if dos_inr_eff > inr_lim:
             dos_warnings.append(f'ოპერაციის დილის INR ({dos_inr if dos_inr is not None else dos_inr_eff}) აჭარბებს უსაფრთხო ზღვარს (≤ {inr_lim}) — სისხლდენის / სპინალური ჰემატომის რისკი!')
@@ -478,12 +479,15 @@ def _eval_triage_and_passport_cautions(ctx):
     ctx.current_sig = _alerts_signature(ctx.red_flags)
     ctx.alerts_acked = bool(patient.alerts_ack_at and s.get('alerts_ack_sig') == ctx.current_sig)
     ctx.has_unacked_red = bool(ctx.red_flags) and not ctx.alerts_acked
+    ctx.has_bad_med = any(r.get('contraindicated') or r.get('unstructured') for r in (ctx.med_schedule or ()))
+    has_med_blocker = bool(ctx.has_bad_med or getattr(ctx, 'has_elapsed_hold_window', False))
     ctx.dos_ready = bool(
         q_filled and (ctx.dos_done_count == ctx.dos_total_count)
-        and not ctx.dos_hold_danger and not ctx.has_unacked_red and not ctx.neuraxial_hard_blocked
+        and not ctx.dos_hold_danger and not ctx.has_unacked_red
+        and not ctx.neuraxial_hard_blocked and not has_med_blocker
     )
 
-    if ctx.has_unacked_red or ctx.has_hard_contraindication or ctx.dos_hold_danger or ctx.neuraxial_hard_blocked:
+    if ctx.has_unacked_red or ctx.has_hard_contraindication or ctx.dos_hold_danger or ctx.neuraxial_hard_blocked or has_med_blocker:
         ctx.status = STATUS_ALERT
     elif not q_filled:
         ctx.status = STATUS_NO_Q

@@ -174,6 +174,15 @@
         } catch (e) {}
     }
 
+    var STRICT_NUM_RE = /^[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)$/;
+    function parseStrictNum(raw) {
+        if (raw === null || raw === undefined) return NaN;
+        var s = String(raw).trim();
+        if (!s || !STRICT_NUM_RE.test(s)) return NaN;
+        var n = Number(s.replace(/,/g, '.'));
+        return isFinite(n) ? n : NaN;
+    }
+
     function attachLiveGuard(ctrl, evalFn) {
         if (!ctrl) return;
         var lbl = ctrl.closest('.fld');
@@ -186,9 +195,10 @@
             ctrl.classList.remove('lv-warn', 'lv-crit');
             var raw = (ctrl.value || '').trim();
             if (!raw) { hint.hidden = true; return; }
-            var num = parseFloat(raw.replace(/,/g, '.'));
-            if (!isFinite(num)) { hint.hidden = true; return; }
-            var res = evalFn(num);
+            var num = parseStrictNum(raw);
+            var res = isNaN(num)
+                ? { level: 'crit', msg: 'შეიყვანეთ მხოლოდ რიცხვითი მნიშვნელობა!' }
+                : evalFn(num);
             if (!res) { hint.hidden = true; return; }
             if (res.level === 'crit') ctrl.classList.add('lv-crit');
             else if (res.level === 'warn') ctrl.classList.add('lv-warn');
@@ -216,6 +226,7 @@
     });
     document.querySelectorAll('input[name="k"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
+            if (v < 1.0 || v > 12.0) return { level: 'crit', msg: 'დაუჯერებელი K+ (' + v + ' მმოლ/ლ) — გადაამოწმეთ!' };
             if (v < 3.3 || v >= 5.4) return { level: 'crit', msg: 'კრიტიკული K+ (' + v + ' მმოლ/ლ — არითმიის რისკი)!' };
             if (v < 3.5 || v > 5.0) return { level: 'warn', msg: 'სასაზღვრო K+ (ნორმა 3.5–5.0)' };
             return null;
@@ -223,6 +234,7 @@
     });
     document.querySelectorAll('input[name="inr"], input[name="dos_inr"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
+            if (v < 0.4 || v > 20.0) return { level: 'crit', msg: 'დაუჯერებელი INR (' + v + ') — გადაამოწმეთ!' };
             if (v > 1.5) return { level: 'crit', msg: 'მაღალი INR (>1.5 — სისხლდენის რისკი)!' };
             if (v > 1.35) return { level: 'warn', msg: 'მომატებული INR (>1.35 — სისხლდენის/ASRA ნეირაქსიული ზღვარი ≤ 1.4)' };
             return null;
@@ -230,6 +242,7 @@
     });
     document.querySelectorAll('input[name="plt"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
+            if (v <= 0 || v > 2500000) return { level: 'crit', msg: 'დაუჯერებელი PLT (' + v + ') — გადაამოწმეთ მნიშვნელობა!' };
             if (v > 2500 && v < 3000) return { level: 'crit', msg: 'დააზუსტეთ თრომბოციტების ერთეული (×10^9/L თუ /µL)!' };
             var n = v >= 3000 ? Math.round(v / 1000) : v;
             if (n < 100) return { level: 'crit', msg: 'თრომბოციტოპენია (<100 ×10^9/L)!' };
@@ -241,6 +254,7 @@
         var unitSel = el.closest('form') ? el.closest('form').querySelector('select[name="creat_unit"]') : null;
         attachLiveGuard(el, function (v) {
             var u = unitSel ? unitSel.value : '';
+            if (v < 0.1 || v > 3000) return { level: 'crit', msg: 'დაუჯერებელი კრეატინინი (' + v + ') — გადაამოწმეთ მნიშვნელობა და ერთეული!' };
             if (!u && v > 15 && v < 35) return { level: 'crit', msg: 'აირჩიეთ ერთეული (მკმოლ/ლ თუ მგ/დლ)!' };
             if ((u === 'umol' && v < 15) || (u === 'mgdl' && v > 35)) {
                 return { level: 'crit', msg: 'კრეატინინის მნიშვნელობა და არჩეული ერთეული არ ემთხვევა!' };
@@ -254,6 +268,7 @@
     });
     document.querySelectorAll('input[name="glucose"], input[name="dos_glucose"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
+            if (v < 0.5 || v > 1000) return { level: 'crit', msg: 'დაუჯერებელი გლუკოზა (' + v + ') — გადაამოწმეთ!' };
             var mmol = v > 35 ? Math.round((v / 18.0) * 100) / 100 : v;
             if (mmol >= 14.0 || mmol < 3.9) return { level: 'crit', msg: 'კრიტიკული გლიკემია (' + mmol + ' მმოლ/ლ)!' };
             if (mmol >= 7.0) return { level: 'warn', msg: 'მომატებული გლუკოზა (ჩაირთვება HbA1c)' };
@@ -262,6 +277,7 @@
     });
     document.querySelectorAll('input[name="fibrinogen"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
+            if (v < 0.2 || v > 1500) return { level: 'crit', msg: 'დაუჯერებელი ფიბრინოგენი (' + v + ') — გადაამოწმეთ!' };
             var gl = v > 15 ? Math.round((v / 100.0) * 100) / 100 : v;
             if (gl < 1.5) return { level: 'crit', msg: 'მძიმე ჰიპოფიბრინოგენემია (' + gl + ' გ/ლ < 1.5)!' };
             if (gl < 1.8) return { level: 'warn', msg: 'დაბალი ფიბრინოგენი (' + gl + ' გ/ლ < 1.8)' };
@@ -270,20 +286,47 @@
     });
     document.querySelectorAll('input[name="ldl"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
+            if (v <= 0 || v > 600) return { level: 'crit', msg: 'დაუჯერებელი LDL (' + v + ') — გადაამოწმეთ!' };
             var mmol = v > 20 ? Math.round((v / 38.67) * 100) / 100 : v;
             if (mmol >= 1.4) return { level: 'warn', msg: 'LDL ' + mmol + ' მმოლ/ლ (სამიზნე <1.4 მმოლ/ლ — ESVS)' };
             return null;
         });
     });
-    document.querySelectorAll('input[name="bp_sys"], input[name="dos_bp_sys"]').forEach(function (el) {
+    var BP_DIA_FOR_SYS = { bp_sys: 'bp_dia', bp_sys_l: 'bp_dia_l', dos_bp_sys: 'dos_bp_dia' };
+    var BP_SYS_FOR_DIA = { bp_dia: 'bp_sys', bp_dia_l: 'bp_sys_l', dos_bp_dia: 'dos_bp_sys' };
+    document.querySelectorAll('input[name="bp_sys"], input[name="bp_sys_l"], input[name="dos_bp_sys"]').forEach(function (el) {
+        var diaName = BP_DIA_FOR_SYS[el.name];
+        var diaEl = el.closest('form') && diaName ? el.closest('form').querySelector('input[name="' + diaName + '"]') : null;
         attachLiveGuard(el, function (v) {
+            if (v < 30 || v > 320) return { level: 'crit', msg: 'დაუჯერებელი სისტოლური წნევა (' + v + ' mmHg)!' };
+            if (diaEl) {
+                var dv = parseStrictNum(diaEl.value);
+                if (!isNaN(dv) && v <= dv) return { level: 'crit', msg: 'სისტოლური (' + v + ') უნდა იყოს დიასტოლურზე (' + dv + ') მეტი!' };
+            }
             if (v >= 180 || v < 90) return { level: 'crit', msg: v >= 180 ? 'კრიტიკული ჰიპერტენზია (≥180 mmHg)!' : 'ჰიპოტენზია (<90 mmHg)!' };
             if (v >= 160) return { level: 'warn', msg: 'მომატებული წნევა (≥160 mmHg)' };
             return null;
         });
+        if (diaEl) diaEl.addEventListener('input', function () { el.dispatchEvent(new Event('change')); });
+    });
+    document.querySelectorAll('input[name="bp_dia"], input[name="bp_dia_l"], input[name="dos_bp_dia"]').forEach(function (el) {
+        var sysName = BP_SYS_FOR_DIA[el.name];
+        var sysEl = el.closest('form') && sysName ? el.closest('form').querySelector('input[name="' + sysName + '"]') : null;
+        attachLiveGuard(el, function (v) {
+            if (v < 20 || v > 220) return { level: 'crit', msg: 'დაუჯერებელი დიასტოლური წნევა (' + v + ' mmHg)!' };
+            if (sysEl) {
+                var sv = parseStrictNum(sysEl.value);
+                if (!isNaN(sv) && sv <= v) return { level: 'crit', msg: 'დიასტოლური (' + v + ') არ შეიძლება აღემატებოდეს სისტოლურს (' + sv + ')!' };
+            }
+            if (v >= 110) return { level: 'crit', msg: 'კრიტიკული დიასტოლური წნევა (≥110 mmHg)!' };
+            if (v >= 100) return { level: 'warn', msg: 'მომატებული დიასტოლური წნევა (≥100 mmHg)' };
+            return null;
+        });
+        if (sysEl) sysEl.addEventListener('input', function () { el.dispatchEvent(new Event('change')); });
     });
     document.querySelectorAll('input[name="abi_r"], input[name="abi_l"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
+            if (v < 0 || v > 3.0) return { level: 'crit', msg: 'დაუჯერებელი ABI (' + v + ') — გადაამოწმეთ!' };
             if (v > 1.40) return { level: 'warn', msg: 'არაკომპრესირებადი (>1.40 — შეიტანეთ Toe Pressure / TBI)' };
             if (v < 0.40) return { level: 'crit', msg: 'კრიტიკული იშემია (ABI < 0.40)!' };
             if (v < 0.80) return { level: 'warn', msg: 'დაქვეითებული ABI (< 0.80)' };

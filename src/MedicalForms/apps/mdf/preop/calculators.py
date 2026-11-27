@@ -471,6 +471,11 @@ def calc_auto_asa(patient, q, s, egfr=None, bmi=None, today=None):
         sat_cr = _sat_scr_mgdl(_s_raw(s, 'creat'), s.get('creat_unit') or '')
         if sat_cr is not None and sat_cr >= 20.0:
             egfr_v = 2
+        elif sat_cr is not None and sat_cr >= 2.0:
+            age_raw = _num(patient.age)
+            age_fb = _sat_age(age_raw) if (age_raw is not None and age_raw >= 12) else 80
+            sex_fb = patient.sex if patient.sex in ('M', 'F') else 'F'
+            egfr_v = _egfr_from_scr(sat_cr, age_fb, sex_fb)
     bmi_v, pw = _sat_bmi_from(bmi, s), _resolve_pathway(patient)
     cad_chips = set(_str_list(q.get('cad_chips')))
     allergy_chips, _, _ = _effective_allergy_state(q)
@@ -714,7 +719,8 @@ def calc_ariscat_pulm(patient, q, s, hb_gl=None):
     pathway = _resolve_pathway(patient)
     inf_chips = set(_str_list(q.get('inf_chips')))
     spo2 = _sat_num(_s_raw(s, 'spo2'), 30, 100)
-    eff_hb = _sat_hb_gl(hb_gl) if hb_gl is not None else _sat_hb_gl(_s_raw(s, 'hb'))
+    v_hb = _num(hb_gl) if hb_gl is not None else None
+    eff_hb = (0.5 if v_hb <= 0 else min(v_hb, 260.0)) if v_hb is not None else (None if hb_gl is not None else _sat_hb_gl(_s_raw(s, 'hb')))
     open_aortic = (
         (pathway == PreopPatient.Pathway.AAA_INFRA and patient.op_subtype != 'evar')
         or pathway == PreopPatient.Pathway.ABF

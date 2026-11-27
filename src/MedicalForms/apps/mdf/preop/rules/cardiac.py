@@ -105,7 +105,8 @@ def _eval_cardiac_biomarkers_and_audit(ctx):
 
 def _eval_stage1_completeness(ctx):
     patient, pathway, q, s, q_filled = ctx.patient, ctx.pathway, ctx.q, ctx.s, ctx.q_filled
-    auto_asa = calc_auto_asa(patient, q, s, egfr=ctx.egfr, bmi=ctx.bmi_sat, today=ctx.today)
+    egfr_c = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'egfr_sat', ctx.egfr)
+    auto_asa = calc_auto_asa(patient, q, s, egfr=egfr_c, bmi=ctx.bmi_sat, today=ctx.today)
     valid_asa = ('auto', *rule_value('SCORE_ASA_PHYSICAL_STATUS')['classes'])
     asa_raw = s.get('asa_class') if s.get('asa_class') in valid_asa else 'auto'
     asa_roman = auto_asa if asa_raw == 'auto' else asa_raw

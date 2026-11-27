@@ -5,10 +5,11 @@ from .constants import (
     _FREETEXT_ALLERGY_STEMS,
     _FREETEXT_HIGH_RISK_MED_RULES,
     _HIT_WORD_RE,
+    _IODINE_WORD_RE,
 )
 from .utils import _str_list
 
-_RIVA_STEM = r'(?:ქსარელტ\w*|xarelto|რივაროქსაბ\w*|rivaroxab\w*)'
+_RIVA_STEM = r'(?:ქსარელტ\w*|კსარელტ\w*|xarelto|რივაროქსაბ\w*|rivaroxab\w*)'
 _RIVA_STEM_RE = re.compile(_RIVA_STEM)
 _RIVA_LOW_RE = re.compile(
     rf'(?:{_RIVA_STEM}[^\d,;:\n]{{0,12}}(?<![\d.,])2[.,]5(?![\d.,])'
@@ -16,6 +17,7 @@ _RIVA_LOW_RE = re.compile(
 )
 _RIVA_THER_DOSE_RE = re.compile(r'(?<![\d.,])(?:10|15|20)(?![\d.,])')
 _RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;,\n/+]|\s+(?:და|ან|and|or)\s+')
+_NEG_CLAUSE_SPLIT_RE = re.compile(r'[;,\n!]+|\.(?!\d)|\s+(?:მაგრამ|ხოლო|თუმცა|but)\s+')
 _RIVA_ESCALATION_STEMS = (
     'დაუნიშნ', 'შეცვ', 'გაიზარდ', 'გადაიყვან', 'დოზ', 'შემდეგ', 'ახლა', 'ხოლო',
     'მაგრამ', 'კარდიოლოგ', 'ექიმ', 'საღამო', 'დილ', 'დღეში', 'ადრე', 'ნაცვლ',
@@ -27,13 +29,54 @@ _RIVA_NON_DRUG_WORDS = frozenset({
 })
 _ASPIRIN_FT_STEMS = (
     'ასპირინ', 'ასპიკარდ', 'კარდიომაგნ', 'კარდიო მაგნ', 'თრომბო-ას', 'თრომბოას', 'თრომბო ას',
+    'დუოპლავინ', 'კოპლავიქს',
     'aspirin', 'aspicard', 'cardioaspir', 'cardiomagn', 'trombo-ass', 'trombo ass', 'thrombo ass',
+    'duoplavin', 'coplavix',
 )
 _ASA_WORD_RE = re.compile(r'(?<![a-zა-ჰ])asa(?![a-zა-ჰ])')
 _OTHER_XA_DOAC_STEMS = (
-    'ელიქვის', 'eliquis', 'აპიქსაბ', 'apixab', 'ედიქსან', 'ედოქსაბ', 'edoxab', 'ლიქსიან', 'lixiana',
+    'ელიქვის', 'ელიკვის', 'eliquis', 'აპიქსაბ', 'apixab', 'ედიქსან', 'ედოქსაბ', 'edoxab',
+    'ლიქსიან', 'lixiana', 'სავაის', 'savaysa',
 )
-_ALLERGY_NEGATION_WORDS = frozenset({'არა', 'უარყოფს', 'არაქვს', 'no', 'none', 'nil', 'nkda', 'nka'})
+_ALLERGY_NEGATION_WORDS = frozenset({
+    'არა', 'უარყოფს', 'არაქვს', 'არმაქვს', 'ალერგიაარაქვს', 'ალერგიაარმაქვს',
+    'no', 'none', 'nil', 'nkda', 'nka', 'noallergy', 'noallergies',
+})
+_NEGATION_PHRASE_RE = re.compile(
+    r'(?:არ\s+(?:აქვს|მაქვს|სვამს|იღებს|ვიღებ|ღებულობს|აღნიშნავს|ჰქონია)'
+    r'|უარყოფს|მოხსნილია|შეწყვეტილია|გამორიცხულია'
+    r'|(?<![a-z])(?:no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|without)\b)',
+    re.IGNORECASE,
+)
+_FT_STATIN_STEMS = (
+    'ატორვასტატინ', 'როზუვასტატინ', 'სიმვასტატინ', 'პრავასტატინ', 'პიტავასტატინ', 'ფლუვასტატინ',
+    'კრესტორ', 'ლიპიტორ', 'ტულიპ', 'როქსერ', 'მერტენილ', 'ატორის', 'ზოკორ',
+    'atorvastatin', 'rosuvastatin', 'simvastatin', 'pravastatin', 'crestor', 'lipitor', 'roswera', 'atoris',
+)
+_FT_ACEI_ARB_STEMS = (
+    'რამიპრილ', 'ენალაპრილ', 'პერინდოპრილ', 'ლიზინოპრილ', 'კაპტოპრილ', 'ფოზინოპრილ',
+    'ლოზარტან', 'ვალსარტან', 'კანდესარტან', 'ტელმისარტან', 'ირბესარტან', 'ოლმესარტან',
+    'პრესტარიუმ', 'ტრიტაცე', 'კოზაარ', 'დიოვან', 'მიკარდის', 'ატაკანდ', 'ენაპ', 'ნოლიპრელ', 'კო-პრენეს', 'პრენეს',
+    'ramipril', 'enalapril', 'perindopril', 'lisinopril', 'captopril',
+    'losartan', 'valsartan', 'candesartan', 'telmisartan', 'irbesartan', 'olmesartan',
+    'prestarium', 'tritace', 'cozaar', 'diovan', 'micardis', 'atacand', 'noliprel',
+)
+
+
+def _positive_clauses_text(text):
+    """Strip explicitly negated clauses ('არ აქვს', 'არ სვამს', 'no ...', 'stopped ...') before stem matching."""
+    if not isinstance(text, str) or not text.strip():
+        return ''
+    pos = []
+    for cl in _NEG_CLAUSE_SPLIT_RE.split(text.lower()):
+        cl_s = cl.strip()
+        if not cl_s:
+            continue
+        compact = re.sub(r'[\s.,;:!?()\[\]"\'—–-]+', '', cl_s)
+        if not compact or compact in _ALLERGY_NEGATION_WORDS or _NEGATION_PHRASE_RE.search(cl_s):
+            continue
+        pos.append(cl_s)
+    return ', '.join(pos)
 
 
 def _riva_has_therapeutic_dose(low):
@@ -59,29 +102,32 @@ def _riva_has_therapeutic_dose(low):
 
 
 def _detect_freetext_allergies(text):
-    """Detect structured allergy classes from free-text `q.allergy_text` (Georgian & Latin stems)."""
-    if not isinstance(text, str) or not text.strip():
+    """Detect structured allergy classes from free-text `q.allergy_text` (Georgian & Latin stems, negation-aware)."""
+    low = _positive_clauses_text(text)
+    if not low:
         return set()
-    low = text.lower()
     matched = set()
     for key, stems in _FREETEXT_ALLERGY_STEMS:
         if any(st in low for st in stems):
             matched.add(key)
+    if _IODINE_WORD_RE.search(low):
+        matched.add('iodine')
     if _HIT_WORD_RE.search(low):
         matched.add('hit_heparin')
     return matched
 
 
 def _has_unrecognized_allergy_clause(text):
-    """Return True if any comma/semicolon/conjunction clause in `allergy_text` matches no known allergy stem."""
-    if not isinstance(text, str) or not text.strip():
+    """Return True if any non-negated clause in `allergy_text` matches no known allergy stem."""
+    pos_low = _positive_clauses_text(text)
+    if not pos_low:
         return False
-    for raw_clause in _RIVA_CLAUSE_SPLIT_RE.split(text.lower()):
+    for raw_clause in _RIVA_CLAUSE_SPLIT_RE.split(pos_low):
         cleaned = re.sub(r'[\s.,;:!?()\[\]"\'—–-]+', '', raw_clause)
         if not cleaned or cleaned in _ALLERGY_NEGATION_WORDS:
             continue
         matched = any(any(st in raw_clause for st in stems) for _, stems in _FREETEXT_ALLERGY_STEMS)
-        if not matched and not _HIT_WORD_RE.search(raw_clause):
+        if not matched and not _HIT_WORD_RE.search(raw_clause) and not _IODINE_WORD_RE.search(raw_clause):
             return True
     return False
 
@@ -97,13 +143,14 @@ def _effective_allergy_state(q):
 
 
 def _detect_freetext_high_risk_meds(text, q=None):
-    """Detect high-risk anticoagulants, P2Y12, aspirin, SGLT2i, GLP-1 & insulin in `q.other_meds`."""
-    if not isinstance(text, str) or not text.strip():
+    """Detect high-risk anticoagulants, P2Y12, aspirin, SGLT2i, GLP-1, insulin & pregnancy teratogens in `q.other_meds`."""
+    low = _positive_clauses_text(text)
+    if not low:
         return {
             'matched_keys': set(), 'unstructured_labels': [], 'unstructured_antithrombotic': False,
             'ertugliflozin': False, 'daily_glp1': False, 'has_omeprazole': False, 'has_glp1': False,
+            'has_ft_statin': False, 'has_ft_acei_arb': False,
         }
-    low = text.lower()
     q_d = q if isinstance(q, dict) else {}
     med_chips = set(_str_list(q_d.get('med_chips')))
     eff_alg_chips, _, _ = _effective_allergy_state(q_d)
@@ -150,7 +197,10 @@ def _detect_freetext_high_risk_meds(text, q=None):
         'ერტუგლიფ', 'ertuglif', 'სტეგლატრ', 'steglatro',
         'სეგლურომეტ', 'segluromet', 'სტეგლუჯან', 'steglujan',
     ))
-    is_daily_glp1 = any(st in low for st in ('საქსენდ', 'saxenda', 'ვიქტოზ', 'victoza', 'ლირაგლუტ', 'liraglut', 'რიბელსუს', 'rybelsus'))
+    is_daily_glp1 = any(st in low for st in (
+        'საქსენდ', 'saxenda', 'ვიქტოზ', 'victoza', 'ლირაგლუტ', 'liraglut',
+        'რიბელსუს', 'rybelsus', 'ბიეტა', 'byetta', 'ექსენატიდ', 'exenatid', 'ლიქსისენატიდ', 'lixisenatid',
+    ))
     return {
         'matched_keys': matched_keys,
         'unstructured_labels': unstructured_labels,
@@ -159,4 +209,6 @@ def _detect_freetext_high_risk_meds(text, q=None):
         'daily_glp1': is_daily_glp1,
         'has_omeprazole': 'omeprazole' in matched_keys,
         'has_glp1': 'glp1' in matched_keys,
+        'has_ft_statin': any(st in low for st in _FT_STATIN_STEMS),
+        'has_ft_acei_arb': any(st in low for st in _FT_ACEI_ARB_STEMS),
     }

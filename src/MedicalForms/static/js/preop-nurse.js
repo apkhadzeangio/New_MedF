@@ -6,11 +6,13 @@
         return inp ? inp.value : '';
     }
 
+    var STRICT_NUM_RE = /^[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)$/;
     function parseNum(raw) {
         if (raw === null || raw === undefined) return NaN;
-        var s = String(raw).trim().replace(/,/g, '.');
-        if (!s) return NaN;
-        return Number(s);
+        var s = String(raw).trim();
+        if (!s || !STRICT_NUM_RE.test(s)) return NaN;
+        var n = Number(s.replace(/,/g, '.'));
+        return isFinite(n) ? n : NaN;
     }
 
     // 1. Mobile registration: hide side for AAA/ABF, lock bilateral ('B') for CEA
@@ -42,23 +44,53 @@
     function runVitalsGuards() {
         if (!vitalsForm || !liveGuard) return;
         var msgs = [];
-        var sbp = parseNum((document.getElementById('nw-bp-sys') || {}).value);
-        var dbp = parseNum((document.getElementById('nw-bp-dia') || {}).value);
-        var wt = parseNum((document.getElementById('nw-wt') || {}).value);
-        var creat = parseNum((document.getElementById('nw-creat') || {}).value);
+        var rawSbp = ((document.getElementById('nw-bp-sys') || {}).value || '').trim();
+        var rawDbp = ((document.getElementById('nw-bp-dia') || {}).value || '').trim();
+        var rawWt = ((document.getElementById('nw-wt') || {}).value || '').trim();
+        var rawCreat = ((document.getElementById('nw-creat') || {}).value || '').trim();
+        var rawHb = ((document.getElementById('nw-hb') || {}).value || '').trim();
+        var sbp = parseNum(rawSbp);
+        var dbp = parseNum(rawDbp);
+        var wt = parseNum(rawWt);
+        var creat = parseNum(rawCreat);
         var cunit = (document.getElementById('nw-creat-unit') || {}).value || '';
-        var hb = parseNum((document.getElementById('nw-hb') || {}).value);
+        var hb = parseNum(rawHb);
 
+        if ((rawSbp && isNaN(sbp)) || (rawDbp && isNaN(dbp))) {
+            msgs.push('შეამოწმეთ წნევა: შეიყვანეთ მხოლოდ რიცხვები!');
+        }
+        if (!isNaN(sbp) && (sbp < 30 || sbp > 320)) {
+            msgs.push('შეამოწმეთ ზედა წნევა (' + sbp + '): დაუჯერებელი მნიშვნელობა (30–320 mmHg)!');
+        } else if (!isNaN(sbp) && sbp >= 180) {
+            msgs.push('კრიტიკულად მაღალი ზედა წნევა (' + sbp + ' ≥ 180 mmHg) — აცნობეთ ექიმს!');
+        } else if (!isNaN(sbp) && sbp < 90) {
+            msgs.push('დაბალი ზედა წნევა (' + sbp + ' < 90 mmHg) — აცნობეთ ექიმს!');
+        }
+        if (!isNaN(dbp) && (dbp < 20 || dbp > 220)) {
+            msgs.push('შეამოწმეთ ქვედა წნევა (' + dbp + '): დაუჯერებელი მნიშვნელობა (20–220 mmHg)!');
+        } else if (!isNaN(dbp) && dbp >= 110) {
+            msgs.push('კრიტიკულად მაღალი ქვედა წნევა (' + dbp + ' ≥ 110 mmHg) — აცნობეთ ექიმს!');
+        }
         if (!isNaN(sbp) && !isNaN(dbp) && sbp <= dbp) {
             msgs.push('შეამოწმეთ წნევა: ზედა წნევა (' + sbp + ') უნდა იყოს ქვედაზე (' + dbp + ') მეტი!');
+        } else if (!isNaN(sbp) && !isNaN(dbp) && (sbp - dbp) < 20) {
+            msgs.push('ვიწრო პულსური წნევა (' + sbp + '/' + dbp + ' mmHg) — გადაამოწმეთ გაზომვა და აცნობეთ ექიმს!');
         }
-        if (!isNaN(wt) && (wt < 25 || wt > 260)) {
+        if (rawWt && isNaN(wt)) {
+            msgs.push('შეამოწმეთ წონა: შეიყვანეთ მხოლოდ რიცხვი კილოგრამებში.');
+        } else if (!isNaN(wt) && (wt < 25 || wt > 260)) {
             msgs.push('შეამოწმეთ წონა (' + wt + '): შეიყვანეთ კილოგრამებში (25–260 კგ).');
         }
-        if (!isNaN(creat) && ((!cunit && creat > 15 && creat < 35) || (cunit === 'umol' && creat < 15) || (cunit === 'mgdl' && creat > 35))) {
+        if (rawCreat && isNaN(creat)) {
+            msgs.push('შეამოწმეთ კრეატინინი: შეიყვანეთ მხოლოდ რიცხვი!');
+        } else if (!isNaN(creat) && (creat < 0.1 || creat > 3000)) {
+            msgs.push('დაუჯერებელი კრეატინინი (' + creat + ') — გადაამოწმეთ მნიშვნელობა და ერთეული!');
+        } else if (!isNaN(creat) && ((!cunit && creat > 15 && creat < 35) || (cunit === 'umol' && creat < 15) || (cunit === 'mgdl' && creat > 35))) {
             msgs.push('კრეატინინი (' + creat + ') და არჩეული ერთეული არ ემთხვევა — აირჩიეთ სწორი ერთეული (µmol/L ან mg/dL).');
         }
-        if (!isNaN(hb) && (hb < 3.5 || (hb > 22 && hb < 40) || hb > 260)) {
+        if (rawHb && isNaN(hb)) {
+            msgs.push('შეამოწმეთ ჰემოგლობინი: შეიყვანეთ მხოლოდ რიცხვი!');
+        } else if (!isNaN(hb) && (hb < 3.5 || (hb > 22 && hb < 40) || hb > 260)) {
             msgs.push('შეამოწმეთ ჰემოგლობინი (' + hb + ') — მიუთითეთ გ/ლ (40–260) ან გ/დლ (3,5–22,0).');
         }
 

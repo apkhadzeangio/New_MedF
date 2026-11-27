@@ -172,9 +172,16 @@ def _eval_pregnancy_unknowns(ctx, add):
     from ..constants import STATUS_ALERT
     from ..utils import _alerts_signature, is_pregnancy_eligible
     patient, q, s = ctx.patient, ctx.q, ctx.s
-    if not is_pregnancy_eligible(patient):
-        return
     preg_claimed = bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
+    if not is_pregnancy_eligible(patient):
+        if preg_claimed:
+            add(
+                'contradictory_pregnancy_sex_age', 'q', 'pregnant_possible',
+                'ორსულობა მონიშნულია არათავსებად სქესზე/ასაკზე',
+                'კითხვარში მონიშნულია ორსულობა, მაგრამ პაციენტის სქესი ან ასაკი (12–55 წ.) არ შეესაბამება — გადაამოწმეთ და შეასწორეთ GO დაშვებამდე.',
+                blocking=True,
+            )
+        return
     if preg_claimed and bool(s.get('dos_bhcg_negative')):
         ctx.red_flags.append(
             'ორსულობაზე წინააღმდეგობა: კითხვარში მონიშნულია ორსულობა, ხოლო DoS ჩეკლისტში — უარყოფითი β-hCG! გადაამოწმეთ სტატუსი.'

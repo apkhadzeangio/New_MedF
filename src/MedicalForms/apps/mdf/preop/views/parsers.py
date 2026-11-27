@@ -192,7 +192,7 @@ def med_hold_agreement_block_reason(ev, s):
         return 'წამლების გრაფიკი შეიცავს უკუნაჩვენებ ან დაუზუსტებელ პრეპარატს — ჯერ შეათანხმეთ ექიმთან!'
     if ev.get('has_elapsed_hold_window'):
         return 'წამლის შეჩერების ფანჯარა უკვე ამოწურულია — შეათანხმეთ ქირურგთან ოპერაციის გადადება ან ტაქტიკა!'
-    if any(r.get('hold_or_skip') for r in (ev.get('med_schedule') or ())) and not _date(s.get('planned_surgery_date')):
+    if any(r.get('hold_or_skip') and not r.get('reconcile_only') for r in (ev.get('med_schedule') or ())) and not _date(s.get('planned_surgery_date')):
         return 'შესაჩერებელი წამლებისთვის ჯერ მიუთითეთ დაგეგმილი ოპერაციის თარიღი!'
     return ''
 
@@ -219,8 +219,12 @@ def _parse_s1_flags_and_selects(post, patient, s):
         if partial:
             if bf in post:
                 s[bf] = post.get(bf) in ('1', 'on', 'true')
-        elif bf in post or bf in ('irregular_hr', 'aptt_prolonged', 'viral_positive', 'carotid_symp', 'echo_valve_issue'):
+        elif bf in post or bf in ('irregular_hr', 'aptt_prolonged', 'viral_positive'):
             s[bf] = post.get(bf) in ('1', 'on', 'true')
+        elif bf == 'echo_valve_issue' and patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
+            s[bf] = False
+        elif bf == 'carotid_symp' and patient.pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS):
+            s[bf] = False
         elif bf == 'cta_disc' and patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA):
             s[bf] = False
         elif bf == 'aaa_renal_vein_anom' and patient.pathway == PreopPatient.Pathway.AAA_INFRA:

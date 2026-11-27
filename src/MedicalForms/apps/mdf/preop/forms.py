@@ -100,6 +100,8 @@ def _apply_q_booleans_and_chips(post_data, q, patient=None):
     for f in _NURSE_Q_BOOL_FIELDS:
         if f == 'allergy_iodine' and is_ven and 'allergy_iodine_presented' not in post_data and 'allergy_iodine' not in post_data:
             continue
+        if f == 'active_infection' and is_ven and 'active_infection_presented' not in post_data and 'active_infection' not in post_data:
+            continue
         if not is_ven and f in _VENOUS_ONLY_Q_BOOLS and f not in post_data:
             continue
         q[f] = post_data.get(f) in ('1', 'on', 'true')
@@ -111,6 +113,8 @@ def _apply_q_booleans_and_chips(post_data, q, patient=None):
 
     if hasattr(post_data, 'getlist'):
         for chip_field in _NURSE_Q_CHIP_FIELDS:
+            if chip_field == 'inf_chips' and is_ven and 'active_infection_presented' not in post_data and 'inf_chips' not in post_data:
+                continue
             if not is_ven and chip_field in _VENOUS_ONLY_Q_CHIPS and chip_field not in post_data:
                 continue
             valid_keys = CHIP_LABELS[chip_field]
@@ -228,10 +232,15 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
     _parse_inv_field(post_data, q, 'abf_claud_m', lambda r: _int(r, lo=0, hi=5000), inv, keep_valid=False)
     if 'side' in post_data and post_data.get('side') in ('', 'R', 'L', 'B'):
         new_side = post_data.get('side')
-        if new_side != patient.side:
-            s['dos_site_marked'] = False
-            patient.anamnesis = ''
-        patient.side = new_side
+        is_cea_pw = (
+            patient.pathway == PreopPatient.Pathway.CEA
+            or (isinstance(patient.op_subtype, str) and patient.op_subtype.startswith('cea_'))
+        )
+        if not (is_cea_pw and new_side == 'B'):
+            if new_side != patient.side:
+                s['dos_site_marked'] = False
+                patient.anamnesis = ''
+            patient.side = new_side
 
     for tf, lim in _NURSE_Q_TEXT_LIMITS:
         if tf in post_data:

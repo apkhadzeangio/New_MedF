@@ -190,11 +190,14 @@ def is_symp_cea_patient(patient, q=None, today=None, s=None, require_filled=True
 
 
 def has_prior_stroke_or_tia(patient, q=None, s=None):
-    """Return True for any lifelong prior stroke/TIA history (including CEA >180d, event chips, or brain imaging)."""
+    """Return True for any lifelong prior stroke/TIA history (including CEA >180d, event chips, Stage-1 carotid_symp, or brain imaging)."""
     q_d = q if isinstance(q, dict) else (patient.questionnaire if (patient and isinstance(patient.questionnaire, dict)) else {})
     s_d = s if isinstance(s, dict) else (patient.studies if (patient and isinstance(patient.studies, dict)) else {})
     raw_ev_d = q_d.get('cea_days_since_event')
     has_ev_days = raw_ev_d is not None and str(raw_ev_d).strip() != ''
+    raw_ev_dt = q_d.get('cea_event_date')
+    has_ev_date = raw_ev_dt is not None and str(raw_ev_dt).strip() != ''
+    pw = _resolve_pathway(patient) if patient is not None else None
     return bool(
         q_d.get('neuro')
         or q_d.get('cea_symp_event')
@@ -202,9 +205,10 @@ def has_prior_stroke_or_tia(patient, q=None, s=None):
         or q_d.get('cea_disabling_stroke')
         or q_d.get('cea_thrombolysis')
         or bool(_str_list(q_d.get('cea_event_chips')))
-        or bool((q_d.get('cea_event_date') or '').strip())
+        or has_ev_date
         or has_ev_days
         or (patient is not None and patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP)
+        or (pw != PreopPatient.Pathway.VENOUS and bool(s_d.get('carotid_symp')))
         or s_d.get('brain_imaging') == 'large_or_hemorrhage'
     )
 
@@ -221,7 +225,10 @@ def target_prep_days(patient, today=None):
         is_symp = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=False)
         return cfg['cea_symp'] if is_symp else cfg['elective_art']
     has_ali_q = (q.get('abf_duration') == '< 2 კვირა')
-    has_clti_q = q_filled and (bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer')) or bool(_str_list(q.get('ulcer_chips'))))
+    has_clti_q = q_filled and (
+        bool(q.get('abf_rest_pain')) or bool(q.get('abf_ulcer'))
+        or bool(_str_list(q.get('ulcer_chips'))) or bool(q.get('abf_wet_infection'))
+    )
     if pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and has_ali_q:
         return cfg['cea_symp']
     if pw == PreopPatient.Pathway.ABF:

@@ -3,9 +3,39 @@ from ...models import PreopPatient
 from ..registry import rule_value
 
 
+def _eval_pad_hemo_discordance(ctx, hemo_cfg):
+    """Warn when same-limb PAD hemodynamics contradict (e.g., severe ABI <0.40 with normal TP/TBI, or critical TP vs normal TBI)."""
+    for side_lbl, abi_v, tp_v, tbi_v in (
+        ('R', ctx.abi_r, ctx.tp_r, ctx.tbi_r),
+        ('L', ctx.abi_l, ctx.tp_l, ctx.tbi_l),
+    ):
+        low_abi_norm_toe = (
+            abi_v is not None and abi_v < hemo_cfg['abi_severe']
+            and (
+                (tp_v is not None and tp_v >= hemo_cfg['normal_tp'] and (tbi_v is None or tbi_v >= hemo_cfg['normal_tbi']))
+                or (tbi_v is not None and tbi_v >= hemo_cfg['normal_tbi'] and (tp_v is None or tp_v >= hemo_cfg['normal_tp']))
+            )
+        )
+        tp_tbi_conflict = (
+            tp_v is not None and tbi_v is not None
+            and (
+                (tp_v < hemo_cfg['tp_severe'] and tbi_v >= hemo_cfg['normal_tbi'])
+                or (tbi_v < hemo_cfg['tbi_severe'] and tp_v >= hemo_cfg['normal_tp'])
+            )
+        )
+        if low_abi_norm_toe or tp_tbi_conflict:
+            ctx.amber_flags.append(
+                f'ჰემოდინამიკური მაჩვენებლების შეუსაბამობა ({side_lbl} კიდური: '
+                f'ABI {abi_v if abi_v is not None else "—"} / TP {tp_v if tp_v is not None else "—"} mmHg / '
+                f'TBI {tbi_v if tbi_v is not None else "—"}) — გადაამოწმეთ გაზომვის არტეფაქტი ან კალციფიკაცია!'
+            )
+
+
 def _eval_abf_clinical(ctx, is_clti):
     patient, q, q_filled = ctx.patient, ctx.q, ctx.q_filled
-    if patient.op_subtype == PreopPatient.OpSubtype.ABF_CLAUD and q_filled and (q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips')):
+    if patient.op_subtype == PreopPatient.OpSubtype.ABF_CLAUD and q_filled and (
+        q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips') or q.get('abf_wet_infection')
+    ):
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
         )
@@ -83,6 +113,7 @@ def eval_abf(ctx):
     if s.get('abf_renal_stenosis'):
         ctx.amber_flags.append('თანმხლები თირკმლის არტერიის სტენოზი (≥60%) CTA-ზე — განიხილეთ თანმხლები რენალური ჩარევა / ნეფროპროტექცია.')
 
+    _eval_pad_hemo_discordance(ctx, hemo_cfg)
     if ctx.min_comp_abi is not None:
         ctx.key_badge = f'ABI {ctx.min_comp_abi}'
         ctx.key_badge_urgent = bool(is_clti or ctx.min_comp_abi < hemo_cfg['abi_severe'])
@@ -210,9 +241,12 @@ def _eval_pad_bypass_side_and_hemo(ctx, is_clti, hemo_cfg, abi_norm_lo, abi_norm
                 + (f', ხოლო კონტრალატერალურზე ABI {ctx.contra_abi}!' if ctx.contra_abi is not None and ctx.contra_abi < hemo_cfg['wrong_side_contra_abi'] else ' კოჭლობის ფონზე')
                 + ' — გადაამოწმეთ არჩეული მხარე (R/L) ან დატვირთვის შემდგომი პერფუზია ქირურგთან!'
             )
+    _eval_pad_hemo_discordance(ctx, hemo_cfg)
     if ctx.min_comp_abi is not None and ctx.min_comp_abi < hemo_cfg['abi_severe'] and not is_clti:
         ctx.amber_flags.append(f'კრიტიკულად დაბალი გოჯ-მხრის ინდექსი (ABI {ctx.min_comp_abi} < 0.40) — შეესაბამება მძიმე იშემიას.')
-    if patient.op_subtype == PreopPatient.OpSubtype.BYPASS_CLAUD and q_filled and (q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips')):
+    if patient.op_subtype == PreopPatient.OpSubtype.BYPASS_CLAUD and q_filled and (
+        q.get('abf_rest_pain') or q.get('abf_ulcer') or q.get('ulcer_chips') or q.get('abf_wet_infection')
+    ):
         ctx.amber_flags.append(
             'კითხვარით დაფიქსირდა მოსვენებითი ტკივილი ან წყლული (CLTI) — სასურველია ქვეტიპის გადართვა კრიტიკულ იშემიაზე (7-დღიანი რეჟიმი).'
         )

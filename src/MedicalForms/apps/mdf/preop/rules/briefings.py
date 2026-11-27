@@ -189,7 +189,7 @@ def _eval_missing_s2_and_clearance_seal(ctx):
 
     is_self_filled = is_self_filled_q(q)
     ctx.is_self_filled = is_self_filled
-    ctx.self_fill_highlights = build_self_fill_highlights(q) if is_self_filled else []
+    ctx.self_fill_highlights = build_self_fill_highlights(q, patient=patient) if is_self_filled else []
     side_s = patient.side if isinstance(patient.side, str) else ''
     ctx.side_badge = {
         'R': 'მარჯვენა (R)', 'L': 'მარცხენა (L)', 'B': 'ორმხრივი (B)',
@@ -215,6 +215,11 @@ def _eval_missing_s2_and_clearance_seal(ctx):
         ctx.clearance_seal = {
             'code': 'pending', 'badge': 'შეფასება არასრულია — კრიტიკული მონაცემი დაუზუსტებელია!',
             'detail': 'აკლია კლინიკურად გადამწყვეტი მონაცემი (მაგ. CrCl ანტიკოაგულანტზე, ანალიზების თარიღი ან დაუზუსტებელი ალერგია) — შევსებამდე GO ბეჭედი არ გაიცემა.',
+        }
+    elif getattr(ctx, 'has_bad_med', False) or getattr(ctx, 'has_elapsed_hold_window', False):
+        ctx.clearance_seal = {
+            'code': 'pending', 'badge': 'მედიკამენტი / შეჩერების ვადა შესათანხმებელია!',
+            'detail': 'ფიქსირდება უკუნაჩვენები/დაუზუსტებელი მედიკამენტი ან ამოწურული შეჩერების ფანჯარა — ექიმთან შეთანხმებამდე GO ბეჭედი არ გაიცემა.',
         }
     elif ctx.status == STATUS_READY and ctx.all_tasks_done:
         ctx.clearance_seal = {
@@ -386,6 +391,8 @@ def _build_surgical_brief(ctx):
         elif hit_severe_renal:
             liver_arg = ' (ღვიძლის ≥3x-ზე არგატრობანის დოზა მცირდება 75%-ით!)' if ctx.liver_3x else ''
             heparin_plan = f'HIT ანამნეზში! UFH, LMWH, ფონდაპარინუქსი და DOAC (CrCl/eGFR <30 / დიალიზი) კატეგორიულად აკრძალულია → ინტრაოპ./პოსტოპ. ბივალირუდინი ან არგატრობანი{liver_arg}!'
+        elif getattr(ctx, 'eff_pregnant', False):
+            heparin_plan = 'HIT ანამნეზში + ორსულობა! UFH, LMWH და DOAC აკრძალულია — სავალდებულოა ჰემატოლოგისა და მეან-გინეკოლოგის კონსილიუმი (არაჰეპარინული ალტერნატივა)!'
         elif ctx.liver_3x:
             heparin_plan = 'HIT ანამნეზში + ღვიძლის ≥3x დაზიანება! UFH და LMWH კატეგორიულად აკრძალულია (DOAC და ფონდაპარინუქსი არარეკომენდებულია) → უპირატესია ბივალირუდინი (არგატრობანის დოზა მცირდება 75%-ით!) და პოსტოპ. IPC / IV ბივალირუდინი!'
         else:
@@ -414,6 +421,16 @@ def _build_surgical_brief(ctx):
     elif ctx.eff_allergy_iodine and not ctx.is_venous:
         contrast_plan = 'იოდზე ალერგია — სავალდებულო პრემედიკაცია (სტეროიდი + H1-ბლოკატორი) კონტრასტის გამოყენებისას!'
 
+    default_postop_at = _build_surgical_postop_at(ctx, has_hit, hit_severe_renal)
+    ctx.surgical_brief = {
+        'side_badge': ctx.side_badge, 'anatomy_summary': anat_summary, 'tactical_note': tactical_note,
+        'abx_regimen': abx_regimen, 'heparin_plan': heparin_plan, 'contrast_plan': contrast_plan,
+        'postop_antithrombotic': default_postop_at, 'surveillance_plan': ctx.surveillance_plan,
+    }
+
+
+def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
+    pathway, s = ctx.pathway, ctx.s
     statin_tail = '' if (ctx.liver_3x or getattr(ctx, 'eff_pregnant', False)) else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ — ESVS Class I)'
     if ctx.is_pta:
         pause_oac_win = '~24 სთ-ში'
@@ -428,39 +445,40 @@ def _build_surgical_brief(ctx):
     is_cea_ich_b = (pathway == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
     is_cea_rtpa_b = (pathway == PreopPatient.Pathway.CEA and bool(getattr(ctx, 'active_thrombolysis_window', False)))
     if is_cea_ich_b or (is_cea_rtpa_b and not (s.get('brain_imaging') == 'normal_small' and ctx.days_since_ev is not None and ctx.days_since_ev >= 1)):
-        default_postop_at = 'ტვინის სისხლჩაქცევის / თრომბოლიზისის ფონზე ანტიკოაგულაციისა და ანტიაგრეგანტების აღდგენა დაბლოკილია — სავალდებულოა ნეიროქირურგისა და ნევროლოგის კონსილიუმი!'
-    elif is_cea_rtpa_b:
-        default_postop_at = (
+        return 'ტვინის სისხლჩაქცევის / თრომბოლიზისის ფონზე ანტიკოაგულაციისა და ანტიაგრეგანტების აღდგენა დაბლოკილია — სავალდებულოა ნეიროქირურგისა და ნევროლოგის კონსილიუმი!'
+    if is_cea_rtpa_b:
+        return (
             'თრომბოლიზისი ≤6 დღე + ასპირინზე ალერგია: სისტემური ანტიკოაგულაცია/LMWH/P2Y12 და ასპირინი დაბლოკილია — შეათანხმეთ ინდივიდუალური რეჟიმი ნევროლოგთან!'
             if asa_allergy else
             'თრომბოლიზისი ≤6 დღე: სისტემური ანტიკოაგულაციის/LMWH/DAPT აღდგენა დაბლოკილია — CT-ზე ჰემორაგიის გამორიცხვისას დასაშვებია მხოლოდ ასპირინი 75–100 მგ ნევროლოგთან შეთანხმებით!'
         )
-    elif ctx.is_venous:
-        default_postop_at = ctx.caprini_advice
-    elif ctx.post_antithrombotic_label:
-        default_postop_at = ctx.post_antithrombotic_label + (statin_tail if 'სტატინი' not in ctx.post_antithrombotic_label else '')
-    elif ctx.has_mech_valve:
+    if ctx.is_venous:
+        return ctx.caprini_advice
+    if ctx.post_antithrombotic_label:
+        return ctx.post_antithrombotic_label + (statin_tail if 'სტატინი' not in ctx.post_antithrombotic_label else '')
+    if ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
+        return 'ორსულობა + მექანიკური სარქველი — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (DOAC აკრძალულია; VKA vs LMWH/UFH ტრიმესტრით)!'
+    if ctx.has_mech_valve:
         mv_ap_b = f' + ჩვენებისას {ctx.oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
-        default_postop_at = f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap_b} (DOAC აკრძალულია!){statin_tail}'
-    elif getattr(ctx, 'has_contra_oac', False):
-        default_postop_at = f'უკუნაჩვენები OAC არ განაახლოთ (თირკმლის/ღვიძლის/დუბლირების უკუჩვენება) — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა კარდიოლოგ/ნეფროლოგთან!{statin_tail}'
-    elif ctx.has_full_oac:
-        default_postop_at = f'მუდმივი ანტიკოაგულანტის (OAC) აღდგენა {pause_oac_win} ჰემოსტაზით (PAUSE) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
-    elif ctx.has_active_stent_dapt:
+        return f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap_b} (DOAC აკრძალულია!){statin_tail}'
+    if getattr(ctx, 'has_contra_oac', False):
+        if getattr(ctx, 'eff_pregnant', False):
+            preg_oac_alt = 'არაჰეპარინული სქემა (HIT: LMWH/UFH აკრძალულია!)' if has_hit else 'LMWH/UFH'
+            return f'ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_oac_alt} მეან-გინეკოლოგთან და კარდიოლოგთან!'
+        return f'უკუნაჩვენები OAC არ განაახლოთ (თირკმლის/ღვიძლის/სისხლდენის/დუბლირების უკუჩვენება) — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა კარდიოლოგ/ნეფროლოგთან!{statin_tail}'
+    if ctx.has_full_oac:
+        if ctx.q.get('med_warfarin'):
+            vka_br_note = 'HIT: ჰეპარინი/LMWH აკრძალულია' if has_hit else 'მაღალი თრომბორისკისას ხიდი INR ≥2.0-მდე'
+            return f'ვარფარინის (VKA) აღდგენა 12–24 სთ-ში ჰემოსტაზით ({vka_br_note}) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
+        return f'მუდმივი ანტიკოაგულანტის (DOAC) აღდგენა {pause_oac_win} ჰემოსტაზით (PAUSE) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
+    if ctx.has_active_stent_dapt:
         st_b = f'{stent_p2y} (ასპირინზე ალერგია — კონსილიუმი!)' if asa_allergy else f'ასპირინი 100 მგ + {stent_p2y}'
-        default_postop_at = f'უწყვეტი DAPT: {st_b} (კორონარული სტენტის დაცვა!){statin_tail}'
-    elif asa_allergy:
-        default_postop_at = f'{ctx.alt_p2y12_lbl} უწყვეტად (ასპირინზე/აასს-ზე ალერგია!){statin_tail}'
-    elif 'clopidogrel_intol' in ctx.allergy_chips:
-        default_postop_at = f'ასპირინი 100 მგ უწყვეტად (კლოპიდოგრელის აუტანლობა!){statin_tail}'
-    else:
-        default_postop_at = f'ასპირინი (ან კლოპიდოგრელი) უწყვეტად{statin_tail}'
-
-    ctx.surgical_brief = {
-        'side_badge': ctx.side_badge, 'anatomy_summary': anat_summary, 'tactical_note': tactical_note,
-        'abx_regimen': abx_regimen, 'heparin_plan': heparin_plan, 'contrast_plan': contrast_plan,
-        'postop_antithrombotic': default_postop_at, 'surveillance_plan': ctx.surveillance_plan,
-    }
+        return f'უწყვეტი DAPT: {st_b} (კორონარული სტენტის დაცვა!){statin_tail}'
+    if asa_allergy:
+        return f'{ctx.alt_p2y12_lbl} უწყვეტად (ასპირინზე/აასს-ზე ალერგია!){statin_tail}'
+    if 'clopidogrel_intol' in ctx.allergy_chips:
+        return f'ასპირინი 100 მგ უწყვეტად (კლოპიდოგრელის აუტანლობა!){statin_tail}'
+    return f'ასპირინი (ან კლოპიდოგრელი) უწყვეტად{statin_tail}'
 
 
 def _build_anesthetic_neuraxial_and_bp(ctx):

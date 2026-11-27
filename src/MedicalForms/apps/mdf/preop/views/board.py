@@ -217,6 +217,12 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
         safety_bits.append(c_str)
     if s.get('cell_saver_ready'):
         safety_bits.append('Cell Saver + TXA მზადყოფნა')
+    if ev.get('has_hard_contraindication') or (ev.get('clearance_seal') or {}).get('code') == 'stop':
+        safety_bits.insert(0, 'STOP — დაფიქსირებულია აბსოლუტური უკუჩვენება / ოპერაცია დაბლოკილია!')
+    if ev.get('eff_pregnant'):
+        safety_bits.append('ორსულობა / შესაძლო ორსულობა (მეან-გინეკოლოგის ჩართვა; DOAC/ვარფარინი/სტატინი/ACEi უკუნაჩვენებია!)')
+    if s.get('liver_status') == '3x':
+        safety_bits.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN — სტატინი/DOAC/მეტფორმინი გადასახედია!)')
     if safety_bits:
         status_lines.append('უსაფრთხოება: ' + '; '.join(safety_bits) + '.')
     return clean_text('\n'.join(status_lines), 4000)
@@ -224,6 +230,7 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
 
 _PATHWAY_PRIMARY_PREFIXES = (
     'ანტითრომბოზული სქემა და სტატინი:',
+    'ანტითრომბოზული სქემა:',
     'CEA პოსტოპ. ნევროლოგიური',
     'პოსტოპ. ჰემოდინამიკის',
     'ვენური პოსტოპ. რეჟიმი:',
@@ -244,14 +251,14 @@ _ALL_MANAGED_PREFIXES = (
 
 
 def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
-    ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
-    cap_low_max = rule_value('SCORE_CAPRINI_VTE')['low_max']
     task_candidates = []
-    board_statin_tail = '' if (s.get('liver_status') == '3x' or ev.get('eff_pregnant')) else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ)'
+    statin_contra = (s.get('liver_status') == '3x' or bool(ev.get('eff_pregnant')))
+    board_statin_tail = '' if statin_contra else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ)'
+    pad_task_pfx = 'ანტითრომბოზული სქემა:' if statin_contra else 'ანტითრომბოზული სქემა და სტატინი:'
     if pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
         task_candidates.append((
             _PATHWAY_PRIMARY_PREFIXES,
-            f"ანტითრომბოზული სქემა და სტატინი: {ev['post_antithrombotic_label']}{board_statin_tail} + დისტალური პულსაციის/დოპლერ-მონიტორინგი",
+            f"{pad_task_pfx} {ev['post_antithrombotic_label']}{board_statin_tail} + დისტალური პულსაციის/დოპლერ-მონიტორინგი",
         ))
     elif pathway == PreopPatient.Pathway.CEA:
         task_candidates.append((
@@ -277,6 +284,14 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
             f'ვენური პოსტოპ. რეჟიმი: ადრეული აქტიური სიარული · {comp_txt}',
         ))
 
+    _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board)
+    _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board)
+    return task_candidates
+
+
+def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board):
+    ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    cap_low_max = rule_value('SCORE_CAPRINI_VTE')['low_max']
     cea_bleed_board = (
         pathway == PreopPatient.Pathway.CEA
         and (s.get('brain_imaging') == 'large_or_hemorrhage' or bool(ev.get('active_thrombolysis_window')))
@@ -291,7 +306,9 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
         has_mv = 'mech_valve' in (q.get('cad_chips') or [])
         liver_3x = s.get('liver_status') == '3x'
         sev_renal = bool(q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < ren_red))
-        if has_mv:
+        if ev.get('eff_pregnant'):
+            hit_board_agents = 'ორსულობა + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა ჰემატოლოგისა და მეან-გინეკოლოგის კონსილიუმი (არაჰეპარინული ალტერნატივა)!'
+        elif has_mv:
             hit_board_agents = (
                 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე!) → ვარფარინი (VKA)'
                 if liver_3x else 'ბივალირუდინი / არგატრობანი → ვარფარინი (VKA) — ფონდაპარინუქსი/DOAC არა!'
@@ -308,15 +325,20 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
             _VTE_PREFIXES,
             f'HIT ანამნეზში! არაფრაქციული ჰეპარინი და LMWH აკრძალულია — არაჰეპარინული ანტიკოაგულაცია ({hit_board_agents})',
         ))
-    elif ev.get('has_contra_oac'):
-        task_candidates.append((
-            _VTE_PREFIXES,
-            'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!',
-        ))
+    elif ev.get('has_contra_oac') or (ev.get('eff_pregnant') and ev.get('has_full_oac')):
+        if ev.get('eff_pregnant'):
+            oac_board_msg = 'VTE / ანტიკოაგულაცია: ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ LMWH/UFH მეან-გინეკოლოგთან და კარდიოლოგთან!'
+        else:
+            oac_board_msg = 'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!'
+        task_candidates.append((_VTE_PREFIXES, oac_board_msg))
     elif ev.get('has_full_oac'):
+        if q.get('med_warfarin'):
+            oac_res_board = 'ვარფარინის (VKA) აღდგენა 12–24 სთ-ში ჰემოსტაზით (მაღალი თრომბორისკისას ხიდი INR ≥2.0-მდე) ქირურგთან შეთანხმებით'
+        else:
+            oac_res_board = 'DOAC-ის აღდგენა 48–72 სთ-ში ჰემოსტაზით (PAUSE; PTA: ~24 სთ) ქირურგთან შეთანხმებით'
         task_candidates.append((
             _VTE_PREFIXES,
-            'VTE / ანტიკოაგულაცია: პაციენტი მუდმივ ანტიკოაგულანტზეა (OAC) — სრული ჰემოსტაზის შემდეგ განახლდეს OAC სქემა ქირურგთან შეთანხმებით (ორმაგი ანტიკოაგულაციის გარეშე!)',
+            f'VTE / ანტიკოაგულაცია: პაციენტი მუდმივ ანტიკოაგულანტზეა (OAC) — {oac_res_board} (ორმაგი ანტიკოაგულაციის გარეშე!)',
         ))
     elif ev.get('has_mech_valve'):
         task_candidates.append((
@@ -334,8 +356,6 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
             _VTE_PREFIXES,
             f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): ადრეული მობილიზაცია + {vte_board_drug} ჰემოსტაზის შემდეგ",
         ))
-    _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board)
-    return task_candidates
 
 
 def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board):
@@ -489,10 +509,21 @@ class PreopBoardHandoffView(LoginRequiredMixin, generic.View):
     """1-click POST endpoint transferring a PreopPatient to the Inpatient Board ('პაციენტების დაფა')."""
 
     def post(self, request, pk):
+        from .. import evaluate
+
         patient = get_object_or_404(
             PreopPatient.objects.select_related('surgeon', 'surgeon__profile'),
             pk=pk,
         )
+        ev = evaluate(patient)
+        if (
+            ev['clearance_seal']['code'] == 'stop'
+            or ev.get('has_hard_contraindication')
+            or ev.get('dos_hold_danger')
+            or ev.get('neuraxial_hard_blocked')
+        ):
+            messages.error(request, 'STOP-სიგნალის ან აბსოლუტური უკუჩვენების ფონზე პაციენტის საოპერაციო დაფაზე გადაყვანა დაბლოკილია!')
+            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
         unit = request.POST.get('unit') or ''
         bed = request.POST.get('bed') or ''
         bp, was_created, added_tasks = admit_preop_to_board(patient, request.user, unit=unit, bed=bed)

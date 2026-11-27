@@ -133,7 +133,7 @@ PHARM_VIGNETTES = (
         title_ka='62 წ. მამაკაცი — გლუკოზა „40“ (mg/dL → 2.22 მმოლ/ლ მძიმე ჰიპოგლიკემია)',
         summary_ka='62 წლის მამაკაცი, ლაბორატორიიდან გლუკოზა შეტანილია 40 (mg/dL), EVAR.',
         expected_summary_ka='ტრეკ A3 ერთეულების გარდი 40 mg/dL-ს გარდაქმნის 2.22 მმოლ/ლ მძიმე ჰიპოგლიკემიად და რთავს კრიტიკულ წითელ ალამს.',
-        source_ref='Track A3 Glucose Unit Guard (> 35 -> /18.0182 mmol/L) & JBDS',
+        source_ref='Track A3 Glucose Unit Guard (> 35 -> /18.0 mmol/L) & JBDS',
         op_subtype=_OP.EVAR, age=62, sex='M',
         q=(('filled', True), ('dm', True), ('mets_ok', True)),
         s=(('aaa_mm', 58), ('glucose', 40), ('hb', 134), ('inr', 1.0), ('creat', 85)),

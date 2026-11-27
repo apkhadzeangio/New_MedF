@@ -1,7 +1,7 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.9'
+REGISTRY_VERSION = '1.2.10'
 REGISTRY_UPDATED_ON = '2026-11-26'
 
 STATUS_VERIFIED = 'source-verified'
@@ -78,6 +78,18 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.10',
+        'date': '2026-11-26',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-11: ფარმაკოლოგიის/ნეირაქსიული/ორსულობის/RBAC გამყარება, უსაფრთხო დაფის ჰენდოფი და პირველწყაროების დაზუსტება',
+        'changes_ka': (
+            'დაიხურა კრიტიკული S1 უსაფრთხოების და პროცესის დეფექტები: ღია AAA/TBD/ABF სოლო-ნეირაქსიული ეპიდურული ჩიპით კვლავ იბლოკება GA-ს გარეშე; ფლებექტომიის auto-ნეირაქსიული იცავს INR 6.5/D0 ზღვრებს; უკუნაჩვენები P2Y12/OAC/GI-სისხლდენის რიგები აღარ გასცემს მომავალ მიღების/შეჩერების თარიღებს; დაემატა ვარფარინის/ჰორმონების/თავისუფალი ტექსტის სტატინისა და ACEi-ARB-ის ორსულობის ბარიერები და ორსულობა+HIT დაცვა (არავითარი LMWH/DOAC); მოიხსნა ვარფარინის Stage-2 ICU დედლოკი; უკუნაჩვენები მედიკამენტი და გასული შეჩერების ფანჯარა ბლოკავს GO/ready სტატუსს.',
+            'გამყარდა HTTP/RBAC, ფორმების დაცვა და დაფის ჰენდოფი: ack_alerts გადავიდა მხოლოდ ექიმის RBAC-ზე; PreopBoardHandoffView და case_outcome=operated ბლოკირებულია STOP-ზე, ხოლო დაფის სტატუსი/დავალებები აჩვენებს STOP/ორსულობა/ღვიძლი 3x-ს და არ ურჩევს სტატინს უკუჩვენებისას; ვენურ Tab Q-ზე დაცულია active_infection და Tab S1-ზე — echo_valve_issue/carotid_symp; აიკრძალა CEA ორმხრივი მხარე B Header/Tab Q-ში; შეუსაბამო ორსულობა+სქესი/ასაკი ბლოკავს GO-ს; გასწორდა detect_postponement_impacts CTA None crash-ი და მედ-ზარის reconcile_only/EVLA ვარფარინის სინქრონიზაცია.',
+            'გამყარდა კლინიკური პარიტეტი, ფაზერი და JS გარდები: გასწორდა ARISCAT Hb 3.5–3.99 ორმაგი ნორმალიზაცია, calc_auto_asa egfr_sat/უცნობი ასაკის ფოლბექი, has_prior_stroke_or_tia carotid_symp, target_prep_days abf_wet_infection, cea_asymp „აასიმპტომური“ ტექსტი, PAD ჰემოდინამიკური შეუსაბამობის გაფრთხილება, ქართული მედიკამენტების/ალერგიების ბრენდები და უარყოფის პარსერი, პაციენტის გზამკვლევის სუფთა ქართული, Case→Preop ბმული და მკაცრი რიცხვითი/BP JS გარდები.',
+            'დაზუსტდა პირველწყაროები და რეესტრი: ASRA_NEURAXIAL_COAG_GATE-ში დაემატა vka_prewashout_inr_max=4.5, გასწორდა ESVS 2023 Rec 49 (თრომბოლიზისი), ESVS 2020 VGEI Level C, ESUR v10.0 A.3.1 TSH, ACR კონტრასტის პრემედიკაცია, ASRA 5th Ed დაბიგატრანის/ტიკაგრელორის ადგილობრივი სტატუსები, ვენური LA ალერგიისა და პრე-ვარფარინის ანოტაციები და V01/V02/V36 ვინიეტები.',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC 2022 · ASRA 5th Ed 2025 · CHEST 2022 · EHRA 2021 · ACC/AHA 2024 · ESUR v10.0 · ACR Contrast · FDA',
+    },
     {
         'version': '1.2.9',
         'date': '2026-11-26',

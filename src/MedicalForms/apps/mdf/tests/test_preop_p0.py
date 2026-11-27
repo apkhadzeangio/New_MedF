@@ -207,9 +207,10 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
         from ..preop import STATUS_ALERT, STATUS_READY, evaluate
 
         today = timezone.localdate()
+        StaffProfile.objects.get_or_create(user=self.user, defaults={'display_name': 'ტესტ ქირურგი'})
         p = PreopPatient.objects.create(
             patient_name='გიგანტ ანევრიზმაძე', age=72, sex='M',
-            pathway='aaa_infra', op_subtype='open',
+            pathway='aaa_infra', op_subtype='open', surgeon=self.user,
             visit_date=today - timedelta(days=9),
             started_on=today - timedelta(days=9),
         )
