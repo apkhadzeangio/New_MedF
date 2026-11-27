@@ -88,10 +88,88 @@
         } else if (!isNaN(creat) && ((!cunit && creat > 15 && creat < 35) || (cunit === 'umol' && creat < 15) || (cunit === 'mgdl' && creat > 35))) {
             msgs.push('კრეატინინი (' + creat + ') და არჩეული ერთეული არ ემთხვევა — აირჩიეთ სწორი ერთეული (µmol/L ან mg/dL).');
         }
+        var rawHr = ((document.getElementById('nw-hr') || {}).value || '').trim();
+        var rawSpo2 = ((document.getElementById('nw-spo2') || {}).value || '').trim();
+        var rawHt = ((document.getElementById('nw-ht') || {}).value || '').trim();
+        var rawPlt = ((document.getElementById('nw-plt') || {}).value || '').trim();
+        var rawInr = ((document.getElementById('nw-inr') || {}).value || '').trim();
+        var rawK = ((document.getElementById('nw-k') || {}).value || '').trim();
+        var rawGl = ((document.getElementById('nw-gl') || {}).value || '').trim();
+        var hr = parseNum(rawHr);
+        var spo2 = parseNum(rawSpo2);
+        var ht = parseNum(rawHt);
+        var plt = parseNum(rawPlt);
+        var inr = parseNum(rawInr);
+        var kVal = parseNum(rawK);
+        var gl = parseNum(rawGl);
+
         if (rawHb && isNaN(hb)) {
             msgs.push('შეამოწმეთ ჰემოგლობინი: შეიყვანეთ მხოლოდ რიცხვი!');
-        } else if (!isNaN(hb) && (hb < 3.5 || (hb > 22 && hb < 40) || hb > 260)) {
-            msgs.push('შეამოწმეთ ჰემოგლობინი (' + hb + ') — მიუთითეთ გ/ლ (40–260) ან გ/დლ (3,5–22,0).');
+        } else if (!isNaN(hb) && (hb < 3.5 || (hb > 22 && hb < 35) || hb > 260)) {
+            msgs.push('შეამოწმეთ ჰემოგლობინი (' + hb + ') — მიუთითეთ გ/ლ (35–260) ან გ/დლ (3,5–22,0).');
+        } else if (!isNaN(hb)) {
+            var hbGl = hb <= 22 ? Math.round(hb * 100) / 10 : hb;
+            if (hbGl < 100) msgs.push('მძიმე ანემია (Hb ' + hbGl + ' გ/ლ < 100) — აცნობეთ ექიმს!');
+            else if (hbGl < 115) msgs.push('ანემია (Hb ' + hbGl + ' გ/ლ < 115 — ჩაირთვება რკინის პანელი).');
+        }
+        if (rawHr && isNaN(hr)) {
+            msgs.push('შეამოწმეთ პულსი: შეიყვანეთ მხოლოდ რიცხვი!');
+        } else if (!isNaN(hr) && (hr < 15 || hr > 260)) {
+            msgs.push('დაუჯერებელი პულსი (' + hr + '/წთ — 15–260)!');
+        } else if (!isNaN(hr) && (hr < 45 || hr > 110)) {
+            msgs.push('კრიტიკული პულსი (' + hr + '/წთ) — აცნობეთ ექიმს!');
+        }
+        if (rawSpo2 && isNaN(spo2)) {
+            msgs.push('შეამოწმეთ SpO2: შეიყვანეთ მხოლოდ რიცხვი!');
+        } else if (!isNaN(spo2) && (spo2 < 30 || spo2 > 100)) {
+            msgs.push('დაუჯერებელი სატურაცია (' + spo2 + '% — 30–100%)!');
+        } else if (!isNaN(spo2) && spo2 < 90) {
+            msgs.push('მძიმე ჰიპოქსემია (SpO2 ' + spo2 + '% < 90%) — სასწრაფოდ აცნობეთ ექიმს!');
+        } else if (!isNaN(spo2) && spo2 < 94) {
+            msgs.push('დაქვეითებული სატურაცია (SpO2 ' + spo2 + '% < 94%) — გადაამოწმეთ.');
+        }
+        if (rawHt && isNaN(ht)) {
+            msgs.push('შეამოწმეთ სიმაღლე: შეიყვანეთ მხოლოდ რიცხვი სანტიმეტრებში.');
+        } else if (!isNaN(ht) && (ht < 100 || ht > 230)) {
+            msgs.push('შეამოწმეთ სიმაღლე (' + ht + ' სმ — 100–230 სმ).');
+        }
+        if (rawPlt && isNaN(plt)) {
+            msgs.push('შეამოწმეთ თრომბოციტები (PLT): შეიყვანეთ მხოლოდ რიცხვი!');
+        } else if (!isNaN(plt) && (plt < 1 || plt > 2000000)) {
+            msgs.push('დაუჯერებელი PLT (' + plt + ') — გადაამოწმეთ მნიშვნელობა!');
+        } else if (!isNaN(plt) && plt > 2500 && plt < 3000) {
+            msgs.push('დააზუსტეთ PLT ერთეული (' + plt + ' — ×10^9/L თუ /µL)!');
+        } else if (!isNaN(plt)) {
+            var pltK = plt >= 3000 ? Math.round(plt / 1000) : plt;
+            if (pltK < 100) msgs.push('თრომბოციტოპენია (PLT ' + pltK + ' < 100 ×10^9/L) — აცნობეთ ექიმს!');
+            else if (pltK < 150) msgs.push('ზომიერი თრომბოციტოპენია (PLT ' + pltK + ' < 150 ×10^9/L).');
+        }
+        if (rawInr && isNaN(inr)) {
+            msgs.push('შეამოწმეთ INR: შეიყვანეთ მხოლოდ რიცხვი!');
+        } else if (!isNaN(inr) && (inr < 0.4 || inr > 20.0)) {
+            msgs.push('დაუჯერებელი INR (' + inr + ') — გადაამოწმეთ!');
+        } else if (!isNaN(inr) && inr > 1.5) {
+            msgs.push('მაღალი INR (' + inr + ' > 1.5 — სისხლდენის რისკი) — აცნობეთ ექიმს!');
+        } else if (!isNaN(inr) && inr > 1.35) {
+            msgs.push('მომატებული INR (' + inr + ' > 1.35 — გადაამოწმეთ ექიმთან).');
+        }
+        if (rawK && isNaN(kVal)) {
+            msgs.push('შეამოწმეთ კალიუმი (K+): შეიყვანეთ მხოლოდ რიცხვი!');
+        } else if (!isNaN(kVal) && (kVal < 1.0 || kVal > 12.0)) {
+            msgs.push('დაუჯერებელი K+ (' + kVal + ' მმოლ/ლ) — გადაამოწმეთ!');
+        } else if (!isNaN(kVal) && (kVal < 3.3 || kVal >= 5.4)) {
+            msgs.push('კრიტიკული კალიუმი (K+ ' + kVal + ' მმოლ/ლ — არითმიის რისკი) — აცნობეთ ექიმს!');
+        } else if (!isNaN(kVal) && (kVal < 3.5 || kVal > 5.0)) {
+            msgs.push('სასაზღვრო K+ (' + kVal + ' მმოლ/ლ — ნორმა 3.5–5.0).');
+        }
+        if (rawGl && isNaN(gl)) {
+            msgs.push('შეამოწმეთ შაქარი (გლუკოზა): შეიყვანეთ მხოლოდ რიცხვი!');
+        } else if (!isNaN(gl) && (gl < 0.5 || gl > 1000)) {
+            msgs.push('დაუჯერებელი გლუკოზა (' + gl + ') — გადაამოწმეთ!');
+        } else if (!isNaN(gl)) {
+            var glM = gl > 35 ? Math.round((gl / 18.0) * 100) / 100 : gl;
+            if (glM < 3.9 || glM >= 14.0) msgs.push('კრიტიკული გლიკემია (' + glM + ' მმოლ/ლ) — აცნობეთ ექიმს!');
+            else if (glM >= 7.0) msgs.push('მომატებული გლუკოზა (' + glM + ' მმოლ/ლ — ჩაირთვება HbA1c).');
         }
 
         if (msgs.length) {
@@ -114,6 +192,136 @@
         });
         runVitalsGuards();
     }
+
+    var dosForm = document.getElementById('nw-dos-form');
+    var dosGuard = document.getElementById('nw-dos-live-guard');
+    if (dosForm && !dosGuard) {
+        dosGuard = document.createElement('div');
+        dosGuard.id = 'nw-dos-live-guard';
+        dosGuard.className = 'nw-guard-box';
+        dosGuard.hidden = true;
+        dosForm.appendChild(dosGuard);
+    }
+    function runDosGuards() {
+        if (!dosForm || !dosGuard) return;
+        var msgs = [];
+        var rawS = ((document.getElementById('nw-dos-sbp') || dosForm.querySelector('input[name="dos_bp_sys"]') || {}).value || '').trim();
+        var rawD = ((document.getElementById('nw-dos-dbp') || dosForm.querySelector('input[name="dos_bp_dia"]') || {}).value || '').trim();
+        var rawG = ((document.getElementById('nw-dos-gl') || dosForm.querySelector('input[name="dos_glucose"]') || {}).value || '').trim();
+        var rawI = ((document.getElementById('nw-dos-inr') || dosForm.querySelector('input[name="dos_inr"]') || {}).value || '').trim();
+        var s = parseNum(rawS), d = parseNum(rawD), g = parseNum(rawG), i = parseNum(rawI);
+        if ((rawS && isNaN(s)) || (rawD && isNaN(d))) msgs.push('შეამოწმეთ დილის წნევა: შეიყვანეთ მხოლოდ რიცხვები!');
+        if (!isNaN(s) && (s < 40 || s > 300)) msgs.push('დაუჯერებელი დილის ზედა წნევა (' + s + ' mmHg — 40–300)!');
+        else if (!isNaN(s) && (s >= 180 || s < 90)) msgs.push('კრიტიკული დილის ზედა წნევა (' + s + ' mmHg) — შეაჩერეთ და აცნობეთ ექიმს!');
+        if (!isNaN(d) && (d < 20 || d > 200)) msgs.push('დაუჯერებელი დილის ქვედა წნევა (' + d + ' mmHg — 20–200)!');
+        else if (!isNaN(d) && d >= 110) msgs.push('კრიტიკული დილის ქვედა წნევა (' + d + ' ≥ 110 mmHg) — აცნობეთ ექიმს!');
+        if (!isNaN(s) && !isNaN(d) && s <= d) msgs.push('დილის ზედა წნევა (' + s + ') უნდა იყოს ქვედაზე (' + d + ') მეტი!');
+        if (rawG && isNaN(g)) msgs.push('შეამოწმეთ დილის გლუკოზა: შეიყვანეთ მხოლოდ რიცხვი!');
+        else if (!isNaN(g) && (g < 0.5 || g > 1000)) msgs.push('დაუჯერებელი დილის გლუკოზა (' + g + ')!');
+        else if (!isNaN(g)) {
+            var gm = g > 35 ? Math.round((g / 18.0) * 100) / 100 : g;
+            if (gm < 3.9 || gm >= 14.0) msgs.push('კრიტიკული დილის გლიკემია (' + gm + ' მმოლ/ლ) — აცნობეთ ექიმს!');
+        }
+        if (rawI && isNaN(i)) msgs.push('შეამოწმეთ დილის INR: შეიყვანეთ მხოლოდ რიცხვი!');
+        else if (!isNaN(i) && (i < 0.5 || i > 15.0)) msgs.push('დაუჯერებელი დილის INR (' + i + ' — 0.5–15.0)!');
+        else if (!isNaN(i) && i > 1.5) msgs.push('მაღალი დილის INR (' + i + ' > 1.5) — სისხლდენის რისკი!');
+        if (msgs.length) {
+            dosGuard.hidden = false;
+            dosGuard.innerHTML = msgs.map(function (m) { return '<div>' + m + '</div>'; }).join('');
+        } else {
+            dosGuard.hidden = true;
+            dosGuard.innerHTML = '';
+        }
+    }
+    if (dosForm) {
+        dosForm.addEventListener('input', runDosGuards);
+        dosForm.addEventListener('change', runDosGuards);
+        dosForm.addEventListener('submit', function () {
+            dosForm.querySelectorAll('.js-comma-num').forEach(function (inp) {
+                if (inp.value && inp.value.indexOf(',') >= 0) inp.value = inp.value.trim().replace(/,/g, '.');
+            });
+        });
+        runDosGuards();
+    }
+
+    function attachFldGuard(ctrl, evalFn) {
+        if (!ctrl || ctrl.closest('#nw-vitals-form') || ctrl.closest('#nw-dos-form')) return;
+        var lbl = ctrl.closest('.fld');
+        if (!lbl) return;
+        var hint = lbl.querySelector('.fld-live-hint');
+        if (!hint) {
+            hint = document.createElement('div');
+            hint.className = 'fld-live-hint';
+            hint.hidden = true;
+            lbl.appendChild(hint);
+        }
+        var run = function () {
+            ctrl.classList.remove('lv-warn', 'lv-crit');
+            var raw = (ctrl.value || '').trim();
+            if (!raw) { hint.hidden = true; hint.className = 'fld-live-hint'; hint.textContent = ''; return; }
+            var num = parseNum(raw);
+            var res = isNaN(num) ? { level: 'crit', msg: 'შეიყვანეთ მხოლოდ რიცხვითი მნიშვნელობა!' } : evalFn(num);
+            if (!res) { hint.hidden = true; hint.className = 'fld-live-hint'; hint.textContent = ''; return; }
+            ctrl.classList.add(res.level === 'crit' ? 'lv-crit' : 'lv-warn');
+            hint.className = 'fld-live-hint ' + res.level;
+            hint.textContent = res.msg;
+            hint.hidden = false;
+        };
+        ctrl.addEventListener('input', run);
+        ctrl.addEventListener('change', run);
+        run();
+    }
+    document.querySelectorAll('input[name="bp_sys_l"]').forEach(function (el) {
+        var diaEl = el.closest('form') ? el.closest('form').querySelector('input[name="bp_dia_l"]') : null;
+        attachFldGuard(el, function (v) {
+            if (v < 30 || v > 320) return { level: 'crit', msg: 'დაუჯერებელი სისტოლური წნევა (' + v + ' mmHg)!' };
+            if (diaEl) {
+                var dv = parseNum(diaEl.value);
+                if (!isNaN(dv) && v <= dv) return { level: 'crit', msg: 'სისტოლური (' + v + ') უნდა იყოს დიასტოლურზე (' + dv + ') მეტი!' };
+            }
+            if (v >= 180 || v < 90) return { level: 'crit', msg: v >= 180 ? 'კრიტიკული ჰიპერტენზია (≥180 mmHg)!' : 'ჰიპოტენზია (<90 mmHg)!' };
+            return null;
+        });
+        if (diaEl) diaEl.addEventListener('input', function () { el.dispatchEvent(new Event('change')); });
+    });
+    document.querySelectorAll('input[name="bp_dia_l"]').forEach(function (el) {
+        var sysEl = el.closest('form') ? el.closest('form').querySelector('input[name="bp_sys_l"]') : null;
+        attachFldGuard(el, function (v) {
+            if (v < 20 || v > 220) return { level: 'crit', msg: 'დაუჯერებელი დიასტოლური წნევა (' + v + ' mmHg)!' };
+            if (sysEl) {
+                var sv = parseNum(sysEl.value);
+                if (!isNaN(sv) && sv <= v) return { level: 'crit', msg: 'დიასტოლური (' + v + ') არ შეიძლება აღემატებოდეს სისტოლურს (' + sv + ')!' };
+            }
+            if (v >= 110) return { level: 'crit', msg: 'კრიტიკული დიასტოლური წნევა (≥110 mmHg)!' };
+            return null;
+        });
+        if (sysEl) sysEl.addEventListener('input', function () { el.dispatchEvent(new Event('change')); });
+    });
+    document.querySelectorAll('input[name="fibrinogen"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 0.15 || v > 1500) return { level: 'crit', msg: 'დაუჯერებელი ფიბრინოგენი (' + v + ')!' };
+            var gl = v > 15 ? Math.round((v / 100.0) * 100) / 100 : v;
+            if (gl < 1.5) return { level: 'crit', msg: 'მძიმე ჰიპოფიბრინოგენემია (' + gl + ' გ/ლ < 1.5)!' };
+            if (gl < 1.8) return { level: 'warn', msg: 'დაბალი ფიბრინოგენი (' + gl + ' გ/ლ < 1.8)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="ldl"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 0.2 || v > 500) return { level: 'crit', msg: 'დაუჯერებელი LDL (' + v + ')!' };
+            var mmol = v > 20 ? Math.round((v / 38.67) * 100) / 100 : v;
+            if (mmol >= 1.4) return { level: 'warn', msg: 'LDL ' + mmol + ' მმოლ/ლ (სამიზნე <1.4)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="abi_r"], input[name="abi_l"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 0 || v > 3.0) return { level: 'crit', msg: 'დაუჯერებელი ABI (' + v + ')!' };
+            if (v > 1.40) return { level: 'warn', msg: 'არაკომპრესირებადი (>1.40 — შეიტანეთ TP/TBI)' };
+            if (v < 0.40) return { level: 'crit', msg: 'კრიტიკული იშემია (ABI < 0.40)!' };
+            return null;
+        });
+    });
 
     // 3. 1-Tap Self-Fill Link Tracking (WhatsApp / SMS / Copy)
     function markSelfFillSent(url, via) {

@@ -2,7 +2,6 @@
 import datetime
 
 from django.contrib import messages
-from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.db.models import Q
@@ -249,13 +248,15 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
 
     @staticmethod
     def _transfer_or_sync_case(request, case_id_int):
-        from .parsers import _invalidate_approval_if_needed
+        from .parsers import _invalidate_approval_if_needed, is_doctor_user
 
         case = get_object_or_404(Case, pk=case_id_int)
         existing = PreopPatient.objects.filter(case=case, archived=False).first()
         if existing:
             if request.POST.get('sync') == '1':
                 op_sub, side = detect_case_preop(case)
+                if existing.pathway == PreopPatient.Pathway.CEA and side == 'B':
+                    side = ''
                 side_changed = False
                 if not existing.side and side:
                     existing.side = side
@@ -280,6 +281,11 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
             return HttpResponseRedirect(reverse('preop-patient', args=[existing.pk]))
 
         op_sub, side = detect_case_preop(case)
+        if op_sub in ('cea_symp', 'cea_asymp') and side == 'B':
+            side = ''
+        case_doc = case.doctor if (case.doctor and is_doctor_user(case.doctor)) else (
+            request.user if is_doctor_user(request.user) else None
+        )
         p = PreopPatient.objects.create(
             case=case,
             patient_name=case.patient_name,
@@ -287,7 +293,7 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
             sex=case.sex or 'M',
             side=side,
             op_subtype=op_sub,
-            surgeon=case.doctor or request.user,
+            surgeon=case_doc,
             someday_list=PreopPatient.SomedayList.CONF,
             created_by=request.user,
             updated_by=request.user,
@@ -297,6 +303,8 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
         return HttpResponseRedirect(reverse('preop-patient', args=[p.pk]))
 
     def post(self, request):
+        from .parsers import is_doctor_user, resolve_doctor_user
+
         case_id_int = _int(request.POST.get('case'), lo=1)
         if case_id_int is not None:
             return self._transfer_or_sync_case(request, case_id_int)
@@ -312,11 +320,8 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
             messages.error(request, 'ერთდროული ორმხრივი CEA აკრძალულია (ESVS) — მიუთითეთ მარჯვენა ან მარცხენა მხარე!')
             return HttpResponseRedirect(reverse('preop'))
 
-        surgeon = None
-        surg_id = _int(request.POST.get('surgeon'), lo=1)
-        if surg_id is not None:
-            surgeon = get_user_model().objects.filter(pk=surg_id).first()
-        if surgeon is None and hasattr(request.user, 'profile'):
+        surgeon = resolve_doctor_user(request.POST.get('surgeon'))
+        if surgeon is None and is_doctor_user(request.user):
             surgeon = request.user
 
         if not name:

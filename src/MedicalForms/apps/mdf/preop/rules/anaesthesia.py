@@ -233,11 +233,14 @@ def _build_allergy_summary(ctx, q, lido_alg):
         allergy_bits.append('აასს / NSAID ალერგია!')
     if 'clopidogrel_intol' in ctx.allergy_chips:
         allergy_bits.append('კლოპიდოგრელის აუტანლობა')
+    from ..meds_freetext import _positive_clauses_text
+
     raw_alg_txt = (q.get('allergy_text') or '').strip()
-    is_dup_lido_txt = lido_alg and raw_alg_txt.lower() in ('ლიდოკაინი', 'ლიდოკაინზე ალერგია', 'ალერგია ლიდოკაინზე', 'lidocaine', 'lidocaine allergy')
-    if raw_alg_txt and not is_dup_lido_txt and not any(raw_alg_txt.lower() in b.lower() for b in allergy_bits):
+    pos_alg_txt = _positive_clauses_text(raw_alg_txt)
+    is_dup_lido_txt = lido_alg and pos_alg_txt in ('ლიდოკაინი', 'ლიდოკაინზე ალერგია', 'ალერგია ლიდოკაინზე', 'lidocaine', 'lidocaine allergy')
+    if pos_alg_txt and not is_dup_lido_txt and not any(pos_alg_txt in b.lower() for b in allergy_bits):
         allergy_bits.append(raw_alg_txt)
-    elif not raw_alg_txt and (q.get('allergy_other') or ctx.unclarified_allergy_other) and not allergy_bits:
+    elif not pos_alg_txt and (q.get('allergy_other') or ctx.unclarified_allergy_other) and not allergy_bits:
         allergy_bits.append('მედიკამენტური ალერგია (დასაზუსტებელია!)')
     return '; '.join(allergy_bits)
 

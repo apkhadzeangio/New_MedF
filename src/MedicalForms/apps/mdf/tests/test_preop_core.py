@@ -10,6 +10,11 @@ from .helpers import PrivateMediaTest
 class PreopTests(PrivateMediaTest):
     """Tweek-style preoperative calendar, Infrarenal AAA nurse POA, and Cardiology Audit."""
 
+    def setUp(self):
+        super().setUp()
+        from ..models import StaffProfile
+        StaffProfile.objects.get_or_create(user=self.user)
+
     def test_tweek_calendar_case_transfer_and_clock_persistence(self):
         import datetime
 

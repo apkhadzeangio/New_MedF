@@ -34,15 +34,16 @@ def _sat_age(val):
 
 
 def _parse_plt_k(val):
-    """Normalize PLT to x10^9/L (converts /uL >=3000 via /1000; rejects ambiguous 2501..2999; saturates <=0 to 0)."""
+    """Normalize PLT to x10^9/L using LAB_UNIT_AUTO_CONVERSION bounds."""
     v = _num(val)
     if v is None:
         return None
     if v < 0:
         return 0
-    if 2500 < v < 3000:
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
+    if u['plt_ambig_lo'] < v < u['plt_ul_ge']:
         return None
-    return int(round(v / 1000.0)) if v >= 3000 else int(round(v))
+    return int(round(v / 1000.0)) if v >= u['plt_ul_ge'] else int(round(v))
 
 
 def _parse_scr_mgdl(creat, creat_unit=''):
@@ -51,27 +52,21 @@ def _parse_scr_mgdl(creat, creat_unit=''):
     c = _num(creat, lo=0.1, hi=3000)
     if c is None:
         raw_c = _num(creat)
-        if creat_unit == 'mgdl' and raw_c is not None and raw_c > ren_u['ambig_hi']:
-            return None, True
-        return None, False
+        return (None, True) if (creat_unit == 'mgdl' and raw_c is not None and raw_c > ren_u['ambig_hi']) else (None, False)
     if creat_unit == 'mgdl':
         return (None, True) if c > ren_u['ambig_hi'] else (c, False)
     if creat_unit == 'umol':
         return (None, True) if c < ren_u['ambig_lo'] else (c / ren_u['umol_factor'], False)
     if 0.1 <= c <= ren_u['ambig_lo']:
         return c, False
-    if c >= ren_u['ambig_hi']:
-        return c / ren_u['umol_factor'], False
-    return None, True
+    return (c / ren_u['umol_factor'], False) if c >= ren_u['ambig_hi'] else (None, True)
 
 
 def is_creat_unit_mismatch(creat, creat_unit=''):
     """Return True when explicit creat_unit ('mgdl'/'umol') contradicts the entered creatinine magnitude."""
     ren_u = rule_value('SCORE_RENAL_CKDEPI_CG')
     raw = _num(creat)
-    if raw is None or raw <= 0:
-        return False
-    return (creat_unit == 'mgdl' and raw > ren_u['ambig_hi']) or (creat_unit == 'umol' and raw < ren_u['ambig_lo'])
+    return bool(raw is not None and raw > 0 and ((creat_unit == 'mgdl' and raw > ren_u['ambig_hi']) or (creat_unit == 'umol' and raw < ren_u['ambig_lo'])))
 
 
 def _clean_num(v):
@@ -82,7 +77,7 @@ def _clean_num(v):
 
 
 def is_hb_unit_ambiguous(hb):
-    """Return True when raw hemoglobin falls in the ambiguous 22.1–39.9 g/dL vs g/L zone."""
+    """Return True when raw hemoglobin falls in the ambiguous 22.1–34.9 g/dL vs g/L zone."""
     v = _num(hb)
     u = rule_value('LAB_UNIT_AUTO_CONVERSION')
     return v is not None and u['hb_gdl_hi'] < v < u['hb_ambig_hi']
@@ -97,9 +92,7 @@ def _sat_scr_mgdl(creat, creat_unit=''):
     if scr is not None:
         return scr
     raw = _num(creat)
-    if raw is not None and raw > 3000 and not ambig and creat_unit != 'mgdl':
-        return 3000.0 / ren_u['umol_factor']
-    return None
+    return (3000.0 / ren_u['umol_factor']) if (raw is not None and raw > 3000 and not ambig and creat_unit != 'mgdl') else None
 
 
 def _egfr_from_scr(scr_mgdl, age_v, sex):
@@ -119,7 +112,7 @@ def _crcl_from_scr(scr_mgdl, age_v, sex, w, height_cm=None):
     if h is not None:
         bmi_v = w / ((h / 100.0) ** 2)
         ibw = (50.0 if sex == 'M' else 45.5) + 0.9 * max(0.0, h - 152.4)
-        if bmi_v >= 30.0 and w > ibw:
+        if bmi_v >= rule_value('SCORE_RENAL_CKDEPI_CG')['cg_abw_bmi'] and w > ibw:
             eff_w = ibw + 0.4 * (w - ibw)
     crcl = ((140.0 - age_v) * eff_w) / (72.0 * scr_mgdl)
     return int(round(crcl * (0.85 if sex == 'F' else 1.0)))
@@ -155,17 +148,15 @@ def calc_crcl(creat, age, sex='M', weight_kg=None, creat_unit='', on_dialysis=Fa
         raw_c = _num(creat)
         if raw_c is not None and raw_c > 3000:
             scr_mgdl = 3000.0 / rule_value('SCORE_RENAL_CKDEPI_CG')['umol_factor']
-    w = _num(weight_kg, lo=25, hi=260)
-    age_num = _num(age, lo=12, hi=120)
+    w, age_num = _num(weight_kg, lo=25, hi=260), _num(age, lo=12, hi=120)
     return _crcl_from_scr(scr_mgdl, int(round(age_num)) if age_num is not None else None, sex, w, height_cm)
 
 
 def _sat_crcl(creat, age, sex='M', weight_kg=None, creat_unit='', on_dialysis=False, height_cm=None):
     if on_dialysis:
         return None
-    w_raw = _num(weight_kg)
+    w_raw, age_num = _num(weight_kg), _num(age)
     w = max(25.0, min(260.0, w_raw)) if (w_raw is not None and w_raw > 0) else None
-    age_num = _num(age)
     age_v = int(round(min(age_num, 120))) if (age_num is not None and age_num >= 12) else None
     return _crcl_from_scr(_sat_scr_mgdl(creat, creat_unit), age_v, sex, w, height_cm)
 
@@ -177,10 +168,10 @@ def calc_bmi(weight_kg, height_cm):
 
 
 def normalize_hb_gl(hb):
-    """Return hemoglobin in g/L using registered LAB_UNIT_AUTO_CONVERSION bounds."""
+    """Return hemoglobin in g/L using registered LAB_UNIT_AUTO_CONVERSION bounds (None if ambiguous)."""
     u = rule_value('LAB_UNIT_AUTO_CONVERSION')
     v = _num(hb, lo=u['hb_gdl_lo'], hi=260)
-    if v is None:
+    if v is None or (u['hb_gdl_hi'] < v < u['hb_ambig_hi']):
         return None
     return _clean_num(round(v * 10, 1) if u['hb_gdl_lo'] <= v <= u['hb_gdl_hi'] else v)
 
@@ -188,9 +179,7 @@ def normalize_hb_gl(hb):
 def normalize_glucose_mmol(gl):
     """Return glucose in mmol/L (converts mg/dL > 35.0 with 2-decimal precision for unit-boundary parity)."""
     v = _num(gl, lo=0.5, hi=1000)
-    if v is None:
-        return None
-    return _clean_num(round(v / 18.0, 2) if v > rule_value('GLY_UNIT_CONVERSION_MGDL') else v)
+    return None if v is None else _clean_num(round(v / 18.0, 2) if v > rule_value('GLY_UNIT_CONVERSION_MGDL') else v)
 
 
 def normalize_albumin_gl(alb):
@@ -205,35 +194,29 @@ def normalize_albumin_gl(alb):
 def normalize_fibrinogen_gl(fib):
     """Return plasma fibrinogen in g/L (idempotent across 15.01..1500 mg/dL via lo=0.15)."""
     v = _num(fib, lo=0.15, hi=1500)
-    if v is None:
-        return None
-    return _clean_num(round(v / 100.0, 2) if v > rule_value('LAB_UNIT_AUTO_CONVERSION')['fib_mgdl_gt'] else v)
+    return None if v is None else _clean_num(round(v / 100.0, 2) if v > rule_value('LAB_UNIT_AUTO_CONVERSION')['fib_mgdl_gt'] else v)
 
 
 def normalize_ldl_mmol(ldl):
     """Return LDL cholesterol in mmol/L using registered LAB_UNIT_AUTO_CONVERSION bounds."""
     v = _num(ldl, lo=0.2, hi=500)
-    if v is None:
-        return None
-    return _clean_num(round(v / 38.67, 2) if v > rule_value('LAB_UNIT_AUTO_CONVERSION')['ldl_mgdl_gt'] else v)
+    return None if v is None else _clean_num(round(v / 38.67, 2) if v > rule_value('LAB_UNIT_AUTO_CONVERSION')['ldl_mgdl_gt'] else v)
 
 
 def calc_max_contrast_ml(egfr, on_dialysis=False):
     """Safe iodinated contrast volume ceiling (mL) using tiered contrast-to-eGFR ratios (ESVS / Gurm)."""
-    if on_dialysis or egfr is None:
-        return None
-    eg_raw = _num(egfr)
+    eg_raw = None if (on_dialysis or egfr is None) else _num(egfr)
     if eg_raw is None:
         return None
     eg_v = min(500.0, max(0.0, eg_raw))
     ren = rule_value('REN_CKD_NEPHRO_HYDRATION')
     if eg_v < ren['red']:
-        return max(15, int(round(eg_v * ren.get('mult_lt30', 1.0))))
+        return max(ren['min_ml'], int(round(eg_v * ren.get('mult_lt30', 1.0))))
     if eg_v < ren['nephro']:
         return int(round(eg_v * ren.get('mult_30_44', 1.5)))
     if eg_v < ren['hydration']:
         return int(round(eg_v * ren.get('mult_45_59', 2.0)))
-    return min(250, int(round(eg_v * ren['gurm_mult'])))
+    return min(ren['max_ml'], int(round(eg_v * ren['gurm_mult'])))
 
 
 def _raw_bp_pair(s, sk, dk):
@@ -347,6 +330,12 @@ def _caprini_tier_and_advice(
         tier = f"მაღალი (≥{cap_cfg['high_min']})"
         if cea_bleed_block:
             advice = f'მხოლოდ მექანიკური პროფილაქტიკა (IPC{comp_sfx}) — ტვინის სისხლჩაქცევის / rt-PA ≤6 დღის ფონზე ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია!'
+        elif has_mech_valve and eff_pregnant:
+            advice = (
+                f'ორსულობა + მექანიკური სარქველი + HIT: UFH, LMWH და DOAC აკრძალულია — მეან-გინეკოლოგის, კარდიოლოგისა და ჰემატოლოგის კონსილიუმი (IPC / არაჰეპარინული IV სქემა){comp_sfx}'
+                if has_hit else
+                f'ორსულობა + მექანიკური სარქველი: მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (DOAC აკრძალულია; VKA vs LMWH/UFH ტრიმესტრით){comp_sfx}'
+            )
         elif has_mech_valve:
             if has_hit:
                 advice = f'მექანიკური სარქველი + HIT: სტაციონარული {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}'
@@ -378,10 +367,10 @@ def _caprini_tier_and_advice(
         tier = f"საშუალო ({cap_cfg['low_max'] + 1}–{cap_cfg['mod_max']})"
         if cea_bleed_block:
             advice = f'მხოლოდ ადრეული მობილიზაცია + IPC{comp_sfx} (ტვინის სისხლჩაქცევა / rt-PA ≤6 დღე — ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია!)'
-        elif has_mech_valve and has_hit:
-            advice = f'მექანიკური სარქველი + HIT: {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}'
+        elif has_mech_valve and eff_pregnant:
+            advice = f'ორსულობა + მექანიკური სარქველი + HIT: UFH/LMWH/DOAC აკრძალულია — კონსილიუმი (IPC){comp_sfx}' if has_hit else f'ორსულობა + მექანიკური სარქველი: მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (VKA vs LMWH/UFH ტრიმესტრით; DOAC არა!){comp_sfx}'
         elif has_mech_valve:
-            advice = f'ადრეული მობილიზაცია{comp_sfx} + უვადო ვარფარინის (VKA) რეჟიმი (DOAC აკრძალულია!)'
+            advice = f'მექანიკური სარქველი + HIT: {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}' if has_hit else f'ადრეული მობილიზაცია{comp_sfx} + უვადო ვარფარინის (VKA) რეჟიმი (DOAC აკრძალულია!)'
         elif eff_pregnant:
             if has_hit:
                 advice = f'ადრეული მობილიზაცია{comp_sfx} + IPC (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!)'

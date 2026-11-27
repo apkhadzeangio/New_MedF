@@ -95,11 +95,13 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today
         elif key in inv and _has_raw(inv[key]):
             bad.append(_fmt_bad_val(lbl, inv[key]))
             seen.add(key)
+    from ..registry import rule_value
+    unit_cfg = rule_value('LAB_UNIT_AUTO_CONVERSION')
     for key, lbl, check_fn in (
         ('creat', 'კრეატინინი', None),
         ('fibrinogen', 'ფიბრინოგენი', None),
         ('wbc', 'WBC', lambda v: _num(v, lo=0.1, hi=150000) is not None),
-        ('plt', 'PLT', lambda v: (pv := _num(v, lo=1, hi=2000000)) is not None and not (2500 < pv < 3000)),
+        ('plt', 'PLT', lambda v: (pv := _num(v, lo=1, hi=2000000)) is not None and not (unit_cfg['plt_ambig_lo'] < pv < unit_cfg['plt_ul_ge'])),
     ):
         raw = src[key] if key in src else s.get(key)
         if key == 'creat' and _has_raw(raw):
@@ -121,20 +123,35 @@ def _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today
         elif key not in seen and key in inv and _has_raw(inv[key]):
             bad.append(_fmt_bad_val(lbl, inv[key]))
             seen.add(key)
+    raw_cta_dt = src['cta_date'] if 'cta_date' in src else s.get('cta_date')
+    raw_op_dt = src['planned_surgery_date'] if 'planned_surgery_date' in src else s.get('planned_surgery_date')
     for dkey, dlbl, raw_val in (
-        ('cta_date', 'CTA თარიღი', src['cta_date'] if 'cta_date' in src else s.get('cta_date')),
+        ('cta_date', 'CTA თარიღი', raw_cta_dt),
         ('cea_event_date', 'CEA ეპიზოდის თარიღი', q_d.get('cea_event_date')),
         ('birth_date', 'დაბადების თარიღი', src['birth_date'] if 'birth_date' in src else s.get('birth_date')),
+        ('planned_surgery_date', 'ოპერაციის თარიღი', raw_op_dt),
     ):
         if _has_raw(raw_val):
             dt_v = _date(raw_val)
-            bad_dt = (not is_valid_birth_date(dt_v, today=today)) if dkey == 'birth_date' else (dt_v is None or (today and dt_v > today))
+            if dkey == 'birth_date':
+                bad_dt = not is_valid_birth_date(dt_v, today=today)
+            elif dkey == 'planned_surgery_date':
+                bad_dt = dt_v is None
+            else:
+                bad_dt = dt_v is None or (today and dt_v > today)
             if bad_dt:
                 bad.append(_fmt_bad_val(dlbl, raw_val))
                 seen.add(dkey)
         elif dkey in inv and _has_raw(inv[dkey]):
             bad.append(_fmt_bad_val(dlbl, inv[dkey]))
             seen.add(dkey)
+    cta_dt_v, op_dt_v = _date(raw_cta_dt), _date(raw_op_dt)
+    if cta_dt_v and op_dt_v and cta_dt_v > op_dt_v:
+        bad.append(f'CTA თარიღი ({cta_dt_v.isoformat()}) ოპერაციის თარიღზე ({op_dt_v.isoformat()}) გვიანაა')
+    raw_cea_days = q_d.get('cea_days_since_event')
+    if _has_raw(raw_cea_days) and _int(raw_cea_days, lo=0, hi=3650) is None:
+        bad.append(_fmt_bad_val('CEA სიმპტომიდან დღეები', raw_cea_days))
+        seen.add('cea_days_since_event')
     extra_inv_labels = {
         'planned_surgery_date': 'ოპერაციის თარიღი',
         'labs_date': 'ანალიზების თარიღი',
@@ -314,8 +331,11 @@ def _init_base_flags_and_pre_reflex(ctx):
     )
     ctx.vasc_chips = set(q.get('vasc_chips') or [])
     ctx.anesth_lines_set = set(s.get('anesth_lines_chips') or [])
+    from ..meds_freetext import _positive_clauses_text
+
+    pos_other_meds = _positive_clauses_text(q.get('other_meds') or '')
     ctx.has_statin = ('statin' in ctx.med_chips) or any(
-        w in (q.get('other_meds') or '').lower()
+        w in pos_other_meds
         for w in ('სტატინ', 'ატორვ', 'როზუვ', 'კრესტორ', 'ლიპრიმ', 'statin', 'atorvast', 'rosuvast', 'simvast', 'ezetimib')
     )
     ctx.has_safe_aspirin = bool(q.get('med_aspirin') and 'nsaid' not in ctx.allergy_chips)
@@ -383,7 +403,8 @@ def _compute_core_metrics(patient, q, s, today):
     car_r_si = int(round(car_r_sat)) if car_r_sat is not None else None
     car_l_si = int(round(car_l_sat)) if car_l_sat is not None else None
     raw_s = patient.studies if isinstance(patient.studies, dict) else {}
-    implausible_fields = _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=today, q=q)
+    raw_q = patient.questionnaire if isinstance(patient.questionnaire, dict) else q
+    implausible_fields = _detect_implausible_fields(raw_s, s, creat_unit, creat_unit_ambiguous, today=today, q=raw_q)
     bmi_val = calc_bmi(s.get('weight_kg'), s.get('height_cm'))
     hb_unit_ambiguous = is_hb_unit_ambiguous(_s_raw(s, 'hb'))
     age_val = _int(patient.age, lo=1, hi=120)

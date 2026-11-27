@@ -1,8 +1,9 @@
 """POST field parsers and approval invalidation helpers for PreopPatientView."""
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from ...board import clean_text
-from ...models import PreopPatient
+from ...models import PreopPatient, StaffProfile
 from ..calculators import normalize_fibrinogen_gl, normalize_ldl_mmol
 from ..constants import CHIP_LABELS
 from ..registry import rule_value
@@ -102,19 +103,21 @@ def _set_num_field(s, key, raw, lo=None, hi=None, norm_fn=None):
 
 
 def _norm_plt_post(raw):
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
     x = _num(raw, lo=1, hi=2000000)
-    if x is None or (2500 < x < 3000):
+    if x is None or (u['plt_ambig_lo'] < x < u['plt_ul_ge']):
         return None
-    val = int(round(x / 1000.0)) if x >= 3000 else x
-    return _num(val, lo=1, hi=2500)
+    val = int(round(x / 1000.0)) if x >= u['plt_ul_ge'] else x
+    return _num(val, lo=1, hi=u['plt_ambig_lo'])
 
 
 def _norm_wbc_post(raw):
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
     x = _num(raw, lo=0.1, hi=150000)
     if x is None:
         return None
-    val = round(x / 1000.0, 2) if x >= 200 else x
-    return _num(val, lo=0.1, hi=200)
+    val = round(x / 1000.0, 2) if x >= u['wbc_ul_ge'] else x
+    return _num(val, lo=0.1, hi=u['wbc_ul_ge'])
 
 
 def _parse_s1_numbers_and_dates(post, s, today):
@@ -197,11 +200,51 @@ def med_hold_agreement_block_reason(ev, s):
     return ''
 
 
+def is_doctor_user(user):
+    """Return True if user is authorized as a clinician (superuser, staff, or has StaffProfile)."""
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False
+    if user.is_superuser or user.is_staff:
+        return True
+    return StaffProfile.objects.filter(user_id=user.pk).exists()
+
+
+def resolve_doctor_user(raw_id):
+    """Resolve a posted surgeon PK only if it belongs to a valid clinician account."""
+    surg_id = _int(raw_id, lo=1)
+    if surg_id is None:
+        return None
+    cand = get_user_model().objects.filter(pk=surg_id).first()
+    return cand if (cand and is_doctor_user(cand)) else None
+
+
+def preop_admission_block_reason(ev, s):
+    """Canonical safety gate for Board handoff, complete_and_board, and case_outcome='operated'."""
+    if (
+        ev['clearance_seal']['code'] == 'stop'
+        or ev.get('has_hard_contraindication')
+        or ev.get('dos_hold_danger')
+        or ev.get('neuraxial_hard_blocked')
+        or ev.get('solo_neuraxial_anatomic_mismatch')
+    ):
+        return 'STOP-სიგნალის, ნეირაქსიული ბლოკირების ან ოპერაციის დილის კრიტიკული ბლოკირების ფონზე ოპერაციის/დაფის მოქმედება დაბლოკილია!'
+    if any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ())):
+        return 'წამლების გრაფიკი შეიცავს უკუნაჩვენებ ან დაუზუსტებელ პრეპარატს — ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
+    if ev.get('has_elapsed_hold_window'):
+        return 'წამლის შეჩერების ფანჯარა ამოწურულია — ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
+    if ev.get('has_blocking_unknown_state'):
+        return 'დაუდასტურებელი კითხვარის ან კრიტიკული მონაცემის ნაკლებობის გამო ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
+    if ev.get('needs_stale_labs') and not s.get('stale_labs_refreshed'):
+        return 'ანალიზები ხანდაზმულია (>30 დღე) — განახლებამდე ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
+    return ''
+
+
 def can_enter_ready_queue(patient, ev):
     """Canonical readiness gate for moving a patient into someday:ready."""
     s = ev.get('s') or {}
     return bool(
         patient.approved_at
+        and ev.get('case_outcome', 'scheduled') == 'scheduled'
         and ev.get('workup_ready')
         and ev['clearance_seal']['code'] != 'stop'
         and not ev.get('has_hard_contraindication')

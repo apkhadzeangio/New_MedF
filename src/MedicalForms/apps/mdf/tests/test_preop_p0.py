@@ -278,8 +278,10 @@ class PreopStageP0SafetyTests(PrivateMediaTest):
 
         today = timezone.localdate()
 
-        # 1. Unit guards (Track A3): Hb 29 stays 29 g/L, 13.4 -> 134 g/L; Glucose 34 stays 34.0 mmol/L HHS, 40 mg/dL -> 2.2 mmol/L hypo, 180 -> 10.0
-        self.assertEqual(normalize_hb_gl(29), 29.0)
+        # 1. Unit guards (Track A3 + Round-12 Hb ambiguity fail-safe): 29 is ambiguous (None), 3.7 g/dL == 37 g/L, 13.4 -> 134 g/L
+        self.assertIsNone(normalize_hb_gl(29))
+        self.assertEqual(normalize_hb_gl(3.7), 37.0)
+        self.assertEqual(normalize_hb_gl(37), 37.0)
         self.assertEqual(normalize_hb_gl(13.4), 134.0)
         self.assertEqual((normalize_glucose_mmol(34), normalize_glucose_mmol(40)), (34.0, 2.22))
         self.assertEqual(normalize_glucose_mmol(180), 10.0)

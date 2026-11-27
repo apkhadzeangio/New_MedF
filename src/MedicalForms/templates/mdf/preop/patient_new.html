@@ -561,6 +561,8 @@
                     </div>
                 </div>
 
+                <div class="nw-guard-box" id="nw-dos-live-guard" hidden role="alert"></div>
+
                 <div class="d-flex flex-column gap-2" role="group" aria-label="ოპერაციის დილის ჩეკლისტი">
                     {% for dc in ev.dos_checks %}
                     <input type="hidden" name="dos_present_keys" value="{{ dc.key }}">

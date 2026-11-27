@@ -47,6 +47,10 @@ class ClinicalVignette:
     expect_asa: str = ''
     min_rcri: object = None
     expect_gl_mmol: object = None
+    expect_lidocaine_max_mg: object = None
+    must_postop_at_terms: tuple = ()
+    must_abx_terms: tuple = ()
+    must_anesth_terms: tuple = ()
 
 
 def build_vignette_patient(v, today=VIGNETTE_TODAY):
@@ -73,6 +77,9 @@ def _check_vignette_expectations(v, ev):
     reflex_keys = {r['key'] for r in ev['reflex_orders']}
     dos_keys = {c['key'] for c in ev['dos_checks']}
     med_blob = ' | '.join(f"{r['drug']} {r['date_plan']} {r['rule']}" for r in ev['med_schedule'])
+    postop_at = ev.get('post_antithrombotic_label') or ''
+    abx_blob = (ev.get('surgical_brief') or {}).get('abx_regimen') or ''
+    anesth_blob = ' | '.join(str(x) for x in (ev.get('anesthetic_brief') or {}).values())
 
     def rec(label, ok, actual=''):
         checks.append({'label': label, 'ok': bool(ok), 'actual': str(actual)})
@@ -105,6 +112,14 @@ def _check_vignette_expectations(v, ev):
         rec(f'RCRI >= {v.min_rcri}', ev['rcri']['score'] >= v.min_rcri, ev['rcri']['score'])
     if v.expect_gl_mmol is not None:
         rec(f'გლუკოზა = {v.expect_gl_mmol} მმოლ/ლ', ev['gl_mmol'] == v.expect_gl_mmol, ev['gl_mmol'])
+    if v.expect_lidocaine_max_mg is not None:
+        rec(f'ლიდოკაინის მაქს. დოზა = {v.expect_lidocaine_max_mg} მგ', ev.get('lidocaine_max_mg') == v.expect_lidocaine_max_mg, ev.get('lidocaine_max_mg'))
+    for needle in v.must_postop_at_terms:
+        rec(f'პოსტოპ. ანტითრომბოზული გეგმა შეიცავს: „{needle}“', needle in postop_at, postop_at[:120])
+    for needle in v.must_abx_terms:
+        rec(f'ანტიბიოტიკოპროფილაქტიკა შეიცავს: „{needle}“', needle in abx_blob, abx_blob[:120])
+    for needle in v.must_anesth_terms:
+        rec(f'ანესთეზიოლოგიური ბრიფინგი შეიცავს: „{needle}“', needle in anesth_blob, anesth_blob[:120])
     return checks
 
 

@@ -261,13 +261,15 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
 
         today = timezone.localdate()
         # 1. Operated symptomatic CEA within 8 days (<=14d target), full VQI discharge bundle, uneventful 30d
+        base_s = {'labs_date': today.isoformat(), 'bp_sys': 130, 'bp_dia': 78, 'hr': 72, 'spo2': 98}
         p1 = PreopPatient.objects.create(
             patient_name='ვიქიაი წარმატებაძე', age=65, sex='M', side='R',
             pathway='cea', op_subtype='cea_symp', surgeon=self.user,
             questionnaire={
-                'filled': True, 'cea_symp_event': True,
+                'filled': True, 'nurse_verified': True, 'cea_symp_event': True,
                 'cea_event_date': (today - datetime.timedelta(days=10)).isoformat(),
             },
+            studies=dict(base_s),
         )
         self.client.post(reverse('preop-patient', args=[p1.pk]), {
             'section': 'dos_vqi',
@@ -285,7 +287,8 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
         p2 = PreopPatient.objects.create(
             patient_name='ენდოლიკ მონიტორიძე', age=73, sex='M',
             pathway='aaa_infra', op_subtype='evar', surgeon=self.user,
-            questionnaire={'filled': True},
+            questionnaire={'filled': True, 'nurse_verified': True, 'allergy_iodine_asked': True},
+            studies=dict(base_s),
         )
         self.client.post(reverse('preop-patient', args=[p2.pk]), {
             'section': 'dos_vqi',

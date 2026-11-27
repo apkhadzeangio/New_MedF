@@ -50,7 +50,7 @@ VASCULAR_VIGNETTES = (
         title_ka='66 წ. მამაკაცი — საეჭვო მიკოზური / ინფიცირებული AAA',
         summary_ka='66 წლის მამაკაცი, 52 მმ AAA მიკოზური მორფოლოგიით და ცხელებით, ღია რეკონსტრუქცია.',
         expected_summary_ka='მიკოზური ანევრიზმა რთავს გადაუდებელ წითელ გაფრთხილებას და ASA IV-ს (<55 მმ-ზეც არ იბლოკება როგორც უჩვენებო).',
-        source_ref='ESVS 2024 AAA Guideline (Section 8 — Mycotic AAA)',
+        source_ref='ESVS 2024 AAA Guideline (Section 10.1 — Infective/Mycotic AAA)',
         op_subtype=_OP.OPEN, age=66, sex='M',
         q=(('filled', True), ('mets_ok', True)),
         s=(('aaa_mm', 52), ('aaa_morphology', 'inflammatory_mycotic'), ('hb', 124), ('inr', 1.1), ('creat', 90), ('ecg', 'normal')),
@@ -253,7 +253,8 @@ VASCULAR_VIGNETTES = (
         op_subtype=_OP.BYPASS_CLTI, age=66, sex='M', side='R',
         q=(('filled', True), ('abf_rest_pain', True), ('med_aspirin', True), ('med_chips', ['statin']), ('mets_ok', True)),
         s=(('abi_r', 0.39), ('creat', 88), ('weight_kg', 78), ('pad_runoff_status', 'popliteal_patent'), ('pad_gsv_status', 'adequate'), ('post_antithrombotic_plan', 'voyager')),
-        must_not_red=('VOYAGER / DAPT',),
+        must_not_red=('VOYAGER PAD', 'VOYAGER / DAPT', 'რივაროქსაბანი 2.5'),
+        must_postop_at_terms=('VOYAGER PAD',),
     ),
     ClinicalVignette(
         id='V20_PAD_VOYAGER_CONTRAINDICATED',
@@ -347,6 +348,7 @@ VASCULAR_VIGNETTES = (
         q=(('filled', True), ('ven_ceap', 'C2'), ('mets_ok', True)),
         s=(('weight_kg', 110), ('height_cm', 178), ('hb', 148), ('plt', 240), ('glucose', 5.3), ('ven_duplex_status', 'deep_patent_reflux'), ('compression_ready', True)),
         expect_needs_spirometry=False,
+        expect_lidocaine_max_mg=500,
         must_not_red=('კოაგულოგრამის',),
     ),
 )

@@ -385,14 +385,17 @@ def _build_surgical_brief(ctx):
     elif has_hit:
         if ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.needs_vte_prophylaxis:
             heparin_plan = 'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH კატეგორიულად აკრძალულია · სტანდარტულ EVLA-ზე ინტრაოპ. ანტიკოაგულაცია არ ესაჭიროება (საჭიროებისას — ბივალირუდინი ან არგატრობანი; ადრეული აქტივაცია)'
+        elif getattr(ctx, 'eff_pregnant', False):
+            p_tags = [t for cond, t in ((ctx.has_mech_valve, 'მექანიკური სარქველი'), (hit_severe_renal, 'CrCl/eGFR <30 / დიალიზი'), (ctx.liver_3x, 'ღვიძლის ≥3x')) if cond]
+            p_sfx = f' + {" + ".join(p_tags)}' if p_tags else ''
+            c_team = 'ჰემატოლოგის, მეან-გინეკოლოგისა და კარდიოლოგის' if ctx.has_mech_valve else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
+            heparin_plan = f'HIT ანამნეზში + ორსულობა{p_sfx}! UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {c_team} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!'
         elif ctx.has_mech_valve:
             liver_arg = ' (ღვიძლის ≥3x-ზე უპირატესია ბივალირუდინი; არგატრობანი −75%!)' if ctx.liver_3x else ''
             heparin_plan = f'HIT ანამნეზში + მექანიკური სარქველი! UFH, LMWH და DOAC აკრძალულია → IV ბივალირუდინი ან არგატრობანი{liver_arg} პოსტოპ. ვარფარინზე (VKA) გადასვლით!'
         elif hit_severe_renal:
             liver_arg = ' (ღვიძლის ≥3x-ზე არგატრობანის დოზა მცირდება 75%-ით!)' if ctx.liver_3x else ''
             heparin_plan = f'HIT ანამნეზში! UFH, LMWH, ფონდაპარინუქსი და DOAC (CrCl/eGFR <30 / დიალიზი) კატეგორიულად აკრძალულია → ინტრაოპ./პოსტოპ. ბივალირუდინი ან არგატრობანი{liver_arg}!'
-        elif getattr(ctx, 'eff_pregnant', False):
-            heparin_plan = 'HIT ანამნეზში + ორსულობა! UFH, LMWH და DOAC აკრძალულია — სავალდებულოა ჰემატოლოგისა და მეან-გინეკოლოგის კონსილიუმი (არაჰეპარინული ალტერნატივა)!'
         elif ctx.liver_3x:
             heparin_plan = 'HIT ანამნეზში + ღვიძლის ≥3x დაზიანება! UFH და LMWH კატეგორიულად აკრძალულია (DOAC და ფონდაპარინუქსი არარეკომენდებულია) → უპირატესია ბივალირუდინი (არგატრობანის დოზა მცირდება 75%-ით!) და პოსტოპ. IPC / IV ბივალირუდინი!'
         else:
@@ -430,6 +433,8 @@ def _build_surgical_brief(ctx):
 
 
 def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
+    from .meds import _gi_bleed_postop_msg, _preg_mech_valve_postop_msg
+
     pathway, s = ctx.pathway, ctx.s
     statin_tail = '' if (ctx.liver_3x or getattr(ctx, 'eff_pregnant', False)) else ' + მაღალი ინტენსივობის სტატინი (LDL <1.4 მმოლ/ლ — ESVS Class I)'
     if ctx.is_pta:
@@ -454,10 +459,12 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
         )
     if ctx.is_venous:
         return ctx.caprini_advice
+    if getattr(ctx, 'active_gi_bleed', False):
+        return _gi_bleed_postop_msg(ctx)
     if ctx.post_antithrombotic_label:
         return ctx.post_antithrombotic_label + (statin_tail if 'სტატინი' not in ctx.post_antithrombotic_label else '')
     if ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
-        return 'ორსულობა + მექანიკური სარქველი — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (DOAC აკრძალულია; VKA vs LMWH/UFH ტრიმესტრით)!'
+        return _preg_mech_valve_postop_msg(has_hit)
     if ctx.has_mech_valve:
         mv_ap_b = f' + ჩვენებისას {ctx.oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
         return f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap_b} (DOAC აკრძალულია!){statin_tail}'

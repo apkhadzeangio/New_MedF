@@ -342,7 +342,8 @@ class PreopStageP1RationalAndBridgeTests(PrivateMediaTest):
         self.client.post(reverse('preop-patient', args=[p.pk]), {
             'section': 'stage1',
             'aaa_mm': '62', 'cta_months': '1', 'cta_disc': '1',
-            'bp_sys': '132', 'bp_dia': '78',
+            'labs_date': today.isoformat(),
+            'bp_sys': '132', 'bp_dia': '78', 'hr': '74', 'spo2': '97',
             'hb': '135', 'plt': '195', 'inr': '1.04', 'creat': '138',
             'nt_probnp': '92', 'hs_ctn': '11',
             'blood_group': 'O (I) Rh (+)', 'ecg': 'normal',
@@ -400,6 +401,11 @@ class PreopStageP1RationalAndBridgeTests(PrivateMediaTest):
         )
         self.client.post(reverse('preop-patient', args=[byp.pk]), {
             'section': 'questionnaire', 'side': 'R', 'abf_rest_pain': '1', 'mets_ok': '1',
+        })
+        self.client.post(reverse('preop-patient', args=[byp.pk]), {
+            'section': 'stage1', 'labs_date': today.isoformat(),
+            'bp_sys': '128', 'bp_dia': '76', 'hr': '72', 'spo2': '98',
+            'creat': '88', 'weight_kg': '78', 'hb': '136', 'plt': '220', 'inr': '1.0', 'abi_r': '0.39',
         })
         self.client.post(reverse('preop-patient', args=[byp.pk]), {
             'section': 'stage2', 'post_antithrombotic_plan': 'voyager',

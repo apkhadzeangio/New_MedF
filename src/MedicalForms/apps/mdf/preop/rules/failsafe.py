@@ -1,6 +1,7 @@
 """Track A5 Fail-Safe Unknown-State detection so missing critical data never appears falsely 'normal'."""
 from ...models import PreopPatient
 from ..constants import STATUS_PROGRESS, STATUS_READY
+from ..meds_freetext import _positive_clauses_text
 from ..utils import _date, _int
 
 _LAB_KEYS = (
@@ -74,7 +75,7 @@ def _collect_med_allergy_unknowns(ctx, add):
             blocking=True,
         )
     elif getattr(ctx, 'unconfirmed_ft_allergies', None) or (
-        (q.get('allergy_text') or '').strip() and not q.get('allergy_other') and not (q.get('allergy_chips') or [])
+        _positive_clauses_text(q.get('allergy_text') or '') and not q.get('allergy_other') and not (q.get('allergy_chips') or [])
     ):
         add(
             'unconfirmed_freetext_allergy', 'q', 'allergy_text',

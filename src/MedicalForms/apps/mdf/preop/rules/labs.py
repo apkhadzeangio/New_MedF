@@ -14,17 +14,21 @@ from ..utils import _date, _fmt_ka_date, _int, _num, chip_summary
 
 
 def _parse_wbc(raw):
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
     val = _num(raw, lo=0.1, hi=150000)
-    if val is not None and val >= 200:
+    if val is not None and val >= u['wbc_ul_ge']:
         val = round(val / 1000.0, 2)
-    return _num(val, lo=0.1, hi=200.0) if val is not None else None
+    return _num(val, lo=0.1, hi=float(u['wbc_ul_ge'])) if val is not None else None
 
 
 def _parse_plt(raw):
+    u = rule_value('LAB_UNIT_AUTO_CONVERSION')
     val = _num(raw, lo=1, hi=2000000)
-    if val is not None and val >= 3000:
+    if val is not None and u['plt_ambig_lo'] < val < u['plt_ul_ge']:
+        return None
+    if val is not None and val >= u['plt_ul_ge']:
         val = int(round(val / 1000.0))
-    return _int(val, lo=1, hi=2500) if val is not None else None
+    return _int(val, lo=1, hi=u['plt_ambig_lo']) if val is not None else None
 
 
 def _extract_bp_and_sat(s):
@@ -304,6 +308,7 @@ def eval_hematology_coag(ctx):
     is_evla_vka_ctx = (
         ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
         and not ctx.has_neuraxial_plan and bool(q.get('med_warfarin'))
+        and not getattr(ctx, 'eff_pregnant', False)
         and not (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips)
     )
     evla_vka_ok = (

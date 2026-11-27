@@ -104,6 +104,8 @@ def _apply_q_booleans_and_chips(post_data, q, patient=None):
             continue
         if not is_ven and f in _VENOUS_ONLY_Q_BOOLS and f not in post_data:
             continue
+        if f == 'abf_buttock_pain' and patient is not None and patient.pathway != PreopPatient.Pathway.ABF and f not in post_data:
+            continue
         q[f] = post_data.get(f) in ('1', 'on', 'true')
     q['mets_ok'] = post_data.get('mets_ok', '1') != '0'
     if post_data.get('mets_limitation') in ('cardiac', 'limb'):
@@ -443,7 +445,6 @@ def apply_self_fill_post(post_data, patient):
     """Isolated patient Self-Fill parser: NEVER wipes nurse-entered fields (cta_disc, pacemaker, dm_insulin, etc.)."""
     q = merged_q(patient)
     old_q = dict(q)
-    was_filled = bool(old_q.get('filled'))
     s = merged_studies(patient)
     today = timezone.localdate()
     pw = PreopPatient.SUBTYPE_PATHWAY.get(patient.op_subtype, patient.pathway)
@@ -471,8 +472,7 @@ def apply_self_fill_post(post_data, patient):
     inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
     _apply_sf_pathway_fields(post_data, pw, q, today, inv)
     _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv)
-    if was_filled:
-        _preserve_prior_sf_risks(old_q, q)
+    _preserve_prior_sf_risks(old_q, q)
     if inv:
         s['_invalid_inputs'] = inv
     else:

@@ -17,7 +17,10 @@ _RIVA_LOW_RE = re.compile(
 )
 _RIVA_THER_DOSE_RE = re.compile(r'(?<![\d.,])(?:10|15|20)(?![\d.,])')
 _RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;,\n/+]|\s+(?:და|ან|and|or)\s+')
-_NEG_CLAUSE_SPLIT_RE = re.compile(r'[;,\n!]+|\.(?!\d)|\s+(?:მაგრამ|ხოლო|თუმცა|but)\s+')
+_NEG_CLAUSE_SPLIT_RE = re.compile(
+    r'[;,\n!]+|\.(?!\d)|\s+(?:მაგრამ|ხოლო|თუმცა|but)\s+'
+    r'|\s+(?:და|ან|and)\s+(?=(?:სვამს|იღებს|ვიღებ|ღებულობს|უწერია|დაუნიშნ|takes?|taking|uses?|using|on\s))'
+)
 _RIVA_ESCALATION_STEMS = (
     'დაუნიშნ', 'შეცვ', 'გაიზარდ', 'გადაიყვან', 'დოზ', 'შემდეგ', 'ახლა', 'ხოლო',
     'მაგრამ', 'კარდიოლოგ', 'ექიმ', 'საღამო', 'დილ', 'დღეში', 'ადრე', 'ნაცვლ',
@@ -50,16 +53,17 @@ _NEGATION_PHRASE_RE = re.compile(
 )
 _FT_STATIN_STEMS = (
     'ატორვასტატინ', 'როზუვასტატინ', 'სიმვასტატინ', 'პრავასტატინ', 'პიტავასტატინ', 'ფლუვასტატინ',
-    'კრესტორ', 'ლიპიტორ', 'ტულიპ', 'როქსერ', 'მერტენილ', 'ატორის', 'ზოკორ',
-    'atorvastatin', 'rosuvastatin', 'simvastatin', 'pravastatin', 'crestor', 'lipitor', 'roswera', 'atoris',
+    'სტატინ', 'კრესტორ', 'ლიპიტორ', 'ლიპრიმ', 'ტულიპ', 'როქსერ', 'მერტენილ', 'ატორის', 'ზოკორ',
+    'statin', 'atorvastatin', 'rosuvastatin', 'simvastatin', 'pravastatin',
+    'crestor', 'lipitor', 'liprimar', 'roswera', 'atoris',
 )
 _FT_ACEI_ARB_STEMS = (
     'რამიპრილ', 'ენალაპრილ', 'პერინდოპრილ', 'ლიზინოპრილ', 'კაპტოპრილ', 'ფოზინოპრილ',
     'ლოზარტან', 'ვალსარტან', 'კანდესარტან', 'ტელმისარტან', 'ირბესარტან', 'ოლმესარტან',
-    'პრესტარიუმ', 'ტრიტაცე', 'კოზაარ', 'დიოვან', 'მიკარდის', 'ატაკანდ', 'ენაპ', 'ნოლიპრელ', 'კო-პრენეს', 'პრენეს',
+    'პრესტარიუმ', 'პრესტანს', 'ტრიტაცე', 'კოზაარ', 'დიოვან', 'მიკარდის', 'ატაკანდ', 'ენაპ', 'ნოლიპრელ', 'კო-პრენეს', 'პრენეს',
     'ramipril', 'enalapril', 'perindopril', 'lisinopril', 'captopril',
     'losartan', 'valsartan', 'candesartan', 'telmisartan', 'irbesartan', 'olmesartan',
-    'prestarium', 'tritace', 'cozaar', 'diovan', 'micardis', 'atacand', 'noliprel',
+    'prestarium', 'prestans', 'tritace', 'cozaar', 'diovan', 'micardis', 'atacand', 'enap', 'noliprel',
 )
 
 

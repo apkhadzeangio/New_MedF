@@ -62,7 +62,11 @@ def _make_med_row_helpers(op_dt):
     def add_row(drug, rule, tone, date_plan='', hold_or_skip=False, force_date_plan=False,
                 acute_hold=False, contraindicated=False, glp1_diet=False, unstructured=False,
                 mandatory_hold_days=0, reconcile_only=False):
-        if contraindicated and ('ბოლო:' in (date_plan or '') or 'მიიღეთ' in (date_plan or '')):
+        if contraindicated and (
+            not (date_plan or '').strip()
+            or 'ბოლო:' in (date_plan or '')
+            or 'მიიღეთ' in (date_plan or '')
+        ):
             date_plan = _IMMED_STOP_PLAN
             force_date_plan = True
         row = {
@@ -299,9 +303,19 @@ def _append_antiplatelet_rows(c):
             stent_note = 'სტენტი <6 თვ' if q.get('recent_stent') else 'ინფარქტის შემდგომი სტენტი 6–12 თვ (DAPT 12 თვე)'
             add_row('კლოპიდოგრელი / P2Y12', f'{stent_note} — თვითნებური მოხსნა აკრძალულია! კარდიოლოგ-ქირურგის კონსილიუმი{dup_p2y_warn}', 'red', 'არ მოხსნათ კონსილიუმის გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=dup_p2y_red)
         elif is_symp_cea:
-            add_row('კლოპიდოგრელი / P2Y12', f'გრძელდება უწყვეტად CEA-მდე! (ESVS 2023 — სიმპტომურ CEA-ზე მოხსნა ზრდის ინსულტის რისკს){dup_p2y_warn}{t3_clop_warn}', 'red' if dup_p2y_red else ('amber' if t3_clop_warn else 'ok'), f'მიიღეთ {d_str(0)}-ის ჩათვლით', hold_or_skip=False, contraindicated=dup_p2y_red)
+            c_rule = (
+                '≥2 P2Y12 დუბლირება სიმპტომურ CEA-ზე — თვითნებურად არ გააგრძელოთ ორივე! დაუყოვნებლივ შეათანხმეთ ერთი P2Y12 სქემა ქირურგთან (ESVS 2023)!'
+                if dup_p2y_red else
+                f'გრძელდება უწყვეტად CEA-მდე! (ESVS 2023 — სიმპტომურ CEA-ზე მოხსნა ზრდის ინსულტის რისკს){t3_clop_warn}'
+            )
+            add_row('კლოპიდოგრელი / P2Y12', c_rule, 'red' if dup_p2y_red else ('amber' if t3_clop_warn else 'ok'), 'შეათანხმეთ დე-ესკალაცია ქირურგთან!' if dup_p2y_red else f'მიიღეთ {d_str(0)}-ის ჩათვლით', hold_or_skip=False, force_date_plan=dup_p2y_red, contraindicated=dup_p2y_red)
         elif is_pta:
-            add_row('კლოპიდოგრელი / P2Y12', f'გრძელდება უწყვეტად (DAPT რეჟიმი სტენტირებისთვის){dup_p2y_warn}{t3_clop_warn}', 'red' if dup_p2y_red else ('amber' if t3_clop_warn else 'ok'), f'მიიღეთ {d_str(0)}-ის ჩათვლით', hold_or_skip=False, contraindicated=dup_p2y_red)
+            c_rule = (
+                '≥2 P2Y12 დუბლირება PTA-ზე — თვითნებურად არ გააგრძელოთ ორივე! შეათანხმეთ ერთი P2Y12 (DAPT) ქირურგთან/კარდიოლოგთან!'
+                if dup_p2y_red else
+                f'გრძელდება უწყვეტად (DAPT რეჟიმი სტენტირებისთვის){t3_clop_warn}'
+            )
+            add_row('კლოპიდოგრელი / P2Y12', c_rule, 'red' if dup_p2y_red else ('amber' if t3_clop_warn else 'ok'), 'შეათანხმეთ დე-ესკალაცია!' if dup_p2y_red else f'მიიღეთ {d_str(0)}-ის ჩათვლით', hold_or_skip=False, force_date_plan=dup_p2y_red, contraindicated=dup_p2y_red)
         elif is_evla and not is_neuraxial and not dup_p2y_red:
             add_row('კლოპიდოგრელი / P2Y12', 'ESVS 2022: EVLA შესაძლებელია მოუხსნელადაც — დააზუსტეთ ქირურგთან', 'amber', f'დააზუსტეთ ქირურგთან ({d_str(0)})', hold_or_skip=True, reconcile_only=True)
         elif asa_allergy and (pw != PreopPatient.Pathway.VENOUS or q.get('cad') or c['cad_chips'] or q.get('neuro')):
@@ -330,36 +344,38 @@ def _append_potent_p2y12_rows(c, p2y_cfg, asa_allergy, clop_intol, asa_sub_txt):
 
     if q.get('med_ticagrelor'):
         tica_bad_combo = c['has_full_oac'] or c['p2y12_cnt'] >= 2 or ('rivaroxaban_2_5' in med_chips)
+        tica_esc_warn = ' [OAC / რივაროქსაბანი 2.5 / დუბლირებულ P2Y12-თან ერთად ESC Class III სისხლდენის რისკი — შეათანხმეთ დე-ესკალაცია!]' if tica_bad_combo else ''
         if is_bleed:
             add_row('ტიკაგრელორი (ბრილინტა)', _cea_bleed_rule(c, 'ტიკაგრელორი'), 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif c['active_gi_bleed']:
             add_row('ტიკაგრელორი (ბრილინტა)', 'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და კარდიოლოგთან!', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif q.get('recent_stent') or has_acs_stent_12m:
-            add_row('ტიკაგრელორი (ბრილინტა)', 'კორონარული სტენტი DAPT რეჟიმში — თვითნებური მოხსნა აკრძალულია! კარდიოლოგ-ქირურგის კონსილიუმი', 'red', 'არ მოხსნათ კონსილიუმის გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=tica_bad_combo)
+            add_row('ტიკაგრელორი (ბრილინტა)', f'კორონარული სტენტი DAPT რეჟიმში — თვითნებური მოხსნა აკრძალულია! კარდიოლოგ-ქირურგის კონსილიუმი{tica_esc_warn}', 'red', 'არ მოხსნათ კონსილიუმის გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=tica_bad_combo)
         elif is_symp_cea:
             cea_t_alt = 'გაგრძელება ან კონსილიუმით შერჩევა (ალერგიების გამო!)' if (asa_allergy and clop_intol) else ('გაგრძელება ან ასპირინზე გადაყვანა' if clop_intol else ('გაგრძელება ან კლოპიდოგრელზე გადაყვანა' if asa_allergy else 'გაგრძელება ან კლოპიდოგრელ/ასპირინზე გადაყვანა'))
-            add_row('ტიკაგრელორი (ბრილინტა)', f'სიმპტომური CEA — თვითნებურად არ მოხსნათ! შეათანხმეთ ქირურგთან ({cea_t_alt})', 'red', 'არ მოხსნათ შეთანხმების გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=tica_bad_combo)
+            add_row('ტიკაგრელორი (ბრილინტა)', f'სიმპტომური CEA — თვითნებურად არ მოხსნათ! შეათანხმეთ ქირურგთან ({cea_t_alt}){tica_esc_warn}', 'red', 'არ მოხსნათ შეთანხმების გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=tica_bad_combo)
         elif is_pta:
             rule_t = 'OAC/დუბლირებულ P2Y12-თან ერთად ESC Class III სისხლდენის რისკი — შეათანხმეთ დე-ესკალაცია კარდიოლოგთან!' if tica_bad_combo else 'გრძელდება ან შეთანხმდება ქირურგთან (ენდოვასკულური DAPT)'
             add_row('ტიკაგრელორი (ბრილინტა)', rule_t, 'red' if tica_bad_combo else 'ok', 'შეათანხმეთ დე-ესკალაცია!' if tica_bad_combo else f'მიიღეთ {d_str(0)}-ის ჩათვლით', hold_or_skip=False, force_date_plan=tica_bad_combo, contraindicated=tica_bad_combo)
         elif solo_p2y_asa_alg:
-            add_row('ტიკაგრელორი (ბრილინტა)', 'ასპირინზე/აასს-ზე ალერგია — ტიკაგრელორის მონოთერაპია თვითნებურად არ მოხსნათ (უანტიაგრეგანტოდ დატოვება საშიშია)! შეათანხმეთ ქირურგთან/კარდიოლოგთან!', 'red', 'შეათანხმეთ ქირურგთან (ასპირინზე ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=tica_bad_combo)
+            add_row('ტიკაგრელორი (ბრილინტა)', f'ასპირინზე/აასს-ზე ალერგია — ტიკაგრელორის მონოთერაპია თვითნებურად არ მოხსნათ (უანტიაგრეგანტოდ დატოვება საშიშია)! შეათანხმეთ ქირურგთან/კარდიოლოგთან!{tica_esc_warn}', 'red', 'შეათანხმეთ ქირურგთან (ასპირინზე ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=tica_bad_combo)
         elif is_neuraxial:
-            add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება სპინალურ/ეპიდურულ ანესთეზიამდე 5 დღით ადრე (ASRA 5th Ed) — {asa_sub_txt}', 'red' if (tica_bad_combo or asa_allergy) else 'amber', hold_str(p2y_cfg['tica_nx'], ' (5 დღე)'), hold_or_skip=True, contraindicated=tica_bad_combo, mandatory_hold_days=p2y_cfg['tica_nx'])
+            add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება სპინალურ/ეპიდურულ ანესთეზიამდე 5 დღით ადრე (ASRA 5th Ed) — {asa_sub_txt}{tica_esc_warn}', 'red' if (tica_bad_combo or asa_allergy) else 'amber', hold_str(p2y_cfg['tica_nx'], ' (5 დღე)'), hold_or_skip=True, contraindicated=tica_bad_combo, mandatory_hold_days=p2y_cfg['tica_nx'])
         else:
-            add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება ოპერაციამდე 3–5 დღით ადრე (ESC 2022 / FDA; {asa_sub_txt})', 'red' if (tica_bad_combo or asa_allergy) else 'amber', hold_str(p2y_cfg['tica_std']), hold_or_skip=True, contraindicated=tica_bad_combo, mandatory_hold_days=p2y_cfg['tica_std'])
+            add_row('ტიკაგრელორი (ბრილინტა)', f'შეჩერება ოპერაციამდე 3–5 დღით ადრე (ESC 2022 / FDA; {asa_sub_txt}){tica_esc_warn}', 'red' if (tica_bad_combo or asa_allergy) else 'amber', hold_str(p2y_cfg['tica_std']), hold_or_skip=True, contraindicated=tica_bad_combo, mandatory_hold_days=p2y_cfg['tica_std'])
 
     if q.get('med_prasugrel'):
         has_stroke_hx = c['has_stroke_hx']
         stroke_warn = ' [გადატანილ ინსულტ/TIA-ზე პრასუგრელი უკუნაჩვენებია — გადაამოწმეთ!]' if has_stroke_hx else ''
         pras_bad_combo = c['has_full_oac'] or c['p2y12_cnt'] >= 2 or ('rivaroxaban_2_5' in med_chips)
+        pras_esc_warn = ' [OAC / რივაროქსაბანი 2.5 / დუბლირებულ P2Y12-თან ერთად ESC Class III სისხლდენის რისკი — შეათანხმეთ დე-ესკალაცია!]' if pras_bad_combo else ''
         pras_contra = bool(stroke_warn or pras_bad_combo)
         if is_bleed:
             add_row('პრასუგრელი (ეფიენტი)', f'{_cea_bleed_rule(c, "პრასუგრელი")}{stroke_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif c['active_gi_bleed']:
             add_row('პრასუგრელი (ეფიენტი)', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და კარდიოლოგთან!{stroke_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif q.get('recent_stent') or has_acs_stent_12m:
-            add_row('პრასუგრელი (ეფიენტი)', f'კორონარული სტენტი — თვითნებური მოხსნა აკრძალულია! კარდიოლოგ-ქირურგის კონსილიუმი{stroke_warn}', 'red', 'არ მოხსნათ კონსილიუმის გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=pras_contra)
+            add_row('პრასუგრელი (ეფიენტი)', f'კორონარული სტენტი — თვითნებური მოხსნა აკრძალულია! კარდიოლოგ-ქირურგის კონსილიუმი{stroke_warn}{pras_esc_warn}', 'red', 'არ მოხსნათ კონსილიუმის გარეშე!', hold_or_skip=False, force_date_plan=True, contraindicated=pras_contra)
         elif has_stroke_hx:
             add_row('პრასუგრელი (ეფიენტი)', f'გადატანილი ინსულტის / TIA-ს ანამნეზში პრასუგრელი აბსოლუტურად უკუნაჩვენებია (FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ კარდიოლოგთან ({asa_sub_txt})!', 'red', 'უკუნაჩვენებია — დაუყოვნებლივ შეცვალეთ ექიმთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif is_pta and pras_bad_combo:
@@ -369,10 +385,10 @@ def _append_potent_p2y12_rows(c, p2y_cfg, asa_allergy, clop_intol, asa_sub_txt):
         elif is_pta and not is_neuraxial and not stroke_warn:
             add_row('პრასუგრელი (ეფიენტი)', 'ენდოვასკულური PTA — შეათანხმეთ ქირურგთან (გაგრძელება ან კლოპიდოგრელზე დეესკალაცია)', 'amber', f'შეათანხმეთ ქირურგთან ({d_str(0)})', hold_or_skip=True, reconcile_only=True)
         elif solo_p2y_asa_alg and not stroke_warn:
-            add_row('პრასუგრელი (ეფიენტი)', 'ასპირინზე/აასს-ზე ალერგია — პრასუგრელის მონოთერაპია თვითნებურად არ მოხსნათ (უანტიაგრეგანტოდ დატოვება საშიშია)! შეათანხმეთ ქირურგთან/კარდიოლოგთან!', 'red', 'შეათანხმეთ ქირურგთან (ასპირინზე ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=pras_contra)
+            add_row('პრასუგრელი (ეფიენტი)', f'ასპირინზე/აასს-ზე ალერგია — პრასუგრელის მონოთერაპია თვითნებურად არ მოხსნათ (უანტიაგრეგანტოდ დატოვება საშიშია)! შეათანხმეთ ქირურგთან/კარდიოლოგთან!{pras_esc_warn}', 'red', 'შეათანხმეთ ქირურგთან (ასპირინზე ალერგია!)', hold_or_skip=False, force_date_plan=True, contraindicated=pras_contra)
         else:
             hold_d = p2y_cfg['pras_nx'] if is_neuraxial else p2y_cfg['pras_std']
-            add_row('პრასუგრელი (ეფიენტი)', f'შეჩერება ოპერაციამდე და სპინალურ/ეპიდურულ ანესთეზიამდე 7–10 დღით ადრე (ASRA/ESC) — {asa_sub_txt}{stroke_warn}', 'red', hold_str(hold_d), hold_or_skip=True, contraindicated=pras_contra, mandatory_hold_days=hold_d)
+            add_row('პრასუგრელი (ეფიენტი)', f'შეჩერება ოპერაციამდე და სპინალურ/ეპიდურულ ანესთეზიამდე 7–10 დღით ადრე (ASRA/ESC) — {asa_sub_txt}{stroke_warn}{pras_esc_warn}', 'red', hold_str(hold_d), hold_or_skip=True, contraindicated=pras_contra, mandatory_hold_days=hold_d)
 
 
 _IMMED_STOP_PLAN = 'შეწყვიტეთ დაუყოვნებლივ (ექიმთან შეთანხმებით)!'
@@ -387,7 +403,7 @@ def _append_cilostazol_row(c, cilo_cfg):
         c['is_cea_oac_p2y_stop'] or c['chf_any'] or (c['lvef_cur'] is not None and c['lvef_cur'] < cilo_cfg['lvef_min'])
         or c['on_dialysis'] or c['creat_extreme_hi'] or (c['eff_renal'] is not None and c['eff_renal'] <= cilo_cfg['crcl_min'])
         or (s.get('ecg') == 'ischemia_arrhythmia') or (c['hr_cur'] is not None and c['hr_cur'] > cilo_cfg['hr_max'])
-        or c['liver_3x'] or bool(q.get('ulcer_active_symp')) or (s.get('gastro_result') == 'acute_ulcer')
+        or c['liver_3x'] or c['active_gi_bleed']
         or bool(q.get('recent_stent')) or c['has_acs_stent_12m'] or c['repro_pregnant']
     )
     ppi_cyp_warn = ' [CYP2C19: ომეპრაზოლს მოერიდეთ — უპირატესია პანტოპრაზოლი]' if ('ppi' in med_chips or q.get('ulcer') or s.get('ppi_started') or c['ft_meds']['has_omeprazole']) else ''
@@ -571,7 +587,17 @@ def _append_warfarin_row(c):
         else:
             bridge_txt = 'რუტინული LMWH ხიდი AFib-ზე არ ტარდება (ESC 2022 Class III); თუ დაინიშნა პროფილაქტიკური LMWH, ჩერდება -12 სთ, თერაპიული -24 სთ'
         vka_res_sfx = '' if dup_vka else ' · აღდგენა: 12–24 სთ-ში (საღამოს/D+1)'
-        vka_dp = _IMMED_STOP_PLAN if dup_vka else f'{hold_str(vka_cfg["hold_days"])} · INR კონტროლი {d_str(-1)}'
+        bridge_dp = ''
+        if not dup_vka and high_thromb_vka:
+            if has_mech_valve and c['has_hit']:
+                bridge_dp = ' · სავალდებულოა სტაციონარული IV ხიდი (ბივალირუდინი/არგატრობანი — HIT: LMWH/ჰეპარინი არა!)'
+            elif c['has_hit']:
+                bridge_dp = ' · მაღალი თრომბორისკი + HIT: არაჰეპარინული ხიდი ჰემატოლოგთან (LMWH/ჰეპარინი არა!)'
+            elif c['severe_renal']:
+                bridge_dp = ' · სავალდებულოა სტაციონარული IV UFH ხიდი (CrCl<30/დიალიზი: თვითნებურად არ შეწყვიტოთ!)'
+            else:
+                bridge_dp = f' · სავალდებულო LMWH ხიდით (~{d_str(-3)}-დან, 50% დოზა {d_str(-1)} დილას)'
+        vka_dp = _IMMED_STOP_PLAN if dup_vka else f'{hold_str(vka_cfg["hold_days"])} · INR კონტროლი {d_str(-1)}{bridge_dp}'
         add_row('ვარფარინი', f'შეჩერება {vka_cfg["hold_days"]} დღით ადრე + წინა დღეს საკონტროლო {inr_target}. {bridge_txt}{vka_res_sfx}{liver_vka_warn}{dup_oac_warn}', 'red', vka_dp, hold_or_skip=True, force_date_plan=dup_vka, contraindicated=dup_vka, mandatory_hold_days=vka_cfg['hold_days'])
 
 

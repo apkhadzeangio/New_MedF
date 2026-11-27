@@ -170,16 +170,19 @@ def board_prefill(request):
     )
 
     def _niv_kwargs_from_preop(pre):
+        from .preop.meds_freetext import _positive_clauses_text
+
         q = pre.questionnaire if isinstance(pre.questionnaire, dict) else {}
         s = pre.studies if isinstance(pre.studies, dict) else {}
         has_allergy = bool(
             q.get('allergy_iodine') or q.get('allergy_other')
             or q.get('ven_lidocaine_allergy') or q.get('allergy_chips')
+            or _positive_clauses_text(q.get('allergy_text') or '')
         )
         # On NIV-300-9/a, `neuro` means 'მღვიძარე, ორიენტირებული' (alert & oriented)
         has_neuro = not bool(q.get('cea_disabling_stroke'))
         hba1c_v = _num(s.get('hba1c'), lo=3, hi=25)
-        has_dm = bool(q.get('dm') or (hba1c_v is not None and hba1c_v >= 6.5))
+        has_dm = bool(q.get('dm') or q.get('dm_insulin') or q.get('metformin') or (hba1c_v is not None and hba1c_v >= 6.5))
         bmi_val = calc_bmi(s.get('weight_kg'), s.get('height_cm'))
         if s.get('irregular_hr') or s.get('ecg') == 'afib_controlled':
             rad_pulse = RadialPulse.NON_REGULAR

@@ -277,7 +277,8 @@ class StressR2TemplatesAndViewWorkflowTests(TestCase):
         p_stop.save()
         h_g = self.client.get(reverse('preop-patient-guide', args=[p_stop.pk])).content.decode()
         self.assertIn('ბეტა-ბლოკატორი', h_g)
-        self.assertIn('DOAC', h_g)
+        self.assertIn('ქსარელტო / ელიქვისი', h_g)
+        self.assertNotIn('(DOAC)', h_g)
 
         # F-08 & CLN-14: Unapproved draft with med_hold_agreed=True must NOT show green '[დადასტურებულია ექიმთან ✓]'
         p_dr = _go('open', q={'med_warfarin': True}, s={'inr': 2.5, 'med_hold_agreed': True, 'blood_reserved': False})

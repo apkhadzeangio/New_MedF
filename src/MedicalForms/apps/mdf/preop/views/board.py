@@ -21,60 +21,38 @@ def _valid_db_pk(val):
 
 
 def resolve_board_patient(patient):
-    """Return active BoardPatient linked to this PreopPatient (never hijacking another PreopPatient's Board card)."""
+    """Return active BoardPatient explicitly linked to this PreopPatient (never hijacking unrelated same-name cards)."""
     s = merged_studies(patient)
     bpid = s.get('board_patient_id')
     if _valid_db_pk(bpid):
-        bp = BoardPatient.objects.filter(pk=bpid, discharged_at__isnull=True).first()
-        if bp:
-            return bp
-        if BoardPatient.objects.filter(pk=bpid).exists():
-            return None
-    if patient.patient_name:
-        other_preops = (
-            PreopPatient.objects.filter(patient_name__iexact=patient.patient_name)
-            .exclude(pk=patient.pk)
-            .values_list('studies', flat=True)
-        )
-        claimed_ids = {
-            st.get('board_patient_id') for st in other_preops
-            if isinstance(st, dict) and _valid_db_pk(st.get('board_patient_id'))
-        }
-        qs = BoardPatient.objects.filter(discharged_at__isnull=True, name__iexact=patient.patient_name)
-        if claimed_ids:
-            qs = qs.exclude(pk__in=claimed_ids)
-        return qs.order_by('-admitted_at').first()
+        return BoardPatient.objects.filter(pk=bpid, discharged_at__isnull=True).first()
     return None
 
 
 def resolve_preop_for_board(board_patient):
-    """Return the PreopPatient linked to this BoardPatient (preserving explicit ID links even after Preop archive!)."""
-    if not board_patient:
+    """Return the PreopPatient explicitly linked to this BoardPatient (preserving links even after Preop archive)."""
+    if not board_patient or not _valid_db_pk(board_patient.pk):
         return None
-    same_name = list(
-        PreopPatient.objects.filter(patient_name__iexact=board_patient.name)
-        .order_by('-updated_at', '-id')[:20]
+    return (
+        PreopPatient.objects.filter(studies__board_patient_id=board_patient.pk)
+        .order_by('-updated_at', '-id')
+        .first()
     )
-    for pre in same_name:
-        if isinstance(pre.studies, dict) and pre.studies.get('board_patient_id') == board_patient.pk:
-            return pre
-    recent = PreopPatient.objects.order_by('-updated_at', '-id')[:80]
-    for pre in recent:
-        if isinstance(pre.studies, dict) and pre.studies.get('board_patient_id') == board_patient.pk:
-            return pre
-    for pre in same_name:
-        if not pre.archived and not (isinstance(pre.studies, dict) and pre.studies.get('board_patient_id')):
-            return pre
-    return None
 
 
 def admit_preop_to_board(patient, user, unit='', bed=''):
     """1-click clinical handoff from PreopPatient to BoardPatient + initial STATUS & duty TASKs."""
+    orig_patient = patient
     with _PREOP_MUTATION_LOCK, transaction.atomic():
         if patient.pk:
             _sqlite_acquire_write_lock(patient.pk)
             patient = PreopPatient.objects.select_for_update().select_related('surgeon', 'surgeon__profile').get(pk=patient.pk)
-        return _admit_preop_to_board_locked(patient, user, unit=unit, bed=bed)
+        res = _admit_preop_to_board_locked(patient, user, unit=unit, bed=bed)
+        if orig_patient is not patient:
+            orig_patient.studies = dict(patient.studies or {})
+            orig_patient.updated_by = patient.updated_by
+            orig_patient.updated_at = patient.updated_at
+        return res
 
 
 def _upsert_board_patient(patient, user, ev, s, unit, bed, now):
@@ -307,7 +285,9 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
         liver_3x = s.get('liver_status') == '3x'
         sev_renal = bool(q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < ren_red))
         if ev.get('eff_pregnant'):
-            hit_board_agents = 'ორსულობა + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა ჰემატოლოგისა და მეან-გინეკოლოგის კონსილიუმი (არაჰეპარინული ალტერნატივა)!'
+            mv_hit_s = ' + მექანიკური სარქველი' if has_mv else ''
+            team_s = 'ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის' if has_mv else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
+            hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!'
         elif has_mv:
             hit_board_agents = (
                 'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე!) → ვარფარინი (VKA)'
@@ -324,6 +304,17 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
         task_candidates.append((
             _VTE_PREFIXES,
             f'HIT ანამნეზში! არაფრაქციული ჰეპარინი და LMWH აკრძალულია — არაჰეპარინული ანტიკოაგულაცია ({hit_board_agents})',
+        ))
+    elif ev.get('active_gi_bleed'):
+        mv_gi = ' (მექანიკური სარქველი — კარდიოლოგის ჩართვით!)' if ev.get('has_mech_valve') else ''
+        task_candidates.append((
+            _VTE_PREFIXES,
+            f'VTE / ანტიკოაგულაცია: აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — მხოლოდ მექანიკური პროფილაქტიკა (IPC) ენდოსკოპიურ ჰემოსტაზამდე; ანტიკოაგულაციის აღდგენა შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან{mv_gi}!',
+        ))
+    elif ev.get('has_mech_valve') and ev.get('eff_pregnant'):
+        task_candidates.append((
+            _VTE_PREFIXES,
+            'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი — DOAC აკრძალულია; VKA თვითნებურად არ მოხსნათ — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (VKA vs LMWH/UFH ტრიმესტრით)!',
         ))
     elif ev.get('has_contra_oac') or (ev.get('eff_pregnant') and ev.get('has_full_oac')):
         if ev.get('eff_pregnant'):
@@ -510,19 +501,16 @@ class PreopBoardHandoffView(LoginRequiredMixin, generic.View):
 
     def post(self, request, pk):
         from .. import evaluate
+        from .parsers import preop_admission_block_reason
 
         patient = get_object_or_404(
             PreopPatient.objects.select_related('surgeon', 'surgeon__profile'),
             pk=pk,
         )
         ev = evaluate(patient)
-        if (
-            ev['clearance_seal']['code'] == 'stop'
-            or ev.get('has_hard_contraindication')
-            or ev.get('dos_hold_danger')
-            or ev.get('neuraxial_hard_blocked')
-        ):
-            messages.error(request, 'STOP-სიგნალის ან აბსოლუტური უკუჩვენების ფონზე პაციენტის საოპერაციო დაფაზე გადაყვანა დაბლოკილია!')
+        blk = preop_admission_block_reason(ev, ev['s'])
+        if blk:
+            messages.error(request, blk)
             return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
         unit = request.POST.get('unit') or ''
         bed = request.POST.get('bed') or ''

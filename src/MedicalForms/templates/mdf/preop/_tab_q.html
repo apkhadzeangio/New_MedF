@@ -156,7 +156,7 @@
                                     <option value="{{ dv }}" {% if q.abf_duration == dv %}selected{% endif %}>{{ dl }}</option>
                                     {% endfor %}
                                 </select>
-                                {% if ev.pathway == 'abf' %}
+                                {% if ev.pathway == 'abf' or ev.pathway == 'pad_bypass' or ev.pathway == 'pad_pta' %}
                                 <label class="chip-check"><input type="checkbox" name="abf_buttock_pain" value="1" {% if q.abf_buttock_pain %}checked{% endif %}>დუნდულოს/ბარძაყის ტკივილი</label>
                                 {% endif %}
                                 {% if p.op_subtype == 'abf_claud' or p.op_subtype == 'bypass_claud' or p.op_subtype == 'pta_claud' %}

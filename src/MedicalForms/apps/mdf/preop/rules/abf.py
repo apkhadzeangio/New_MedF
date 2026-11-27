@@ -4,7 +4,8 @@ from ..registry import rule_value
 
 
 def _eval_pad_hemo_discordance(ctx, hemo_cfg):
-    """Warn when same-limb PAD hemodynamics contradict (e.g., severe ABI <0.40 with normal TP/TBI, or critical TP vs normal TBI)."""
+    """Warn when same-limb PAD hemodynamics contradict (severe ABI + normal toe, TP/TBI conflict, or pseudonormal ABI + critical toe)."""
+    abi_pad_max, abi_noncomp = rule_value('PAD_IC_BMT_3M')
     for side_lbl, abi_v, tp_v, tbi_v in (
         ('R', ctx.abi_r, ctx.tp_r, ctx.tbi_r),
         ('L', ctx.abi_l, ctx.tp_l, ctx.tbi_l),
@@ -16,6 +17,13 @@ def _eval_pad_hemo_discordance(ctx, hemo_cfg):
                 or (tbi_v is not None and tbi_v >= hemo_cfg['normal_tbi'] and (tp_v is None or tp_v >= hemo_cfg['normal_tp']))
             )
         )
+        norm_abi_crit_toe = (
+            abi_v is not None and abi_pad_max < abi_v <= abi_noncomp
+            and (
+                (tp_v is not None and tp_v < hemo_cfg['tp_severe'])
+                or (tbi_v is not None and tbi_v < hemo_cfg['tbi_severe'])
+            )
+        )
         tp_tbi_conflict = (
             tp_v is not None and tbi_v is not None
             and (
@@ -23,7 +31,7 @@ def _eval_pad_hemo_discordance(ctx, hemo_cfg):
                 or (tbi_v < hemo_cfg['tbi_severe'] and tp_v >= hemo_cfg['normal_tp'])
             )
         )
-        if low_abi_norm_toe or tp_tbi_conflict:
+        if low_abi_norm_toe or norm_abi_crit_toe or tp_tbi_conflict:
             ctx.amber_flags.append(
                 f'ჰემოდინამიკური მაჩვენებლების შეუსაბამობა ({side_lbl} კიდური: '
                 f'ABI {abi_v if abi_v is not None else "—"} / TP {tp_v if tp_v is not None else "—"} mmHg / '

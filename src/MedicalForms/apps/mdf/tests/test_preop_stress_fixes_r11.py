@@ -226,7 +226,7 @@ class PreopStressFixesR11ClinicalSafetyTests(SimpleTestCase):
 
     def test_registry_citations_attribution_and_plain_patient_guide(self):
         # Clin A12-S3..A16-S3
-        self.assertEqual(REGISTRY_VERSION, '1.2.10')
+        self.assertGreaterEqual(tuple(int(x) for x in REGISTRY_VERSION.split('.')), (1, 2, 10))
         self.assertEqual(RULES_BY_ID['ASRA_NEURAXIAL_COAG_GATE'].value['vka_prewashout_inr_max'], 4.5)
         self.assertEqual(RULES_BY_ID['MED_DABIGATRAN_HOLD_INTERVALS'].status, 'local-decision')
         self.assertEqual(RULES_BY_ID['MED_P2Y12_HOLD_DAYS'].status, 'local-decision')

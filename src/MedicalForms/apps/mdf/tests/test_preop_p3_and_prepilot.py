@@ -213,17 +213,25 @@ class PreopStageP3ReferenceHardeningTests(PrivateMediaTest):
         self.assertEqual(detect_case_preop(c_byp), ('bypass_claud', 'L'))
 
         # 2. Two distinct patients named "გიორგი ბერიძე" NEVER merge or hijack each other's BoardPatient cards!
+        from django.utils import timezone
+        t_iso = timezone.localdate().isoformat()
         g1 = PreopPatient.objects.create(
             patient_name='გიორგი ბერიძე', age=74, sex='M', side='R',
             pathway='cea', op_subtype='cea_symp', surgeon=self.user,
-            questionnaire={'filled': True, 'htn': True},
-            studies={'person_id': '01001001001', 'birth_date': '1952-03-10', 'blood_group': 'O (I) Rh (+)'},
+            questionnaire={'filled': True, 'nurse_verified': True, 'htn': True},
+            studies={
+                'person_id': '01001001001', 'birth_date': '1952-03-10', 'blood_group': 'O (I) Rh (+)',
+                'labs_date': t_iso, 'bp_sys': 130, 'bp_dia': 78, 'hr': 72, 'spo2': 98,
+            },
         )
         g2 = PreopPatient.objects.create(
             patient_name='გიორგი ბერიძე', age=45, sex='M', side='L',
             pathway='venous', op_subtype='phlebectomy', surgeon=self.user,
-            questionnaire={'filled': True},
-            studies={'person_id': '01002002002', 'birth_date': '1981-07-22', 'blood_group': 'B (III) Rh (-)'},
+            questionnaire={'filled': True, 'nurse_verified': True},
+            studies={
+                'person_id': '01002002002', 'birth_date': '1981-07-22', 'blood_group': 'B (III) Rh (-)',
+                'labs_date': t_iso, 'bp_sys': 124, 'bp_dia': 76, 'hr': 70, 'spo2': 99,
+            },
         )
         self.client.post(reverse('preop-admit-board', args=[g1.pk]), {'unit': 'icu', 'bed': '1'})
         self.client.post(reverse('preop-admit-board', args=[g2.pk]), {'unit': 'ward', 'bed': '8'})

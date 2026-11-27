@@ -41,7 +41,8 @@ def detect_case_preop(case):
 
     if any(k in blob for k in ('კაროტიდ', 'საძილე', 'ენდარტერექტომ', 'cea')):
         is_symp = any(k in blob for k in ('სიმპტომ', 'ინსულტ', 'tia', 'ტ.ი.ა', 'ამავროზ', 'იშემიური შეტევა'))
-        return (PreopPatient.OpSubtype.CEA_SYMP if is_symp else PreopPatient.OpSubtype.CEA_ASYMP), side
+        cea_side = '' if side == 'B' else side
+        return (PreopPatient.OpSubtype.CEA_SYMP if is_symp else PreopPatient.OpSubtype.CEA_ASYMP), cea_side
 
     if any(k in blob for k in ('ბიფემორ', 'აორტო-ბიფემ', 'აორტობიფემ', 'ლერიშ', 'abf', 'aortobifem')):
         return (PreopPatient.OpSubtype.ABF_CLTI if is_clti else PreopPatient.OpSubtype.ABF_CLAUD), side

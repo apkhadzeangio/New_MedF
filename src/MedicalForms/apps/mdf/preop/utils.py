@@ -193,10 +193,8 @@ def has_prior_stroke_or_tia(patient, q=None, s=None):
     """Return True for any lifelong prior stroke/TIA history (including CEA >180d, event chips, Stage-1 carotid_symp, or brain imaging)."""
     q_d = q if isinstance(q, dict) else (patient.questionnaire if (patient and isinstance(patient.questionnaire, dict)) else {})
     s_d = s if isinstance(s, dict) else (patient.studies if (patient and isinstance(patient.studies, dict)) else {})
-    raw_ev_d = q_d.get('cea_days_since_event')
-    has_ev_days = raw_ev_d is not None and str(raw_ev_d).strip() != ''
-    raw_ev_dt = q_d.get('cea_event_date')
-    has_ev_date = raw_ev_dt is not None and str(raw_ev_dt).strip() != ''
+    has_ev_days = _int(q_d.get('cea_days_since_event'), lo=0, hi=3650) is not None
+    has_ev_date = _date(q_d.get('cea_event_date')) is not None
     pw = _resolve_pathway(patient) if patient is not None else None
     return bool(
         q_d.get('neuro')

@@ -194,12 +194,12 @@
         var run = function () {
             ctrl.classList.remove('lv-warn', 'lv-crit');
             var raw = (ctrl.value || '').trim();
-            if (!raw) { hint.hidden = true; return; }
+            if (!raw) { hint.hidden = true; hint.className = 'fld-live-hint'; hint.textContent = ''; return; }
             var num = parseStrictNum(raw);
             var res = isNaN(num)
                 ? { level: 'crit', msg: 'შეიყვანეთ მხოლოდ რიცხვითი მნიშვნელობა!' }
                 : evalFn(num);
-            if (!res) { hint.hidden = true; return; }
+            if (!res) { hint.hidden = true; hint.className = 'fld-live-hint'; hint.textContent = ''; return; }
             if (res.level === 'crit') ctrl.classList.add('lv-crit');
             else if (res.level === 'warn') ctrl.classList.add('lv-warn');
             hint.className = 'fld-live-hint ' + res.level;
@@ -214,7 +214,7 @@
     document.querySelectorAll('input[name="hb"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
             if (v < 3.5 || v > 260) return { level: 'crit', msg: 'დაუჯერებელი Hb (' + v + ') — გადაამოწმეთ მნიშვნელობა და ერთეული!' };
-            if (v > 22.0 && v < 40.0) return { level: 'crit', msg: 'საეჭვო Hb ერთეული (' + v + ') — მიუთითეთ გ/ლ (40–260) ან გ/დლ (3.5–22.0)!' };
+            if (v > 22.0 && v < 35.0) return { level: 'crit', msg: 'საეჭვო Hb ერთეული (' + v + ') — მიუთითეთ გ/ლ (35–260) ან გ/დლ (3.5–22.0)!' };
             if (v >= 3.5 && v <= 22.0) {
                 var gl = Math.round(v * 100) / 10;
                 return { level: gl < 100 ? 'crit' : (gl < 115 ? 'warn' : 'info'), msg: '≈ ' + gl + ' გ/ლ' + (gl < 100 ? ' (მძიმე ანემია!)' : (gl < 115 ? ' (ანემიის რეფლექსი)' : '')) };
@@ -233,8 +233,11 @@
         });
     });
     document.querySelectorAll('input[name="inr"], input[name="dos_inr"]').forEach(function (el) {
+        var isDosInr = el.name === 'dos_inr';
+        var inrLo = isDosInr ? 0.5 : 0.4;
+        var inrHi = isDosInr ? 15.0 : 20.0;
         attachLiveGuard(el, function (v) {
-            if (v < 0.4 || v > 20.0) return { level: 'crit', msg: 'დაუჯერებელი INR (' + v + ') — გადაამოწმეთ!' };
+            if (v < inrLo || v > inrHi) return { level: 'crit', msg: 'დაუჯერებელი INR (' + v + ') — გადაამოწმეთ!' };
             if (v > 1.5) return { level: 'crit', msg: 'მაღალი INR (>1.5 — სისხლდენის რისკი)!' };
             if (v > 1.35) return { level: 'warn', msg: 'მომატებული INR (>1.35 — სისხლდენის/ASRA ნეირაქსიული ზღვარი ≤ 1.4)' };
             return null;
@@ -242,7 +245,7 @@
     });
     document.querySelectorAll('input[name="plt"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
-            if (v <= 0 || v > 2500000) return { level: 'crit', msg: 'დაუჯერებელი PLT (' + v + ') — გადაამოწმეთ მნიშვნელობა!' };
+            if (v < 1 || v > 2000000) return { level: 'crit', msg: 'დაუჯერებელი PLT (' + v + ') — გადაამოწმეთ მნიშვნელობა!' };
             if (v > 2500 && v < 3000) return { level: 'crit', msg: 'დააზუსტეთ თრომბოციტების ერთეული (×10^9/L თუ /µL)!' };
             var n = v >= 3000 ? Math.round(v / 1000) : v;
             if (n < 100) return { level: 'crit', msg: 'თრომბოციტოპენია (<100 ×10^9/L)!' };
@@ -277,7 +280,7 @@
     });
     document.querySelectorAll('input[name="fibrinogen"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
-            if (v < 0.2 || v > 1500) return { level: 'crit', msg: 'დაუჯერებელი ფიბრინოგენი (' + v + ') — გადაამოწმეთ!' };
+            if (v < 0.15 || v > 1500) return { level: 'crit', msg: 'დაუჯერებელი ფიბრინოგენი (' + v + ') — გადაამოწმეთ!' };
             var gl = v > 15 ? Math.round((v / 100.0) * 100) / 100 : v;
             if (gl < 1.5) return { level: 'crit', msg: 'მძიმე ჰიპოფიბრინოგენემია (' + gl + ' გ/ლ < 1.5)!' };
             if (gl < 1.8) return { level: 'warn', msg: 'დაბალი ფიბრინოგენი (' + gl + ' გ/ლ < 1.8)' };
@@ -286,7 +289,7 @@
     });
     document.querySelectorAll('input[name="ldl"]').forEach(function (el) {
         attachLiveGuard(el, function (v) {
-            if (v <= 0 || v > 600) return { level: 'crit', msg: 'დაუჯერებელი LDL (' + v + ') — გადაამოწმეთ!' };
+            if (v < 0.2 || v > 500) return { level: 'crit', msg: 'დაუჯერებელი LDL (' + v + ') — გადაამოწმეთ!' };
             var mmol = v > 20 ? Math.round((v / 38.67) * 100) / 100 : v;
             if (mmol >= 1.4) return { level: 'warn', msg: 'LDL ' + mmol + ' მმოლ/ლ (სამიზნე <1.4 მმოლ/ლ — ESVS)' };
             return null;
@@ -297,8 +300,10 @@
     document.querySelectorAll('input[name="bp_sys"], input[name="bp_sys_l"], input[name="dos_bp_sys"]').forEach(function (el) {
         var diaName = BP_DIA_FOR_SYS[el.name];
         var diaEl = el.closest('form') && diaName ? el.closest('form').querySelector('input[name="' + diaName + '"]') : null;
+        var sbpLo = el.name === 'dos_bp_sys' ? 40 : 30;
+        var sbpHi = el.name === 'dos_bp_sys' ? 300 : 320;
         attachLiveGuard(el, function (v) {
-            if (v < 30 || v > 320) return { level: 'crit', msg: 'დაუჯერებელი სისტოლური წნევა (' + v + ' mmHg)!' };
+            if (v < sbpLo || v > sbpHi) return { level: 'crit', msg: 'დაუჯერებელი სისტოლური წნევა (' + v + ' mmHg)!' };
             if (diaEl) {
                 var dv = parseStrictNum(diaEl.value);
                 if (!isNaN(dv) && v <= dv) return { level: 'crit', msg: 'სისტოლური (' + v + ') უნდა იყოს დიასტოლურზე (' + dv + ') მეტი!' };
@@ -312,8 +317,9 @@
     document.querySelectorAll('input[name="bp_dia"], input[name="bp_dia_l"], input[name="dos_bp_dia"]').forEach(function (el) {
         var sysName = BP_SYS_FOR_DIA[el.name];
         var sysEl = el.closest('form') && sysName ? el.closest('form').querySelector('input[name="' + sysName + '"]') : null;
+        var dbpHi = el.name === 'dos_bp_dia' ? 200 : 220;
         attachLiveGuard(el, function (v) {
-            if (v < 20 || v > 220) return { level: 'crit', msg: 'დაუჯერებელი დიასტოლური წნევა (' + v + ' mmHg)!' };
+            if (v < 20 || v > dbpHi) return { level: 'crit', msg: 'დაუჯერებელი დიასტოლური წნევა (' + v + ' mmHg)!' };
             if (sysEl) {
                 var sv = parseStrictNum(sysEl.value);
                 if (!isNaN(sv) && sv <= v) return { level: 'crit', msg: 'დიასტოლური (' + v + ') არ შეიძლება აღემატებოდეს სისტოლურს (' + sv + ')!' };

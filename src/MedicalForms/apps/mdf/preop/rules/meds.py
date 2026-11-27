@@ -316,10 +316,48 @@ def _eval_mech_valve_conflicts(ctx, has_mech_valve, mech_inr_min, vka_hold_days)
         )
 
 
+def _preg_mech_valve_postop_msg(has_hit):
+    if has_hit:
+        return (
+            'ორსულობა + მექანიკური სარქველი + HIT — UFH, LMWH და DOAC კატეგორიულად აკრძალულია! '
+            'სავალდებულოა ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!'
+        )
+    return (
+        'ორსულობა + მექანიკური სარქველი — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი '
+        '(DOAC / VOYAGER აკრძალულია; VKA vs LMWH/UFH ტრიმესტრით — თვითნებური მოხსნა დაუშვებელია)!'
+    )
+
+
+def _gi_bleed_postop_msg(ctx):
+    extra = []
+    if ctx.has_mech_valve:
+        extra.append('მექანიკური სარქველი')
+    if getattr(ctx, 'has_active_stent_dapt', False):
+        extra.append('ახალი კორონარული სტენტი')
+    sfx = f' ({", ".join(extra)} — კარდიოლოგის ჩართვით!)' if extra else ''
+    return (
+        f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ანტითრომბოზული თერაპიის აღდგენა დაბლოკილია '
+        f'ენდოსკოპიურ ჰემოსტაზამდე! სავალდებულოა გასტროენტეროლოგისა და ქირურგის კონსილიუმი{sfx}'
+    )
+
+
 def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_p2y12_lbl, oac_partner_lbl, has_active_stent_dapt):
     clop_intol = 'clopidogrel_intol' in ctx.allergy_chips
     stent_p2y12 = getattr(ctx, 'stent_p2y12_lbl', alt_p2y12_lbl)
     label = dict(POST_ANTITHROMBOTIC_CHOICES).get(post_at_raw, '')
+    if getattr(ctx, 'active_gi_bleed', False):
+        plan_tag = f' ({label})' if label else ''
+        ctx.red_flags.append(
+            f'აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის ფონზე არჩეული პოსტოპ. სქემა{plan_tag} უკუნაჩვენებია — '
+            'სავალდებულოა გასტროენტეროლოგისა და ქირურგის კონსილიუმი ენდოსკოპიურ ჰემოსტაზამდე!'
+        )
+        return _gi_bleed_postop_msg(ctx)
+    if ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
+        ctx.red_flags.append(
+            'ორსულობისა და მექანიკური სარქვლის ფონზე პოსტოპ. ანტიკოაგულაციის სქემა სავალდებულოდ უნდა შეთანხმდეს '
+            'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმით (DOAC / VOYAGER აკრძალულია)!'
+        )
+        return _preg_mech_valve_postop_msg('hit_heparin' in ctx.allergy_chips)
     if ctx.has_mech_valve and post_at_raw in ('voyager', 'dapt', 'sapt'):
         ctx.red_flags.append(
             'მექანიკური სარქვლის მქონე პაციენტთან პოსტოპ. სავალდებულოა უვადო ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი — VOYAGER / მონო-SAPT დაუშვებელია!'
@@ -356,28 +394,24 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
             'პოსტოპ. VOYAGER PAD (რივაროქსაბანი 2.5 მგ ×2) უკუნაჩვენებია/საშიშია (დიალიზი, CrCl/eGFR უცნობი ან დაბალი, მექ. სარქველი, AFib, სტენტი/DAPT, ინსულტი, წყლული, ორსულობა, ღვიძლის 3x ან ასპირინზე ალერგია) — შეარჩიეთ ალტერნატივა!'
         )
         if has_active_stent_dapt:
-            if asa_allergy:
-                return f'VOYAGER PAD უკუნაჩვენებია — ახალი სტენტი + ასპირინზე ალერგია: {stent_p2y12} / კარდიოლოგის კონსილიუმი!'
-            return f'VOYAGER PAD უკუნაჩვენებია — შეინარჩუნეთ უწყვეტი DAPT (ასპირინი + {stent_p2y12} — კორონარული სტენტის დაცვა!)'
+            return (
+                f'VOYAGER PAD უკუნაჩვენებია — ახალი სტენტი + ასპირინზე ალერგია: {stent_p2y12} / კარდიოლოგის კონსილიუმი!'
+                if asa_allergy else
+                f'VOYAGER PAD უკუნაჩვენებია — შეინარჩუნეთ უწყვეტი DAPT (ასპირინი + {stent_p2y12} — კორონარული სტენტის დაცვა!)'
+            )
         alt_v = f'{alt_p2y12_lbl} / ალტერნატივა კონსილიუმით' if asa_allergy else f'{alt_p2y12_lbl} ან ასპირინი 100 მგ'
         return f'VOYAGER PAD უკუნაჩვენებია — შეარჩიეთ {alt_v}'
     if post_at_raw == 'dapt' and asa_allergy:
-        ctx.red_flags.append(
-            'არჩეულია პოსტოპ. DAPT (ასპირინი + P2Y12), მაგრამ პაციენტს აქვს ასპირინზე / აასს-ზე ალერგია — შეცვალეთ უსაფრთხო სქემით!'
-        )
+        ctx.red_flags.append('არჩეულია პოსტოპ. DAPT (ასპირინი + P2Y12), მაგრამ პაციენტს აქვს ასპირინზე / აასს-ზე ალერგია — შეცვალეთ უსაფრთხო სქემით!')
         return f'DAPT (ასპირინით) უკუნაჩვენებია — ასპირინზე/აასს-ზე ალერგია! შეარჩიეთ {stent_p2y12} / კონსილიუმი'
     if post_at_raw == 'sapt' and has_active_stent_dapt:
         if asa_allergy:
-            ctx.red_flags.append(
-                'ახალი კორონარული სტენტის (<6–12 თვ) + ასპირინზე ალერგიის ფონზე SAPT/სტენტის დაცვა შეათანხმეთ კარდიოლოგის კონსილიუმით (უწყვეტი P2Y12 / დესენსიბილიზაცია)!'
-            )
+            ctx.red_flags.append('ახალი კორონარული სტენტის (<6–12 თვ) + ასპირინზე ალერგიის ფონზე SAPT/სტენტის დაცვა შეათანხმეთ კარდიოლოგის კონსილიუმით (უწყვეტი P2Y12 / დესენსიბილიზაცია)!')
             return f'SAPT უკუნაჩვენებია ახალ სტენტზე (<6–12 თვ) + ასპირინზე ალერგია: {stent_p2y12} — კარდიოლოგის კონსილიუმი!'
         ctx.red_flags.append('ახალი კორონარული სტენტის (<6–12 თვ) ფონზე პოსტოპ. მონოთერაპიაზე (SAPT) ჩამოქვეითება საშიშია — შეინარჩუნეთ DAPT!')
         return f'SAPT უკუნაჩვენებია ახალ სტენტზე (<6–12 თვ) — შეინარჩუნეთ უწყვეტი DAPT (ასპირინი + {stent_p2y12})!'
     if post_at_raw == 'sapt' and asa_allergy and clop_intol:
-        ctx.red_flags.append(
-            'არჩეულია პოსტოპ. SAPT (ასპირინი/კლოპიდოგრელი), მაგრამ პაციენტს აქვს ასპირინზე და კლოპიდოგრელზე ალერგია — შეათანხმეთ ალტერნატივა კარდიოლოგთან!'
-        )
+        ctx.red_flags.append('არჩეულია პოსტოპ. SAPT (ასპირინი/კლოპიდოგრელი), მაგრამ პაციენტს აქვს ასპირინზე და კლოპიდოგრელზე ალერგია — შეათანხმეთ ალტერნატივა კარდიოლოგთან!')
         return 'სტანდარტული SAPT უკუნაჩვენებია (ასპირინზე და კლოპიდოგრელზე ალერგია!) — ტიკაგრელორი / კონსილიუმი'
     if post_at_raw == 'sapt' and asa_allergy:
         return 'მონოთერაპია: კლოპიდოგრელი 75 მგ (ასპირინზე ალერგია!)'
@@ -388,16 +422,12 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
         return 'DAPT: ასპირინი + ტიკაგრელორი (კლოპიდოგრელზე აუტანლობა!)'
     if post_at_raw == 'oac_sapt':
         if getattr(ctx, 'has_contra_oac', False) and not ctx.has_mech_valve:
-            ctx.red_flags.append(
-                'არჩეულია პოსტოპ. OAC + ანტიაგრეგანტი, მაგრამ მიმდინარე OAC უკუნაჩვენებია (თირკმლის/ღვიძლის/დუბლირების გამო) — შეარჩიეთ უსაფრთხო ანტიკოაგულანტი კონსილიუმით!'
-            )
+            ctx.red_flags.append('არჩეულია პოსტოპ. OAC + ანტიაგრეგანტი, მაგრამ მიმდინარე OAC უკუნაჩვენებია (თირკმლის/ღვიძლის/დუბლირების გამო) — შეარჩიეთ უსაფრთხო ანტიკოაგულანტი კონსილიუმით!')
             return f'უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულანტი + {oac_partner_lbl} კონსილიუმით!'
         oac_base = 'ვარფარინი (VKA)' if ctx.has_mech_valve else 'OAC'
         mv_sfx = ' (DOAC აკრძალულია!)' if ctx.has_mech_valve else ''
         if asa_allergy and clop_intol:
-            ctx.red_flags.append(
-                'არჩეულია პოსტოპ. OAC + ანტიაგრეგანტი, მაგრამ პაციენტს აქვს ასპირინზე და კლოპიდოგრელზე ალერგია — შეათანხმეთ ინდივიდუალური რეჟიმი კონსილიუმით!'
-            )
+            ctx.red_flags.append('არჩეულია პოსტოპ. OAC + ანტიაგრეგანტი, მაგრამ პაციენტს აქვს ასპირინზე და კლოპიდოგრელზე ალერგია — შეათანხმეთ ინდივიდუალური რეჟიმი კონსილიუმით!')
             return f'{oac_base} + {oac_partner_lbl}{mv_sfx}'
         if clop_intol:
             ctx.amber_flags.append('კლოპიდოგრელის აუტანლობის გამო OAC-ის ფონზე გამოიყენეთ ასპირინი 75–100 მგ (OAC + ტიკაგრელორი ESC Class III არ ინიშნება!).')
@@ -415,6 +445,8 @@ def _eval_postop_voyager(ctx):
     post_at_raw = s.get('post_antithrombotic_plan') or 'auto'
     post_antithrombotic_label = ''
     asa_allergy = 'nsaid' in ctx.allergy_chips
+    active_gi_bleed = bool(s.get('gastro_result') == 'acute_ulcer' or (q.get('ulcer_active_symp') and s.get('gastro_result') != 'remission'))
+    ctx.active_gi_bleed = active_gi_bleed
     eff_ren_sat = getattr(ctx, 'eff_renal_sat', None)
     voy_renal_ok = (
         (ctx.egfr is not None or ctx.crcl is not None)
@@ -427,8 +459,7 @@ def _eval_postop_voyager(ctx):
     voyager_safe = (
         voy_renal_ok
         and not ctx.on_dialysis
-        and not q.get('ulcer_active_symp')
-        and (s.get('gastro_result') != 'acute_ulcer')
+        and not active_gi_bleed
         and not getattr(ctx, 'has_prior_stroke_tia', False)
         and not getattr(ctx, 'eff_pregnant', False)
         and not ctx.liver_3x
@@ -466,8 +497,10 @@ def _eval_postop_voyager(ctx):
             post_antithrombotic_label = _eval_explicit_postop_plan(
                 ctx, post_at_raw, asa_allergy, voyager_safe, alt_p2y12_lbl, oac_partner_lbl, has_active_stent_dapt,
             )
+        elif active_gi_bleed:
+            post_antithrombotic_label = _gi_bleed_postop_msg(ctx)
         elif ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
-            post_antithrombotic_label = 'ორსულობა + მექანიკური სარქველი — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (DOAC / VOYAGER აკრძალულია; VKA vs LMWH/UFH ტრიმესტრით)!'
+            post_antithrombotic_label = _preg_mech_valve_postop_msg('hit_heparin' in ctx.allergy_chips)
         elif ctx.has_mech_valve:
             mv_ap = f' + ჩვენებისას {oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
             post_antithrombotic_label = f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap} (DOAC / VOYAGER აკრძალულია!)'

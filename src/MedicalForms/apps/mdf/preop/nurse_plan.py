@@ -230,42 +230,16 @@ def build_phone_med_script(patient, ev, today):
     }
 
 
-def detect_postponement_impacts(patient, ev, today):
-    """Compute exact re-check items when planned_surgery_date was changed / postponed."""
-    from django.utils import timezone
-
-    from .registry import rule_value
+def _append_postponement_clinical_impacts(impacts, patient, ev, cur_dt, today, cea_win_d, cta_cfg):
     from .utils import cta_live_months_age
-    today = _date(today) or timezone.localdate()
-    stale_lab_d = rule_value('INF_STALE_LABS_DAYS')
-    cea_win_d = rule_value('CEA_SYMP_WINDOW_DAYS')[0]
-    cta_std_m, cta_giant_m, cta_giant_mm = rule_value('AAA_CTA_STALE_MONTHS')
+
+    cta_std_m, cta_giant_m, cta_giant_mm = cta_cfg
     s = ev['s']
-    prev_dt = _date(s.get('prev_planned_surgery_date'))
-    cur_dt = _date(s.get('planned_surgery_date'))
-    if not prev_dt or not cur_dt or prev_dt == cur_dt:
-        return None
-    if s.get('postpone_ack_sig') == f'{prev_dt.isoformat()}->{cur_dt.isoformat()}':
-        return None
-
-    shift_days = (cur_dt - prev_dt).days
-    impacts = []
-
-    labs_dt = _date(s.get('labs_date'))
-    if labs_dt and (cur_dt - labs_dt).days > stale_lab_d:
-        age_at_op = (cur_dt - labs_dt).days
-        impacts.append({
-            'tone': 'danger',
-            'text': f'ანალიზებს ახალ თარიღამდე ({_fmt_ka_date(cur_dt)}) გაუვა {stale_lab_d}-დღიანი ვადა (იქნება {age_at_op} დღის) — ანალიზები თავიდან უნდა ჩაბარდეს!',
-        })
-    elif not labs_dt and shift_days > 0:
-        impacts.append({
-            'tone': 'warn',
-            'text': f'შეამოწმეთ ანალიზების თარიღი — ახალ ოპერაციის დღემდე არ უნდა იყოს {stale_lab_d} დღეზე ძველი.',
-        })
-
     med_call = _med_call_status(ev, today)
-    hold_drugs = [r['drug'] for r in ev['med_schedule'] if r.get('hold_or_skip')]
+    hold_drugs = [
+        r['drug'] for r in ev['med_schedule']
+        if r.get('hold_or_skip') or (ev.get('is_evla_warfarin_only') and 'ვარფარინ' in (r.get('drug') or ''))
+    ]
     stop_locked = (ev['clearance_seal']['code'] == 'stop' or ev.get('has_hard_contraindication'))
     if hold_drugs and stop_locked:
         impacts.append({
@@ -291,11 +265,17 @@ def detect_postponement_impacts(patient, ev, today):
 
     cea_ev_dt = _date(ev['q'].get('cea_event_date'))
     if ev.get('is_symp_cea'):
-        cea_ref = today if ev['q'].get('cea_crescendo') else cea_ev_dt
-        if cea_ref and (cur_dt - cea_ref).days > cea_win_d:
+        cea_days_at_op = None
+        if ev['q'].get('cea_crescendo'):
+            cea_days_at_op = (cur_dt - today).days
+        elif cea_ev_dt:
+            cea_days_at_op = (cur_dt - cea_ev_dt).days
+        elif ev.get('days_since_ev') is not None:
+            cea_days_at_op = int(ev['days_since_ev']) + (cur_dt - today).days
+        if cea_days_at_op is not None and cea_days_at_op > cea_win_d:
             impacts.append({
                 'tone': 'danger',
-                'text': f'სიმპტომური საძილე არტერიის (CEA) {cea_win_d}-დღიანი ფანჯარა ირღვევა (სიმპტომიდან იქნება {(cur_dt - cea_ref).days} დღე) — აცნობეთ ქირურგს!',
+                'text': f'სიმპტომური საძილე არტერიის (CEA) {cea_win_d}-დღიანი ფანჯარა ირღვევა (სიმპტომიდან იქნება {cea_days_at_op} დღე) — აცნობეთ ქირურგს!',
             })
     started_dt = _date(patient.started_on)
     if ev.get('target_days', 14) <= 7 and started_dt and (cur_dt - started_dt).days > ev['target_days']:
@@ -305,7 +285,12 @@ def detect_postponement_impacts(patient, ev, today):
         })
 
     cta_dt = _date(s.get('cta_date'))
-    if cta_dt:
+    if cta_dt and cta_dt > cur_dt:
+        impacts.append({
+            'tone': 'danger',
+            'text': 'კტ-ანგიოგრაფიის (CTA) თარიღი ახალ ოპერაციის თარიღზე გვიანაა — გადაამოწმეთ თარიღები!',
+        })
+    elif cta_dt:
         aaa_mm = ev.get('aaa_mm')
         is_giant_aaa = (ev.get('pathway') == 'aaa_infra' and aaa_mm is not None and aaa_mm >= cta_giant_mm)
         max_cta_m = cta_giant_m if is_giant_aaa else cta_std_m
@@ -315,6 +300,42 @@ def detect_postponement_impacts(patient, ev, today):
                 'tone': 'danger' if is_giant_aaa else 'warn',
                 'text': f'კტ-ანგიოგრაფია (CTA) ახალ თარიღზე {max_cta_m} თვეზე ძველი იქნება — დააზუსტეთ ქირურგთან განახლების საჭიროება.',
             })
+
+
+def detect_postponement_impacts(patient, ev, today):
+    """Compute exact re-check items when planned_surgery_date was changed / postponed."""
+    from django.utils import timezone
+
+    from .registry import rule_value
+    today = _date(today) or timezone.localdate()
+    stale_lab_d = rule_value('INF_STALE_LABS_DAYS')
+    cea_win_d = rule_value('CEA_SYMP_WINDOW_DAYS')[0]
+    cta_cfg = rule_value('AAA_CTA_STALE_MONTHS')
+    s = ev['s']
+    prev_dt = _date(s.get('prev_planned_surgery_date'))
+    cur_dt = _date(s.get('planned_surgery_date'))
+    if not prev_dt or not cur_dt or prev_dt == cur_dt:
+        return None
+    if s.get('postpone_ack_sig') == f'{prev_dt.isoformat()}->{cur_dt.isoformat()}':
+        return None
+
+    shift_days = (cur_dt - prev_dt).days
+    impacts = []
+
+    labs_dt = _date(s.get('labs_date'))
+    if labs_dt and (cur_dt - labs_dt).days > stale_lab_d:
+        age_at_op = (cur_dt - labs_dt).days
+        impacts.append({
+            'tone': 'danger',
+            'text': f'ანალიზებს ახალ თარიღამდე ({_fmt_ka_date(cur_dt)}) გაუვა {stale_lab_d}-დღიანი ვადა (იქნება {age_at_op} დღის) — ანალიზები თავიდან უნდა ჩაბარდეს!',
+        })
+    elif not labs_dt and shift_days > 0:
+        impacts.append({
+            'tone': 'warn',
+            'text': f'შეამოწმეთ ანალიზების თარიღი — ახალ ოპერაციის დღემდე არ უნდა იყოს {stale_lab_d} დღეზე ძველი.',
+        })
+
+    _append_postponement_clinical_impacts(impacts, patient, ev, cur_dt, today, cea_win_d, cta_cfg)
 
     if not impacts:
         impacts.append({
@@ -371,7 +392,7 @@ def _plain_undated_patient_med(item):
     if 'GLP-1' in raw_d:
         return 'ოპერაციამდე 24 საათით ადრე დაგჭირდებათ მხოლოდ სუფთა თხევადი დიეტა; ზუსტ დღეს ექიმი შეგატყობინებთ თარიღის დანიშნის შემდეგ.'
     if 'ვარფარინ' in raw_d:
-        return 'ოპერაციის თარიღის დანიშვნის შემდეგ ექიმი მოგცემთ წამლის დროებით შეჩერების ზუსტ დღეს და გეტყვით, დაგჭირდებათ თუ არა დროებითი ნემსები.'
+        return 'ოპერაციის თარიღის დანიშვნის შემდეგ ექიმი მოგცემთ წამლის დროებით შეჩერების ზუსტ დღეს და გეტყვით, დაგჭირდებათ თუ არა დროებითი დამცავი ნემსები ან კლინიკაში გადასხმა.'
     if 'DOAC' in raw_d or 'დაბიგატრან' in raw_d or 'რივაროქსაბან' in raw_d or 'ქსარელტო 2.5' in raw_d:
         return 'ოპერაციის თარიღის დანიშვნის შემდეგ ექიმი მოგცემთ წამლის დროებით შეჩერების ზუსტ დღეს თირკმლის ანალიზის მიხედვით — თვითნებურად არ შეწყვიტოთ!'
     if any(k in raw_d for k in ('კლოპიდოგრელ', 'P2Y12', 'ტიკაგრელორ', 'პრასუგრელ', 'ცილოსტაზოლ')):
@@ -382,6 +403,8 @@ def _plain_undated_patient_med(item):
         return 'ოპერაციის დილას დროებით გამოსატოვებელია ან დასაზუსტებელია თირკმლის ანალიზის მიხედვით — ზუსტ წესს ექიმი გეტყვით.'
     if 'ინსულინ' in raw_d:
         return 'ოპერაციის წინა საღამოსა და დილის ინსულინის ზუსტ დოზას ექიმი/ენდოკრინოლოგი შეგითანხმებთ — თვითნებურად სრულად არ შეწყვიტოთ!'
+    if 'სტეროიდ' in raw_d or 'პრედნიზოლონ' in raw_d:
+        return 'არ შეწყვიტოთ თვითნებურად! ოპერაციის დილას მიიღეთ ჩვეული დოზა; საჭიროებისას ექიმი დაგიმატებთ დამცავ დოზას.'
     if 'სტატინ' in raw_d:
         return 'ამ წამლის მიღების წესი შეათანხმეთ ექიმთან ღვიძლის ანალიზის მიხედვით.'
     if 'ACEi' in raw_d or 'პრილი' in raw_d:
@@ -396,11 +419,30 @@ def _plain_undated_patient_med(item):
 
 
 _CLINICIAN_JARGON_TOKENS = (
-    'EHRA', 'PAUSE', 'CrCl', 'Multi-Society', 'ESAIC', 'ESVS', 'ESC', 'ASRA',
-    'D+1', 'LMWH', 'VKA', 'DKA', 'NPH', 'POISE-3', 'HFpEF', 'HFrEF', 'ULN', 'VTE შეფასება',
-    'უანტიაგრეგანტოდ', 'სავალდებულოა ჩანაცვლება',
+    'EHRA', 'PAUSE', 'CrCl', 'eGFR', 'ESUR', 'FDA', 'Assoc.', 'Multi-Society', 'ESAIC',
+    'ESVS', 'ESC', 'ASRA', 'D+1', 'LMWH', 'VKA', 'UFH', 'HIT', 'DKA', 'NPH', 'POISE-3',
+    'HFpEF', 'HFrEF', 'ULN', 'EVLA', 'DOAC', 'SGLT2', 'GLP-1', 'VTE შეფასება',
+    'ჰიდროკორტიზონ', 'ეტომიდატ', 'უანტიაგრეგანტოდ', 'სავალდებულოა ჩანაცვლება',
 )
 _PLAIN_TERM_REPLACEMENTS = (
+    ('შეიყვანეთ კრეატინინი თარიღისთვის', 'ექიმი დაგიზუსტებთ შეჩერების ზუსტ დღეს თირკმლის ანალიზის მიხედვით — თვითნებურად არ შეწყვიტოთ'),
+    ('შეიყვანეთ CrCl თარიღისთვის', 'ექიმი დაგიზუსტებთ შეჩერების ზუსტ დღეს თირკმლის ანალიზის მიხედვით — თვითნებურად არ შეწყვიტოთ'),
+    ('შეიყვანეთ კრეატინინი რეჟიმისთვის', 'ექიმი დაგიზუსტებთ მიღების წესს თირკმლის ანალიზის მიხედვით — თვითნებურად არ შეწყვიტოთ'),
+    ('ერთეული დასაზუსტებელია', 'ექიმი გადაამოწმებს თირკმლის ანალიზს და გეტყვით ზუსტ დღეს — თვითნებურად არ შეწყვიტოთ'),
+    ('სავალდებულოა სტაციონარული IV ხიდი (ბივალირუდინი/არგატრობანი — HIT: LMWH/ჰეპარინი არა!)', 'სავალდებულოა კლინიკაში წინასწარ წოლა და ვენაში დამცავი წამალი ექიმის მეთვალყურეობით (თვითნებურად არ შეწყვიტოთ!)'),
+    ('მაღალი თრომბორისკი + HIT: არაჰეპარინული ხიდი ჰემატოლოგთან (LMWH/ჰეპარინი არა!)', 'თრომბის მაღალი რისკის გამო საჭიროა ექიმის შერჩეული სპეციალური დამცავი წამალი (თვითნებურად არ შეწყვიტოთ!)'),
+    ('სავალდებულოა სტაციონარული IV UFH ხიდი (CrCl<30/დიალიზი: თვითნებურად არ შეწყვიტოთ!)', 'სავალდებულოა კლინიკაში წინასწარ წოლა და ვენაში დამცავი გადასხმა ექიმის მეთვალყურეობით (თვითნებურად არ შეწყვიტოთ!)'),
+    ('სავალდებულო LMWH ხიდით', 'სავალდებულო დროებითი დამცავი ნემსებით'),
+    (' (ტექსტიდან)', ''),
+    ('ACEi / ARB', 'წნევის წამალი (პრილი / სარტანი)'),
+    ('ამლოდიპინი / CCB', 'ამლოდიპინი (წნევის წამალი)'),
+    (' (PPI)', ''),
+    (' (DOAC)', ''),
+    (' (SGLT2)', ''),
+    (' (GLP-1)', ''),
+    (' (VKA)', ''),
+    (' / P2Y12', ''),
+    (' (P2Y12)', ''),
     ('არ შეწყვიტოს! მიიღოს', 'არ შეწყვიტოთ! მიიღეთ'),
     ('ბოლო აბი მიიღოს:', 'ბოლო აბი მიიღეთ:'),
     ('აღარ მიიღოს', 'აღარ მიიღოთ'),
@@ -408,8 +450,10 @@ _PLAIN_TERM_REPLACEMENTS = (
     ('კონსილიუმით', 'ექიმებთან შეთანხმებით'),
     ('LMWH ხიდი', 'დროებითი ნემსების სქემა'),
     ('LMWH', 'დროებითი ნემსი'),
+    ('UFH', 'ვენაში დამცავი წამალი'),
     ('D+1', 'ოპერაციის მეორე დღიდან'),
     ('CrCl', 'თირკმლის მაჩვენებლით'),
+    ('eGFR', 'თირკმლის ანალიზით'),
     ('VTE შეფასება', 'თრომბის რისკის შეფასება ექიმთან'),
     ('ეუგლიკემიური DKA', 'სისხლში მჟავიანობის (კეტოაციდოზის)'),
     ('DKA', 'კეტოაციდოზის'),
@@ -427,7 +471,14 @@ _PLAIN_TERM_REPLACEMENTS = (
     ('(SBP≤DBP)', '(წნევის გადამოწმების შემდეგ)'),
     ('IV სტრეს-დოზა', 'ვენაში დამცავი დოზა'),
     ('Xa-DOAC', 'სისხლის გამათხელებელი'),
+    ('DOAC', 'სისხლის გამათხელებელი'),
     ('GLP-1 აგონისტი', 'წონის/შაქრის ინექცია'),
+    ('GLP-1', 'წონის/შაქრის წამალი'),
+    ('SGLT2', 'შაქრის წამალი'),
+    ('VKA', 'ვარფარინი'),
+    ('EVLA-ზე', 'ლაზერულ პროცედურაზე'),
+    ('EVLA-ს', 'ლაზერული პროცედურის'),
+    ('EVLA', 'ლაზერული პროცედურა'),
     ('INR კონტროლი', 'სისხლის შედედების ანალიზი'),
     ('INR ', 'სისხლის შედედების ანალიზი '),
     ('არასტრუქტურირებულია', 'დასაზუსტებელია'),
@@ -467,7 +518,7 @@ def build_patient_plain_explanation(patient, ev, today):
     med_script = build_phone_med_script(patient, ev, today)
 
     if med_script['stop_locked']:
-        first_arrival = 'ოპერაციის თარიღი დროებით შეჩერებულია (STOP) — ზუსტ თარიღს მკურნალი ექიმი შეგატყობინებთ.'
+        first_arrival = 'ოპერაციის თარიღი დროებით შეჩერებულია — ზუსტ თარიღს მკურნალი ექიმი შეგატყობინებთ.'
     elif op_dt:
         first_arrival = f'დაგეგმილი ოპერაციის თარიღი: {_fmt_ka_date(op_dt)}'
     else:
@@ -477,11 +528,11 @@ def build_patient_plain_explanation(patient, ev, today):
         'თან იქონიეთ პირადობის მოწმობა და ბოლო ანალიზების ფურცლები.',
     ]
     if pw in ('aaa_infra', 'cea', 'abf', 'pad_bypass'):
-        arrival_items.append('აუცილებლად წამოიღეთ კტ-ანგიოგრაფიის (CTA) დისკი და დასკვნა.')
+        arrival_items.append('აუცილებლად წამოიღეთ კომპიუტერული ტომოგრაფიის დისკი და დასკვნა.')
     if pw == 'venous' and not ev.get('compression_contra'):
         arrival_items.append('თან იქონიეთ ექიმის შერჩეული კომპრესიული წინდა (თუ დანიშნულია).')
     if q.get('pulm') or bool(q.get('pulm_chips')):
-        arrival_items.append('წამოიღეთ თქვენი ყოველდღიური ინჰალატორი ან ძილის აპარატი (CPAP).')
+        arrival_items.append('წამოიღეთ თქვენი ყოველდღიური ინჰალატორი ან ძილის სასუნთქი აპარატი.')
 
     anesth_plan = s.get('anesthesia_plan') or 'auto'
     lido_allergy = bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in (ev.get('eff_allergy_chips') or ()))
@@ -494,7 +545,7 @@ def build_patient_plain_explanation(patient, ev, today):
         and not med_script['stop_locked']
     )
     if med_script['stop_locked']:
-        fasting_plain = 'ოპერაცია შეჩერებულია დაზუსტებამდე (STOP) — 24-საათიანი დიეტა ან უზმოდ რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!'
+        fasting_plain = 'ოპერაცია შეჩერებულია დაზუსტებამდე — 24-საათიანი დიეტა ან უზმოდ რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!'
     elif has_glp1:
         fasting_plain = (
             'ოპერაციამდე 24 საათით ადრე გადადით მხოლოდ სუფთა თხევად დიეტაზე (წყალი, ჩაი რძის გარეშე, გამჭვირვალე ბულიონი). '

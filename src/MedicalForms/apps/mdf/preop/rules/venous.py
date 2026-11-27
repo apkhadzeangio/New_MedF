@@ -334,9 +334,15 @@ def eval_cross_pathway_and_urgency(ctx):
                 'კითხვარში მონიშნულია „ორსულობა“, რაც შეუსაბამოა პაციენტის სქესთან/ასაკთან — გადაამოწმეთ ჩანაწერი!'
             )
         else:
-            is_elective_claud = pathway in (
-                PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA,
-            ) and not ctx.is_clti_any and not ctx.is_ali_acute
+            is_urgent_preg = bool(
+                ctx.is_ali_acute
+                or ctx.is_clti_any
+                or ctx.is_symp_cea
+                or q.get('cea_crescendo')
+                or q.get('aaa_pain')
+                or s.get('aaa_morphology') == 'inflammatory_mycotic'
+                or (ctx.aaa_mm_sat is not None and ctx.aaa_mm_sat >= rule_value('AAA_GIANT_MM'))
+            )
             if ctx.is_ali_acute:
                 preg_art_msg = (
                     'ორსულობა / შესაძლო ორსულობა მწვავე იშემიის (ALI) ფონზე — '
@@ -352,7 +358,7 @@ def eval_cross_pathway_and_urgency(ctx):
                     'ორსულობა / შესაძლო ორსულობა — სავალდებულოა β-hCG ვერიფიკაცია, მეან-გინეკოლოგის კონსულტაცია და გეგმური ოპერაციის გადადების განხილვა!'
                 )
             ctx.red_flags.append(preg_art_msg)
-            if is_elective_claud:
+            if not is_urgent_preg:
                 ctx.hard_contraindications.append(preg_art_msg)
 
     if not ctx.is_venous and (bool(q.get('ven_lidocaine_allergy')) or 'lidocaine' in ctx.allergy_chips):

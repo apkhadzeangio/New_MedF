@@ -9,6 +9,11 @@ from .helpers import PrivateMediaTest
 class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
     """Regression suite for all 6 peer-review items: Calendar December bug, Self-Fill security, Risk Indices, Med Citations/Passport Gate."""
 
+    def setUp(self):
+        super().setUp()
+        from ..models import StaffProfile
+        StaffProfile.objects.get_or_create(user=self.user)
+
     def test_review_1_calendar_week_title_all_months_and_december_http_200(self):
         import datetime
 

@@ -114,9 +114,12 @@ def build_self_fill_highlights(q, patient=None):
         items.append((lvl, f'სხვა წამალი: {raw_other_meds}'))
     if q.get('allergy_iodine'):
         items.append(('urgent', 'ალერგია იოდზე / კონტრასტზე!'))
+    from .meds_freetext import _positive_clauses_text
+
     raw_alg_txt = q.get('allergy_text') if isinstance(q.get('allergy_text'), str) else ''
-    if q.get('allergy_other') or q.get('allergy_chips') or raw_alg_txt.strip():
-        alg_txt = chip_summary(q.get('allergy_chips'), 'allergy_chips', raw_alg_txt) or 'მედიკამენტური ალერგია'
+    pos_alg_txt = _positive_clauses_text(raw_alg_txt)
+    if q.get('allergy_other') or q.get('allergy_chips') or pos_alg_txt:
+        alg_txt = chip_summary(q.get('allergy_chips'), 'allergy_chips', raw_alg_txt if pos_alg_txt else '') or 'მედიკამენტური ალერგია'
         items.append(('urgent', f'ალერგია: {alg_txt}'))
     if q.get('smoker'):
         items.append(('info', 'მწეველი'))

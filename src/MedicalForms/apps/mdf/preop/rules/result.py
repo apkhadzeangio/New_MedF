@@ -93,6 +93,7 @@ def _result_clinical_part(ctx):
         'has_synthetic_implant': ctx.has_synthetic_implant,
         'has_full_oac': ctx.has_full_oac,
         'has_contra_oac': getattr(ctx, 'has_contra_oac', False),
+        'active_gi_bleed': bool(getattr(ctx, 'active_gi_bleed', False)),
         'has_elapsed_hold_window': getattr(ctx, 'has_elapsed_hold_window', False),
         'has_neuraxial_plan': ctx.has_neuraxial_plan,
         'has_hard_contraindication': ctx.has_hard_contraindication,

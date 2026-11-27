@@ -318,9 +318,15 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
             comp_lbl = '2 კლასის კომპრესიული წინდის / გეტრის ზომის შერჩევა'
         tasks.append({'key': 'comp', 'label': comp_lbl, 'done': bool(s.get('compression_ready')) and tbi_comp_ok})
     if ctx.is_pta and ctx.q_filled:
+        from .meds import _gi_bleed_postop_msg, _preg_mech_valve_postop_msg
+
         stent_p2y = getattr(ctx, 'stent_p2y12_lbl', ctx.alt_p2y12_lbl)
-        if (s.get('post_antithrombotic_plan') not in (None, '', 'auto')) and ctx.post_antithrombotic_label:
+        if getattr(ctx, 'active_gi_bleed', False):
+            dapt_lbl = f'ანტითრომბოზული მზაობა: {_gi_bleed_postop_msg(ctx)}'
+        elif (s.get('post_antithrombotic_plan') not in (None, '', 'auto')) and ctx.post_antithrombotic_label:
             dapt_lbl = f'ანტითრომბოზული მზაობა: {ctx.post_antithrombotic_label}'
+        elif ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
+            dapt_lbl = f'ანტითრომბოზული მზაობა: {_preg_mech_valve_postop_msg("hit_heparin" in ctx.allergy_chips)}'
         elif ctx.has_mech_valve:
             dapt_lbl = 'ანტითრომბოზული სქემა მექ. სარქველზე: ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი (DOAC / VOYAGER აკრძალულია!)'
         elif getattr(ctx, 'has_contra_oac', False):

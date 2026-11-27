@@ -83,9 +83,15 @@ class PreopSelfFillView(generic.View):
             return render(request, self.template_name, {'invalid_link': True}, status=404)
         ev = evaluate(patient)
         _, staff_locked, submitted_once = self._self_fill_lock_state(patient, ev['q'], ev['s'], ev['case_outcome'])
-        is_done_screen = (request.GET.get('done') == '1') and submitted_once and not staff_locked
+        done_sess = request.session.get(f'sf_done_{patient.pk}')
+        is_done_screen = (
+            (request.GET.get('done') == '1')
+            and submitted_once
+            and not staff_locked
+            and isinstance(done_sess, dict)
+        )
         locked = staff_locked or (submitted_once and not is_done_screen)
-        emergency_symptom = bool(ev['q'].get('aaa_pain') or ev['q'].get('cea_crescendo')) if is_done_screen else False
+        emergency_symptom = bool(done_sess.get('emerg')) if is_done_screen else False
         # L7-F2: Never pre-populate prior clinical answers/meds/allergies on an unauthenticated bearer GET link!
         q_public = dict(DEFAULT_Q)
         s_public = dict(DEFAULT_STUDIES)
@@ -161,4 +167,6 @@ class PreopSelfFillView(generic.View):
                 s_mut['med_hold_agreed_date'] = ''
             patient.studies = s_mut
             patient.save(update_fields=uf)
+            emerg_flag = bool(q_mut.get('aaa_pain') or q_mut.get('cea_crescendo'))
+        request.session[f'sf_done_{patient.pk}'] = {'emerg': emerg_flag}
         return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?done=1')

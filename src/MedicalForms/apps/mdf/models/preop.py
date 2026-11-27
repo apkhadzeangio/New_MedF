@@ -198,7 +198,7 @@ class PreopPatient(models.Model):
             return f'{side_word}ქვემო კიდურის არტერიების მაობლიტერირებელი ათეროსკლეროზი, {stage}'
         if self.pathway == self.Pathway.VENOUS:
             side_word = {'R': 'მარჯვენა ', 'L': 'მარცხენა ', 'B': 'ორმხრივი '}.get(side_s, '')
-            ceap = q.get('ven_ceap') or ''
+            ceap = (q.get('ven_ceap') or '') if q.get('filled') else ''
             ceap_str = f' (CEAP {ceap})' if ceap else ''
             return f'{side_word}ქვემო კიდურების ვენების ვარიკოზული დაავადება{ceap_str}'
         mm = _int(s.get('aaa_mm'), 10, 200)

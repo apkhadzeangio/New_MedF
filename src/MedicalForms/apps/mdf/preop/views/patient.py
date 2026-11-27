@@ -2,7 +2,6 @@
 import secrets
 
 from django.contrib import messages
-from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import HttpResponseRedirect
@@ -70,7 +69,10 @@ from .parsers import (  # noqa: F401
     _set_num_field,
     _set_planned_surgery_date_field,
     can_enter_ready_queue,
+    is_doctor_user,
     med_hold_agreement_block_reason,
+    preop_admission_block_reason,
+    resolve_doctor_user,
 )
 
 _DOS_CHECK_BOOLS = (
@@ -252,8 +254,15 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         if 'phone' in request.POST:
             patient.phone = clean_text(request.POST.get('phone'), 50).replace('\n', ' ')
         if 'surgeon' in request.POST:
-            surg_id = _int(request.POST.get('surgeon'), lo=1)
-            patient.surgeon = get_user_model().objects.filter(pk=surg_id).first() if surg_id is not None else None
+            raw_surg = (request.POST.get('surgeon') or '').strip()
+            if not raw_surg:
+                patient.surgeon = None
+            else:
+                doc = resolve_doctor_user(raw_surg)
+                if doc is not None:
+                    patient.surgeon = doc
+                else:
+                    messages.error(request, 'მკურნალ ქირურგად მხოლოდ ექიმის/პერსონალის ანგარიშის არჩევაა დაშვებული!')
 
         if 'slot_kind' in request.POST or 'visit_date' in request.POST:
             slot_kind = request.POST.get('slot_kind') or ''
@@ -461,6 +470,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         s = merged_studies(patient)
         today = timezone.localdate()
         old_op_dt = s.get('planned_surgery_date')
+        old_operated_date = s.get('operated_date') or ''
         action = request.POST.get('action') or 'save_dos'
         form_present = 'dos_form_present' in request.POST
         dos_partial = request.POST.get('dos_partial') == '1'
@@ -470,8 +480,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         if action == 'complete_and_board':
             patient.studies = s
             ev_cur = evaluate(patient)
-            if ev_cur.get('has_hard_contraindication') or ev_cur['clearance_seal']['code'] == 'stop' or ev_cur.get('dos_hold_danger') or ev_cur.get('neuraxial_hard_blocked'):
-                messages.error(request, 'STOP-სიგნალის ან ოპერაციის დილის კრიტიკული ბლოკირების ფონზე ოპერაციის დასრულება და დაფაზე გადაყვანა დაბლოკილია!')
+            blk = preop_admission_block_reason(ev_cur, s)
+            if blk:
+                messages.error(request, blk)
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
             s['case_outcome_status'] = 'operated'
             if not s.get('operated_date'):
@@ -494,9 +505,12 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         if s.get('case_outcome_status') == 'operated':
             patient.studies = s
             ev_chk = evaluate(patient)
-            if ev_chk.get('has_hard_contraindication') or ev_chk['clearance_seal']['code'] == 'stop' or ev_chk.get('dos_hold_danger') or ev_chk.get('neuraxial_hard_blocked'):
-                s['case_outcome_status'] = ev_before.get('case_outcome') or 'scheduled'
-                messages.error(request, 'STOP-სიგნალის ან კრიტიკული ბლოკირების ფონზე პაციენტის „ოპერირებულად“ მონიშვნა დაბლოკილია!')
+            blk = preop_admission_block_reason(ev_chk, s)
+            if blk:
+                prev_out = ev_before.get('case_outcome') or 'scheduled'
+                s['case_outcome_status'] = prev_out
+                s['operated_date'] = old_operated_date if prev_out == 'operated' else ''
+                messages.error(request, blk)
         if s.get('case_outcome_status') == 'operated' and not s.get('operated_date'):
             plan_dt = _date(s.get('planned_surgery_date'))
             s['operated_date'] = (plan_dt.isoformat() if (plan_dt and plan_dt <= today) else today.isoformat())
@@ -533,13 +547,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         from .. import evaluate
 
         action = request.POST.get('action') or 'save_anamnesis'
-        can_approve_signoff = (
-            request.user.is_superuser
-            or request.user.is_staff
-            or hasattr(request.user, 'profile')
-            or patient.surgeon_id == request.user.pk
-        )
-        if action in ('approve', 'unapprove', 'ack_alerts') and not can_approve_signoff:
+        if action in ('approve', 'unapprove', 'ack_alerts') and not is_doctor_user(request.user):
             messages.error(request, 'ოპერაციაზე დასტურის/მოხსნის და გაფრთხილებების დადასტურების უფლება აქვს მხოლოდ მკურნალ ქირურგს ან ექიმს!')
             return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
 
@@ -568,6 +576,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         elif action == 'approve':
             if (
                 not ev['q'].get('filled')
+                or ev.get('case_outcome', 'scheduled') != 'scheduled'
                 or ev.get('has_hard_contraindication')
                 or ev.get('dos_hold_danger')
                 or ev.get('neuraxial_hard_blocked')
@@ -576,7 +585,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 or any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ()))
                 or (ev.get('needs_stale_labs') and not s.get('stale_labs_refreshed'))
             ):
-                messages.error(request, 'აბსოლუტური უკუჩვენების, STOP-სიგნალის, ხანდაზმული ანალიზების, ნეირაქსიული/მედიკამენტური ბლოკირების ან შეუვსებელი კრიტიკული მონაცემის გამო დადასტურება დაბლოკილია!')
+                messages.error(request, 'აბსოლუტური უკუჩვენების, STOP-სიგნალის, შეჩერებული/ოპერირებული სტატუსის, ხანდაზმული ანალიზების, ნეირაქსიული/მედიკამენტური ბლოკირების ან შეუვსებელი კრიტიკული მონაცემის გამო დადასტურება დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=doc')
             s['alerts_ack_sig'] = ev['alerts_sig']
             if ev.get('red_flags'):

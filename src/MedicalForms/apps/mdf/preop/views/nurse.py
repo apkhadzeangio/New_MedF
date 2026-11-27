@@ -1,6 +1,5 @@
 """Track B Nurse Workspace views: per-user switch, 1-screen mobile registration, and link tracking."""
 from django.contrib import messages
-from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db import transaction
 from django.http import HttpResponseRedirect, JsonResponse
@@ -21,6 +20,7 @@ from ..nurse_ui import (
     set_preop_ui_mode,
 )
 from ..utils import _date, _int, merged_studies
+from .parsers import is_doctor_user, resolve_doctor_user
 
 
 class PreopUiModeView(LoginRequiredMixin, generic.View):
@@ -73,9 +73,8 @@ class PreopNurseRegisterView(LoginRequiredMixin, generic.View):
         op_date = _date(raw_op_date)
         today = timezone.localdate()
         surgeon_raw = request.POST.get('surgeon') or ''
-        surg_id = _int(surgeon_raw, lo=1)
-        surgeon = get_user_model().objects.filter(pk=surg_id).first() if surg_id is not None else None
-        if surgeon is None and hasattr(request.user, 'profile'):
+        surgeon = resolve_doctor_user(surgeon_raw)
+        if surgeon is None and is_doctor_user(request.user):
             surgeon = request.user
 
         form_data = {
