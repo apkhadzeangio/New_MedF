@@ -106,16 +106,21 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
     cap_thresh = vte_cfg['caprini_high']
     ctx.needs_vte_prophylaxis = high_vte or (q_filled and (mod_vte_count >= 2 or ctx.caprini_score >= cap_thresh))
     if ctx.needs_vte_prophylaxis and not s.get('vte_prophylaxis_planned'):
+        from ..caprini import _oac_venous_vte_flags
         ven_severe_renal = ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < ren_red)
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv = ' (ღვიძლის ≥3x: არგატრობანი −75% / უპირატესია ბივალირუდინი!)' if ctx.liver_3x else ''
+        has_full_oac_v, is_evla_vka_v, has_contra_oac_v = _oac_venous_vte_flags(ctx.patient, q, s, ven_severe_renal, ctx.liver_3x)
         if getattr(ctx, 'active_gi_bleed', False):
             hit_gi_v = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit else ''
             vte_agents = f'მხოლოდ მექანიკური პროფილაქტიკა (IPC) — აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის გამო ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!{hit_gi_v}'
         elif 'mech_valve' in ctx.cad_chips and getattr(ctx, 'eff_pregnant', False):
             vte_agents = (
                 'IPC / არაჰეპარინული სქემა ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის კონსილიუმით (ორსულობა + მექ. სარქველი + HIT — UFH/LMWH/DOAC აკრძალულია!)'
-                if has_hit else 'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (ორსულობა + მექ. სარქველი: VKA vs LMWH/UFH ტრიმესტრით — DOAC აკრძალულია!)'
+                if has_hit else (
+                    'მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (ორსულობა + მექ. სარქველი + CrCl<30/დიალიზი: LMWH კუმულირდება, DOAC აკრძალულია — IV/SC UFH ან ტრიმესტრით VKA!)'
+                    if ven_severe_renal else 'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (ორსულობა + მექ. სარქველი: VKA vs LMWH/UFH ტრიმესტრით — DOAC აკრძალულია!)'
+                )
             )
         elif 'mech_valve' in ctx.cad_chips:
             vte_agents = (
@@ -130,6 +135,14 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
                     if ven_severe_renal else 'LMWH / UFH მეან-გინეკოლოგთან შეთანხმებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
                 )
             )
+        elif has_full_oac_v:
+            hit_oac_s = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit else ''
+            if has_contra_oac_v:
+                vte_agents = f'უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
+            elif is_evla_vka_v:
+                vte_agents = f'თერაპიული ვარფარინი გრძელდება მოუხსნელად (INR ≤ 3.0) — დამატებითი LMWH/DOAC არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
+            else:
+                vte_agents = f'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე) — დამატებითი LMWH/DOAC არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
         elif has_hit:
             vte_agents = (
                 f'IPC / არგატრობანი-ბივალირუდინი — HIT + CrCl<30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!{arg_liv}'

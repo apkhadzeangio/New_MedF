@@ -133,7 +133,8 @@ def _standalone_is_neuraxial(anesth_plan, is_phleb, has_epidural_line, q, s, tod
     prewash = bool(q.get('med_warfarin') and not dos_i_pres and eff_i is not None and asra_cfg['inr_max'] < eff_i <= asra_cfg['vka_prewashout_inr_max'] and (op_dt is None or op_dt > td))
     plt_raw, fib = _num(s.get('plt'), lo=1, hi=2000000), normalize_fibrinogen_gl(s.get('fibrinogen'))
     plt_bad = ((s.get('plt') is not None and str(s.get('plt')).strip() != '') or 'plt' in inv_in) and (plt_raw is None or (u_cfg['plt_ambig_lo'] < plt_raw < u_cfg['plt_ul_ge']))
-    plt_k = round(plt_raw / 1000.0, 1) if (plt_raw is not None and plt_raw >= u_cfg['plt_ul_ge']) else plt_raw
+    import math
+    plt_k = math.floor(plt_raw / 100.0) / 10.0 if (plt_raw is not None and plt_raw >= u_cfg['plt_ul_ge']) else plt_raw
     p2y_cnt = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))])
     unint_p2y = p2y_cnt >= 1 and (bool(q.get('recent_stent')) or (('stent_6_12m' in cad_chips) and ('mi' in cad_chips)) or ('nsaid' in eff_alg and (bool(q.get('cad')) or bool(cad_chips) or bool(q.get('neuro')))) or p2y_cnt >= 2)
     sbp, hr_raw, bp_inv = _valid_bilateral_sbp(s), _num(_s_raw(s, 'hr')), bool(_inverted_bp_arms(s))
@@ -772,14 +773,14 @@ def _append_hormone_ppi_steroid_ft_rows(c):
     if 'steroid' in med_chips:
         add_row('სტეროიდი / იმუნოსუპრესანტი', 'არ მოხსნათ! სტრეს-დოზა (Assoc. of Anaesthetists 2020): არტერიულ/დიდ ოპერაციაზე — ჰიდროკორტიზონი 100 მგ IV ინდუქციაზე + 200 მგ/24 სთ ინფუზია (ან 50 მგ IV ყოველ 6 სთ-ში; მცირე ვენურზე — ჩვეული დოზა + 25–50 მგ IV); მოერიდეთ ეტომიდატს!', 'amber', f'არ შეწყვიტოთ ({d_str(0)} IV სტრეს-დოზა)', hold_or_skip=False)
     if c['ft_meds']['unstructured_labels']:
-        labels = ', '.join(c['ft_meds']['unstructured_labels'])
-        ft_bleed_contra = bool(c['is_cea_oac_p2y_stop'] and c['ft_meds']['unstructured_antithrombotic'])
+        labels, is_at = ', '.join(c['ft_meds']['unstructured_labels']), bool(c['ft_meds']['unstructured_antithrombotic'])
+        ft_bleed_contra = is_at and (c['is_cea_oac_p2y_stop'] or c['active_gi_bleed'])
         ft_rule = (
-            f"თავისუფალ ტექსტში („{q.get('other_meds')}“) მითითებულია მაღალი რისკის ანტითრომბოზული პრეპარატი — სისხლჩაქცევის/თრომბოლიზისის ფონზე დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!"
-            if ft_bleed_contra else
-            f"თავისუფალ ტექსტში („{q.get('other_meds')}“) მითითებულია მაღალი რისკის პრეპარატი — მონიშნეთ ჩამრთველი შეჩერების ზუსტი თარიღისთვის!"
+            f"თავისუფალ ტექსტში („{q.get('other_meds')}“) მითითებულია მაღალი რისკის ანტითრომბოზული პრეპარატი — "
+            + ('აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის ფონზე სასწრაფოდ შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან!' if (c['active_gi_bleed'] and not c['is_cea_oac_p2y_stop']) else 'სისხლჩაქცევის/თრომბოლიზისის ფონზე დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!')
+            if ft_bleed_contra else f"თავისუფალ ტექსტში („{q.get('other_meds')}“) მითითებულია მაღალი რისკის პრეპარატი — მონიშნეთ ჩამრთველი შეჩერების ზუსტი თარიღისთვის!"
         )
-        add_row(f'დასაზუსტებელი წამალი ({labels})', ft_rule, 'red', 'დააზუსტეთ ექიმთან — არასტრუქტურირებულია!', hold_or_skip=(not ft_bleed_contra), force_date_plan=True, contraindicated=ft_bleed_contra, unstructured=True, reconcile_only=True)
+        add_row(f'დასაზუსტებელი წამალი ({labels})', ft_rule, 'red', _GI_BLEED_PLAN if (ft_bleed_contra and c['active_gi_bleed'] and not c['is_cea_oac_p2y_stop']) else 'დააზუსტეთ ექიმთან — არასტრუქტურირებულია!', hold_or_skip=(not ft_bleed_contra), force_date_plan=True, contraindicated=ft_bleed_contra, unstructured=True, reconcile_only=True)
 
 
 def build_med_schedule(patient, q, s, egfr, crcl=None, stop_blocked=False, has_neuraxial_override=None, today=None):

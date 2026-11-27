@@ -349,10 +349,12 @@ def _build_surgical_abx_regimen(ctx):
             abx_regimen = core_alt
         else:
             avoid_gent = ctx.on_dialysis or (eff_ren_abx is not None and eff_ren_abx < abx_cfg['gentamicin_avoid_renal']) or ctx.open_aortic
-            gram_neg_addon = (
-                '+ აზტრეონამი 2 გ ან ციპროფლოქსაცინი 400 მგ IV საზარდულის/მუცლის მიდგომისას — დიალიზზე, CrCl/eGFR <45-სა და ღია აორტაზე გენტამიცინს მოერიდეთ (გენტამიცინი აკრძალულია)!'
-                if avoid_gent else '+ გენტამიცინი 5 მგ/კგ IV საზარდულის მიდგომისას (ან აზტრეონამი 2 გ / ციპროფლოქსაცინი 400 მგ IV)'
-            )
+            if getattr(ctx, 'eff_pregnant', False):
+                gram_neg_addon = '+ აზტრეონამი 2 გ IV საზარდულის/მუცლის მიდგომისას — ორსულობაზე გენტამიცინი და ფტორქინოლონები (ციპროფლოქსაცინი) აკრძალულია!'
+            elif avoid_gent:
+                gram_neg_addon = '+ აზტრეონამი 2 გ ან ციპროფლოქსაცინი 400 მგ IV საზარდულის/მუცლის მიდგომისას — დიალიზზე, CrCl/eGFR <45-სა და ღია აორტაზე გენტამიცინს მოერიდეთ (გენტამიცინი აკრძალულია)!'
+            else:
+                gram_neg_addon = '+ გენტამიცინი 5 მგ/კგ IV საზარდულის მიდგომისას (ან აზტრეონამი 2 გ / ციპროფლოქსაცინი 400 მგ IV)'
             abx_regimen = f'{core_alt} ({gram_neg_addon})'
     else:
         cefaz_3g_kg = abx_cfg['cefazolin_3g_kg']
@@ -472,7 +474,7 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
     if ctx.post_antithrombotic_label:
         return ctx.post_antithrombotic_label + (statin_tail if 'სტატინი' not in ctx.post_antithrombotic_label else '')
     if ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
-        return _preg_mech_valve_postop_msg(has_hit)
+        return _preg_mech_valve_postop_msg(has_hit, severe_renal=hit_severe_renal)
     if ctx.has_mech_valve:
         mv_ap_b = f' + ჩვენებისას {ctx.oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
         return f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap_b} (DOAC აკრძალულია!){statin_tail}'

@@ -292,7 +292,7 @@ VASCULAR_VIGNETTES = (
         op_subtype=_OP.EVLA, age=56, sex='F', side='R',
         q=(('filled', True), ('ven_ceap', 'C3'), ('med_warfarin', True), ('mets_ok', True)),
         s=(('hb', 132), ('plt', 235), ('inr', 2.4), ('glucose', 5.2), ('ven_duplex_status', 'deep_patent_reflux'), ('compression_ready', True), ('planned_surgery_date', VIGNETTE_OP_DATE)),
-        must_not_red=('კოაგულოგრამის დარღვევა',),
+        must_not_red=('კოაგულოგრამის დარღვევა', 'სუპრათერაპიული INR'),
         must_med_terms=('INR ≤ 3.0',),
     ),
     ClinicalVignette(

@@ -22,13 +22,17 @@ def _parse_wbc(raw):
 
 
 def _parse_plt(raw):
+    import math
     u = rule_value('LAB_UNIT_AUTO_CONVERSION')
     val = _num(raw, lo=1, hi=2000000)
-    if val is not None and u['plt_ambig_lo'] < val < u['plt_ul_ge']:
+    if val is None or u['plt_ambig_lo'] < val < u['plt_ul_ge']:
         return None
-    if val is not None and val >= u['plt_ul_ge']:
-        val = int(round(val / 1000.0))
-    return _int(val, lo=1, hi=u['plt_ambig_lo']) if val is not None else None
+    if val >= u['plt_ul_ge']:
+        val = math.floor(val / 100.0) / 10.0
+    val = _num(val, lo=1, hi=float(u['plt_ambig_lo']))
+    if val is None:
+        return None
+    return int(val) if val == int(val) else round(val, 1)
 
 
 def _extract_bp_and_sat(s):
@@ -315,16 +319,17 @@ def eval_hematology_coag(ctx):
         and not getattr(ctx, 'eff_pregnant', False)
         and not (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips)
     )
+    evla_inr_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
     evla_vka_ok = (
-        is_evla_vka_ctx and eff_inr and eff_inr <= coag_cfg['inr_evla']
+        is_evla_vka_ctx and eff_inr and eff_inr <= evla_inr_max
         and not s.get('aptt_prolonged') and (fib is None or fib >= coag_cfg['fib_low'])
     )
     fib_mild_low = (fib is not None and coag_cfg['fib_sev'] <= fib < coag_cfg['fib_low'])
     if evla_vka_ok:
         if eff_inr > coag_cfg['inr_red']:
-            ctx.amber_flags.append(f'INR {eff_inr} ვარფარინის ფონზე — EVLA-ს წინ დააზუსტეთ ქირურგთან (ESVS 2022-ით მოხსნა აუცილებელი არ არის, თუ INR <= 3.0).')
-    elif is_evla_vka_ctx and eff_inr and eff_inr > coag_cfg['inr_evla'] and not s.get('aptt_prolonged') and not fib_mild_low:
-        ctx.red_flags.append(f'სუპრათერაპიული INR ვარფარინის ფონზე EVLA-ს წინ (INR {eff_inr} > {coag_cfg["inr_evla"]}) — სისხლდენის რისკი, გადაამოწმეთ ქირურგთან!')
+            ctx.amber_flags.append(f'INR {eff_inr} ვარფარინის ფონზე — EVLA-ს წინ დააზუსტეთ ქირურგთან (ESVS 2022-ით მოხსნა აუცილებელი არ არის, თუ INR <= {evla_inr_max}).')
+    elif is_evla_vka_ctx and eff_inr and eff_inr > evla_inr_max and not s.get('aptt_prolonged') and not fib_mild_low:
+        ctx.red_flags.append(f'სუპრათერაპიული INR ვარფარინის ფონზე EVLA-ს წინ (INR {eff_inr} > {evla_inr_max}) — სისხლდენის რისკი, გადაამოწმეთ ქირურგთან!')
     elif (eff_inr and eff_inr > coag_cfg['inr_red']) or s.get('aptt_prolonged') or fib_mild_low:
         ctx.red_flags.append('კოაგულოგრამის დარღვევა (INR > 1.35 / გახანგრძლივებული APTT / დაბალი ფიბრინოგენი) — აცნობეთ ქირურგს!')
 

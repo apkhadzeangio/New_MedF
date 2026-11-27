@@ -1,0 +1,223 @@
+"""Caprini VTE risk score calculator and safe perioperative prophylaxis advice."""
+from ..models import PreopPatient
+from .meds_freetext import _effective_allergy_state
+from .registry import rule_value
+from .utils import _num, _resolve_pathway, _str_list, cea_live_days_since_event, is_pregnancy_eligible
+
+
+def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
+    from .calculators import _s_raw, _sat_age, _sat_bmi_from, _sat_num
+
+    cap = rule_value('SCORE_CAPRINI_VTE')
+    lvef_red = rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red']
+    pts = 0
+    age = _sat_age(patient.age)
+    pts += 3 if age >= cap['age_3'] else (2 if age >= cap['age_2'] else (1 if age >= cap['age_1'] else 0))
+
+    pw = _resolve_pathway(patient)
+    if pw == PreopPatient.Pathway.VENOUS:
+        pts += 1  # varicose veins
+        if q.get('ven_ceap') in ('C3', 'C4', 'C5', 'C6'):
+            pts += 1  # leg edema / chronic venous stasis
+        pts += 2 if patient.op_subtype == PreopPatient.OpSubtype.PHLEB else 1
+    elif pw == PreopPatient.Pathway.PAD_PTA:
+        pts += 1
+    else:
+        pts += 2  # major vascular surgery >45 min
+
+    bmi_v = _sat_bmi_from(bmi, s_cur)
+    if bmi_v is not None and bmi_v > cap['bmi_1']:
+        pts += 1
+    if (patient.sex or '') == 'F' and q.get('ven_hormones'):
+        pts += 1
+    if is_pregnancy_eligible(patient) and (q.get('ven_pregnant') or q.get('pregnant_possible')):
+        pts += 1
+    pulm_chips = set(_str_list(q.get('pulm_chips')))
+    if ('copd' in pulm_chips) or (q.get('pulm') and not pulm_chips):
+        pts += 1  # Caprini 2005 awards +1 for COPD, not isolated asthma
+
+    cea_d = cea_live_days_since_event(q, today=today, s=s_cur)
+    if (
+        pw == PreopPatient.Pathway.CEA
+        and cea_d is not None and cea_d <= cap['stroke_days']
+        and ('minor_stroke' in _str_list(q.get('cea_event_chips')) or bool(q.get('cea_disabling_stroke')))
+    ):
+        pts += 5  # acute stroke <1 month (remote stroke >1m = 0 pts per Caprini 2005)
+
+    lvef_c = _sat_num(_s_raw(s_cur, 'lvef'), 5, 95)
+    if ('hf' in cad_set) or (lvef_c is not None and lvef_c < lvef_red):
+        pts += 1
+    if 'mi' in cad_set:
+        pts += 1
+    if q.get('ven_cancer_immob'):
+        pts += 2
+    if q.get('ven_dvt_history') or bool(_str_list(q.get('ven_dvt_chips'))):
+        pts += 3
+    if q.get('ven_thrombophilia'):
+        pts += 3
+    if has_hit:
+        pts += 3  # HIT is a +3 Caprini hypercoagulable state AND contraindicates all heparins!
+    return pts
+
+
+def _oac_vte_advice(is_evla_vka, has_contra_oac, has_hit, severe_renal, severe_liver, hit_dtis, comp_sfx):
+    if is_evla_vka:
+        if has_hit:
+            return f'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ 3.0){comp_sfx} — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე! HIT: ჰეპარინი/LMWH აკრძალულია!)'
+        return f'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ 3.0){comp_sfx} — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
+    if has_contra_oac:
+        if has_hit and severe_renal:
+            return f'უკუნაჩვენები OAC არ განაახლოთ — HIT + CrCl/eGFR <30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია! (IPC / სტაციონარული {hit_dtis}, ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+        if has_hit and severe_liver:
+            return f'უკუნაჩვენები OAC არ განაახლოთ — HIT + ღვიძლის ≥3x: ჰეპარინი, DOAC და ფონდაპარინუქსი აკრძალულია! (IPC / IV ბივალირუდინი, ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+        if has_hit:
+            return f'უკუნაჩვენები OAC არ განაახლოთ — არაჰეპარინული სქემა (ფონდაპარინუქსი ან ერთი უსაფრთხო OAC კარდიოლოგ/ჰემატოლოგთან, ორმაგი ანტიკოაგულაციის გარეშე! HIT: ჰეპარინი/LMWH აკრძალულია!){comp_sfx}'
+        if severe_renal:
+            return f'უკუნაჩვენები OAC არ განაახლოთ — CrCl/eGFR <30: DOAC/ფონდაპარინუქსი აკრძალულია! შეარჩიეთ კანქვეშა UFH ან VKA კარდიოლოგ/ნეფროლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+        if severe_liver:
+            return f'უკუნაჩვენები OAC არ განაახლოთ — ღვიძლის ≥3x: DOAC აკრძალულია! შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ჰეპატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+        return f'უკუნაჩვენები/დუბლირებული OAC არ განაახლოთ — შეარჩიეთ ერთი უსაფრთხო ანტიკოაგულაციის სქემა კარდიოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+    if has_hit:
+        return f'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე){comp_sfx} — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე! HIT: ჰეპარინი/LMWH აკრძალულია!)'
+    return f'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე){comp_sfx} — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
+
+
+def _caprini_tier_and_advice(
+    pts, has_mech_valve, has_hit, severe_renal, severe_liver, compression_contra,
+    cea_bleed_block=False, eff_pregnant=False, active_gi_bleed=False, has_full_oac=False, is_evla_vka=False, has_contra_oac=False,
+):
+    cap_cfg = rule_value('SCORE_CAPRINI_VTE')
+    comp_sfx = '' if compression_contra else ' + კომპრესია'
+    comp_low = ' (კომპრესია უკუნაჩვენებია არტერიული უკმარისობის გამო!)' if compression_contra else ' + ელასტიური კომპრესია'
+    hit_dtis = 'IV ბივალირუდინი (არგატრობანი ღვიძლის ≥3x-ზე ერიდეთ/დოზა -75%!)' if severe_liver else 'IV ბივალირუდინი/არგატრობანი'
+    hit_gi_sfx = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit else ''
+    preg_mv_txt = (
+        f'ორსულობა + მექანიკური სარქველი + HIT: UFH, LMWH და DOAC აკრძალულია — მეან-გინეკოლოგის, კარდიოლოგისა და ჰემატოლოგის კონსილიუმი (IPC / არაჰეპარინული IV სქემა){comp_sfx}'
+        if has_hit else (
+            f'ორსულობა + მექანიკური სარქველი + CrCl<30/დიალიზი: DOAC აკრძალულია, LMWH კუმულირდება — მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (IV/SC UFH ან ტრიმესტრით VKA){comp_sfx}'
+            if severe_renal else
+            f'ორსულობა + მექანიკური სარქველი: მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (DOAC აკრძალულია; VKA vs LMWH/UFH ტრიმესტრით){comp_sfx}'
+        )
+    )
+    oac_vte_txt = _oac_vte_advice(is_evla_vka, has_contra_oac, has_hit, severe_renal, severe_liver, hit_dtis, comp_sfx)
+    if pts >= cap_cfg['high_min']:
+        tier = f"მაღალი (≥{cap_cfg['high_min']})"
+        if cea_bleed_block:
+            advice = f'მხოლოდ მექანიკური პროფილაქტიკა (IPC{comp_sfx}) — ტვინის სისხლჩაქცევის / rt-PA ≤6 დღის ფონზე ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია!'
+        elif active_gi_bleed:
+            advice = f'მხოლოდ მექანიკური პროფილაქტიკა (IPC{comp_sfx}) — აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის ფონზე ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!{hit_gi_sfx}'
+        elif has_mech_valve and eff_pregnant:
+            advice = preg_mv_txt
+        elif has_mech_valve:
+            advice = (
+                f'მექანიკური სარქველი + HIT: სტაციონარული {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}' if has_hit else (
+                    f'მექანიკური სარქველი + CrCl/eGFR <30: IV UFH ხიდი aPTT კონტროლით და უვადო VKA (DOAC აკრძალულია!){comp_sfx}' if severe_renal
+                    else f'მექანიკური სარქველი: ვარფარინის (VKA) აღდგენა ± LMWH ხიდი კარდიოლოგის სქემით (DOAC აკრძალულია!){comp_sfx}'
+                )
+            )
+        elif eff_pregnant:
+            advice = (
+                f'მექანიკური პროფილაქტიკა (IPC) / არაჰეპარინული სქემა მეან-გინეკოლოგთან და ჰემატოლოგთან (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!){comp_sfx}' if has_hit else (
+                    f'ფარმაკოლოგიური პროფილაქტიკა: კანქვეშა UFH ან anti-Xa კონტროლირებადი LMWH (ორსულობა + CrCl<30 — DOAC უკუნაჩვენებია!){comp_sfx}' if severe_renal
+                    else f'ფარმაკოლოგიური პროფილაქტიკა (მხოლოდ LMWH / UFH 7–10 დღე — ორსულობაზე DOAC უკუნაჩვენებია!){comp_sfx}'
+                )
+            )
+        elif has_full_oac:
+            advice = oac_vte_txt
+        elif has_hit:
+            advice = (
+                f'მექანიკური თრომბოპროფილაქტიკა (IPC) / სტაციონარული {hit_dtis} (HIT + CrCl/eGFR <30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!){comp_sfx}' if severe_renal else (
+                    f'არაჰეპარინული პროფილაქტიკა: IPC / IV ბივალირუდინი (HIT: ჰეპარინი აკრძალულია; ღვიძლის ≥3x-ზე DOAC და ფონდაპარინუქსი არარეკომენდებულია!){comp_sfx}' if severe_liver
+                    else f'არაჰეპარინული პროფილაქტიკა: ფონდაპარინუქსი ან DOAC 7–10 დღე (HIT: LMWH/ჰეპარინი აკრძალულია!){comp_sfx}'
+                )
+            )
+        elif severe_renal:
+            advice = f'ფარმაკოლოგიური პროფილაქტიკა: კანქვეშა UFH 5000 სე ×2–3 ან თირკმელზე კორექტირებული LMWH anti-Xa კონტროლით (CrCl/eGFR <30: DOAC/ფონდაპარინუქსი აკრძალულია!){comp_sfx}'
+        elif severe_liver:
+            advice = f'ფარმაკოლოგიური პროფილაქტიკა: LMWH / UFH კოაგულოგრამის კონტროლით (ღვიძლის ≥3x-ზე DOAC უკუნაჩვენებია!){comp_sfx}'
+        else:
+            advice = f'ფარმაკოლოგიური პროფილაქტიკა (LMWH / DOAC 7–10 დღე){comp_sfx}'
+    elif pts > cap_cfg['low_max']:
+        tier = f"საშუალო ({cap_cfg['low_max'] + 1}–{cap_cfg['mod_max']})"
+        if cea_bleed_block:
+            advice = f'მხოლოდ ადრეული მობილიზაცია + IPC{comp_sfx} (ტვინის სისხლჩაქცევა / rt-PA ≤6 დღე — ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია!)'
+        elif active_gi_bleed:
+            advice = f'მხოლოდ ადრეული მობილიზაცია + IPC{comp_sfx} (აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!){hit_gi_sfx}'
+        elif has_mech_valve and eff_pregnant:
+            advice = preg_mv_txt
+        elif has_mech_valve:
+            advice = f'მექანიკური სარქველი + HIT: {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}' if has_hit else f'ადრეული მობილიზაცია{comp_sfx} + უვადო ვარფარინის (VKA) რეჟიმი (DOAC აკრძალულია!)'
+        elif eff_pregnant:
+            advice = (
+                f'ადრეული მობილიზაცია{comp_sfx} + IPC (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!)' if has_hit else (
+                    f'ადრეული მობილიზაცია{comp_sfx} ± კანქვეშა UFH მეან-გინეკოლოგის შეფასებით (ორსულობა + CrCl<30: LMWH კუმულირდება, DOAC უკუნაჩვენებია!)' if severe_renal
+                    else f'ადრეული მობილიზაცია{comp_sfx} ± LMWH / UFH მეან-გინეკოლოგის შეფასებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
+                )
+            )
+        elif has_full_oac:
+            advice = oac_vte_txt
+        elif has_hit:
+            advice = (
+                f'ადრეული მობილიზაცია{comp_sfx} + IPC (HIT + CrCl/eGFR <30: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!)' if severe_renal else (
+                    f'ადრეული მობილიზაცია{comp_sfx} + IPC / ბივალირუდინი (HIT + ღვიძლის ≥3x: ჰეპარინი, DOAC და ფონდაპარინუქსი არა!)' if severe_liver
+                    else f'ადრეული მობილიზაცია{comp_sfx} ± ფონდაპარინუქსი/DOAC (HIT: ჰეპარინი აკრძალულია!)'
+                )
+            )
+        elif severe_renal:
+            advice = f'ადრეული მობილიზაცია{comp_sfx} ± კანქვეშა UFH / დოზა-კორექტირებული LMWH (CrCl/eGFR <30: DOAC არა!)'
+        elif severe_liver:
+            advice = f'ადრეული მობილიზაცია{comp_sfx} ± LMWH ქირურგის შეფასებით (ღვიძლის ≥3x-ზე DOAC არა!)'
+        else:
+            advice = f'ადრეული მობილიზაცია{comp_sfx} ± LMWH/DOAC ქირურგის შეფასებით'
+    else:
+        tier = 'დაბალი (0–2)'
+        advice = f'ადრეული სიარული{comp_low} (რუტინული ჰეპარინის გარეშე)'
+    return tier, advice
+
+
+def _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver):
+    has_full_oac = bool(q_d.get('med_warfarin') or q_d.get('med_doac') or q_d.get('med_dabigatran'))
+    med_set = set(_str_list(q_d.get('med_chips')))
+    oac_cnt = sum([bool(q_d.get('med_warfarin')), bool(q_d.get('med_doac')), bool(q_d.get('med_dabigatran')), ('rivaroxaban_2_5' in med_set)])
+    inr_c = _num(s_cur.get('dos_inr'), 0.5, 15.0) or _num(s_cur.get('inr'), 0.4, 20.0)
+    evla_max_inr = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
+    is_evla_vka = bool(
+        patient.op_subtype == PreopPatient.OpSubtype.EVLA
+        and (s_cur.get('anesthesia_plan') or 'auto') != 'neuraxial'
+        and q_d.get('med_warfarin') and oac_cnt == 1 and not severe_liver
+        and (inr_c is None or inr_c <= evla_max_inr)
+    )
+    has_contra_oac = bool(
+        oac_cnt >= 2
+        or ((q_d.get('med_doac') or q_d.get('med_dabigatran')) and (severe_renal or severe_liver))
+        or (not is_evla_vka and q_d.get('med_warfarin') and patient.op_subtype == PreopPatient.OpSubtype.EVLA and inr_c is not None and inr_c > evla_max_inr)
+    )
+    return has_full_oac, is_evla_vka, has_contra_oac
+
+
+def calc_caprini(patient, q, bmi=None, today=None, eff_renal=None, liver_status='normal', compression_contra=False):
+    """Auto-calculate numeric Caprini VTE score (with HIT +3 & acute stroke <1m +5) and safe VTE advice."""
+    q_d = q if isinstance(q, dict) else {}
+    s_cur = patient.studies if isinstance(patient.studies, dict) else {}
+    cad_set = set(_str_list(q_d.get('cad_chips')))
+    eff_alg, _, _ = _effective_allergy_state(q_d)
+    has_hit = 'hit_heparin' in eff_alg
+    pts = _caprini_points(patient, q_d, bmi, today, s_cur, cad_set, has_hit)
+    eff_ren_raw = _num(eff_renal)
+    eff_ren_v = max(0.0, eff_ren_raw) if eff_ren_raw is not None else None
+    ren_red, rtpa_d = rule_value('REN_CKD_NEPHRO_HYDRATION')['red'], rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
+    severe_renal = bool(q_d.get('on_dialysis')) or (eff_ren_v is not None and eff_ren_v < ren_red)
+    severe_liver = (liver_status or s_cur.get('liver_status') or 'normal') == '3x'
+    cea_d = cea_live_days_since_event(q_d, today=today, s=s_cur)
+    cea_bleed_block = _resolve_pathway(patient) == PreopPatient.Pathway.CEA and (
+        s_cur.get('brain_imaging') == 'large_or_hemorrhage' or (bool(q_d.get('cea_thrombolysis')) and (cea_d is None or cea_d <= rtpa_d))
+    )
+    active_gi_bleed = bool(s_cur.get('gastro_result') == 'acute_ulcer' or (q_d.get('ulcer_active_symp') and s_cur.get('gastro_result') != 'remission'))
+    eff_preg = is_pregnancy_eligible(patient) and bool(q_d.get('pregnant_possible') or q_d.get('ven_pregnant'))
+    has_full_oac, is_evla_vka, has_contra_oac = _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver)
+    tier, advice = _caprini_tier_and_advice(
+        pts, 'mech_valve' in cad_set, has_hit, severe_renal, severe_liver, compression_contra,
+        cea_bleed_block=cea_bleed_block, eff_pregnant=eff_preg, active_gi_bleed=active_gi_bleed,
+        has_full_oac=has_full_oac, is_evla_vka=is_evla_vka, has_contra_oac=has_contra_oac,
+    )
+    return pts, tier, advice

@@ -17,14 +17,24 @@ _RIVA_LOW_RE = re.compile(
 )
 _RIVA_THER_DOSE_RE = re.compile(r'(?<![\d.,])(?:10|15|20)(?![\d.,])')
 _RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;,\n/+]|\s+(?:და|ან|and|or)\s+')
-_NEG_CLAUSE_SPLIT_RE = re.compile(
+_STRONG_CLAUSE_SPLIT_RE = re.compile(
     r'[;,\n!()—–]+|\s+-\s+|\.(?!\d)|\s+(?:მაგრამ|ხოლო|თუმცა|but)\s+'
-    r'|\s+(?:და|ან|and)\s+(?=(?:სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|უწერია|დაუნიშნ|takes?|taking|uses?|using|on\s|\S*[^\n,;]*?\d))'
-    r'|(?:(?<=მოხსნილია)|(?<=შეწყვეტილია)|(?<=შეჩერებულია)|(?<=გამორიცხულია))\s+(?:და|ან|and)\s+'
-    r'|\s+(?=(?:no|without|stopped|discontinued)\s+[a-zა-ჰ])'
-    r'|\s+(?=(?:არ|აღარ|არა)\s+(?:იღებს|ვიღებ|სვამს|ვსვამ|ღებულობს)\s+[a-zა-ჰ])'
-    r'|(?<=ალერგია)\s+(?=\S+\s+(?:არ|არა)\s+(?:აქვს|მაქვს))'
-    r'|(?:(?<=\d)|(?<=მგ)|(?<=mg))\s+(?=ალერგი\w*\s+(?:არ|არა)\s+(?:აქვს|მაქვს))'
+)
+_CONJ_SPLIT_RE = re.compile(r'\s+(?:და|ან|and)\s+')
+_PREFIX_NEG_START_RE = re.compile(
+    r'^(?:(?:არ|აღარ|არა|ვერ)\s+(?:იღებს|ვიღებ|სვამს|ვსვამ|ღებულობს|აქვს|მაქვს|აღენიშნება|უფიქსირდება)'
+    r'|(?:no|not|without|stopped|discontinued|held|denied|denies)\b)',
+    re.IGNORECASE,
+)
+_ACTIVE_MED_CUE_RE = re.compile(
+    r'(?:^|\s)(?:სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|უწერია|დაუნიშნ|takes?|taking|uses?|using|on\s)|\d',
+    re.IGNORECASE,
+)
+_INLINE_NEG_SPLIT_RE = re.compile(
+    r'\s+(?=(?:no|without|stopped|discontinued|held)\s+[a-zა-ჰ])'
+    r'|\s+(?=(?:არ|აღარ|არა|ვერ)\s+(?:იღებს|ვიღებ|სვამს|ვსვამ|ღებულობს)\s+(?!(?:და|ან|მაგრამ|ხოლო|თუმცა|რომ)(?![ა-ჰ]))[a-zა-ჰ])'
+    r'|(?<=ალერგია)\s+(?=\S+\s+(?:არ|არა)\s+(?:აქვს|მაქვს|აღენიშნება|უფიქსირდება))'
+    r'|(?:(?<=\d)|(?<=მგ)|(?<=mg))\s+(?=ალერგი\w*\s+(?:არ|არა)\s+(?:აქვს|მაქვს|აღენიშნება|უფიქსირდება))'
 )
 _DOUBLE_NEG_AFFIRM_RE = re.compile(
     r'\b(?:not\s+(?:stopped|discontinued|held)|never\s+stopped)\b'
@@ -32,8 +42,8 @@ _DOUBLE_NEG_AFFIRM_RE = re.compile(
     re.IGNORECASE,
 )
 _SYMPTOM_NEG_RE = re.compile(
-    r'(?:სისხლდენ\w*|ჩივილ\w*|გართულებ\w*|ტკივილ\w*)\s+(?:არ|არა)\s+(?:აქვს|მაქვს|აღნიშნავს|ჰქონია)'
-    r'|\b(?:without|no)\s+(?:active\s+)?(?:bleed\w*|hemorrhag\w*|pain|symptom\w*|complication\w*)\b',
+    r'(?:სისხლდენ\w*|ჩივილ\w*|გართულებ\w*|ტკივილ\w*|ანაფილაქსი\w*)\s+(?:(?:არ|არა)\s+(?:აქვს|მაქვს|აღნიშნავს|აღენიშნება|ჰქონია)|გარეშე)'
+    r'|\b(?:without|no)\s+(?:active\s+)?(?:bleed\w*|hemorrhag\w*|pain|symptom\w*|complication\w*|anaphyla\w*)\b',
     re.IGNORECASE,
 )
 _RIVA_ESCALATION_STEMS = (
@@ -58,13 +68,13 @@ _OTHER_XA_DOAC_STEMS = (
 )
 _ALLERGY_NEGATION_WORDS = frozenset({
     'არა', 'უარყოფს', 'არაქვს', 'არმაქვს', 'არააქვს', 'ალერგიაარაქვს', 'ალერგიაარმაქვს', 'ალერგიაარააქვს',
-    'no', 'none', 'nil', 'nkda', 'nka', 'noallergy', 'noallergies',
+    'ალერგიისგარეშე', 'no', 'none', 'nil', 'nkda', 'nka', 'noallergy', 'noallergies',
 })
 _NEGATION_PHRASE_RE = re.compile(
-    r'(?:(?:არ|აღარ|არა)\s+(?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|აღნიშნავს|ჰქონია)'
-    r'|(?<![ა-ჰ])არაა?(?![ა-ჰ])'
-    r'|უარყოფს|მოხსნილია|შეწყვეტილია|შეჩერებულია|გამორიცხულია'
-    r'|(?<![a-z])(?:no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|without)\b)',
+    r'(?:(?:არ|აღარ|არა|ვერ)\s+(?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|აღნიშნავს|ჰქონია|აღენიშნება|უფიქსირდება)'
+    r'|(?<![ა-ჰ])(?:არაა?(?![ა-ჰ\-—–])|არაქვს(?![ა-ჰ])|არმაქვს(?![ა-ჰ])|არააქვს(?![ა-ჰ]))'
+    r'|უარყოფს|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს|გამორიცხულია|გარეშე'
+    r'|(?<![a-z])(?:no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without)\b)',
     re.IGNORECASE,
 )
 _FT_STATIN_STEMS = (
@@ -84,6 +94,32 @@ _FT_ACEI_ARB_STEMS = (
 _FT_AMIODARONE_STEMS = ('ამიოდარონ', 'კორდარონ', 'amiodaron', 'cordaron', 'paceron')
 
 
+def _split_neg_clauses(cleaned_txt):
+    """Split text into negation-scoped clauses, preserving compound prefix negations while separating SOV/conjunction clauses."""
+    out = []
+    for chunk in _STRONG_CLAUSE_SPLIT_RE.split(cleaned_txt):
+        chunk_s = chunk.strip()
+        if not chunk_s:
+            continue
+        parts = [p.strip() for p in _CONJ_SPLIT_RE.split(chunk_s) if p.strip()]
+        merged = [parts[0]]
+        for nxt in parts[1:]:
+            prev = merged[-1]
+            prev_neg = bool(_NEGATION_PHRASE_RE.search(prev))
+            nxt_neg = bool(_NEGATION_PHRASE_RE.search(nxt))
+            # Keep compound prefix negation merged only when right side has no negation, no dose, and no active verb
+            if prev_neg and not nxt_neg and _PREFIX_NEG_START_RE.search(prev) and not _ACTIVE_MED_CUE_RE.search(nxt):
+                merged[-1] = f'{prev} და {nxt}'
+            else:
+                merged.append(nxt)
+        for seg in merged:
+            for sub in _INLINE_NEG_SPLIT_RE.split(seg):
+                sub_s = sub.strip()
+                if sub_s:
+                    out.append(sub_s)
+    return out
+
+
 def _positive_clauses_text(text):
     """Strip explicitly negated clauses ('არ აქვს', 'არ სვამს', 'no ...', 'stopped ...') before stem matching."""
     if not isinstance(text, str) or not text.strip():
@@ -91,10 +127,7 @@ def _positive_clauses_text(text):
     cleaned_txt = _DOUBLE_NEG_AFFIRM_RE.sub(' ', text.lower())
     cleaned_txt = _SYMPTOM_NEG_RE.sub(' ', cleaned_txt)
     pos = []
-    for cl in _NEG_CLAUSE_SPLIT_RE.split(cleaned_txt):
-        cl_s = cl.strip()
-        if not cl_s:
-            continue
+    for cl_s in _split_neg_clauses(cleaned_txt):
         compact = re.sub(r'[\s.,;:!?()\[\]"\'—–-]+', '', cl_s)
         if not compact or compact in _ALLERGY_NEGATION_WORDS or _NEGATION_PHRASE_RE.search(cl_s):
             continue

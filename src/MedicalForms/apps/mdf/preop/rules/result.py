@@ -119,6 +119,7 @@ def _result_clinical_part(ctx):
         'planned_surgery_short': ctx.planned_surgery_short,
         'operated_date_ka': ctx.operated_date_ka,
         'allergy_summary': ctx.allergy_summary,
+        'age': ctx.age,
         'stale_labs_days': rule_value('INF_STALE_LABS_DAYS'),
     }
     res.update(_result_anesth_dos_part(ctx))

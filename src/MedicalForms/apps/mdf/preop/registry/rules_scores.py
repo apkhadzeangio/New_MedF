@@ -191,7 +191,7 @@ SCORES_AND_WORKFLOW_RULES = (
         section='Day-of-surgery physiological & coagulation safety gates (ადგილობრივი INR<=1.5/1.4 & გლუკ. >=14.0)',
         class_level='ადგილობრივი უსაფრთხოების ბარიერი (WHO / JBDS / ASRA-ზე დაყრდნობით)',
         source_wording='Clinic enforces conservative uniform morning STOP gates: BP >=180/110 or SBP <90, glucose <3.9 or >=14.0 mmol/L (JBDS >12/10-12), INR >1.5 (neuraxial >1.4; EVLA >3.0), and mandatory β-hCG before fluoroscopy.',
-        value={'sbp_hi': 180, 'dbp_hi': 110, 'sbp_lo': 90, 'gl_hi': 14.0, 'gl_lo': 3.9, 'gl_amb': 10.0, 'inr_std': 1.5, 'inr_nx': 1.4, 'inr_evla': 3.0},
+        value={'sbp_hi': 180, 'dbp_hi': 110, 'sbp_lo': 90, 'gl_hi': 14.0, 'gl_lo': 3.9, 'gl_amb': 10.0, 'inr_std': 1.5, 'inr_nx': 1.4},
         value_label='BP <180/110 & >=90 · გლუკ. 3.9–14.0 · INR <= 1.5/1.4',
         status=STATUS_LOCAL,
         match_patterns=(

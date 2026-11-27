@@ -178,6 +178,9 @@ def _parse_s1_numbers_and_dates(post, s, today):
 
 def med_hold_agreement_block_reason(ev, s):
     """Return Georgian error string if med_hold_agreed / nurse med-call confirmation is clinically unsafe."""
+    out_st = ev.get('case_outcome') or (s.get('case_outcome_status') if isinstance(s, dict) else '') or 'scheduled'
+    if out_st != 'scheduled':
+        return 'პაციენტი აღარ არის დაგეგმილ სტატუსში (გადადებულია/გაუქმებულია/ნაოპერაციებია) — წამლების შეჩერების სქემის დადასტურება დაბლოკილია!'
     if not ev.get('needs_med_hold'):
         return 'ამ პაციენტს შესაჩერებელი მედიკამენტების გრაფიკი არ აქვს.'
     if ev['clearance_seal']['code'] == 'stop' or ev.get('has_hard_contraindication'):

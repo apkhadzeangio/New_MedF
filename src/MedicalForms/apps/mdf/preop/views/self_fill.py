@@ -123,9 +123,12 @@ class PreopSelfFillView(generic.View):
             patient = PreopPatient.objects.select_for_update().filter(pk=patient.pk, archived=False).first()
             if not patient:
                 return render(request, self.template_name, {'invalid_link': True}, status=404)
+            from ..constants import CASE_OUTCOME_CHOICES
+
             q_cur = merged_q(patient)
             s_cur = merged_studies(patient)
-            outcome = s_cur.get('case_outcome_status') or 'scheduled'
+            raw_out = s_cur.get('case_outcome_status')
+            outcome = raw_out if raw_out in dict(CASE_OUTCOME_CHOICES) else 'scheduled'
             cur_nonce, staff_locked, submitted_once = self._self_fill_lock_state(patient, q_cur, s_cur, outcome)
             if staff_locked or submitted_once or s_cur.get('self_fill_revoked'):
                 return HttpResponseRedirect(reverse('preop-self-fill', args=[token]) + '?locked=1')

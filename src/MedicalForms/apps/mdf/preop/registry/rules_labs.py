@@ -78,7 +78,7 @@ LABS_RULES = (
         section='Coagulation & Fibrinogen thresholds (ადგილობრივი WBC 3.5–12 / INR <= 1.35 / ფიბ. >= 1.8)',
         class_level='ადგილობრივი პროტოკოლი (ESAIC 2023 ფიბ. <1.5-ზე დაყრდნობით)',
         source_wording='Fibrinogen <1.5 g/L signifies high coagulopathic bleeding risk (ESAIC 2023); local vascular thresholds tighten red-flag cutoffs to WBC 3.5-12, PLT <100, INR >1.35, and fibrinogen <1.8 g/L.',
-        value={'wbc_hi': 12.0, 'wbc_lo': 3.5, 'plt_red': 100, 'plt_amb': 150, 'inr_red': 1.35, 'inr_evla': 3.0, 'fib_sev': 1.5, 'fib_low': 1.8},
+        value={'wbc_hi': 12.0, 'wbc_lo': 3.5, 'plt_red': 100, 'plt_amb': 150, 'inr_red': 1.35, 'fib_sev': 1.5, 'fib_low': 1.8},
         value_label='WBC 3.5–12 · PLT >= 100 · INR <= 1.35 · ფიბ. >= 1.8 (<1.5 მძიმე)',
         status=STATUS_LOCAL,
         match_patterns=('ლეიკოციტების ცვლილება', 'თრომბოციტოპენია', 'ზომიერი თრომბოციტოპენია', 'თრომბოციტების (PLT)', 'ჰიპოფიბრინოგენემია', 'კოაგულოგრამის დარღვევა', 'INR '),

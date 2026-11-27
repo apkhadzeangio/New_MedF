@@ -161,7 +161,8 @@ class PreopStressFixesR12ClinicalEngineTests(SimpleTestCase):
             self.assertIn(needle_phone, vka_row['date_plan'], label)
             ph = nurse_plan.build_phone_med_script(p, ev, TODAY)['stop_rows']
             gd = nurse_plan.build_patient_plain_explanation(p, ev, TODAY)['stop_meds']
-            self.assertTrue(any(needle_phone in r['spoken'] for r in ph), f'{label}: {ph}')
+            self.assertTrue(any(needle_phone in r['date_plan'] for r in ph), f'{label}: {ph}')
+            self.assertTrue(any(needle_guide in r['spoken'] for r in ph), f'{label}: {ph}')
             self.assertTrue(any(needle_guide in r['spoken'] for r in gd), f'{label}: {gd}')
 
         # Clin S2-01: EGD remission parity for Cilostazol and VOYAGER PAD

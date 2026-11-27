@@ -223,6 +223,11 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                 patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
 
+            out_st = s.get('case_outcome_status') or 'scheduled'
+            if out_st in ('operated', 'cancelled_medical', 'cancelled_patient'):
+                messages.error(request, 'გაუქმებულ ან უკვე ნაოპერაციებ პაციენტზე ოპერაციის თარიღის შეცვლა დაბლოკილია!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
+
             old_dt = _date(s.get('planned_surgery_date'))
             today = timezone.localdate()
             if action == 'shift_3d':

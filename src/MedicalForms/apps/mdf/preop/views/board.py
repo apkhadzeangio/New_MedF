@@ -313,10 +313,12 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
             f'HIT ანამნეზში! არაფრაქციული ჰეპარინი და LMWH აკრძალულია — არაჰეპარინული ანტიკოაგულაცია ({hit_board_agents})',
         ))
     elif ev.get('has_mech_valve') and ev.get('eff_pregnant'):
-        task_candidates.append((
-            _VTE_PREFIXES,
-            'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი — DOAC აკრძალულია; VKA თვითნებურად არ მოხსნათ — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (VKA vs LMWH/UFH ტრიმესტრით)!',
-        ))
+        mv_preg_board = (
+            'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი + თირკმლის მძიმე უკმარისობა/დიალიზი — DOAC აკრძალულია, LMWH კუმულირდება; სავალდებულოა მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (IV/SC UFH ან ტრიმესტრით VKA)!'
+            if sev_renal else
+            'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი — DOAC აკრძალულია; VKA თვითნებურად არ მოხსნათ — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (VKA vs LMWH/UFH ტრიმესტრით)!'
+        )
+        task_candidates.append((_VTE_PREFIXES, mv_preg_board))
     elif ev.get('has_contra_oac') or (ev.get('eff_pregnant') and ev.get('has_full_oac')):
         if ev.get('eff_pregnant'):
             preg_agent = (
@@ -342,9 +344,11 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
             'VTE / ანტიკოაგულაცია: მექანიკური სარქველი — სავალდებულოა თერაპიული ვარფარინი (VKA) / ხიდური სქემა კარდიოლოგთან (პროფილაქტიკური LMWH ან DOAC არასაკმარისია/აკრძალულია!)',
         ))
     elif ev['caprini_score'] > cap_low_max or not ev['is_venous']:
-        if s.get('liver_status') == '3x':
+        if s.get('liver_status') == '3x' and sev_renal:
+            vte_board_drug = 'კანქვეშა UFH + IPC კოაგულოგრამის კონტროლით (ღვიძლის ≥3x + CrCl<30/დიალიზი: DOAC აკრძალულია, სტანდარტული LMWH კუმულირდება!)'
+        elif s.get('liver_status') == '3x':
             vte_board_drug = 'LMWH / UFH კოაგულოგრამის კონტროლით (ღვიძლის ≥3x-ზე DOAC არა!)'
-        elif q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < ren_red):
+        elif sev_renal:
             vte_board_drug = 'კანქვეშა UFH 5000 სე ×2–3 ან თირკმელზე კორექტირებული LMWH'
         else:
             vte_board_drug = 'LMWH პროფილაქტიკური დოზით'
@@ -362,7 +366,9 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
     if 'beta_lactam' in allergy_chips and 'არ ესაჭიროება' not in abx_reg:
         groin_abx_sfx = ''
         if pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
-            if q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < gent_avoid) or ev.get('open_aortic'):
+            if ev.get('eff_pregnant'):
+                groin_abx_sfx = ' (+ აზტრეონამი 2 გ IV — ორსულობაზე გენტამიცინი და ფტორქინოლონები აკრძალულია!)'
+            elif q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < gent_avoid) or ev.get('open_aortic'):
                 groin_abx_sfx = ' (+ აზტრეონამი / ციპროფლოქსაცინი — გენტამიცინი აკრძალულია!)'
             else:
                 groin_abx_sfx = ' (+ გენტამიცინი / აზტრეონამი საზარდულის მიდგომისას)'

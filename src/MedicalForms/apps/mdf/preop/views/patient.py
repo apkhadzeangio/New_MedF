@@ -133,9 +133,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
             if section == 'header':
                 ev_before = evaluate(patient)
-                self._save_header(request, patient)
+                had_hdr_err = self._save_header(request, patient)
                 _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
-                messages.success(request, 'პაციენტის მონაცემები განახლდა.')
+                if not had_hdr_err:
+                    messages.success(request, 'პაციენტის მონაცემები განახლდა.')
                 tab_ret = request.POST.get('tab') or 'q'
                 if tab_ret not in ('q', 's1', 's2', 'doc', 'dos'):
                     tab_ret = 'q'
@@ -168,10 +169,11 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
             if section == 'stage2':
                 ev_before = evaluate(patient)
-                self._save_stage2(request, patient)
+                had_s2_err = self._save_stage2(request, patient)
                 if request.POST.get('med_hold_agreed') not in ('1', 'on', 'true'):
                     _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
-                messages.success(request, 'მომზადების გეგმა და კონსულტაციები შეინახა.')
+                if not had_s2_err:
+                    messages.success(request, 'მომზადების გეგმა და კონსულტაციები შეინახა.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s2')
 
             if section == 'signoff':
@@ -224,12 +226,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
     def _save_header(self, request, patient):
         from .. import evaluate
 
-        s = merged_studies(patient)
-        today = timezone.localdate()
+        s, today = merged_studies(patient), timezone.localdate()
         old_someday, old_side, old_sub = patient.someday_list, patient.side, patient.op_subtype
         old_age, old_sex, old_op_dt = patient.age, patient.sex, s.get('planned_surgery_date')
-        old_pw = _resolve_pathway(patient)
-        was_unstarted = (patient.started_on is None)
+        old_pw, was_unstarted, had_err = _resolve_pathway(patient), (patient.started_on is None), False
 
         name = clean_text(request.POST.get('patient_name'), 150).replace('\n', ' ')
         if name:
@@ -246,6 +246,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             cand_side = request.POST.get('side')
             if new_pw == PreopPatient.Pathway.CEA and cand_side == 'B':
                 messages.error(request, 'ერთდროული ორმხრივი CEA (მხარე B) აკრძალულია — მიუთითეთ მარჯვენა (R) ან მარცხენა (L) მხარე!')
+                had_err = True
             else:
                 patient.side = cand_side
         if new_pw == PreopPatient.Pathway.CEA and patient.side == 'B':
@@ -263,14 +264,16 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                     patient.surgeon = doc
                 else:
                     messages.error(request, 'მკურნალ ქირურგად მხოლოდ ექიმის/პერსონალის ანგარიშის არჩევაა დაშვებული!')
+                    had_err = True
 
         if 'slot_kind' in request.POST or 'visit_date' in request.POST:
             slot_kind = request.POST.get('slot_kind') or ''
             if slot_kind.startswith('someday:'):
                 key = slot_kind.split(':', 1)[1]
-                if key == PreopPatient.SomedayList.READY:
-                    if not can_enter_ready_queue(patient, evaluate(patient)):
-                        key = old_someday if (old_someday and old_someday != PreopPatient.SomedayList.READY) else PreopPatient.SomedayList.CONF
+                if key == PreopPatient.SomedayList.READY and not can_enter_ready_queue(patient, evaluate(patient)):
+                    key = old_someday if (old_someday and old_someday != PreopPatient.SomedayList.READY) else PreopPatient.SomedayList.CONF
+                    messages.error(request, 'მზა სიაში გადატანა დასაშვებია მხოლოდ სრული მზაობისა და ქირურგის დადასტურების შემდეგ!')
+                    had_err = True
                 patient.someday_list = key if key in PreopPatient.SomedayList.values else PreopPatient.SomedayList.CONF
                 patient.visit_date = None
             else:
@@ -317,6 +320,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             patient.someday_list = PreopPatient.SomedayList.CONF
         patient.updated_by = request.user
         patient.save(update_fields=list(dict.fromkeys(uf)))
+        return had_err
 
     @staticmethod
     def _migrate_header_pathway_flags(patient, old_pw, new_pw, s, uf):
@@ -404,18 +408,22 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             s.get('planned_surgery_date') != old_op_dt
             or med_schedule_signature(ev_before) != med_schedule_signature(ev_after)
         )
-        if (had_valid_plan_before and plan_changed) or (
-            s.get('med_hold_agreed') and med_hold_agreement_block_reason(ev_after, s)
-        ):
+        blk_mh = med_hold_agreement_block_reason(ev_after, s) if s.get('med_hold_agreed') else ''
+        had_err = False
+        if (had_valid_plan_before and plan_changed) or blk_mh:
             s['med_hold_agreed'] = False
             s['med_hold_agreed_date'] = ''
             patient.studies = s
+            if blk_mh and request.POST.get('med_hold_agreed') in ('1', 'on', 'true'):
+                messages.error(request, blk_mh)
+                had_err = True
         elif s.get('med_hold_agreed') and not s.get('med_hold_agreed_date'):
             s['med_hold_agreed_date'] = timezone.localdate().isoformat()
             patient.studies = s
         patient.updated_by = request.user
         _invalidate_approval_if_needed(patient, uf)
         patient.save(update_fields=list(dict.fromkeys(uf)))
+        return had_err
 
     @staticmethod
     def _apply_dos_vqi_post(post, s, today, dos_check_keys, form_present, dos_partial):
@@ -481,7 +489,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
         if action == 'complete_and_board':
             s_chk = dict(s)
-            if posted_outcome == 'operated' and prev_outcome != 'operated':
+            if prev_outcome != 'operated' and (prev_outcome != 'scheduled' or posted_outcome == 'operated'):
                 s_chk['case_outcome_status'] = prev_outcome
             patient.studies = s_chk
             ev_cur = evaluate(patient)

@@ -92,7 +92,7 @@ def eval_aaa(ctx):
         msg = f'გახანგრძლივებული წინასაოპერაციო მომზადება: გავიდა {ctx.days} დღე (სამიზნე ლიმიტი: {ctx.t_days} დღე) — რუპტურის რისკი!'
         ctx.red_flags.append(msg)
         ctx.priority_flags.append(msg)
-    elif max(1, ctx.t_days - 2) <= ctx.days < ctx.t_days and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
+    elif max(1, ctx.t_days - 2) <= ctx.days <= ctx.t_days and not patient.approved_at and not ctx.is_on_hold and ctx.is_active_case:
         ctx.amber_flags.append(f'მომზადების მე-{ctx.days} დღე ({ctx.t_days} დღიდან) — დააჩქარეთ დარჩენილი კვლევები.')
 
     cta_max_m, cta_large_m, cta_large_mm = rule_value('AAA_CTA_STALE_MONTHS')

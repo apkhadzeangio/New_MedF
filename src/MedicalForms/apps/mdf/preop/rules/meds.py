@@ -326,11 +326,16 @@ def _eval_mech_valve_conflicts(ctx, has_mech_valve, mech_inr_min, vka_hold_days)
         )
 
 
-def _preg_mech_valve_postop_msg(has_hit):
+def _preg_mech_valve_postop_msg(has_hit, severe_renal=False):
     if has_hit:
         return (
             'ორსულობა + მექანიკური სარქველი + HIT — UFH, LMWH და DOAC კატეგორიულად აკრძალულია! '
             'სავალდებულოა ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!'
+        )
+    if severe_renal:
+        return (
+            'ორსულობა + მექანიკური სარქველი + თირკმლის მძიმე უკმარისობა/დიალიზი — DOAC / VOYAGER აკრძალულია, LMWH კუმულირდება! '
+            'სავალდებულოა მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (IV/SC UFH ან ტრიმესტრით VKA — თვითნებური მოხსნა დაუშვებელია)!'
         )
     return (
         'ორსულობა + მექანიკური სარქველი — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი '
@@ -510,7 +515,10 @@ def _eval_postop_voyager(ctx):
         elif active_gi_bleed:
             post_antithrombotic_label = _gi_bleed_postop_msg(ctx)
         elif ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
-            post_antithrombotic_label = _preg_mech_valve_postop_msg('hit_heparin' in ctx.allergy_chips)
+            ren_red_mv = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+            eff_ren_mv = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
+            sev_ren_mv = ctx.on_dialysis or (eff_ren_mv is not None and eff_ren_mv < ren_red_mv)
+            post_antithrombotic_label = _preg_mech_valve_postop_msg('hit_heparin' in ctx.allergy_chips, severe_renal=sev_ren_mv)
         elif ctx.has_mech_valve:
             mv_ap = f' + ჩვენებისას {oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ'
             post_antithrombotic_label = f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap} (DOAC / VOYAGER აკრძალულია!)'

@@ -115,6 +115,8 @@
                         <span class="po-badge st-alert">წამლის შეჩერების ფანჯარა ამოწურულია — დადასტურება დაბლოკილია!</span>
                         {% elif ev.needs_stale_labs and not s.stale_labs_refreshed %}
                         <span class="po-badge st-alert">ანალიზები ხანდაზმულია (&gt;{{ ev.stale_labs_days }} დღე) — საჭიროა განახლება!</span>
+                        {% elif ev.case_outcome != 'scheduled' %}
+                        <span class="po-badge st-alert">სტატუსი „{{ ev.case_outcome_label }}“ — დადასტურება დაბლოკილია!</span>
                         {% endif %}
                         {% if ev.has_unacked_red and not ev.has_hard_contraindication and ev.clearance_seal.code != 'stop' %}
                         <button type="submit" name="action" value="ack_alerts" class="x-btn">
@@ -126,7 +128,7 @@
                             დადასტურების მოხსნა
                         </button>
                         {% else %}
-                        <button type="submit" name="action" value="approve" id="btn-surgeon-approve" class="x-btn primary" {% if not q.filled or ev.has_hard_contraindication or ev.dos_hold_danger or ev.neuraxial_hard_blocked or ev.has_blocking_unknown_state or ev.has_bad_med or ev.has_elapsed_hold_window or ev.needs_stale_labs and not s.stale_labs_refreshed %}disabled title="ოპერაციაზე დადასტურება დაბლოკილია კლინიკური ან უსაფრთხოების ბარიერის გამო!"{% endif %}>
+                        <button type="submit" name="action" value="approve" id="btn-surgeon-approve" class="x-btn primary" {% if not q.filled or ev.case_outcome != 'scheduled' or ev.has_hard_contraindication or ev.dos_hold_danger or ev.neuraxial_hard_blocked or ev.has_blocking_unknown_state or ev.has_bad_med or ev.has_elapsed_hold_window or ev.needs_stale_labs and not s.stale_labs_refreshed %}disabled title="ოპერაციაზე დადასტურება დაბლოკილია კლინიკური ან უსაფრთხოების ბარიერის გამო!"{% endif %}>
                             ✓ ვადასტურებ — მზადაა ოპერაციისთვის
                         </button>
                         {% endif %}

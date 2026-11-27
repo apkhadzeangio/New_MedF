@@ -728,7 +728,7 @@
     var cancelWrap = document.getElementById('wrap-cancel-reasons');
     if (outSel && cancelWrap) {
         outSel.addEventListener('change', function () {
-            cancelWrap.hidden = (outSel.value.indexOf('cancelled_') !== 0);
+            cancelWrap.hidden = (outSel.value !== 'deferred' && outSel.value.indexOf('cancelled_') !== 0);
         });
     }
 

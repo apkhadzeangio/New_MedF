@@ -360,6 +360,8 @@ def _eval_dos_and_vqi(ctx):
     dos_warnings = list(ctx.hard_contraindications)
 
     # Extreme out-of-bounds Day-of-Surgery values must trigger a hard DoS STOP rather than silently vanishing
+    from .context import _fmt_bad_val
+
     for raw_k, parsed_v, lbl in (
         ('dos_bp_sys', dos_sys, 'ოპერაციის დილის წნევა (SBP)'),
         ('dos_bp_dia', dos_dia, 'ოპერაციის დილის წნევა (DBP)'),
@@ -370,7 +372,7 @@ def _eval_dos_and_vqi(ctx):
         if (raw_v is None or str(raw_v).strip() == '') and raw_k in inv_in:
             raw_v = inv_in[raw_k]
         if raw_v is not None and str(raw_v).strip() != '' and parsed_v is None:
-            dos_warnings.append(f'{lbl} კრიტიკულად დაუშვებელია ({raw_v}) — გადაამოწმეთ მაჩვენებელი საოპერაციოში შეყვანამდე!')
+            dos_warnings.append(f'{_fmt_bad_val(lbl, raw_v)} — კრიტიკულად დაუშვებელია, გადაამოწმეთ მაჩვენებელი საოპერაციოში შეყვანამდე!')
 
     if dos_sys is not None and dos_dia is not None and dos_sys <= dos_dia:
         dos_warnings.append(f'ოპერაციის დილის წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი და მაჩვენებელი!')
@@ -390,7 +392,8 @@ def _eval_dos_and_vqi(ctx):
         and not (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips)
     )
     ctx.is_evla_warfarin_only = is_evla_warfarin_only
-    inr_lim = dos_cfg['inr_evla'] if is_evla_warfarin_only else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
+    evla_inr_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
+    inr_lim = evla_inr_max if is_evla_warfarin_only else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
     inr_eff_dos = ctx.inr if ctx.inr is not None else getattr(ctx, 'inr_sat', None)
     dos_inr_eff = dos_inr if dos_inr is not None else getattr(ctx, 'dos_inr_sat', None)
     any_dos_ticked = any(c['done'] for c in dos_checks if c.get('key') != 'icu_bed_booked')
