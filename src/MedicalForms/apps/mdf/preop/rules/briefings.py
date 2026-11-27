@@ -451,6 +451,10 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
     is_cea_rtpa_b = (pathway == PreopPatient.Pathway.CEA and bool(getattr(ctx, 'active_thrombolysis_window', False)))
     if is_cea_ich_b or (is_cea_rtpa_b and not (s.get('brain_imaging') == 'normal_small' and ctx.days_since_ev is not None and ctx.days_since_ev >= 1)):
         return 'ტვინის სისხლჩაქცევის / თრომბოლიზისის ფონზე ანტიკოაგულაციისა და ანტიაგრეგანტების აღდგენა დაბლოკილია — სავალდებულოა ნეიროქირურგისა და ნევროლოგის კონსილიუმი!'
+    if getattr(ctx, 'active_gi_bleed', False):
+        if ctx.is_venous:
+            return ctx.caprini_advice
+        return _gi_bleed_postop_msg(ctx)
     if is_cea_rtpa_b:
         return (
             'თრომბოლიზისი ≤6 დღე + ასპირინზე ალერგია: სისტემური ანტიკოაგულაცია/LMWH/P2Y12 და ასპირინი დაბლოკილია — შეათანხმეთ ინდივიდუალური რეჟიმი ნევროლოგთან!'
@@ -459,8 +463,6 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
         )
     if ctx.is_venous:
         return ctx.caprini_advice
-    if getattr(ctx, 'active_gi_bleed', False):
-        return _gi_bleed_postop_msg(ctx)
     if ctx.post_antithrombotic_label:
         return ctx.post_antithrombotic_label + (statin_tail if 'სტატინი' not in ctx.post_antithrombotic_label else '')
     if ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
@@ -470,7 +472,13 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
         return f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap_b} (DOAC აკრძალულია!){statin_tail}'
     if getattr(ctx, 'has_contra_oac', False):
         if getattr(ctx, 'eff_pregnant', False):
-            preg_oac_alt = 'არაჰეპარინული სქემა (HIT: LMWH/UFH აკრძალულია!)' if has_hit else 'LMWH/UFH'
+            preg_oac_alt = (
+                'არაჰეპარინული სქემა (HIT: LMWH/UFH აკრძალულია!)'
+                if has_hit else (
+                    'არასფრაქციული ჰეპარინი (UFH — თირკმლის მძიმე უკმარისობის/დიალიზის გამო LMWH კუმულირდება!)'
+                    if hit_severe_renal else 'LMWH/UFH'
+                )
+            )
             return f'ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_oac_alt} მეან-გინეკოლოგთან და კარდიოლოგთან!'
         return f'უკუნაჩვენები OAC არ განაახლოთ (თირკმლის/ღვიძლის/სისხლდენის/დუბლირების უკუჩვენება) — შეარჩიეთ უსაფრთხო ანტიკოაგულაციის სქემა კარდიოლოგ/ნეფროლოგთან!{statin_tail}'
     if ctx.has_full_oac:

@@ -105,32 +105,32 @@ def _valid_med_sbp(s):
 def _med_renal_and_flags(patient, q, s, egfr, crcl):
     from .registry import rule_value
     on_dialysis = bool(q.get('on_dialysis'))
-    def _parse_renal(raw, hi):
-        v = _num(raw)
-        if v is None:
-            return None
-        return 1.0 if v < 0 else min(v, hi)
-    egfr_v = _parse_renal(egfr, 300)
-    crcl_v = _parse_renal(crcl, 2000)
-    egfr = int(round(egfr_v)) if egfr_v is not None else None
-    crcl = int(round(crcl_v)) if crcl_v is not None else None
-    renal_vals = [v for v in (egfr, crcl) if v is not None]
+    egfr = int(round(1.0 if v < 0 else min(v, 300))) if (v := _num(egfr)) is not None else None
+    crcl = int(round(1.0 if v < 0 else min(v, 2000))) if (v := _num(crcl)) is not None else None
+    renal_vals = [x for x in (egfr, crcl) if x is not None]
     eff_renal = None if on_dialysis else (min(renal_vals) if renal_vals else None)
-    if on_dialysis:
-        cl_label = 'დიალიზი'
-    elif crcl is not None and (egfr is None or crcl <= egfr):
-        cl_label = f'CrCl {crcl}'
-    elif egfr is not None:
-        cl_label = f'eGFR {egfr}'
-    else:
-        cl_label = ''
-    age_m = _int(patient.age, lo=1, hi=120) or 0
-    frail_age = rule_value('ANES_AIRWAY_STOPBANG_ICU')['delirium_age']
-    if crcl is None and egfr is not None:
-        frail_no_wt_note = f' [≥{frail_age} წ. — შეიყვანეთ წონა ზუსტი CrCl-ისთვის!]' if age_m >= frail_age else ' [შეიყვანეთ წონა ზუსტი CrCl-ისთვის!]'
-    else:
-        frail_no_wt_note = ''
+    cl_label = 'დიალიზი' if on_dialysis else (f'CrCl {crcl}' if crcl is not None and (egfr is None or crcl <= egfr) else (f'eGFR {egfr}' if egfr is not None else ''))
+    age_m, frail_age = _int(patient.age, lo=1, hi=120) or 0, rule_value('ANES_AIRWAY_STOPBANG_ICU')['delirium_age']
+    frail_no_wt_note = (f' [≥{frail_age} წ. — შეიყვანეთ წონა ზუსტი CrCl-ისთვის!]' if age_m >= frail_age else ' [შეიყვანეთ წონა ზუსტი CrCl-ისთვის!]') if (crcl is None and egfr is not None) else ''
     return on_dialysis, eff_renal, cl_label, frail_no_wt_note
+
+
+def _standalone_is_neuraxial(anesth_plan, is_phleb, has_epidural_line, q, s, today):
+    from django.utils import timezone
+
+    from .calculators import _s_raw, _sat_num
+    from .registry import rule_value
+    if anesth_plan == 'neuraxial' or has_epidural_line:
+        return True
+    if not (anesth_plan == 'auto' and is_phleb):
+        return False
+    asra_cfg, vka_d = rule_value('ASRA_NEURAXIAL_COAG_GATE'), rule_value('MED_WARFARIN_HOLD_DAYS')['hold_days']
+    dos_i, base_i = _sat_num(_s_raw(s, 'dos_inr'), 0.5, 15.0), _sat_num(_s_raw(s, 'inr'), 0.4, 20.0)
+    eff_i, op_dt, td = (dos_i if dos_i is not None else base_i), _date(s.get('planned_surgery_date')), (_date(today) or timezone.localdate())
+    prewash = bool(q.get('med_warfarin') and dos_i is None and op_dt and (op_dt - td).days >= vka_d and eff_i is not None and eff_i <= asra_cfg['vka_prewashout_inr_max'])
+    plt_s = _sat_num(_s_raw(s, 'plt'), 1, 2000000)
+    plt_k = round(plt_s / 1000.0, 1) if (plt_s is not None and plt_s >= rule_value('LAB_UNIT_AUTO_CONVERSION')['plt_ul_ge']) else plt_s
+    return not ((eff_i is not None and eff_i > asra_cfg['inr_max'] and not prewash) or (plt_k is not None and plt_k < asra_cfg['plt_min']) or bool(s.get('aptt_prolonged')) or bool(q.get('ven_lidocaine_allergy')))
 
 
 def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=None):
@@ -138,37 +138,26 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     from .registry import rule_value
     from .utils import has_prior_stroke_or_tia, is_symp_cea_patient
     pw = _resolve_pathway(patient)
-    is_evla = (patient.op_subtype == PreopPatient.OpSubtype.EVLA)
-    is_phleb = (patient.op_subtype == PreopPatient.OpSubtype.PHLEB)
-    is_pta = (pw == PreopPatient.Pathway.PAD_PTA)
+    is_evla, is_phleb, is_pta = (patient.op_subtype == PreopPatient.OpSubtype.EVLA), (patient.op_subtype == PreopPatient.OpSubtype.PHLEB), (pw == PreopPatient.Pathway.PAD_PTA)
     cea_d = cea_live_days_since_event(q, today=today, s=s) if pw == PreopPatient.Pathway.CEA else None
     is_symp_cea = is_symp_cea_patient(patient, q, today=today, s=s, require_filled=False)
-    has_stroke_hx = bool(is_symp_cea or has_prior_stroke_or_tia(patient, q=q, s=s))
-    is_open_major = pw in (
-        PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS
-    ) and patient.op_subtype != 'evar'
+    has_stroke_hx = bool(is_symp_cea or has_prior_stroke_or_tia(patient, q=q, s=s, today=today))
+    is_open_major = pw in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS) and patient.op_subtype != 'evar'
     is_ia_first_pass = patient.op_subtype in ('evar', 'tbd')
-    uses_contrast = is_ia_first_pass or is_pta
-    anesth_plan = s.get('anesthesia_plan') or 'auto'
+    uses_contrast, anesth_plan = is_ia_first_pass or is_pta, s.get('anesthesia_plan') or 'auto'
     has_epidural_line = 'epidural' in _str_list(s.get('anesth_lines_chips'))
-    is_neuraxial = (
-        bool(has_neuraxial_override) if has_neuraxial_override is not None
-        else ((anesth_plan == 'neuraxial') or has_epidural_line or (anesth_plan == 'auto' and is_phleb))
-    )
+    is_neuraxial = bool(has_neuraxial_override) if has_neuraxial_override is not None else _standalone_is_neuraxial(anesth_plan, is_phleb, has_epidural_line, q, s, today)
     on_dialysis, eff_renal, cl_label, frail_no_wt_note = _med_renal_and_flags(patient, q, s, egfr, crcl)
     raw_cr_m, cr_u_m = _s_raw(s, 'creat'), s.get('creat_unit') or ''
     creat_mismatch = (not on_dialysis) and is_creat_unit_mismatch(raw_cr_m, cr_u_m)
     creat_ambig = (not on_dialysis) and (not creat_mismatch) and bool(_parse_scr_mgdl(raw_cr_m, cr_u_m)[1])
     creat_extreme_hi = (not on_dialysis) and (egfr is None) and ((_num(raw_cr_m) or 0) > 3000)
-    op_dt = _date(s.get('planned_surgery_date'))
-    liver_3x = (s.get('liver_status') == '3x')
+    op_dt, liver_3x = _date(s.get('planned_surgery_date')), (s.get('liver_status') == '3x')
     rows, d_str, hold_str, add_row = _make_med_row_helpers(op_dt)
-
     med_chips, cad_chips = set(_str_list(q.get('med_chips'))), set(_str_list(q.get('cad_chips')))
     ven_dvt_chips, vasc_chips = set(_str_list(q.get('ven_dvt_chips'))), set(_str_list(q.get('vasc_chips')))
     eff_allergy_chips, _, _ = _effective_allergy_state(q)
     ft_meds = _detect_freetext_high_risk_meds(q.get('other_meds') or '', q=q)
-
     has_mech_valve, has_acs_stent_12m = 'mech_valve' in cad_chips, ('stent_6_12m' in cad_chips) and ('mi' in cad_chips)
     bp_sys_cur, bp_inverted_only = _valid_med_sbp(s)
     hr_cur, lvef_cur = _sat_num(_s_raw(s, 'hr'), 15, 260), _sat_num(_s_raw(s, 'lvef'), 5, 95)
@@ -188,19 +177,18 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     dup_oac_warn = ' [ყურადღება: ერთდროულად ≥2 ანტიკოაგულანტია მონიშნული — გადაამოწმეთ დუბლირება!]' if oac_count >= 2 else ''
     mech_doac_warn = ' [მექანიკურ სარქველზე აბსოლუტურად უკუნაჩვენებია (ESC Class III) — გადაამოწმეთ ვარფარინი!]' if has_mech_valve else ''
     liver_doac_warn = ' [ღვიძლის ≥3x დისფუნქცია: კოაგულოპათიის/Child-Pugh B–C დროს DOAC უკუნაჩვენებია (EHRA 2021)!]' if liver_3x else ''
-
     postop_oac_res = (
         ' · აღდგენა: ~24 სთ-ში ჰემოსტაზით' if (is_evla or is_pta)
         else (' · აღდგენა: თერაპ. დოზა 48–72 სთ-ში ჰემოსტაზით (ეპიდურული კათეტერიდან ≥24 სთ! HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit
         else (' · აღდგენა: თერაპ. დოზა 48–72 სთ-ში ჰემოსტაზით (ეპიდურული კათეტერიდან ≥24 სთ! CrCl<30: UFH ან anti-Xa კორექტირებული LMWH)' if severe_renal
         else ' · აღდგენა: თერაპ. დოზა 48–72 სთ-ში ჰემოსტაზით (D+1 პროფილაქტ. LMWH; ეპიდურული კათეტერიდან ≥24 სთ!)'))
     )
-
     repro_pregnant = is_pregnancy_eligible(patient) and (bool(q.get('ven_pregnant')) or bool(q.get('pregnant_possible')))
     active_gi_bleed = (s.get('gastro_result') == 'acute_ulcer') or (bool(q.get('ulcer_active_symp')) and s.get('gastro_result') != 'remission')
     preg_oac_alt = (
-        'არაჰეპარინული ალტერნატივით (HIT: LMWH/UFH აკრძალულია!) ჰემატოლოგთან და მეან-გინეკოლოგთან!'
-        if has_hit else 'LMWH/UFH-ით მეან-გინეკოლოგთან და კარდიოლოგთან!'
+        'არაჰეპარინული ალტერნატივით (HIT: LMWH/UFH აკრძალულია!) ჰემატოლოგთან და მეან-გინეკოლოგთან!' if has_hit
+        else ('არასფრაქციული ჰეპარინით (UFH — თირკმლის მძიმე უკმარისობის/დიალიზის გამო LMWH კუმულირდება!) მეან-გინეკოლოგთან და კარდიოლოგთან!' if severe_renal
+        else 'LMWH/UFH-ით მეან-გინეკოლოგთან და კარდიოლოგთან!')
     )
     tl_days = rule_value('CEA_ACUTE_NEURO_THROMBOLYSIS')
     is_cea_ich = (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
@@ -208,29 +196,21 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     is_cea_rtpa_ap_stop = is_cea_rtpa_6d and not (cea_d is not None and cea_d >= 1 and s.get('brain_imaging') == 'normal_small')
     return {
         'patient': patient, 'q': q, 's': s, 'pw': pw, 'cea_d': cea_d,
-        'is_evla': is_evla, 'is_phleb': is_phleb, 'is_pta': is_pta,
-        'is_symp_cea': is_symp_cea, 'has_stroke_hx': has_stroke_hx, 'is_open_major': is_open_major,
-        'is_ia_first_pass': is_ia_first_pass, 'uses_contrast': uses_contrast,
+        'is_evla': is_evla, 'is_phleb': is_phleb, 'is_pta': is_pta, 'is_symp_cea': is_symp_cea, 'has_stroke_hx': has_stroke_hx,
+        'is_open_major': is_open_major, 'is_ia_first_pass': is_ia_first_pass, 'uses_contrast': uses_contrast,
         'is_cea_ich': is_cea_ich, 'is_cea_bleed_stop': is_cea_ich or is_cea_rtpa_ap_stop,
-        'is_cea_oac_p2y_stop': is_cea_ich or is_cea_rtpa_6d,
-        'is_cea_rtpa_asa_caution': is_cea_rtpa_6d and not is_cea_ich and not is_cea_rtpa_ap_stop,
-        'anesth_plan': anesth_plan, 'is_neuraxial': is_neuraxial,
-        'on_dialysis': on_dialysis, 'eff_renal': eff_renal, 'renal_cl': eff_renal,
+        'is_cea_oac_p2y_stop': is_cea_ich or is_cea_rtpa_6d, 'is_cea_rtpa_asa_caution': is_cea_rtpa_6d and not is_cea_ich and not is_cea_rtpa_ap_stop,
+        'anesth_plan': anesth_plan, 'is_neuraxial': is_neuraxial, 'on_dialysis': on_dialysis, 'eff_renal': eff_renal, 'renal_cl': eff_renal,
         'creat_mismatch': creat_mismatch, 'creat_ambig': creat_ambig, 'creat_extreme_hi': creat_extreme_hi,
-        'cl_label': cl_label, 'frail_no_wt_note': frail_no_wt_note, 'severe_renal': severe_renal,
-        'liver_3x': liver_3x, 'rows': rows, 'd_str': d_str, 'hold_str': hold_str, 'add_row': add_row,
-        'med_chips': med_chips, 'cad_chips': cad_chips, 'ven_dvt_chips': ven_dvt_chips,
-        'vasc_chips': vasc_chips, 'min_abi': min_abi, 'lido_alg': lido_alg, 'ven_dup': s.get('ven_duplex_status') or '',
-        'eff_allergy_chips': eff_allergy_chips, 'ft_meds': ft_meds, 'has_hit': has_hit,
-        'has_mech_valve': has_mech_valve, 'has_acs_stent_12m': has_acs_stent_12m,
-        'has_full_oac': has_full_oac, 'p2y12_cnt': p2y12_cnt, 'total_at_cnt': total_at_cnt,
+        'cl_label': cl_label, 'frail_no_wt_note': frail_no_wt_note, 'severe_renal': severe_renal, 'liver_3x': liver_3x,
+        'rows': rows, 'd_str': d_str, 'hold_str': hold_str, 'add_row': add_row, 'med_chips': med_chips, 'cad_chips': cad_chips,
+        'ven_dvt_chips': ven_dvt_chips, 'vasc_chips': vasc_chips, 'min_abi': min_abi, 'lido_alg': lido_alg, 'ven_dup': s.get('ven_duplex_status') or '',
+        'eff_allergy_chips': eff_allergy_chips, 'ft_meds': ft_meds, 'has_hit': has_hit, 'has_mech_valve': has_mech_valve,
+        'has_acs_stent_12m': has_acs_stent_12m, 'has_full_oac': has_full_oac, 'p2y12_cnt': p2y12_cnt, 'total_at_cnt': total_at_cnt,
         'repro_pregnant': repro_pregnant, 'active_gi_bleed': active_gi_bleed, 'preg_oac_alt': preg_oac_alt,
-        'bp_sys_cur': bp_sys_cur, 'bp_inverted_only': bp_inverted_only,
-        'hr_cur': hr_cur, 'lvef_cur': lvef_cur, 'k_cur': k_cur,
-        'chf_any': chf_any, 'has_true_hfref': has_true_hfref, 'oac_count': oac_count,
-        'dup_oac_warn': dup_oac_warn,
-        'doac_extra_warn': f'{mech_doac_warn}{dup_oac_warn}{liver_doac_warn}',
-        'force_doac_red': bool(has_mech_valve or oac_count >= 2 or liver_3x),
+        'bp_sys_cur': bp_sys_cur, 'bp_inverted_only': bp_inverted_only, 'hr_cur': hr_cur, 'lvef_cur': lvef_cur, 'k_cur': k_cur,
+        'chf_any': chf_any, 'has_true_hfref': has_true_hfref, 'oac_count': oac_count, 'dup_oac_warn': dup_oac_warn,
+        'doac_extra_warn': f'{mech_doac_warn}{dup_oac_warn}{liver_doac_warn}', 'force_doac_red': bool(has_mech_valve or oac_count >= 2 or liver_3x),
         'postop_oac_res': postop_oac_res,
     }
 
@@ -557,8 +537,10 @@ def _append_warfarin_row(c):
     if c['is_cea_oac_p2y_stop']:
         add_row('ვარფარინი', f'{_cea_bleed_rule(c, "ვარფარინი / ანტიკოაგულაცია")}{liver_vka_warn}{dup_oac_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
     elif c['repro_pregnant']:
-        if has_mech_valve:
-            add_row('ვარფარინი', f'ორსულობა + მექანიკური სარქველი — ვარფარინი ტერატოგენულია, თვითნებური მოხსნა იწვევს თრომბოზს! სასწრაფოდ მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი!{dup_oac_warn}', 'red', 'ორსულობა + მექ. სარქველი — კონსილიუმი!', hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        if has_mech_valve and c['has_hit']:
+            add_row('ვარფარინი', f'ორსულობა + მექანიკური სარქველი + HIT — ვარფარინი ტერატოგენულია, თვითნებური მოხსნა იწვევს თრომბოზს; UFH, LMWH და DOAC აკრძალულია! სასწრაფოდ მეან-გინეკოლოგის, კარდიოლოგისა და ჰემატოლოგის კონსილიუმი!{dup_oac_warn}', 'red', 'ორსულობა + მექანიკური სარქველი + HIT — ჰემატოლოგის, კარდიოლოგისა და მეანის კონსილიუმი (UFH/LMWH აკრძალულია)!', hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        elif has_mech_valve:
+            add_row('ვარფარინი', f'ორსულობა + მექანიკური სარქველი — ვარფარინი ტერატოგენულია, თვითნებური მოხსნა იწვევს თრომბოზს! სასწრაფოდ მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი!{dup_oac_warn}', 'red', 'ორსულობა + მექანიკური სარქველი — კონსილიუმი!', hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         else:
             add_row('ვარფარინი', f'ორსულობის დროს ვარფარინი (VKA) ტერატოგენულია (ნაყოფის ვარფარინის სინდრომი) — დაუყოვნებლივ შეცვალეთ {c["preg_oac_alt"]}{dup_oac_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
     elif c['active_gi_bleed']:

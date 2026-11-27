@@ -106,6 +106,17 @@ def _apply_q_booleans_and_chips(post_data, q, patient=None):
             continue
         if f == 'abf_buttock_pain' and patient is not None and patient.pathway != PreopPatient.Pathway.ABF and f not in post_data:
             continue
+        if (
+            f == 'ic_bmt_3m'
+            and patient is not None
+            and patient.op_subtype not in (
+                PreopPatient.OpSubtype.ABF_CLAUD,
+                PreopPatient.OpSubtype.BYPASS_CLAUD,
+                PreopPatient.OpSubtype.PTA_CLAUD,
+            )
+            and f not in post_data
+        ):
+            continue
         q[f] = post_data.get(f) in ('1', 'on', 'true')
     q['mets_ok'] = post_data.get('mets_ok', '1') != '0'
     if post_data.get('mets_limitation') in ('cardiac', 'limb'):
@@ -244,10 +255,11 @@ def _apply_q_pathway_and_studies(post_data, patient, q, s, today):
                 patient.anamnesis = ''
             patient.side = new_side
 
+    from .meds_freetext import _positive_clauses_text
     for tf, lim in _NURSE_Q_TEXT_LIMITS:
         if tf in post_data:
             q[tf] = clean_text(post_data.get(tf), lim).replace('\n', ' ')
-    if (q.get('allergy_text') or '').strip():
+    if _positive_clauses_text(q.get('allergy_text') or '').strip():
         q['allergy_other'] = True
 
     _apply_q_numeric_studies(post_data, patient, s, inv, today)
@@ -391,10 +403,11 @@ def _apply_sf_chips_and_meta(post_data, patient, pw, q, s, today, inv):
     if not patient.side and 'side' in post_data and post_data.get('side') in valid_sf_sides:
         patient.side = post_data.get('side')
 
+    from .meds_freetext import _positive_clauses_text
     for tf, lim in (('other_meds', 400), ('allergy_text', 250)):
         if tf in post_data:
             q[tf] = clean_text(post_data.get(tf), lim).replace('\n', ' ')
-    if (q.get('allergy_text') or '').strip():
+    if _positive_clauses_text(q.get('allergy_text') or '').strip():
         q['allergy_other'] = True
 
     _parse_inv_field(post_data, s, 'weight_kg', lambda r: _num(r, lo=25, hi=260), inv, keep_valid=True)

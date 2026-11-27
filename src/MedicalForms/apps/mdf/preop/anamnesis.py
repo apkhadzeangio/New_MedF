@@ -466,9 +466,10 @@ def _anam_comorb_meds_allergy(pathway, ev, q):
         meds.append(med_extra)
     lines.append(f"მუდმივი მედიკამენტები: {', '.join(meds) if meds else 'არ იღებს'}.")
 
+    from .meds_freetext import _positive_clauses_text
     allergies = []
     raw_alg_chips = _str_list(q.get('allergy_chips'))
-    alg_txt_raw = (q.get('allergy_text') or '').strip()
+    alg_txt_raw = _positive_clauses_text(q.get('allergy_text') or '').strip()
     alg_txt_low = alg_txt_raw.lower()
     lido_in_txt = any(st in alg_txt_low for st in ('ლიდოკაინ', 'lidocain', 'ნოვოკაინ'))
     if q.get('ven_lidocaine_allergy') and 'lidocaine' not in raw_alg_chips and not lido_in_txt:

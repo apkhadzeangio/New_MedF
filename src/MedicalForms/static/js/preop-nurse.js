@@ -65,11 +65,15 @@
             msgs.push('კრიტიკულად მაღალი ზედა წნევა (' + sbp + ' ≥ 180 mmHg) — აცნობეთ ექიმს!');
         } else if (!isNaN(sbp) && sbp < 90) {
             msgs.push('დაბალი ზედა წნევა (' + sbp + ' < 90 mmHg) — აცნობეთ ექიმს!');
+        } else if (!isNaN(sbp) && sbp >= 160) {
+            msgs.push('მომატებული ზედა წნევა (' + sbp + ' ≥ 160 mmHg).');
         }
         if (!isNaN(dbp) && (dbp < 20 || dbp > 220)) {
             msgs.push('შეამოწმეთ ქვედა წნევა (' + dbp + '): დაუჯერებელი მნიშვნელობა (20–220 mmHg)!');
         } else if (!isNaN(dbp) && dbp >= 110) {
             msgs.push('კრიტიკულად მაღალი ქვედა წნევა (' + dbp + ' ≥ 110 mmHg) — აცნობეთ ექიმს!');
+        } else if (!isNaN(dbp) && dbp >= 100) {
+            msgs.push('მომატებული ქვედა წნევა (' + dbp + ' ≥ 100 mmHg).');
         }
         if (!isNaN(sbp) && !isNaN(dbp) && sbp <= dbp) {
             msgs.push('შეამოწმეთ წნევა: ზედა წნევა (' + sbp + ') უნდა იყოს ქვედაზე (' + dbp + ') მეტი!');
@@ -213,18 +217,22 @@
         if ((rawS && isNaN(s)) || (rawD && isNaN(d))) msgs.push('შეამოწმეთ დილის წნევა: შეიყვანეთ მხოლოდ რიცხვები!');
         if (!isNaN(s) && (s < 40 || s > 300)) msgs.push('დაუჯერებელი დილის ზედა წნევა (' + s + ' mmHg — 40–300)!');
         else if (!isNaN(s) && (s >= 180 || s < 90)) msgs.push('კრიტიკული დილის ზედა წნევა (' + s + ' mmHg) — შეაჩერეთ და აცნობეთ ექიმს!');
+        else if (!isNaN(s) && s >= 160) msgs.push('მომატებული დილის ზედა წნევა (' + s + ' ≥ 160 mmHg).');
         if (!isNaN(d) && (d < 20 || d > 200)) msgs.push('დაუჯერებელი დილის ქვედა წნევა (' + d + ' mmHg — 20–200)!');
         else if (!isNaN(d) && d >= 110) msgs.push('კრიტიკული დილის ქვედა წნევა (' + d + ' ≥ 110 mmHg) — აცნობეთ ექიმს!');
+        else if (!isNaN(d) && d >= 100) msgs.push('მომატებული დილის ქვედა წნევა (' + d + ' ≥ 100 mmHg).');
         if (!isNaN(s) && !isNaN(d) && s <= d) msgs.push('დილის ზედა წნევა (' + s + ') უნდა იყოს ქვედაზე (' + d + ') მეტი!');
         if (rawG && isNaN(g)) msgs.push('შეამოწმეთ დილის გლუკოზა: შეიყვანეთ მხოლოდ რიცხვი!');
         else if (!isNaN(g) && (g < 0.5 || g > 1000)) msgs.push('დაუჯერებელი დილის გლუკოზა (' + g + ')!');
         else if (!isNaN(g)) {
             var gm = g > 35 ? Math.round((g / 18.0) * 100) / 100 : g;
             if (gm < 3.9 || gm >= 14.0) msgs.push('კრიტიკული დილის გლიკემია (' + gm + ' მმოლ/ლ) — აცნობეთ ექიმს!');
+            else if (gm > 10.0) msgs.push('მომატებული დილის გლუკოზა (' + gm + ' > 10.0 მმოლ/ლ — გლიკემიური კონტროლი).');
         }
         if (rawI && isNaN(i)) msgs.push('შეამოწმეთ დილის INR: შეიყვანეთ მხოლოდ რიცხვი!');
         else if (!isNaN(i) && (i < 0.5 || i > 15.0)) msgs.push('დაუჯერებელი დილის INR (' + i + ' — 0.5–15.0)!');
         else if (!isNaN(i) && i > 1.5) msgs.push('მაღალი დილის INR (' + i + ' > 1.5) — სისხლდენის რისკი!');
+        else if (!isNaN(i) && i > 1.35) msgs.push('მომატებული დილის INR (' + i + ' > 1.35 — გადაამოწმეთ ASRA ზღვარი).');
         if (msgs.length) {
             dosGuard.hidden = false;
             dosGuard.innerHTML = msgs.map(function (m) { return '<div>' + m + '</div>'; }).join('');
@@ -271,31 +279,151 @@
         ctrl.addEventListener('change', run);
         run();
     }
-    document.querySelectorAll('input[name="bp_sys_l"]').forEach(function (el) {
-        var diaEl = el.closest('form') ? el.closest('form').querySelector('input[name="bp_dia_l"]') : null;
+    document.querySelectorAll('input[name="hb"]').forEach(function (el) {
         attachFldGuard(el, function (v) {
-            if (v < 30 || v > 320) return { level: 'crit', msg: 'დაუჯერებელი სისტოლური წნევა (' + v + ' mmHg)!' };
+            if (v < 3.5 || v > 260) return { level: 'crit', msg: 'დაუჯერებელი Hb (' + v + ') — გადაამოწმეთ მნიშვნელობა და ერთეული!' };
+            if (v > 22.0 && v < 35.0) return { level: 'crit', msg: 'საეჭვო Hb ერთეული (' + v + ') — მიუთითეთ გ/ლ (35–260) ან გ/დლ (3.5–22.0)!' };
+            var gl = v <= 22.0 ? Math.round(v * 100) / 10 : v;
+            if (gl < 100) return { level: 'crit', msg: 'მძიმე ანემია (' + gl + ' გ/ლ < 100)!' };
+            if (gl < 115) return { level: 'warn', msg: 'ანემია (' + gl + ' გ/ლ < 115 — ჩაირთვება ფერიტინი/TSAT)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="k"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 1.0 || v > 12.0) return { level: 'crit', msg: 'დაუჯერებელი K+ (' + v + ' მმოლ/ლ)!' };
+            if (v < 3.3 || v >= 5.4) return { level: 'crit', msg: 'კრიტიკული K+ (' + v + ' მმოლ/ლ — არითმიის რისკი)!' };
+            if (v < 3.5 || v > 5.0) return { level: 'warn', msg: 'სასაზღვრო K+ (ნორმა 3.5–5.0)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="inr"], input[name="dos_inr"]').forEach(function (el) {
+        var isDosInr = el.name === 'dos_inr';
+        var inrLo = isDosInr ? 0.5 : 0.4;
+        var inrHi = isDosInr ? 15.0 : 20.0;
+        attachFldGuard(el, function (v) {
+            if (v < inrLo || v > inrHi) return { level: 'crit', msg: 'დაუჯერებელი INR (' + v + ')!' };
+            if (v > 1.5) return { level: 'crit', msg: 'მაღალი INR (>1.5 — სისხლდენის რისკი)!' };
+            if (v > 1.35) return { level: 'warn', msg: 'მომატებული INR (>1.35 — ASRA ზღვარი ≤ 1.4)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="plt"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 1 || v > 2000000) return { level: 'crit', msg: 'დაუჯერებელი PLT (' + v + ')!' };
+            if (v > 2500 && v < 3000) return { level: 'crit', msg: 'დააზუსტეთ PLT ერთეული (×10^9/L თუ /µL)!' };
+            var n = v >= 3000 ? Math.round(v / 1000) : v;
+            if (n < 100) return { level: 'crit', msg: 'თრომბოციტოპენია (<100 ×10^9/L)!' };
+            if (n < 150) return { level: 'warn', msg: 'ზომიერი კლება (<150 ×10^9/L)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="creat"]').forEach(function (el) {
+        var unitSel = el.closest('form') ? el.closest('form').querySelector('select[name="creat_unit"]') : null;
+        attachFldGuard(el, function (v) {
+            var u = unitSel ? unitSel.value : '';
+            if (v < 0.1 || v > 3000) return { level: 'crit', msg: 'დაუჯერებელი კრეატინინი (' + v + ')!' };
+            if (!u && v > 15 && v < 35) return { level: 'crit', msg: 'აირჩიეთ ერთეული (µmol/L თუ mg/dL)!' };
+            if ((u === 'umol' && v < 15) || (u === 'mgdl' && v > 35)) return { level: 'crit', msg: 'კრეატინინის მნიშვნელობა და არჩეული ერთეული არ ემთხვევა!' };
+            var mgdl = u === 'mgdl' ? v : (u === 'umol' ? v / 88.4 : (v <= 15 ? v : v / 88.4));
+            if (mgdl > 2.0) return { level: 'crit', msg: 'მაღალი კრეატინინი (RCRI +1 / ნეფროლოგი)!' };
+            if (mgdl >= 1.4) return { level: 'warn', msg: 'დაქვეითებული თირკმლის ფუნქცია' };
+            return null;
+        });
+        if (unitSel && !el.closest('#nw-vitals-form')) unitSel.addEventListener('change', function () { el.dispatchEvent(new Event('input')); });
+    });
+    document.querySelectorAll('input[name="glucose"], input[name="dos_glucose"]').forEach(function (el) {
+        var isDosGl = el.name === 'dos_glucose';
+        attachFldGuard(el, function (v) {
+            if (v < 0.5 || v > 1000) return { level: 'crit', msg: 'დაუჯერებელი გლუკოზა (' + v + ')!' };
+            var mmol = v > 35 ? Math.round((v / 18.0) * 100) / 100 : v;
+            if (mmol >= 14.0 || mmol < 3.9) return { level: 'crit', msg: 'კრიტიკული გლიკემია (' + mmol + ' მმოლ/ლ)!' };
+            if (isDosGl) {
+                if (mmol > 10.0) return { level: 'warn', msg: 'მომატებული დილის გლუკოზა (>10.0 მმოლ/ლ)' };
+            } else if (mmol >= 7.0) {
+                return { level: 'warn', msg: 'მომატებული გლუკოზა (ჩაირთვება HbA1c)' };
+            }
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="hr"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 15 || v > 260) return { level: 'crit', msg: 'დაუჯერებელი პულსი (' + v + '/წთ — 15–260)!' };
+            if (v < 45 || v > 110) return { level: 'crit', msg: 'კრიტიკული პულსი (' + v + '/წთ)!' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="spo2"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 30 || v > 100) return { level: 'crit', msg: 'დაუჯერებელი სატურაცია (' + v + '% — 30–100%)!' };
+            if (v < 90) return { level: 'crit', msg: 'მძიმე ჰიპოქსემია (SpO2 ' + v + '% < 90%)!' };
+            if (v < 94) return { level: 'warn', msg: 'დაქვეითებული სატურაცია (SpO2 ' + v + '% < 94%)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="weight_kg"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 25 || v > 260) return { level: 'crit', msg: 'დაუჯერებელი წონა (' + v + ' კგ — 25–260)!' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="height_cm"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 100 || v > 230) return { level: 'crit', msg: 'დაუჯერებელი სიმაღლე (' + v + ' სმ — 100–230)!' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="wbc"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 0.1 || v > 150000) return { level: 'crit', msg: 'დაუჯერებელი WBC (' + v + ')!' };
+            var n = v >= 200 ? Math.round((v / 1000.0) * 100) / 100 : v;
+            if (n < 3.5 || n > 12.0) return { level: 'crit', msg: 'პათოლოგიური WBC (' + n + ' ×10^9/L)!' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="albumin"]').forEach(function (el) {
+        attachFldGuard(el, function (v) {
+            if (v < 0.5 || v > 80) return { level: 'crit', msg: 'დაუჯერებელი ალბუმინი (' + v + ')!' };
+            var gl = (v >= 0.5 && v <= 7.5) ? Math.round(v * 100) / 10 : v;
+            if (gl < 30) return { level: 'crit', msg: 'მძიმე ჰიპოალბუმინემია (' + gl + ' გ/ლ < 30)!' };
+            if (gl < 35) return { level: 'warn', msg: 'დაქვეითებული ალბუმინი (' + gl + ' გ/ლ < 35)' };
+            return null;
+        });
+    });
+    var NW_BP_DIA = { bp_sys: 'bp_dia', bp_sys_l: 'bp_dia_l', dos_bp_sys: 'dos_bp_dia' };
+    var NW_BP_SYS = { bp_dia: 'bp_sys', bp_dia_l: 'bp_sys_l', dos_bp_dia: 'dos_bp_sys' };
+    document.querySelectorAll('input[name="bp_sys"], input[name="bp_sys_l"], input[name="dos_bp_sys"]').forEach(function (el) {
+        var diaName = NW_BP_DIA[el.name];
+        var diaEl = el.closest('form') && diaName ? el.closest('form').querySelector('input[name="' + diaName + '"]') : null;
+        var sbpLo = el.name === 'dos_bp_sys' ? 40 : 30;
+        var sbpHi = el.name === 'dos_bp_sys' ? 300 : 320;
+        attachFldGuard(el, function (v) {
+            if (v < sbpLo || v > sbpHi) return { level: 'crit', msg: 'დაუჯერებელი სისტოლური წნევა (' + v + ' mmHg)!' };
             if (diaEl) {
                 var dv = parseNum(diaEl.value);
                 if (!isNaN(dv) && v <= dv) return { level: 'crit', msg: 'სისტოლური (' + v + ') უნდა იყოს დიასტოლურზე (' + dv + ') მეტი!' };
             }
             if (v >= 180 || v < 90) return { level: 'crit', msg: v >= 180 ? 'კრიტიკული ჰიპერტენზია (≥180 mmHg)!' : 'ჰიპოტენზია (<90 mmHg)!' };
+            if (v >= 160) return { level: 'warn', msg: 'მომატებული წნევა (≥160 mmHg)' };
             return null;
         });
-        if (diaEl) diaEl.addEventListener('input', function () { el.dispatchEvent(new Event('change')); });
+        if (diaEl && !el.closest('#nw-vitals-form') && !el.closest('#nw-dos-form')) diaEl.addEventListener('input', function () { el.dispatchEvent(new Event('change')); });
     });
-    document.querySelectorAll('input[name="bp_dia_l"]').forEach(function (el) {
-        var sysEl = el.closest('form') ? el.closest('form').querySelector('input[name="bp_sys_l"]') : null;
+    document.querySelectorAll('input[name="bp_dia"], input[name="bp_dia_l"], input[name="dos_bp_dia"]').forEach(function (el) {
+        var sysName = NW_BP_SYS[el.name];
+        var sysEl = el.closest('form') && sysName ? el.closest('form').querySelector('input[name="' + sysName + '"]') : null;
+        var dbpHi = el.name === 'dos_bp_dia' ? 200 : 220;
         attachFldGuard(el, function (v) {
-            if (v < 20 || v > 220) return { level: 'crit', msg: 'დაუჯერებელი დიასტოლური წნევა (' + v + ' mmHg)!' };
+            if (v < 20 || v > dbpHi) return { level: 'crit', msg: 'დაუჯერებელი დიასტოლური წნევა (' + v + ' mmHg)!' };
             if (sysEl) {
                 var sv = parseNum(sysEl.value);
                 if (!isNaN(sv) && sv <= v) return { level: 'crit', msg: 'დიასტოლური (' + v + ') არ შეიძლება აღემატებოდეს სისტოლურს (' + sv + ')!' };
             }
             if (v >= 110) return { level: 'crit', msg: 'კრიტიკული დიასტოლური წნევა (≥110 mmHg)!' };
+            if (v >= 100) return { level: 'warn', msg: 'მომატებული დიასტოლური წნევა (≥100 mmHg)' };
             return null;
         });
-        if (sysEl) sysEl.addEventListener('input', function () { el.dispatchEvent(new Event('change')); });
+        if (sysEl && !el.closest('#nw-vitals-form') && !el.closest('#nw-dos-form')) sysEl.addEventListener('input', function () { el.dispatchEvent(new Event('change')); });
     });
     document.querySelectorAll('input[name="fibrinogen"]').forEach(function (el) {
         attachFldGuard(el, function (v) {
@@ -319,6 +447,7 @@
             if (v < 0 || v > 3.0) return { level: 'crit', msg: 'დაუჯერებელი ABI (' + v + ')!' };
             if (v > 1.40) return { level: 'warn', msg: 'არაკომპრესირებადი (>1.40 — შეიტანეთ TP/TBI)' };
             if (v < 0.40) return { level: 'crit', msg: 'კრიტიკული იშემია (ABI < 0.40)!' };
+            if (v < 0.80) return { level: 'warn', msg: 'დაქვეითებული ABI (< 0.80)' };
             return null;
         });
     });

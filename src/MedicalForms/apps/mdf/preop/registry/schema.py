@@ -1,8 +1,8 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.11'
-REGISTRY_UPDATED_ON = '2026-11-26'
+REGISTRY_VERSION = '1.2.12'
+REGISTRY_UPDATED_ON = '2026-11-27'
 
 STATUS_VERIFIED = 'source-verified'
 STATUS_LOCAL = 'local-decision'
@@ -78,6 +78,18 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.12',
+        'date': '2026-11-27',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-13: აქტიური GI სისხლდენის სრული ბლოკირება, ფაილების აუდიტ-RBAC, DoS-გეითის პარიტეტი და თავისუფალი ტექსტის პარსერი',
+        'changes_ka': (
+            'დაიხურა აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის კრიტიკული ბარიერები: ფარმაკოლოგიური ანტიკოაგულაცია და ანტიაგრეგანტი სრულად დაბლოკილია Caprini VTE რჩევაში, ვენურ/ქირურგიულ ბრიფინგში, ვენურ Stage-2 დავალებაში, CEA ანტიაგრეგანტის რეფლექსში, CEA rt-PA ≤6 დღის ბრიფინგსა და სტაციონარის დაფის VTE დავალებებში (მათ შორის HIT-თან).',
+            'გამყარდა თავისუფალი ტექსტის პარსერი და ალერგიის/მედიკამენტების ფილტრი: უარყოფილი წამლისა და დოზირებული აქტიური OAC/P2Y12-ის ერთ წინადადებაში გამოყოფა („და“/„and“), 1-ელი პირის უარყოფა („არ ვსვამ“), ორმაგი უარყოფა („not stopped“), სიმპტომის უარყოფა („სისხლდენა არ აქვს“), სრული სტატინის/ამიოდარონის სტემები (EVLA 300 მგ ლიდოკაინის კეპი), Xarelto 2.5 მგ + საღამოს სტატინის გამიჯვნა და უარყოფილი allergy_text-ის გაფილტვრა Tab Q/Self-Fill/ანამნეზში/დაფაზე.',
+            'დაიხურა RBAC და სტატუსების პარიტეტი: PreopFileDeleteView იცავს operated/board/archived ფაილებს და არა-ექიმის წაშლას; _save_dos_vqi ამოწმებს complete_and_board-სა და operated-ს წინასწარი სტატუსის შეცვლამდე (elapsed hold / stale labs აღარ ივლის გვერდს); preop_admission_block_reason ბლოკავს შეუვსებელ კითხვარსა და cancelled/deferred სტატუსს; Self-Fill birth_date და has_prior_stroke_or_tia მკაცრად ამოწმებს საზღვრებს.',
+            'გასწორდა ორსულობა + მექანიკური სარქველი + HIT ვარფარინის რიგი, ორსულობა + CrCl<30/დიალიზი UFH გაფრთხილება, ASRA + სოლო-ნეირაქსიული გაერთიანებული ალამი, დინამიური Hb (22.1–34.9) და ხანდაზმული ანალიზების (>14 დღე) შეტყობინებები, MED_ANTITHROMBOTIC_CONFLICTS ატრიბუცია, პაციენტის გზამკვლევის ჟარგონის წმენდა, V01/V17 მუტაცია-მედეგი ვინიეტები და სრული JS გარდები.',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC 2022 NCS · ASRA 5th Ed 2025 · CHEST 2022 · EHRA 2021 · ACC/AHA 2024 · FDA',
+    },
     {
         'version': '1.2.11',
         'date': '2026-11-26',

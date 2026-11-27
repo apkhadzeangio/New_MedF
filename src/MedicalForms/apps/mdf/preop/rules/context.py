@@ -287,6 +287,7 @@ def _init_base_flags_and_pre_reflex(ctx):
     ctx.weight_num = _num(s.get('weight_kg'), lo=25, hi=260)
     ctx.weight_sat = _sat_num(_s_raw(s, 'weight_kg'), 25, 260)
     ctx.has_known_dm = bool(q.get('dm') or q.get('dm_insulin') or q.get('metformin'))
+    ctx.active_gi_bleed = bool(s.get('gastro_result') == 'acute_ulcer' or (q.get('ulcer_active_symp') and s.get('gastro_result') != 'remission'))
     ctx.eff_pregnant = bool(is_pregnancy_eligible(ctx.patient) and (q.get('pregnant_possible') or q.get('ven_pregnant')))
     ctx.is_ali_acute = bool(
         ctx.pathway in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
@@ -331,16 +332,15 @@ def _init_base_flags_and_pre_reflex(ctx):
     )
     ctx.vasc_chips = set(q.get('vasc_chips') or [])
     ctx.anesth_lines_set = set(s.get('anesth_lines_chips') or [])
-    from ..meds_freetext import _positive_clauses_text
+    from ..meds_freetext import _FT_STATIN_STEMS, _positive_clauses_text
 
     pos_other_meds = _positive_clauses_text(q.get('other_meds') or '')
-    ctx.has_statin = ('statin' in ctx.med_chips) or any(
-        w in pos_other_meds
-        for w in ('სტატინ', 'ატორვ', 'როზუვ', 'კრესტორ', 'ლიპრიმ', 'statin', 'atorvast', 'rosuvast', 'simvast', 'ezetimib')
+    ctx.has_statin = ('statin' in ctx.med_chips) or bool(ctx.ft_meds.get('has_ft_statin')) or any(
+        w in pos_other_meds for w in (*_FT_STATIN_STEMS, 'ატორვ', 'როზუვ', 'atorvast', 'rosuvast', 'simvast', 'ezetimib')
     )
     ctx.has_safe_aspirin = bool(q.get('med_aspirin') and 'nsaid' not in ctx.allergy_chips)
     ctx.has_safe_clopidogrel = bool(q.get('med_clopidogrel') and 'clopidogrel_intol' not in ctx.allergy_chips)
-    ctx.has_safe_prasugrel = bool(q.get('med_prasugrel') and not has_prior_stroke_or_tia(ctx.patient, q=q, s=s))
+    ctx.has_safe_prasugrel = bool(q.get('med_prasugrel') and not has_prior_stroke_or_tia(ctx.patient, q=q, s=s, today=ctx.today))
     ctx.has_antiplatelet = bool(
         ctx.has_safe_aspirin or ctx.has_safe_clopidogrel or q.get('med_ticagrelor') or ctx.has_safe_prasugrel
     )

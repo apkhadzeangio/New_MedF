@@ -23,6 +23,7 @@ def _eval_venous_lido_and_contra(ctx, ceap, ven_dup, gsv_mm):
             chf_lido
             or (s.get('liver_status') in ('2x', '3x'))
             or ('amiodarone' in ctx.med_chips)
+            or bool(ctx.ft_meds.get('has_ft_amiodarone'))
             or ((age_lido or 0) >= lido_cfg['elder_age'] and (ctx.on_dialysis or (ren_lido is not None and ren_lido < lido_cfg['elder_renal'])))
         )
         if reduced_lido_cl:
@@ -108,7 +109,14 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
         ven_severe_renal = ctx.on_dialysis or (ctx.eff_renal is not None and ctx.eff_renal < ren_red)
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv = ' (ღვიძლის ≥3x: არგატრობანი −75% / უპირატესია ბივალირუდინი!)' if ctx.liver_3x else ''
-        if 'mech_valve' in ctx.cad_chips:
+        if getattr(ctx, 'active_gi_bleed', False):
+            vte_agents = 'მხოლოდ მექანიკური პროფილაქტიკა (IPC) — აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის გამო ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!'
+        elif 'mech_valve' in ctx.cad_chips and getattr(ctx, 'eff_pregnant', False):
+            vte_agents = (
+                'IPC / არაჰეპარინული სქემა ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის კონსილიუმით (ორსულობა + მექ. სარქველი + HIT — UFH/LMWH/DOAC აკრძალულია!)'
+                if has_hit else 'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (ორსულობა + მექ. სარქველი: VKA vs LMWH/UFH ტრიმესტრით — DOAC აკრძალულია!)'
+            )
+        elif 'mech_valve' in ctx.cad_chips:
             vte_agents = (
                 f'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT + მექ. სარქველი — ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!){arg_liv}'
                 if has_hit else 'ვარფარინი (VKA) კარდიოლოგის სქემით — DOAC აკრძალულია!'
@@ -116,7 +124,10 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
         elif getattr(ctx, 'eff_pregnant', False):
             vte_agents = (
                 'IPC / არაჰეპარინული სქემა მეან-გინეკოლოგთან და ჰემატოლოგთან (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!)'
-                if has_hit else 'LMWH / UFH მეან-გინეკოლოგთან შეთანხმებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
+                if has_hit else (
+                    'კანქვეშა UFH მეან-გინეკოლოგთან (ორსულობა + CrCl<30: LMWH კუმულირდება, DOAC აკრძალულია!)'
+                    if ven_severe_renal else 'LMWH / UFH მეან-გინეკოლოგთან შეთანხმებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
+                )
             )
         elif has_hit:
             vte_agents = (

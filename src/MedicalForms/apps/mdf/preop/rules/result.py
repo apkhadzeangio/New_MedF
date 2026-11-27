@@ -65,6 +65,7 @@ def _result_clinical_part(ctx):
         'passport_cautions': ctx.passport_cautions,
         'neuraxial_hard_blocked': ctx.neuraxial_hard_blocked,
         'solo_neuraxial_anatomic_mismatch': ctx.solo_neuraxial_anatomic_mismatch,
+        'has_explicit_nx_blockers': bool(getattr(ctx, 'explicit_nx_blockers', None)),
         'eff_pregnant': getattr(ctx, 'eff_pregnant', False),
         'is_clti_any': ctx.is_clti_any,
         'is_evla_warfarin_only': getattr(ctx, 'is_evla_warfarin_only', False),

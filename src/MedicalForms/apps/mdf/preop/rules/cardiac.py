@@ -278,10 +278,19 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         ven_severe_renal_t = ctx.on_dialysis or (eff_ren_t is not None and eff_ren_t < ren_red)
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv_t = ' (ღვიძლის ≥3x: არგატრობანი −75%!)' if ctx.liver_3x else ''
-        if 'mech_valve' in ctx.cad_chips:
+        if getattr(ctx, 'active_gi_bleed', False):
+            vte_lbl = 'მხოლოდ IPC — აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული (ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!)'
+        elif 'mech_valve' in ctx.cad_chips and getattr(ctx, 'eff_pregnant', False):
+            vte_lbl = 'IPC / კონსილიუმი (ორსულობა + მექ. სარქველი + HIT — UFH/LMWH/DOAC არა!)' if has_hit else 'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (ორსულობა + მექ. სარქველი — DOAC არა!)'
+        elif 'mech_valve' in ctx.cad_chips:
             vte_lbl = f'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT!){arg_liv_t}' if has_hit else 'ვარფარინი (VKA) — DOAC აკრძალულია!'
         elif getattr(ctx, 'eff_pregnant', False):
-            vte_lbl = 'IPC / არაჰეპარინული სქემა (ორსულობა + HIT — DOAC და ჰეპარინი არა!)' if has_hit else 'LMWH / UFH (ორსულობაზე DOAC არა!)'
+            vte_lbl = (
+                'IPC / არაჰეპარინული სქემა (ორსულობა + HIT — DOAC და ჰეპარინი არა!)'
+                if has_hit else (
+                    'UFH (ორსულობა + CrCl<30: LMWH კუმულირდება, DOAC არა!)' if ven_severe_renal_t else 'LMWH / UFH (ორსულობაზე DOAC არა!)'
+                )
+            )
         elif has_hit:
             vte_lbl = f'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!){arg_liv_t}' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
         elif ven_severe_renal_t:

@@ -270,11 +270,16 @@
         if (unitSel) unitSel.addEventListener('change', function () { el.dispatchEvent(new Event('input')); });
     });
     document.querySelectorAll('input[name="glucose"], input[name="dos_glucose"]').forEach(function (el) {
+        var isDosGl = el.name === 'dos_glucose';
         attachLiveGuard(el, function (v) {
             if (v < 0.5 || v > 1000) return { level: 'crit', msg: 'დაუჯერებელი გლუკოზა (' + v + ') — გადაამოწმეთ!' };
             var mmol = v > 35 ? Math.round((v / 18.0) * 100) / 100 : v;
             if (mmol >= 14.0 || mmol < 3.9) return { level: 'crit', msg: 'კრიტიკული გლიკემია (' + mmol + ' მმოლ/ლ)!' };
-            if (mmol >= 7.0) return { level: 'warn', msg: 'მომატებული გლუკოზა (ჩაირთვება HbA1c)' };
+            if (isDosGl) {
+                if (mmol > 10.0) return { level: 'warn', msg: 'მომატებული დილის გლუკოზა (>10.0 მმოლ/ლ — გლიკემიური კონტროლი)' };
+            } else if (mmol >= 7.0) {
+                return { level: 'warn', msg: 'მომატებული გლუკოზა (ჩაირთვება HbA1c)' };
+            }
             return null;
         });
     });
@@ -292,6 +297,50 @@
             if (v < 0.2 || v > 500) return { level: 'crit', msg: 'დაუჯერებელი LDL (' + v + ') — გადაამოწმეთ!' };
             var mmol = v > 20 ? Math.round((v / 38.67) * 100) / 100 : v;
             if (mmol >= 1.4) return { level: 'warn', msg: 'LDL ' + mmol + ' მმოლ/ლ (სამიზნე <1.4 მმოლ/ლ — ESVS)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="hr"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v < 15 || v > 260) return { level: 'crit', msg: 'დაუჯერებელი პულსი (' + v + '/წთ — 15–260)!' };
+            if (v < 45 || v > 110) return { level: 'crit', msg: 'კრიტიკული პულსი (' + v + '/წთ)!' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="spo2"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v < 30 || v > 100) return { level: 'crit', msg: 'დაუჯერებელი სატურაცია (' + v + '% — 30–100%)!' };
+            if (v < 90) return { level: 'crit', msg: 'მძიმე ჰიპოქსემია (SpO2 ' + v + '% < 90%)!' };
+            if (v < 94) return { level: 'warn', msg: 'დაქვეითებული სატურაცია (SpO2 ' + v + '% < 94%)' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="weight_kg"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v < 25 || v > 260) return { level: 'crit', msg: 'დაუჯერებელი წონა (' + v + ' კგ — 25–260)!' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="height_cm"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v < 100 || v > 230) return { level: 'crit', msg: 'დაუჯერებელი სიმაღლე (' + v + ' სმ — 100–230)!' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="wbc"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v < 0.1 || v > 150000) return { level: 'crit', msg: 'დაუჯერებელი WBC (' + v + ') — გადაამოწმეთ!' };
+            var n = v >= 200 ? Math.round((v / 1000.0) * 100) / 100 : v;
+            if (n < 3.5 || n > 12.0) return { level: 'crit', msg: 'პათოლოგიური WBC (' + n + ' ×10^9/L — ნორმა 3.5–12.0)!' };
+            return null;
+        });
+    });
+    document.querySelectorAll('input[name="albumin"]').forEach(function (el) {
+        attachLiveGuard(el, function (v) {
+            if (v < 0.5 || v > 80) return { level: 'crit', msg: 'დაუჯერებელი ალბუმინი (' + v + ') — გადაამოწმეთ!' };
+            var gl = (v >= 0.5 && v <= 7.5) ? Math.round(v * 100) / 10 : v;
+            if (gl < 30) return { level: 'crit', msg: 'მძიმე ჰიპოალბუმინემია (' + gl + ' გ/ლ < 30)!' };
+            if (gl < 35) return { level: 'warn', msg: 'დაქვეითებული ალბუმინი (' + gl + ' გ/ლ < 35)' };
             return null;
         });
     });

@@ -317,7 +317,7 @@ def _caprini_points(patient, q, bmi, today, s_cur, cad_set, has_hit):
 
 def _caprini_tier_and_advice(
     pts, has_mech_valve, has_hit, severe_renal, severe_liver, compression_contra,
-    cea_bleed_block=False, eff_pregnant=False,
+    cea_bleed_block=False, eff_pregnant=False, active_gi_bleed=False,
 ):
     cap_cfg = rule_value('SCORE_CAPRINI_VTE')
     comp_sfx = '' if compression_contra else ' + კომპრესია'
@@ -326,10 +326,13 @@ def _caprini_tier_and_advice(
         'IV ბივალირუდინი (არგატრობანი ღვიძლის ≥3x-ზე ერიდეთ/დოზა -75%!)'
         if severe_liver else 'IV ბივალირუდინი/არგატრობანი'
     )
+    hit_gi_sfx = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit else ''
     if pts >= cap_cfg['high_min']:
         tier = f"მაღალი (≥{cap_cfg['high_min']})"
         if cea_bleed_block:
             advice = f'მხოლოდ მექანიკური პროფილაქტიკა (IPC{comp_sfx}) — ტვინის სისხლჩაქცევის / rt-PA ≤6 დღის ფონზე ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია!'
+        elif active_gi_bleed:
+            advice = f'მხოლოდ მექანიკური პროფილაქტიკა (IPC{comp_sfx}) — აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის ფონზე ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!{hit_gi_sfx}'
         elif has_mech_valve and eff_pregnant:
             advice = (
                 f'ორსულობა + მექანიკური სარქველი + HIT: UFH, LMWH და DOAC აკრძალულია — მეან-გინეკოლოგის, კარდიოლოგისა და ჰემატოლოგის კონსილიუმი (IPC / არაჰეპარინული IV სქემა){comp_sfx}'
@@ -367,6 +370,8 @@ def _caprini_tier_and_advice(
         tier = f"საშუალო ({cap_cfg['low_max'] + 1}–{cap_cfg['mod_max']})"
         if cea_bleed_block:
             advice = f'მხოლოდ ადრეული მობილიზაცია + IPC{comp_sfx} (ტვინის სისხლჩაქცევა / rt-PA ≤6 დღე — ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია!)'
+        elif active_gi_bleed:
+            advice = f'მხოლოდ ადრეული მობილიზაცია + IPC{comp_sfx} (აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ფარმაკოლოგიური ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე!){hit_gi_sfx}'
         elif has_mech_valve and eff_pregnant:
             advice = f'ორსულობა + მექანიკური სარქველი + HIT: UFH/LMWH/DOAC აკრძალულია — კონსილიუმი (IPC){comp_sfx}' if has_hit else f'ორსულობა + მექანიკური სარქველი: მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (VKA vs LMWH/UFH ტრიმესტრით; DOAC არა!){comp_sfx}'
         elif has_mech_valve:
@@ -374,6 +379,8 @@ def _caprini_tier_and_advice(
         elif eff_pregnant:
             if has_hit:
                 advice = f'ადრეული მობილიზაცია{comp_sfx} + IPC (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!)'
+            elif severe_renal:
+                advice = f'ადრეული მობილიზაცია{comp_sfx} ± კანქვეშა UFH მეან-გინეკოლოგის შეფასებით (ორსულობა + CrCl<30: LMWH კუმულირდება, DOAC უკუნაჩვენებია!)'
             else:
                 advice = f'ადრეული მობილიზაცია{comp_sfx} ± LMWH / UFH მეან-გინეკოლოგის შეფასებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
         elif has_hit:
@@ -414,10 +421,11 @@ def calc_caprini(patient, q, bmi=None, today=None, eff_renal=None, liver_status=
         s_cur.get('brain_imaging') == 'large_or_hemorrhage'
         or (bool(q_d.get('cea_thrombolysis')) and (cea_d is None or cea_d <= rtpa_d))
     )
+    active_gi_bleed = bool(s_cur.get('gastro_result') == 'acute_ulcer' or (q_d.get('ulcer_active_symp') and s_cur.get('gastro_result') != 'remission'))
     eff_preg = is_pregnancy_eligible(patient) and bool(q_d.get('pregnant_possible') or q_d.get('ven_pregnant'))
     tier, advice = _caprini_tier_and_advice(
         pts, 'mech_valve' in cad_set, has_hit, severe_renal, severe_liver, compression_contra,
-        cea_bleed_block=cea_bleed_block, eff_pregnant=eff_preg,
+        cea_bleed_block=cea_bleed_block, eff_pregnant=eff_preg, active_gi_bleed=active_gi_bleed,
     )
     return pts, tier, advice
 

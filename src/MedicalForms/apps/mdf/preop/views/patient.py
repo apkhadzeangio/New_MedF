@@ -475,12 +475,17 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         form_present = 'dos_form_present' in request.POST
         dos_partial = request.POST.get('dos_partial') == '1'
 
+        prev_outcome = ev_before.get('case_outcome') or 'scheduled'
         self._apply_dos_vqi_post(request.POST, s, today, dos_check_keys, form_present, dos_partial)
+        posted_outcome = s.get('case_outcome_status') or 'scheduled'
 
         if action == 'complete_and_board':
-            patient.studies = s
+            s_chk = dict(s)
+            if posted_outcome == 'operated' and prev_outcome != 'operated':
+                s_chk['case_outcome_status'] = prev_outcome
+            patient.studies = s_chk
             ev_cur = evaluate(patient)
-            blk = preop_admission_block_reason(ev_cur, s)
+            blk = preop_admission_block_reason(ev_cur, s_chk)
             if blk:
                 messages.error(request, blk)
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
@@ -502,14 +507,18 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             )
             return HttpResponseRedirect(reverse('board-patient', args=[bp.pk]))
 
-        if s.get('case_outcome_status') == 'operated':
-            patient.studies = s
+        operated_blocked = False
+        if posted_outcome == 'operated':
+            s_chk = dict(s)
+            if prev_outcome != 'operated':
+                s_chk['case_outcome_status'] = prev_outcome
+            patient.studies = s_chk
             ev_chk = evaluate(patient)
-            blk = preop_admission_block_reason(ev_chk, s)
+            blk = preop_admission_block_reason(ev_chk, s_chk)
             if blk:
-                prev_out = ev_before.get('case_outcome') or 'scheduled'
-                s['case_outcome_status'] = prev_out
-                s['operated_date'] = old_operated_date if prev_out == 'operated' else ''
+                operated_blocked = True
+                s['case_outcome_status'] = prev_outcome
+                s['operated_date'] = old_operated_date if prev_outcome == 'operated' else ''
                 messages.error(request, blk)
         if s.get('case_outcome_status') == 'operated' and not s.get('operated_date'):
             plan_dt = _date(s.get('planned_surgery_date'))
@@ -540,7 +549,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             _invalidate_approval_if_needed(patient, uf)
         _sync_med_hold_after_mutation(patient, ev_before, ev_after, save=False)
         patient.save(update_fields=list(dict.fromkeys(uf)))
-        messages.success(request, 'ოპერაციის დილის კარიბჭე და 30-დღიანი VQI მონიტორინგი შეინახა.')
+        if not operated_blocked:
+            messages.success(request, 'ოპერაციის დილის კარიბჭე და 30-დღიანი VQI მონიტორინგი შეინახა.')
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
 
     def _save_signoff(self, request, patient):

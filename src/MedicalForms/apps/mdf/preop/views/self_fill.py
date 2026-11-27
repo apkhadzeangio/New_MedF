@@ -155,13 +155,17 @@ class PreopSelfFillView(generic.View):
             bd = _date(request.POST.get('birth_date'))
             from ..utils import is_valid_birth_date
             if bd and is_valid_birth_date(bd, today=timezone.localdate()) and not s_mut.get('birth_date'):
-                s_mut['birth_date'] = bd.isoformat()
-                if not patient.age:
-                    dob_age = _age_from_dob(bd)
-                    if dob_age is not None:
+                dob_age = _age_from_dob(bd)
+                if dob_age is not None and 12 <= dob_age <= 120:
+                    s_mut['birth_date'] = bd.isoformat()
+                    if not patient.age:
                         patient.age = dob_age
                         if 'age' not in uf:
                             uf.append('age')
+                elif dob_age is not None:
+                    inv_sf = dict(s_mut.get('_invalid_inputs') or {}) if isinstance(s_mut.get('_invalid_inputs'), dict) else {}
+                    inv_sf['birth_date'] = bd.isoformat()
+                    s_mut['_invalid_inputs'] = inv_sf
             if s_mut.get('med_hold_agreed') or s_mut.get('med_hold_agreed_date'):
                 s_mut['med_hold_agreed'] = False
                 s_mut['med_hold_agreed_date'] = ''

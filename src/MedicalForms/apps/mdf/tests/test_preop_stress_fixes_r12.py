@@ -287,8 +287,8 @@ class PreopStressFixesR12ClinicalEngineTests(SimpleTestCase):
             for forbidden in ('შეიყვანეთ კრეატინინი', 'შეიყვანეთ CrCl', 'შეიყვანეთ თირკმლის', '(ტექსტიდან)', 'ESUR', 'FDA', 'eGFR', 'Assoc.', 'EVLA', '(DOAC)', '(SGLT2)', '(GLP-1)', '(PPI)', 'CCB', '(CTA)', '(CPAP)'):
                 self.assertNotIn(forbidden, blob, f'Leaked {forbidden} in {blob[:240]}')
 
-        # Clin S2-07, S3-03, S3-04: Registry v1.2.11 citations, rule_value() thresholds & AAA rapid-growth attribution
-        self.assertEqual(REGISTRY_VERSION, '1.2.11')
+        # Clin S2-07, S3-03, S3-04: Registry v1.2.11+ citations, rule_value() thresholds & AAA rapid-growth attribution
+        self.assertGreaterEqual(tuple(int(x) for x in REGISTRY_VERSION.split('.')), (1, 2, 11))
         self.assertIn('Section 10.1', RULES_BY_ID['AAA_SYMPTOMATIC_OR_MYCOTIC'].section)
         self.assertIn('Section 10.5', RULES_BY_ID['AAA_YOUNG_AGE_GENETIC'].section)
         self.assertIn('Rec 26', RULES_BY_ID['AAA_POPLITEAL_SCREEN'].section)

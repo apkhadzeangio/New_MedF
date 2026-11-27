@@ -189,12 +189,15 @@ def is_symp_cea_patient(patient, q=None, today=None, s=None, require_filled=True
     )
 
 
-def has_prior_stroke_or_tia(patient, q=None, s=None):
+def has_prior_stroke_or_tia(patient, q=None, s=None, today=None):
     """Return True for any lifelong prior stroke/TIA history (including CEA >180d, event chips, Stage-1 carotid_symp, or brain imaging)."""
     q_d = q if isinstance(q, dict) else (patient.questionnaire if (patient and isinstance(patient.questionnaire, dict)) else {})
     s_d = s if isinstance(s, dict) else (patient.studies if (patient and isinstance(patient.studies, dict)) else {})
+    today_dt = _date(today) or timezone.localdate()
     has_ev_days = _int(q_d.get('cea_days_since_event'), lo=0, hi=3650) is not None
-    has_ev_date = _date(q_d.get('cea_event_date')) is not None
+    ev_dt = _date(q_d.get('cea_event_date'))
+    has_ev_date = ev_dt is not None and ev_dt <= today_dt
+    has_ev_chips = any(isinstance(c, str) and c.strip() for c in _str_list(q_d.get('cea_event_chips')))
     pw = _resolve_pathway(patient) if patient is not None else None
     return bool(
         q_d.get('neuro')
@@ -202,7 +205,7 @@ def has_prior_stroke_or_tia(patient, q=None, s=None):
         or q_d.get('cea_crescendo')
         or q_d.get('cea_disabling_stroke')
         or q_d.get('cea_thrombolysis')
-        or bool(_str_list(q_d.get('cea_event_chips')))
+        or has_ev_chips
         or has_ev_date
         or has_ev_days
         or (patient is not None and patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP)

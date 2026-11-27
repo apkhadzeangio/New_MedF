@@ -220,6 +220,13 @@ def resolve_doctor_user(raw_id):
 
 def preop_admission_block_reason(ev, s):
     """Canonical safety gate for Board handoff, complete_and_board, and case_outcome='operated'."""
+    from ..registry import rule_value
+
+    if not (ev.get('q') or {}).get('filled'):
+        return 'პაციენტის კითხვარი ჯერ არ არის შევსებული (ალერგიები/მედიკამენტები დაუზუსტებელია) — ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
+    out_st = ev.get('case_outcome') or (s.get('case_outcome_status') if isinstance(s, dict) else '') or 'scheduled'
+    if out_st.startswith('cancelled_') or out_st == 'deferred':
+        return 'გაუქმებული ან გადადებული პაციენტის ოპერაციაზე/დაფაზე გადაყვანა დაბლოკილია!'
     if (
         ev['clearance_seal']['code'] == 'stop'
         or ev.get('has_hard_contraindication')
@@ -235,7 +242,8 @@ def preop_admission_block_reason(ev, s):
     if ev.get('has_blocking_unknown_state'):
         return 'დაუდასტურებელი კითხვარის ან კრიტიკული მონაცემის ნაკლებობის გამო ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
     if ev.get('needs_stale_labs') and not s.get('stale_labs_refreshed'):
-        return 'ანალიზები ხანდაზმულია (>30 დღე) — განახლებამდე ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
+        stale_d = rule_value('INF_STALE_LABS_DAYS')
+        return f'ანალიზები ხანდაზმულია (>{stale_d} დღე) — განახლებამდე ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
     return ''
 
 

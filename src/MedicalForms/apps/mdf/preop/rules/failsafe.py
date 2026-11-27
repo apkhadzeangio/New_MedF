@@ -120,9 +120,12 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
             blocking=True,
         )
     if getattr(ctx, 'hb_unit_ambiguous', False):
+        from ..registry import rule_value
+        u_cfg = rule_value('LAB_UNIT_AUTO_CONVERSION')
+        hb_span = f'{u_cfg["hb_gdl_hi"] + 0.1:.1f}–{u_cfg["hb_ambig_hi"] - 0.1:.1f}'
         add(
             'ambiguous_hb_unit', 's1', 'hb',
-            'ჰემოგლობინის ერთეული დაუზუსტებელია (22.1–39.9 შუალედი)',
+            f'ჰემოგლობინის ერთეული დაუზუსტებელია ({hb_span} შუალედი)',
             'მიუთითეთ ჰემოგლობინი გ/ლ (მაგ. 130) ან გ/დლ (მაგ. 13.0) ფორმატში — დაზუსტებამდე GO ბეჭედი დაბლოკილია.',
             blocking=True,
         )

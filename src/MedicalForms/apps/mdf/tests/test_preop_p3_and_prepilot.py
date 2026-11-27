@@ -275,7 +275,12 @@ class PreopStageP3ReferenceHardeningTests(PrivateMediaTest):
             patient_name='საათ პაუზაძე', age=66, sex='M',
             pathway='abf', op_subtype='abf_claud', surgeon=self.user,
             visit_date=today, started_on=today - datetime.timedelta(days=10),
-            studies={'hold_paused_days': 6},
+            questionnaire={'filled': True, 'mets_ok': True, 'allergy_iodine_asked': True, 'ic_bmt_3m': True},
+            studies={
+                'hold_paused_days': 6, 'hb': 135, 'plt': 220, 'inr': 1.0, 'creat': 82, 'creat_unit': 'umol',
+                'glucose': 5.3, 'k': 4.1, 'bp_sys': 125, 'bp_dia': 76, 'hr': 72, 'spo2': 98,
+                'weight_kg': 78, 'height_cm': 174, 'ecg': 'normal', 'labs_date': today.isoformat(),
+            },
         )
         self.assertEqual(prep_days_elapsed(p_clock, today=today), 5)
 

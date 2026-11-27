@@ -16,7 +16,7 @@ VASCULAR_VIGNETTES = (
         op_subtype=_OP.EVAR, age=68, sex='F',
         q=(('filled', True), ('mets_ok', True), ('med_aspirin', True), ('med_chips', ['statin'])),
         s=(('aaa_mm', 50), ('aaa_neck_status', 'friendly_ifu'), ('hb', 132), ('inr', 1.0), ('creat', 74), ('ecg', 'normal'), ('planned_surgery_date', VIGNETTE_OP_DATE)),
-        must_not_red=('(< 50 მმ) ნაკლებია',),
+        must_not_red=('სტანდარტულ ზღვარზე',),
         expect_hard_stop=False,
     ),
     ClinicalVignette(
@@ -229,6 +229,7 @@ VASCULAR_VIGNETTES = (
         q=(('filled', True), ('dm', True), ('abf_ulcer', True), ('med_aspirin', True), ('med_chips', ['statin']), ('mets_ok', True)),
         s=(('abi_r', 1.55), ('pad_runoff_status', 'tibial_single'), ('pad_gsv_status', 'adequate')),
         must_reflex=('tbi',),
+        must_reflex_terms=('არაკომპრესირებადი', '> 1.40'),
     ),
     ClinicalVignette(
         id='V18_PTA_UNCOMPLICATED_AMBULATORY',

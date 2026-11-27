@@ -39,6 +39,7 @@ class ClinicalVignette:
     must_not_red: tuple = ()
     must_amber: tuple = ()
     must_reflex: tuple = ()
+    must_reflex_terms: tuple = ()
     must_dos_keys: tuple = ()
     must_not_dos_keys: tuple = ()
     must_med_terms: tuple = ()
@@ -75,6 +76,7 @@ def _check_vignette_expectations(v, ev):
     red_blob = ' | '.join(ev['red_flags'])
     amber_blob = ' | '.join(ev['amber_flags'])
     reflex_keys = {r['key'] for r in ev['reflex_orders']}
+    reflex_blob = ' | '.join(f"{r['key']} {r['trigger']} {r['action']}" for r in ev['reflex_orders'])
     dos_keys = {c['key'] for c in ev['dos_checks']}
     med_blob = ' | '.join(f"{r['drug']} {r['date_plan']} {r['rule']}" for r in ev['med_schedule'])
     postop_at = ev.get('post_antithrombotic_label') or ''
@@ -96,6 +98,8 @@ def _check_vignette_expectations(v, ev):
         rec(f'ყვითელი სიგნალი შეიცავს: „{needle}“', needle in amber_blob, 'ნაპოვნია' if needle in amber_blob else amber_blob[:120])
     for rk in v.must_reflex:
         rec(f'რეფლექს-ორდერი აქტიურია: {rk}', rk in reflex_keys, sorted(reflex_keys))
+    for needle in v.must_reflex_terms:
+        rec(f'რეფლექს-ორდერი შეიცავს: „{needle}“', needle in reflex_blob, 'ნაპოვნია' if needle in reflex_blob else reflex_blob[:120])
     for dk in v.must_dos_keys:
         rec(f'WHO Sign-In პუნქტი ჩართულია: {dk}', dk in dos_keys, sorted(dos_keys))
     for dk in v.must_not_dos_keys:

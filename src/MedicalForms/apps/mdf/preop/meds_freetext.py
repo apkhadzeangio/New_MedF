@@ -19,11 +19,23 @@ _RIVA_THER_DOSE_RE = re.compile(r'(?<![\d.,])(?:10|15|20)(?![\d.,])')
 _RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;,\n/+]|\s+(?:და|ან|and|or)\s+')
 _NEG_CLAUSE_SPLIT_RE = re.compile(
     r'[;,\n!]+|\.(?!\d)|\s+(?:მაგრამ|ხოლო|თუმცა|but)\s+'
-    r'|\s+(?:და|ან|and)\s+(?=(?:სვამს|იღებს|ვიღებ|ღებულობს|უწერია|დაუნიშნ|takes?|taking|uses?|using|on\s))'
+    r'|\s+(?:და|ან|and)\s+(?=(?:სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|უწერია|დაუნიშნ|takes?|taking|uses?|using|on\s|\S*[^\n,;]*?\d))'
+    r'|(?:(?<=მოხსნილია)|(?<=შეწყვეტილია)|(?<=გამორიცხულია))\s+(?:და|ან|and)\s+'
+    r'|\s+(?=(?:no|without|stopped|discontinued)\s+[a-zა-ჰ])'
+)
+_DOUBLE_NEG_AFFIRM_RE = re.compile(
+    r'\b(?:not\s+(?:stopped|discontinued|held)|never\s+stopped)\b'
+    r'|არ\s+(?:შეუწყვეტია|მოუხსნია|არის\s+(?:შეწყვეტილი|მოხსნილი))',
+    re.IGNORECASE,
+)
+_SYMPTOM_NEG_RE = re.compile(
+    r'(?:სისხლდენ\w*|ჩივილ\w*|გართულებ\w*|ტკივილ\w*)\s+არ\s+(?:აქვს|მაქვს|აღნიშნავს|ჰქონია)'
+    r'|\b(?:without|no)\s+(?:active\s+)?(?:bleed\w*|hemorrhag\w*|pain|symptom\w*|complication\w*)\b',
+    re.IGNORECASE,
 )
 _RIVA_ESCALATION_STEMS = (
     'დაუნიშნ', 'შეცვ', 'გაიზარდ', 'გადაიყვან', 'დოზ', 'შემდეგ', 'ახლა', 'ხოლო',
-    'მაგრამ', 'კარდიოლოგ', 'ექიმ', 'საღამო', 'დილ', 'დღეში', 'ადრე', 'ნაცვლ',
+    'მაგრამ', 'კარდიოლოგ', 'ექიმ', 'ადრე', 'ნაცვლ',
     'prescrib', 'switch', 'increas', 'chang', 'dose', 'then', 'now', 'instead', 'also',
 )
 _RIVA_NON_DRUG_WORDS = frozenset({
@@ -46,7 +58,7 @@ _ALLERGY_NEGATION_WORDS = frozenset({
     'no', 'none', 'nil', 'nkda', 'nka', 'noallergy', 'noallergies',
 })
 _NEGATION_PHRASE_RE = re.compile(
-    r'(?:არ\s+(?:აქვს|მაქვს|სვამს|იღებს|ვიღებ|ღებულობს|აღნიშნავს|ჰქონია)'
+    r'(?:(?:არ|აღარ)\s+(?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|აღნიშნავს|ჰქონია)'
     r'|უარყოფს|მოხსნილია|შეწყვეტილია|გამორიცხულია'
     r'|(?<![a-z])(?:no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|without)\b)',
     re.IGNORECASE,
@@ -65,14 +77,17 @@ _FT_ACEI_ARB_STEMS = (
     'losartan', 'valsartan', 'candesartan', 'telmisartan', 'irbesartan', 'olmesartan',
     'prestarium', 'prestans', 'tritace', 'cozaar', 'diovan', 'micardis', 'atacand', 'enap', 'noliprel',
 )
+_FT_AMIODARONE_STEMS = ('ამიოდარონ', 'კორდარონ', 'amiodaron', 'cordaron', 'paceron')
 
 
 def _positive_clauses_text(text):
     """Strip explicitly negated clauses ('არ აქვს', 'არ სვამს', 'no ...', 'stopped ...') before stem matching."""
     if not isinstance(text, str) or not text.strip():
         return ''
+    cleaned_txt = _DOUBLE_NEG_AFFIRM_RE.sub(' ', text.lower())
+    cleaned_txt = _SYMPTOM_NEG_RE.sub(' ', cleaned_txt)
     pos = []
-    for cl in _NEG_CLAUSE_SPLIT_RE.split(text.lower()):
+    for cl in _NEG_CLAUSE_SPLIT_RE.split(cleaned_txt):
         cl_s = cl.strip()
         if not cl_s:
             continue
@@ -153,7 +168,7 @@ def _detect_freetext_high_risk_meds(text, q=None):
         return {
             'matched_keys': set(), 'unstructured_labels': [], 'unstructured_antithrombotic': False,
             'ertugliflozin': False, 'daily_glp1': False, 'has_omeprazole': False, 'has_glp1': False,
-            'has_ft_statin': False, 'has_ft_acei_arb': False,
+            'has_ft_statin': False, 'has_ft_acei_arb': False, 'has_ft_amiodarone': False,
         }
     q_d = q if isinstance(q, dict) else {}
     med_chips = set(_str_list(q_d.get('med_chips')))
@@ -215,4 +230,5 @@ def _detect_freetext_high_risk_meds(text, q=None):
         'has_glp1': 'glp1' in matched_keys,
         'has_ft_statin': any(st in low for st in _FT_STATIN_STEMS),
         'has_ft_acei_arb': any(st in low for st in _FT_ACEI_ARB_STEMS),
+        'has_ft_amiodarone': ('amiodarone' in matched_keys) or any(st in low for st in _FT_AMIODARONE_STEMS),
     }

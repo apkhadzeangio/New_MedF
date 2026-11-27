@@ -178,21 +178,17 @@ def _build_handoff_status_text(ev, q, s, diag_str, allergy_chips, eff_iod_board)
         safety_bits.append('კლოპიდოგრელის აუტანლობა / ალერგია!')
     if q.get('ven_lidocaine_allergy') or 'lidocaine' in allergy_chips:
         safety_bits.append('ლიდოკაინზე ალერგია!')
-    if (q.get('allergy_text') or '').strip():
-        safety_bits.append(f"ალერგიის ჩანაწერი: {q['allergy_text']}")
+    from ..meds_freetext import _positive_clauses_text
+    if (pos_alg_txt := _positive_clauses_text(q.get('allergy_text') or '').strip()):
+        safety_bits.append(f'ალერგიის ჩანაწერი: {pos_alg_txt}')
     if ev.get('bp_arm_diff') is not None and ev['bp_arm_diff'] >= bp_arm_diff_lim:
-        higher_arm = 'მარჯვენა' if (bp_s or 0) >= (bp_sl or 0) else 'მარცხენა'
-        safety_bits.append(f"წნევის მონიტორინგი {higher_arm} მკლავზე (ΔBP {ev['bp_arm_diff']} mmHg)")
+        safety_bits.append(f"წნევის მონიტორინგი {'მარჯვენა' if (bp_s or 0) >= (bp_sl or 0) else 'მარცხენა'} მკლავზე (ΔBP {ev['bp_arm_diff']} mmHg)")
     if q.get('pacemaker'):
-        cied_sfx = f" — {ev['cied_plan_label']}" if ev.get('cied_plan_label') else ''
-        safety_bits.append(f'კარდიოსტიმულატორი / ICD (CIED){cied_sfx}')
+        safety_bits.append(f"კარდიოსტიმულატორი / ICD (CIED){(' — ' + ev['cied_plan_label']) if ev.get('cied_plan_label') else ''}")
     if ev.get('difficult_airway_alert'):
         safety_bits.append('მოსალოდნელი რთული ინტუბაცია (ვიდეოლარინგოსკოპი!)')
     if ev.get('max_contrast_ml') is not None:
-        c_str = f"მაქს. იოდის კონტრასტი ≤ {ev['max_contrast_ml']} მლ"
-        if ev.get('co2_angio_advised'):
-            c_str += ' (CO2 ანგიოგრაფია / IVUS)'
-        safety_bits.append(c_str)
+        safety_bits.append(f"მაქს. იოდის კონტრასტი ≤ {ev['max_contrast_ml']} მლ{' (CO2 ანგიოგრაფია / IVUS)' if ev.get('co2_angio_advised') else ''}")
     if s.get('cell_saver_ready'):
         safety_bits.append('Cell Saver + TXA მზადყოფნა')
     if ev.get('has_hard_contraindication') or (ev.get('clearance_seal') or {}).get('code') == 'stop':
@@ -270,6 +266,7 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
 def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board):
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
     cap_low_max = rule_value('SCORE_CAPRINI_VTE')['low_max']
+    sev_renal = bool(q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < ren_red))
     cea_bleed_board = (
         pathway == PreopPatient.Pathway.CEA
         and (s.get('brain_imaging') == 'large_or_hemorrhage' or bool(ev.get('active_thrombolysis_window')))
@@ -280,10 +277,20 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
             _VTE_PREFIXES,
             f"VTE პროფილაქტიკა (Caprini {ev['caprini_score']} ქ. — {ev['caprini_tier']}): მხოლოდ მექანიკური პროფილაქტიკა (IPC) — ფარმაკოლოგიური ანტიკოაგულაცია უკუნაჩვენებია თავის ტვინის სისხლჩაქცევის / rt-PA ≤6 დღის გამო!{hit_cea_sfx}",
         ))
+    elif ev.get('active_gi_bleed'):
+        extra_gi = []
+        if 'hit_heparin' in allergy_chips:
+            extra_gi.append('HIT ანამნეზში — UFH/LMWH კატეგორიულად აკრძალულია!')
+        if ev.get('has_mech_valve'):
+            extra_gi.append('მექანიკური სარქველი — კარდიოლოგის ჩართვით!')
+        gi_sfx = f' ({" · ".join(extra_gi)})' if extra_gi else ''
+        task_candidates.append((
+            _VTE_PREFIXES,
+            f'VTE / ანტიკოაგულაცია: აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — მხოლოდ მექანიკური პროფილაქტიკა (IPC) ენდოსკოპიურ ჰემოსტაზამდე; ფარმაკოლოგიური ანტიკოაგულაცია შეაჩერეთ და აღდგენა შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან{gi_sfx}!',
+        ))
     elif 'hit_heparin' in allergy_chips:
         has_mv = 'mech_valve' in (q.get('cad_chips') or [])
         liver_3x = s.get('liver_status') == '3x'
-        sev_renal = bool(q.get('on_dialysis') or (eff_renal_board is not None and eff_renal_board < ren_red))
         if ev.get('eff_pregnant'):
             mv_hit_s = ' + მექანიკური სარქველი' if has_mv else ''
             team_s = 'ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის' if has_mv else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
@@ -305,12 +312,6 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
             _VTE_PREFIXES,
             f'HIT ანამნეზში! არაფრაქციული ჰეპარინი და LMWH აკრძალულია — არაჰეპარინული ანტიკოაგულაცია ({hit_board_agents})',
         ))
-    elif ev.get('active_gi_bleed'):
-        mv_gi = ' (მექანიკური სარქველი — კარდიოლოგის ჩართვით!)' if ev.get('has_mech_valve') else ''
-        task_candidates.append((
-            _VTE_PREFIXES,
-            f'VTE / ანტიკოაგულაცია: აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — მხოლოდ მექანიკური პროფილაქტიკა (IPC) ენდოსკოპიურ ჰემოსტაზამდე; ანტიკოაგულაციის აღდგენა შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან{mv_gi}!',
-        ))
     elif ev.get('has_mech_valve') and ev.get('eff_pregnant'):
         task_candidates.append((
             _VTE_PREFIXES,
@@ -318,7 +319,11 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
         ))
     elif ev.get('has_contra_oac') or (ev.get('eff_pregnant') and ev.get('has_full_oac')):
         if ev.get('eff_pregnant'):
-            oac_board_msg = 'VTE / ანტიკოაგულაცია: ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ LMWH/UFH მეან-გინეკოლოგთან და კარდიოლოგთან!'
+            preg_agent = (
+                'არასფრაქციული ჰეპარინი (UFH — თირკმლის მძიმე უკმარისობის/დიალიზის გამო LMWH კუმულირდება!)'
+                if sev_renal else 'LMWH/UFH'
+            )
+            oac_board_msg = f'VTE / ანტიკოაგულაცია: ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_agent} მეან-გინეკოლოგთან და კარდიოლოგთან!'
         else:
             oac_board_msg = 'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!'
         task_candidates.append((_VTE_PREFIXES, oac_board_msg))

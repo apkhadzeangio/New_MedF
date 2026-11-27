@@ -167,12 +167,22 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
     if 'rivaroxaban_2_5' in ctx.med_chips and getattr(ctx, 'has_prior_stroke_tia', False):
         ctx.red_flags.append('რივაროქსაბანი 2.5 მგ ×2 (VOYAGER PAD) უკუნაჩვენებია გადატანილი ინსულტის / TIA-ს ანამნეზში (ქალასშიდა სისხლდენის რისკი) — გადაამოწმეთ სქემის შეცვლა ქირურგთან!')
     has_hit_preg = 'hit_heparin' in ctx.allergy_chips
-    preg_alt_lbl = 'არაჰეპარინული ალტერნატივით (HIT: LMWH/UFH აკრძალულია!) ჰემატოლოგთან და მეან-გინეკოლოგთან!' if has_hit_preg else 'LMWH/UFH-ით მეან-გინეკოლოგთან და კარდიოლოგთან!'
+    ren_red_preg = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    severe_renal_preg = ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < ren_red_preg)
+    if has_hit_preg:
+        preg_alt_lbl = 'არაჰეპარინული ალტერნატივით (HIT: LMWH/UFH აკრძალულია!) ჰემატოლოგთან და მეან-გინეკოლოგთან!'
+    elif severe_renal_preg:
+        preg_alt_lbl = 'არასფრაქციული ჰეპარინით (UFH — თირკმლის მძიმე უკმარისობის/დიალიზის გამო LMWH კუმულირდება!) მეან-გინეკოლოგთან და კარდიოლოგთან!'
+    else:
+        preg_alt_lbl = 'LMWH/UFH-ით მეან-გინეკოლოგთან და კარდიოლოგთან!'
     if repro_preg and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips):
         ctx.red_flags.append(f'ორსულობის დროს DOAC / დაბიგატრანი / რივაროქსაბანი 2.5 მგ აბსოლუტურად უკუნაჩვენებია (პლაცენტური გადასვლა / ნაყოფის რისკი) — დაუყოვნებლივ შეცვალეთ {preg_alt_lbl}')
     if repro_preg and q.get('med_warfarin'):
         if 'mech_valve' in ctx.cad_chips:
-            ctx.red_flags.append('ორსულობა + მექანიკური სარქველი ვარფარინის ფონზე (ტერატოგენული vs სარქვლის თრომბოზის რისკი) — თვითნებურად არ შეწყვიტოთ, დაუყოვნებლივ ჩართეთ მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი!')
+            if has_hit_preg:
+                ctx.red_flags.append('ორსულობა + მექანიკური სარქველი + HIT ვარფარინის ფონზე (ტერატოგენული vs სარქვლის თრომბოზი; UFH, LMWH და DOAC აკრძალულია!) — თვითნებურად არ შეწყვიტოთ, დაუყოვნებლივ ჩართეთ მეან-გინეკოლოგის, კარდიოლოგისა და ჰემატოლოგის კონსილიუმი!')
+            else:
+                ctx.red_flags.append('ორსულობა + მექანიკური სარქველი ვარფარინის ფონზე (ტერატოგენული vs სარქვლის თრომბოზის რისკი) — თვითნებურად არ შეწყვიტოთ, დაუყოვნებლივ ჩართეთ მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი!')
         else:
             ctx.red_flags.append(f'ორსულობის დროს ვარფარინი (VKA) ტერატოგენულია (ნაყოფის ვარფარინის სინდრომი) — დაუყოვნებლივ შეცვალეთ {preg_alt_lbl}')
     if repro_preg and ('statin' in ctx.med_chips or ctx.ft_meds.get('has_ft_statin')):

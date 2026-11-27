@@ -77,7 +77,24 @@ class PreopFileView(LoginRequiredMixin, generic.View):
 class PreopFileDeleteView(LoginRequiredMixin, generic.View):
 
     def post(self, request, pk):
-        rec = get_object_or_404(PreopFile, pk=pk)
+        from ..utils import merged_studies
+        from .parsers import is_doctor_user
+
+        rec = get_object_or_404(PreopFile.objects.select_related('patient'), pk=pk)
+        patient = rec.patient
+        s_del = merged_studies(patient)
+        is_audit_protected = (
+            patient.archived
+            or bool(patient.approved_at)
+            or s_del.get('case_outcome_status') == 'operated'
+            or bool(s_del.get('board_patient_id'))
+        )
+        if is_audit_protected and not (request.user.is_superuser or request.user.is_staff):
+            messages.error(request, 'დადასტურებული, ნაოპერაციები, დაფაზე გადაყვანილი ან არქივირებული პაციენტის დოკუმენტის წაშლა შეზღუდულია.')
+            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1#files')
+        if not is_doctor_user(request.user) and rec.created_by_id != request.user.pk:
+            messages.error(request, 'სხვა თანამშრომლის ატვირთული ფაილის წაშლა შეუძლია მხოლოდ ექიმს ან ადმინისტრატორს.')
+            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1#files')
         patient_id = rec.patient_id
         rec.delete()
         messages.success(request, 'ფაილი წაიშალა.')

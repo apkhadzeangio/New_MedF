@@ -198,7 +198,11 @@ def eval_cea(ctx):
         and ctx.days_since_ev is not None and ctx.days_since_ev >= 1
     )
     tl_blocks_ap = ctx.active_thrombolysis_window and (not is_rtpa_asa_only or ('nsaid' in ctx.allergy_chips))
-    antiplatelet_prohibited_cea = (brain_im == rule_value('CEA_BRAIN_HEMORRHAGE_STOP')) or tl_blocks_ap
+    antiplatelet_prohibited_cea = (
+        (brain_im == rule_value('CEA_BRAIN_HEMORRHAGE_STOP'))
+        or tl_blocks_ap
+        or getattr(ctx, 'active_gi_bleed', False)
+    )
     has_valid_cea_ap = ctx.has_safe_aspirin if is_rtpa_asa_only else ctx.has_antiplatelet
     if q_filled and not has_valid_cea_ap and not antiplatelet_prohibited_cea:
         ctx.needs_cea_antiplatelet = True
@@ -230,6 +234,11 @@ def eval_cea(ctx):
                 f'პაციენტი არ იღებს ანტიაგრეგანტს ({ap_name})! ESVS 2023 Class I-ით CEA-ს წინ '
                 'ანტიაგრეგანტული თერაპია სავალდებულოა ინსულტის პრევენციისთვის — აცნობეთ ქირურგს.'
             )
+    elif q_filled and not has_valid_cea_ap and getattr(ctx, 'active_gi_bleed', False):
+        ctx.amber_flags.append(
+            'CEA-ს წინ აქტიური კუჭ-ნაწლავის სისხლდენის / მწვავე წყლულის გამო ანტიაგრეგანტის დაწყება დაბლოკილია — '
+            'სავალდებულოა გასტროენტეროლოგისა და ქირურგის კონსილიუმი ენდოსკოპიურ ჰემოსტაზამდე!'
+        )
     ldl_target = rule_value('CEA_ANTIPLATELET_STATIN_MANDATORY')
     if q_filled and not ctx.has_statin and not ctx.liver_3x and not getattr(ctx, 'eff_pregnant', False):
         ctx.amber_flags.append('პაციენტს არ უფიქსირდება სტატინის მიღება (ESVS 2023 Class I: CEA-ს წინ ნაჩვენებია მაღალი ინტენსივობის სტატინი).')
