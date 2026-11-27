@@ -238,9 +238,9 @@
                 <div class="nw-field">
                     <label for="nw-add-op">დაგეგმილი ოპერაცია *</label>
                     <select id="nw-add-op" name="op_subtype">
-                        {% for grp_lbl, items in op_subtype_groups %}
+                        {% for grp_lbl, items in nw_procedure_groups %}
                         <optgroup label="{{ grp_lbl }}">
-                            {% for val, lbl in items %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
+                            {% for val, lbl, _hint in items %}<option value="{{ val }}">{{ lbl }}</option>{% endfor %}
                         </optgroup>
                         {% endfor %}
                     </select>

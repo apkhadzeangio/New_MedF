@@ -199,7 +199,9 @@ class PreopWeekView(LoginRequiredMixin, generic.TemplateView):
 
         ui_mode = get_preop_ui_mode(self.request)
         if ui_mode == PREOP_UI_NEW:
+            from ..nurse_ui import REGISTER_PROCEDURE_GROUPS
             ctx['nurse_queues'] = build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=q)
+            ctx['nw_procedure_groups'] = REGISTER_PROCEDURE_GROUPS
         ctx.update({
             'preop_ui_mode': ui_mode,
             'today': today, 'monday': monday,
@@ -248,6 +250,7 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
 
     @staticmethod
     def _transfer_or_sync_case(request, case_id_int):
+        from ..constants import INACTIVE_CASE_OUTCOMES
         from .parsers import _invalidate_approval_if_needed, is_doctor_user
 
         case = get_object_or_404(Case, pk=case_id_int)
@@ -258,7 +261,7 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
                 return HttpResponseRedirect(reverse('preop-patient', args=[existing.pk]))
             if request.POST.get('sync') == '1':
                 cur_out = merged_studies(existing).get('case_outcome_status') or 'scheduled'
-                if cur_out in ('operated', 'deferred', 'cancelled_logistics', 'cancelled_medical'):
+                if cur_out in INACTIVE_CASE_OUTCOMES:
                     messages.error(request, 'არააქტიურ (ნაოპერაციებ/გადადებულ/გაუქმებულ) ბარათზე კონფერენციის ქეისიდან სინქრონიზაცია დაბლოკილია!')
                     return HttpResponseRedirect(reverse('preop-patient', args=[existing.pk]))
                 op_sub, side = detect_case_preop(case)
@@ -296,10 +299,11 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
         case_doc = case.doctor if (case.doctor and is_doctor_user(case.doctor)) else (
             request.user if is_doctor_user(request.user) else None
         )
+        valid_age = _int(case.age, lo=12, hi=120)
         p = PreopPatient.objects.create(
             case=case,
             patient_name=case.patient_name,
-            age=case.age,
+            age=valid_age,
             sex=case.sex or 'M',
             side=side,
             op_subtype=op_sub,
@@ -309,6 +313,8 @@ class PreopCreateView(LoginRequiredMixin, generic.View):
             updated_by=request.user,
         )
         import_case_to_preop(case, p)
+        if case.age is not None and valid_age is None:
+            messages.warning(request, 'კონფერენციის ქეისში მითითებული ასაკი (12–120 წელს გარეთ) არ გადმოტანილა — გადაამოწმეთ ასაკი!')
         messages.success(request, f'{p.patient_name} გადმოყვანილია წინასაოპერაციო სიაში.')
         return HttpResponseRedirect(reverse('preop-patient', args=[p.pk]))
 

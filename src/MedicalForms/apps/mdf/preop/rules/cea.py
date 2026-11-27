@@ -23,11 +23,11 @@ def _eval_cea_symptoms_and_clocks(ctx):
         and (patient.op_subtype == PreopPatient.OpSubtype.CEA_SYMP or q.get('cea_symp_event') or q.get('cea_event_chips'))
     ):
         ctx.amber_flags.append(
-            f'ნევროლოგიური ეპიზოდიდან გასულია {days_since_ev} დღე (>6 თვე) — ESVS 2023 გაიდლაინით განიხილება როგორც ასიმპტომური სტენოზი.'
+            f'ნევროლოგიური ეპიზოდიდან გასულია {days_since_ev} დღე (>{symp_max_days} დღე / >{round(symp_max_days / 30)} თვე) — ESVS 2023 გაიდლაინით განიხილება როგორც ასიმპტომური სტენოზი.'
         )
     elif patient.op_subtype == PreopPatient.OpSubtype.CEA_ASYMP and (q.get('cea_symp_event') or q.get('cea_event_chips')) and not q.get('cea_crescendo'):
         ctx.amber_flags.append(
-            f'კითხვარით დაფიქსირდა ნევროლოგიური სიმპტომი ბოლო 6 თვეში — გადაამოწმეთ სიმპტომური CEA-ს სტატუსი ({win_days}-დღიანი ფანჯარა)!'
+            f'კითხვარით დაფიქსირდა ნევროლოგიური სიმპტომი ბოლო {symp_max_days} დღეში — გადაამოწმეთ სიმპტომური CEA-ს სტატუსი ({win_days}-დღიანი ფანჯარა)!'
         )
     if q.get('cea_crescendo'):
         ctx.red_flags.append(

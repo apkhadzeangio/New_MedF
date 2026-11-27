@@ -115,7 +115,7 @@ def _med_call_status(ev, today):
     """Determine whether nurse must call patient about drug holds today/next 48h."""
     from django.utils import timezone
     today = _date(today) or timezone.localdate()
-    if ev['clearance_seal']['code'] == 'stop' or ev.get('has_hard_contraindication'):
+    if ev['clearance_seal']['code'] in ('stop', 'inactive') or ev.get('has_hard_contraindication') or ev.get('archived'):
         return {'needs_call': False, 'urgent_call': False, 'called_valid': False, 'outdated_call': False, 'drugs': []}
     s = ev['s']
     op_dt = _date(s.get('planned_surgery_date'))
@@ -443,11 +443,13 @@ def build_nurse_patient_context(request, patient, ev):
     wa_url = f'https://wa.me/{wa_phone}?text={quote(share_text)}' if (wa_phone and self_path) else f'https://wa.me/?text={quote(share_text)}'
     sms_url = f'sms:{phone_s}?body={quote(share_text)}' if (phone_s and self_path) else f'sms:?body={quote(share_text)}'
 
+    from ..models import PreopFile
     from .nurse_plan import (
         build_phone_med_script,
         build_plain_georgian_missing_items,
         detect_postponement_impacts,
     )
+    from .plain_ka import scrub_plain_ka
 
     return {
         'nw_verdict': verdict,
@@ -463,5 +465,7 @@ def build_nurse_patient_context(request, patient, ev):
         'nw_missing_list': build_plain_georgian_missing_items(patient, ev, today),
         'nw_med_script': build_phone_med_script(patient, ev, today),
         'nw_postponement': detect_postponement_impacts(patient, ev, today),
+        'nw_file_categories': [(k, scrub_plain_ka(lbl, second_person=False)) for k, lbl in PreopFile.Category.choices],
+        'nw_procedure_groups': REGISTER_PROCEDURE_GROUPS,
     }
 

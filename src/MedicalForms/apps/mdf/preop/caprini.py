@@ -211,10 +211,11 @@ def _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver, activ
     has_mv_c = 'mech_valve' in set(_str_list(q_d.get('cad_chips')))
     evla_subther_mv = bool(has_mv_c and inr_c is not None and inr_c < mech_inr_min)
     has_nx_plan = (s_cur.get('anesthesia_plan') or 'auto') == 'neuraxial' or ('epidural' in _str_list(s_cur.get('anesth_lines_chips')))
+    has_ft_par = bool((ft_m.get('matched_keys') or set()) & {'parenteral_oac', 'parenteral_dti'})
     is_evla_vka = bool(
         patient.op_subtype == PreopPatient.OpSubtype.EVLA
         and not has_nx_plan and not active_gi_bleed and not eff_preg
-        and q_d.get('med_warfarin') and oac_cnt == 1 and not severe_liver and not dos_inr_bad and not evla_subther_mv
+        and q_d.get('med_warfarin') and oac_cnt == 1 and not has_ft_par and not severe_liver and not dos_inr_bad and not evla_subther_mv
         and (inr_c is None or inr_c <= evla_max_inr)
     )
     ft_doac = bool(ft_unstruct & {'doac', 'dabigatran'}) and not ft_m.get('has_ft_riva_low')

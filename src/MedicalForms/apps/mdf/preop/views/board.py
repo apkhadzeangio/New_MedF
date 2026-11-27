@@ -407,7 +407,9 @@ def _append_allergy_renal_handoff(task_candidates, ev, q, s, pathway, allergy_ch
     hyd_egfr = rule_value('REN_CKD_NEPHRO_HYDRATION')['hydration']
     lvef_red = rule_value('CARDIO_BIOMARKERS_ECHO')['lvef_red']
     abx_reg = (ev.get('surgical_brief') or {}).get('abx_regimen') or ''
-    if 'beta_lactam' in allergy_chips and 'არ ესაჭიროება' not in abx_reg:
+    if pathway == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic':
+        task_candidates.append((_ABX_PREFIXES, abx_reg or 'მიკოზური AAA: სისხლის ნათესები ×2 + ემპირიული ფართო სპექტრის IV ანტიბიოტიკოთერაპია (ინფექციონისტთან შეთანხმებით; ESVS 2024)'))
+    elif 'beta_lactam' in allergy_chips and 'არ ესაჭიროება' not in abx_reg:
         groin_abx_sfx = ''
         if pathway in (PreopPatient.Pathway.AAA_INFRA, PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA):
             if ev.get('eff_pregnant'):

@@ -10,7 +10,7 @@ def _effective_operation_label(ctx):
         if ctx.is_symp_cea and 'ასიმპტომური' in eff_op_lbl:
             return eff_op_lbl.replace('ასიმპტომური', 'სიმპტომური')
         if not ctx.is_symp_cea and 'სიმპტომური' in eff_op_lbl and 'ასიმპტომური' not in eff_op_lbl:
-            return eff_op_lbl.replace('სიმპტომური', 'ასიმპტომური (>180 დღე)')
+            return eff_op_lbl.replace('სიმპტომური', f'ასიმპტომური (>{rule_value("CEA_SYMP_WINDOW_DAYS")[2]} დღე)')
     elif ctx.pathway in ('abf', 'pad_bypass', 'pad_pta') and ctx.is_clti_any:
         return eff_op_lbl.replace('ლერიშის სინდრომი', 'კრიტიკული იშემია (CLTI)').replace('კოჭლობა', 'CLTI')
     return eff_op_lbl

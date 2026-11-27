@@ -102,7 +102,7 @@ def _apply_q_booleans_and_chips(post_data, q, patient=None):
             continue
         if f == 'active_infection' and is_ven and 'active_infection_presented' not in post_data and 'active_infection' not in post_data:
             continue
-        if not is_ven and f in _VENOUS_ONLY_Q_BOOLS and f not in post_data:
+        if not is_ven and f in _VENOUS_ONLY_Q_BOOLS and f not in post_data and f'{f}_presented' not in post_data:
             continue
         if f == 'abf_buttock_pain' and patient is not None and patient.pathway != PreopPatient.Pathway.ABF and f not in post_data:
             continue
@@ -128,7 +128,7 @@ def _apply_q_booleans_and_chips(post_data, q, patient=None):
         for chip_field in _NURSE_Q_CHIP_FIELDS:
             if chip_field == 'inf_chips' and is_ven and 'active_infection_presented' not in post_data and 'inf_chips' not in post_data:
                 continue
-            if not is_ven and chip_field in _VENOUS_ONLY_Q_CHIPS and chip_field not in post_data:
+            if not is_ven and chip_field in _VENOUS_ONLY_Q_CHIPS and chip_field not in post_data and f'{chip_field}_presented' not in post_data:
                 continue
             valid_keys = CHIP_LABELS[chip_field]
             q[chip_field] = [k for k in post_data.getlist(chip_field) if k in valid_keys]

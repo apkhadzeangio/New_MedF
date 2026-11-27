@@ -238,7 +238,9 @@ class PreopStageP2AnesthDosAndVqiTests(PrivateMediaTest):
         self.assertRedirects(resp, reverse('board-patient', args=[bp.pk]))
         p.refresh_from_db()
         ev_ok = evaluate(p, today=today)
-        self.assertTrue(ev_ok['dos_ready'])
+        self.assertEqual(ev_ok['dos_done_count'], ev_ok['dos_total_count'])
+        self.assertFalse(ev_ok['dos_hold_danger'])
+        self.assertFalse(ev_ok['dos_ready'])
         self.assertEqual(merged_studies(p)['case_outcome_status'], 'operated')
         self.assertTrue(bool(merged_studies(p)['operated_date']))
 

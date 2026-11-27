@@ -95,7 +95,7 @@ class PreopNurseRegisterView(LoginRequiredMixin, generic.View):
         if pathway == PreopPatient.Pathway.CEA and side == 'B':
             return render(
                 request, self.template_name,
-                self._ctx(form_data, 'საძილე არტერიის (CEA) ორმხრივი ერთდროული ოპერაცია დაუშვებელია — აირჩიეთ მარჯვენა ან მარცხენა მხარე.'),
+                self._ctx(form_data, 'საძილე არტერიის ორმხრივი ერთდროული ოპერაცია დაუშვებელია — აირჩიეთ მარჯვენა ან მარცხენა მხარე.'),
                 status=400,
             )
         if raw_op_date and (op_date is None or op_date < today):

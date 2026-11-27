@@ -9,6 +9,7 @@ from django.views import generic
 
 from ...cases import PhotoError
 from ...models import PreopFile, PreopPatient
+from ..constants import INACTIVE_CASE_OUTCOMES
 from ..forms import save_preop_file
 from ..utils import _date
 
@@ -21,7 +22,7 @@ class PreopFileUploadView(LoginRequiredMixin, generic.View):
 
         patient = get_object_or_404(PreopPatient, pk=pk)
         cur_out = merged_studies(patient).get('case_outcome_status') or 'scheduled'
-        if patient.archived or cur_out in ('operated', 'deferred', 'cancelled_logistics', 'cancelled_medical'):
+        if patient.archived or cur_out in INACTIVE_CASE_OUTCOMES:
             messages.error(request, 'დაარქივებულ ან არააქტიურ (ნაოპერაციებ/გადადებულ/გაუქმებულ) ბარათზე ფაილის ატვირთვა დაბლოკილია!')
             return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
         category = request.POST.get('category') or PreopFile.Category.LABS
@@ -88,15 +89,17 @@ class PreopFileDeleteView(LoginRequiredMixin, generic.View):
 
         rec = get_object_or_404(PreopFile.objects.select_related('patient'), pk=pk)
         patient = rec.patient
+        if patient.archived:
+            messages.error(request, 'დაარქივებული პაციენტის ბარათიდან ფაილის წაშლა დაბლოკილია — ჯერ დააბრუნეთ არქივიდან!')
+            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1#files')
         s_del = merged_studies(patient)
         is_audit_protected = (
-            patient.archived
-            or bool(patient.approved_at)
-            or s_del.get('case_outcome_status') in ('operated', 'deferred', 'cancelled_logistics', 'cancelled_medical')
+            bool(patient.approved_at)
+            or s_del.get('case_outcome_status') in INACTIVE_CASE_OUTCOMES
             or bool(s_del.get('board_patient_id'))
         )
         if is_audit_protected and not (request.user.is_superuser or request.user.is_staff):
-            messages.error(request, 'დადასტურებული, არააქტიური (ნაოპერაციები/გადადებული/გაუქმებული), დაფაზე გადაყვანილი ან არქივირებული პაციენტის დოკუმენტის წაშლა შეზღუდულია.')
+            messages.error(request, 'დადასტურებული, არააქტიური (ნაოპერაციები/გადადებული/გაუქმებული) ან დაფაზე გადაყვანილი პაციენტის დოკუმენტის წაშლა შეზღუდულია.')
             return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=s1#files')
         if not is_doctor_user(request.user) and rec.created_by_id != request.user.pk:
             messages.error(request, 'სხვა თანამშრომლის ატვირთული ფაილის წაშლა შეუძლია მხოლოდ ექიმს ან ადმინისტრატორს.')

@@ -118,20 +118,38 @@ def build_self_fill_highlights(q, patient=None):
         items.append(('warn', 'მედიკამენტები: ' + ', '.join(meds)))
     raw_other_meds = q.get('other_meds') if isinstance(q.get('other_meds'), str) else ''
     if raw_other_meds.strip():
+        import re
+
+        from .constants import _FREETEXT_HIGH_RISK_MED_RULES
         from .meds import _detect_freetext_high_risk_meds
         from .utils import _safe_display_str
         ft = _detect_freetext_high_risk_meds(raw_other_meds, q=q)
         lvl = 'urgent' if ft.get('unstructured_labels') else 'info'
-        clean_other = scrub_plain_ka(_safe_display_str(raw_other_meds, max_len=160), second_person=False, strip_quoted_ft=True)
-        items.append((lvl, f'სხვა წამალი: {clean_other or "მითითებულია ტექსტში"}'))
+        ft_lbls = [scrub_plain_ka(lbl, second_person=False, strip_quoted_ft=True) for lbl in (ft.get('unstructured_labels') or [])]
+        if not ft_lbls:
+            rule_lbls = {k: lbl for k, lbl, _, _ in _FREETEXT_HIGH_RISK_MED_RULES}
+            for k in (ft.get('matched_keys') or ()):
+                if k in rule_lbls:
+                    ft_lbls.append(scrub_plain_ka(rule_lbls[k], second_person=False, strip_quoted_ft=True))
+            for flag_k, ka_lbl in (('has_ft_statin', 'სტატინი'), ('has_ft_acei_arb', 'წნევის წამალი'), ('has_ft_nsaid', 'ტკივილგამაყუჩებელი'), ('has_omeprazole', 'კუჭის დამცავი')):
+                if ft.get(flag_k):
+                    ft_lbls.append(ka_lbl)
+        ft_lbls = [x for x in dict.fromkeys(ft_lbls) if x]
+        if ft_lbls:
+            clean_other = ', '.join(ft_lbls)
+        else:
+            cand = scrub_plain_ka(_safe_display_str(raw_other_meds, max_len=160), second_person=False, strip_quoted_ft=True)
+            clean_other = cand if re.search(r'[ა-ჰ]', cand) else 'მითითებულია ტექსტში (გადაამოწმეთ ჩანაწერი)'
+        items.append((lvl, f'სხვა წამალი: {clean_other}'))
     if q.get('allergy_iodine'):
         items.append(('urgent', 'ალერგია იოდზე / კონტრასტზე!'))
-    from .meds_freetext import _positive_clauses_text
+    from .meds_freetext import _detect_freetext_allergies, _positive_clauses_text
 
     raw_alg_txt = q.get('allergy_text') if isinstance(q.get('allergy_text'), str) else ''
     pos_alg_txt = _positive_clauses_text(raw_alg_txt)
     if q.get('allergy_other') or q.get('allergy_chips') or pos_alg_txt:
-        alg_txt = chip_summary(q.get('allergy_chips'), 'allergy_chips', raw_alg_txt if pos_alg_txt else '') or 'მედიკამენტური ალერგია'
+        alg_chips_eff = list(dict.fromkeys([*_str_list(q.get('allergy_chips')), *(_detect_freetext_allergies(raw_alg_txt) - {'iodine'})]))
+        alg_txt = chip_summary(alg_chips_eff, 'allergy_chips', raw_alg_txt if (pos_alg_txt and not alg_chips_eff) else '') or 'მედიკამენტური ალერგია'
         clean_alg = scrub_plain_ka(alg_txt, second_person=False, strip_quoted_ft=True) or 'მედიკამენტური ალერგია'
         items.append(('urgent', f'ალერგია: {clean_alg}'))
     if q.get('smoker'):
@@ -451,14 +469,19 @@ def _anam_comorb_meds_allergy(patient, pathway, ev, q):
             comorb.append('იშემია / არითმია (ეკგ)')
         if ev.get('hs_ctn') is not None and ev['hs_ctn'] >= cb_cfg['ctn_amb']:
             comorb.append(f"მომატებული hs-cTn ({ev['hs_ctn']} ng/L)")
+        if ev.get('nt_probnp') is not None and ev['nt_probnp'] >= cb_cfg['bnp_amb']:
+            comorb.append(f"მომატებული NT-proBNP ({ev['nt_probnp']} pg/mL)")
+    if q.get('pacemaker'):
+        comorb.append('იმპლანტირებული კარდიოსტიმულატორი / ICD (CIED)')
+    ft_keys_a = set(ev.get('ft_meds_keys') or ())
     hba1c_a = _num(s_ev.get('hba1c'), 3.0, 25.0)
     gl_a = ev.get('gl_mmol')
-    if q.get('dm') or q.get('dm_insulin') or q.get('metformin'):
-        dm_kind = 'ინსულინზე' if q.get('dm_insulin') else 'ტაბლეტებზე'
+    if q.get('dm') or q.get('dm_insulin') or q.get('metformin') or ('insulin' in ft_keys_a) or ('metformin' in ft_keys_a):
+        dm_kind = 'ინსულინზე' if (q.get('dm_insulin') or 'insulin' in ft_keys_a) else 'ტაბლეტებზე'
         comorb.append(f'შაქრიანი დიაბეტი ({dm_kind})')
     elif hba1c_a is not None and hba1c_a >= hba1c_dm:
         comorb.append(f'არადიაგნოსტირებული შაქრიანი დიაბეტი (HbA1c {hba1c_a}%)')
-    elif ev.get('has_known_dm') or q.get('sglt2'):
+    elif ev.get('has_known_dm') or q.get('sglt2') or ('sglt2' in ft_keys_a):
         comorb.append('სავარაუდო შაქრიანი დიაბეტი / SGLT2 თერაპია (დასაზუსტებელია)')
     elif gl_a is not None and gl_a >= gly_cfg['gl_endo']:
         comorb.append(f'გამოხატული ჰიპერგლიკემია ({gl_a} მმოლ/ლ — გამოირიცხოს დიაბეტი!)')
@@ -483,9 +506,8 @@ def _anam_comorb_meds_allergy(patient, pathway, ev, q):
     if q.get('smoker'):
         comorb.append('თამბაქოს მწეველი')
     med_ch_set = set(_str_list(q.get('med_chips')))
-    ft_keys_a = set(ev.get('ft_meds_keys') or ())
     has_unlisted_cv_rx = bool(
-        ev.get('has_full_oac') or ev.get('has_ft_full_oac')
+        ev.get('has_full_oac') or ev.get('has_ft_full_oac') or ('rivaroxaban_2_5' in med_ch_set)
         or (q.get('med_aspirin') and any(q.get(k) for k in ('med_clopidogrel', 'med_ticagrelor', 'med_prasugrel')))
         or ('amiodarone' in med_ch_set) or ('amiodarone' in ft_keys_a)
     )

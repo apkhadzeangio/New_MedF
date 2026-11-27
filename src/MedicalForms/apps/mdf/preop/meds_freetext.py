@@ -37,24 +37,22 @@ _AFFIRM_PRED_RE = re.compile(
 )
 _ALLERGY_WORD_RE = re.compile(r'(?:ალერგი[ა-ჰ]*|\ballerg(?:y|ies|ic)\b)', re.IGNORECASE)
 _INLINE_NEG_SPLIT_RE = re.compile(
-    r' (?=(?:no|not|without) [a-zა-ჰ]|(?:stopped|discontinued|held) (?!(?:started|taking|takes|switched|changed|continues|on)\b)[a-zა-ჰ])'
+    r' (?=(?:no|not|without) [a-zა-ჰ])'
     r'| (?=(?:switched to|changed to|allergic to) [a-zა-ჰ])'
-    r'|(?<!\bnot)(?<!\bno)(?<!never) (?=(?:taking|takes) [a-zა-ჰ])'
-    r'|(?<!\bnot)(?<!\bno)(?<!never)(?<!allergy)(?<!allergies) (?=on [a-z])'
-    r'|(?<=stopped) (?=(?:started|taking|takes|switched|changed|continues|on ))'
-    r'|(?<=discontinued) (?=(?:started|taking|takes|switched|changed|continues|on ))'
-    r'|(?<=held) (?=(?:started|taking|takes|switched|changed|continues|on ))'
-    r'|(?<=შეწყვეტილია) (?=დაიწყო|დაუნიშნ|გადავიდა|გადაიყვან|იღებს|ვიღებ|სვამს|ვსვამ|აგრძელებს|უწერია)'
-    r'|(?<=მოხსნილია) (?=დაიწყო|დაუნიშნ|გადავიდა|გადაიყვან|იღებს|ვიღებ|სვამს|ვსვამ|აგრძელებს|უწერია)'
-    r'|(?<=შეჩერებულია) (?=დაიწყო|დაუნიშნ|გადავიდა|გადაიყვან|იღებს|ვიღებ|სვამს|ვსვამ|აგრძელებს|უწერია)'
-    r'|(?<=შეწყვიტა) (?=დაიწყო|დაუნიშნ|გადავიდა|გადაიყვან|იღებს|ვიღებ|სვამს|ვსვამ|აგრძელებს|უწერია)'
-    r'|(?<=მოხსნა) (?=დაიწყო|დაუნიშნ|გადავიდა|გადაიყვან|იღებს|ვიღებ|სვამს|ვსვამ|აგრძელებს|უწერია)'
-    r'|(?<=შეაჩერა) (?=დაიწყო|დაუნიშნ|გადავიდა|გადაიყვან|იღებს|ვიღებ|სვამს|ვსვამ|აგრძელებს|უწერია)'
+    r"|(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!stopped)(?<!discontinued) (?=(?:taking|takes|started|continues) [a-zა-ჰ])"
+    r"|(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!allergy)(?<!allergies) (?=on [a-z])"
+    r'|(?<=stopped) (?=(?:started|takes|switched|changed|continues|on ))'
+    r'|(?<=discontinued) (?=(?:started|takes|switched|changed|continues|on ))'
+    r'|(?<=held) (?=(?:started|takes|switched|changed|continues|on ))'
+    r'|(?:(?<=შეწყვეტილია)|(?<=მოხსნილია)|(?<=შეჩერებულია)|(?<=შეწყვიტა)|(?<=მოხსნა)|(?<=შეაჩერა)|(?<=მოუხსნეს)|(?<=შეუწყვიტეს)) '
+    r'(?!(?:და|ან|მაგრამ|ხოლო|თუმცა|რომ|გამო|წინ|ადრე|დღე|დღის|დღით|თვე|თვის|კვირ|წელ|წლის|წლიდან|საათ|სთ|უკვე|მანამდე|საერთოდ)(?![ა-ჰ]))(?=[a-zა-ჰ])'
     r'|(?<=ალერგია) (?=\S+ (?:არ|არა) (?:აქვს|მაქვს|აღენიშნება|უფიქსირდება|არის))'
     r'|(?:(?<=\d)|(?<=მგ)|(?<=mg)|(?<=მკგ)|(?<=mcg)|(?<=გ)|(?<=g)) '
+    r'(?!(?:მგ|mg|მკგ|mcg|გ|g|სე|u|iu|მლ|ml|ტაბ|აბ|tab|x2|2x|bid|qd|od) )'
     r'(?=[a-zა-ჰ0-9\-]+ (?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) '
-    rf'{_KA_VERBS}|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს|შეწყვიტა|მოხსნა))'
+    rf'{_KA_VERBS}|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს|შეწყვიტა|მოხსნა|შეაჩერა|stopped|discontinued|held))'
 )
+_EN_STOPPED_RE = re.compile(r'\b(?:stopped|discontinued|held)\b', re.IGNORECASE)
 _DOSE_UNIT_END_RE = re.compile(r'(?:\d|მგ|mg|მკგ|mcg|გ|g)$', re.IGNORECASE)
 _KA_AFFIRM_VERB_AFTER_RE = re.compile(
     r'(?<![ა-ჰ])(?:სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აქვს|მაქვს|აღენიშნება|უფიქსირდება|აწუხებს)'
@@ -65,14 +63,14 @@ _KA_VERB_WORD_RE = re.compile(
 )
 _KA_NEG_PARTICLES = frozenset({'არ', 'აღარ', 'არა', 'ვერ'})
 _DOUBLE_NEG_AFFIRM_EN_RE = re.compile(
-    r"\b(?:(?:did )?not (?:yet )?(?:stop|stopped|discontinue|discontinued|hold|held)"
-    r"|(?:hasn't|haven't|didn't|hadn't|isn't|aren't|wasn't|weren't) (?:yet )?(?:stop|stopped|discontinue|discontinued|hold|held)"
-    r"|never (?:stopped|discontinued|held))\b",
+    r"\b(?:(?:did |has |have |was |were )?not (?:yet )?(?:been )?(?:stop|stopped|discontinue|discontinued|hold|held)"
+    r"|(?:hasn't|haven't|didn't|hadn't|isn't|aren't|wasn't|weren't) (?:yet )?(?:been )?(?:stop|stopped|discontinue|discontinued|hold|held)"
+    r"|never (?:been )?(?:stop|stopped|discontinue|discontinued|hold|held))\b",
     re.IGNORECASE,
 )
 _DOUBLE_NEG_AFFIRM_KA_RE = re.compile(
     r'არაა (?:შეწყვეტილი|მოხსნილი|შეჩერებული)'
-    r'|(?:არ|არც|ვერ) (?:შეუწყვეტია|მოუხსნია|შეუჩერებია|შეწყვიტა|მოხსნა|შეაჩერა'
+    r'|(?:არ|არც|ვერ) (?:შეუწყვეტია|მოუხსნია|შეუჩერებია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს|შეაჩერეს'
     r'|(?:არის|აქვს|მაქვს) (?:შეწყვეტილი|მოხსნილი|შეჩერებული))',
 )
 _UNINTERRUPTED_AFFIRM_RE = re.compile(
@@ -119,9 +117,9 @@ _ALLERGY_NEGATION_WORDS = frozenset({
 _NEGATION_PHRASE_RE = re.compile(
     r'(?:(?:არ|აღარ|არა|ვერ) (?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|აღნიშნავს|ჰქონია|აღენიშნება|უფიქსირდება|არის|აწუხებს)'
     r'|(?<![ა-ჰ])(?:არაა?(?![ა-ჰ\-—–])|არაქვს(?![ა-ჰ])|არმაქვს(?![ა-ჰ])|არააქვს(?![ა-ჰ])|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*)'
-    r'|უარყოფს|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს|შეწყვიტა|მოხსნა|გამორიცხულია'
+    r'|უარყოფს|მოხსნილია|შეწყვეტილია|შეჩერებულია|მოუხსნეს|შეუწყვიტეს|შეწყვიტა|მოხსნა|შეაჩერა|გამორიცხულია'
     r'|(?<![ა-ჰ])გარეშე(?![ა-ჰ])'
-    r'|(?<![a-z])(?:no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without)\b)',
+    r"|(?<![a-z])(?:no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b)",
     re.IGNORECASE,
 )
 _FT_STATIN_STEMS = (
@@ -159,9 +157,9 @@ _FT_NSAID_STEMS = (
 _DIGIT_RE = re.compile(r'\d')
 _COMPACT_STRIP_RE = re.compile(r'[\s.,;:!?()\[\]"\'—–-]+')
 _NEG_FAST_HINT_RE = re.compile(
-    r'\b(?:არ|აღარ|არა|ვერ|მოხსნ|შეწყვ|შეჩერ|გამორ|უარყ|გარეშე'
-    r'|no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without)\b'
-    r'|\b(?:არა|არაქვს|არმაქვს|არააქვს|არანაირ|არავითარ|უარყოფს|მოხსნ|შეწყვ|შეჩერ|მოუხსნ|შეუწყვ|გამორიცხ)',
+    r"\b(?:არ|აღარ|არა|ვერ|მოხსნ|შეწყვ|შეჩერ|შეაჩერ|გამორ|უარყ|გარეშე"
+    r"|no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b"
+    r'|\b(?:არა|არაქვს|არმაქვს|არააქვს|არანაირ|არავითარ|უარყოფს|მოხსნ|შეწყვ|შეჩერ|შეაჩერ|მოუხსნ|შეუწყვ|გამორიცხ)',
     re.IGNORECASE,
 )
 
@@ -229,50 +227,73 @@ def _split_ka_two_verb_tail(piece):
     return [x for x in (left, right) if x]
 
 
+def _split_en_stopped(sub_s):
+    """Split unpunctuated English 'stopped/discontinued/held' clauses cleanly in O(N)."""
+    if ('stopped' not in sub_s and 'discontinued' not in sub_s and 'held' not in sub_s) or not _EN_STOPPED_RE.search(sub_s):
+        return [sub_s]
+    out, last = [], 0
+    for m in _EN_STOPPED_RE.finditer(sub_s):
+        before = sub_s[last:m.start()].strip()
+        after = sub_s[m.end():].strip()
+        if not before:
+            continue
+        if _AFFIRM_PRED_RE.search(before):
+            out.append(before)
+            last = m.start()
+        elif after:
+            out.append(sub_s[last:m.end()].strip())
+            last = m.end()
+    tail = sub_s[last:].strip()
+    if tail:
+        out.append(tail)
+    return out or [sub_s]
+
+
 def _split_inline_boundaries(seg):
     """Split unpunctuated multi-clause utterances in O(N) time."""
     if not _has_neg_phrase(seg):
         return [seg]
     out, seen_subs = [], set()
-    for sub in _INLINE_NEG_SPLIT_RE.split(seg):
-        sub_s = sub.strip()
-        if not sub_s or sub_s in seen_subs:
-            continue
-        seen_subs.add(sub_s)
-        if not _has_neg_phrase(sub_s):
-            out.append(sub_s)
-            continue
-        verb_total = len(_KA_VERB_WORD_RE.findall(sub_s))
-        last, pieces = 0, []
-        for m in _KA_AFFIRM_VERB_AFTER_RE.finditer(sub_s):
-            before = sub_s[last:m.start()].rstrip()
-            if not before:
+    for raw_sub in _INLINE_NEG_SPLIT_RE.split(seg):
+        for sub in _split_en_stopped(raw_sub.strip()):
+            sub_s = sub.strip()
+            if not sub_s or sub_s in seen_subs:
                 continue
-            prev_tok = before.rsplit(' ', 1)[-1] if before else ''
-            if prev_tok in _KA_NEG_PARTICLES:
-                before_neg = before[: -len(prev_tok)].strip()
-                if not before_neg or before_neg in _GENERIC_SOV_HEADS:
+            seen_subs.add(sub_s)
+            if not _has_neg_phrase(sub_s):
+                out.append(sub_s)
+                continue
+            verb_total = len(_KA_VERB_WORD_RE.findall(sub_s))
+            last, pieces = 0, []
+            for m in _KA_AFFIRM_VERB_AFTER_RE.finditer(sub_s):
+                before = sub_s[last:m.start()].rstrip()
+                if not before:
                     continue
-                if _KA_VERB_WORD_RE.search(before_neg) or (verb_total == 1 and _DOSE_UNIT_END_RE.search(before_neg)):
-                    neg_pos = sub_s.rfind(prev_tok, last, m.start())
-                    if neg_pos > last:
-                        pieces.append(sub_s[last:neg_pos].strip())
-                        last = neg_pos
+                prev_tok = before.rsplit(' ', 1)[-1] if before else ''
+                if prev_tok in _KA_NEG_PARTICLES:
+                    before_neg = before[: -len(prev_tok)].strip()
+                    if not before_neg or before_neg in _GENERIC_SOV_HEADS:
                         continue
-            if _PREFIX_NEG_START_RE.search(before):
-                pieces.append(before)
-                last = m.start()
-                continue
-            verb_end = m.end() - 1
-            piece = sub_s[last:verb_end].strip()
-            if piece:
-                pieces.append(piece)
-            last = verb_end + 1
-        tail = sub_s[last:].strip()
-        if tail:
-            pieces.append(tail)
-        for pc in pieces:
-            out.extend(_split_ka_two_verb_tail(pc))
+                    if _KA_VERB_WORD_RE.search(before_neg) or (verb_total == 1 and _DOSE_UNIT_END_RE.search(before_neg)):
+                        neg_pos = sub_s.rfind(prev_tok, last, m.start())
+                        if neg_pos > last:
+                            pieces.append(sub_s[last:neg_pos].strip())
+                            last = neg_pos
+                            continue
+                if _PREFIX_NEG_START_RE.search(before):
+                    pieces.append(before)
+                    last = m.start()
+                    continue
+                verb_end = m.end() - 1
+                piece = sub_s[last:verb_end].strip()
+                if piece:
+                    pieces.append(piece)
+                last = verb_end + 1
+            tail = sub_s[last:].strip()
+            if tail:
+                pieces.append(tail)
+            for pc in pieces:
+                out.extend(_split_ka_two_verb_tail(pc))
     return out
 
 
@@ -642,6 +663,12 @@ def _append_ft_parenteral_row(c, ft, raw_txt, immed_stop_plan, gi_bleed_plan):
     if c['repro_pregnant'] and (ft.get('has_ft_fondaparinux') or ('parenteral_dti' in matched)):
         msgs.append('ორსულობის დროს ფონდაპარინუქსი / IV DTI შეათანხმეთ მეან-გინეკოლოგთან და ჰემატოლოგთან!')
         plan_ov = plan_ov or immed_stop_plan
+    if c['has_mech_valve'] and ft.get('has_ft_fondaparinux'):
+        msgs.append('მექანიკურ სარქველზე ფონდაპარინუქსი აკრძალულია (თრომბოზის მაღალი რისკი) — დაუყოვნებლივ შეათანხმეთ კარდიოლოგთან და ჰემატოლოგთან!')
+        plan_ov = plan_ov or immed_stop_plan
+    if c['is_evla'] and q.get('med_warfarin'):
+        msgs.append('ორმაგი ანტიკოაგულაცია EVLA-ზე (უწყვეტი ვარფარინი + პარენტერული ანტიკოაგულანტი) — დაუყოვნებლივ შეათანხმეთ ქირურგთან/კარდიოლოგთან!')
+        plan_ov = plan_ov or immed_stop_plan
     has_doac_conc = bool(q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in med_chips or (u_keys & {'doac', 'dabigatran'}))
     if has_doac_conc:
         msgs.append('ორმაგი ანტიკოაგულაცია (DOAC + პარენტერული ანტიკოაგულანტი) — დაუყოვნებლივ შეათანხმეთ ქირურგთან/კარდიოლოგთან!')
@@ -659,6 +686,13 @@ def _append_ft_parenteral_row(c, ft, raw_txt, immed_stop_plan, gi_bleed_plan):
             drug_lbl,
             f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია პარენტერული ანტიკოაგულანტი — {" · ".join(msgs)}',
             'red', plan_ov, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True,
+        )
+    elif is_pure_dti:
+        add_row(
+            drug_lbl,
+            f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია არაჰეპარინული პარენტერული ანტიკოაგულანტი (IV DTI — არგატრობანი / ბივალირუდინი) — შეათანხმეთ შეჩერების დრო ჰემატოლოგთან/ქირურგთან (IV ინფუზიის შეჩერება −2–4 სთ aPTT კონტროლით; ASRA ნეირაქსიული ბლოკადა დაბლოკილია!).',
+            'amber', 'შეათანხმეთ ქირურგთან (IV −2–4 სთ, aPTT)',
+            hold_or_skip=True, force_date_plan=True, contraindicated=False, acute_hold=False, reconcile_only=True,
         )
     elif is_pure_ufh:
         add_row(

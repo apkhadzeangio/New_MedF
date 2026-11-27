@@ -176,7 +176,7 @@
             msgs.push('დაუჯერებელი გლუკოზა (' + gl + ') — გადაამოწმეთ!');
         } else if (!isNaN(gl)) {
             var rawGl = gl / 18.0;
-            var glM = gl > 35 ? (rawGl < 3.9 ? Math.floor(rawGl * 100) / 100 : (rawGl > 10.0 ? Math.ceil(rawGl * 100) / 100 : Math.round(rawGl * 100) / 100)) : gl;
+            var glM = gl > 35 ? (rawGl < 3.9 ? Math.floor(rawGl * 100) / 100 : (rawGl > 7.0 ? Math.ceil(rawGl * 100) / 100 : Math.round(rawGl * 100) / 100)) : gl;
             if (glM < 3.9 || glM >= 14.0) msgs.push('კრიტიკული გლიკემია (' + glM + ' მმოლ/ლ) — აცნობეთ ექიმს!');
             else if (glM >= 7.0) msgs.push('მომატებული გლუკოზა (' + glM + ' მმოლ/ლ — ჩაირთვება HbA1c).');
         }
@@ -231,7 +231,7 @@
         else if (!isNaN(g) && (g < 0.5 || g > 1000)) msgs.push('დაუჯერებელი დილის გლუკოზა (' + g + ')!');
         else if (!isNaN(g)) {
             var rawGm = g / 18.0;
-            var gm = g > 35 ? (rawGm < 3.9 ? Math.floor(rawGm * 100) / 100 : (rawGm > 10.0 ? Math.ceil(rawGm * 100) / 100 : Math.round(rawGm * 100) / 100)) : g;
+            var gm = g > 35 ? (rawGm < 3.9 ? Math.floor(rawGm * 100) / 100 : (rawGm > 7.0 ? Math.ceil(rawGm * 100) / 100 : Math.round(rawGm * 100) / 100)) : g;
             if (gm < 3.9 || gm >= 14.0) msgs.push('კრიტიკული დილის გლიკემია (' + gm + ' მმოლ/ლ) — აცნობეთ ექიმს!');
             else if (gm > 10.0) msgs.push('მომატებული დილის გლუკოზა (' + gm + ' > 10.0 მმოლ/ლ — გლიკემიური კონტროლი).');
         }
@@ -343,7 +343,7 @@
         attachFldGuard(el, function (v) {
             if (v < 0.5 || v > 1000) return { level: 'crit', msg: 'დაუჯერებელი გლუკოზა (' + v + ')!' };
             var rawMf = v / 18.0;
-            var mmol = v > 35 ? (rawMf < 3.9 ? Math.floor(rawMf * 100) / 100 : (rawMf > 10.0 ? Math.ceil(rawMf * 100) / 100 : Math.round(rawMf * 100) / 100)) : v;
+            var mmol = v > 35 ? (rawMf < 3.9 ? Math.floor(rawMf * 100) / 100 : (rawMf > 7.0 ? Math.ceil(rawMf * 100) / 100 : Math.round(rawMf * 100) / 100)) : v;
             if (mmol >= 14.0 || mmol < 3.9) return { level: 'crit', msg: 'კრიტიკული გლიკემია (' + mmol + ' მმოლ/ლ)!' };
             if (isDosGl) {
                 if (mmol > 10.0) return { level: 'warn', msg: 'მომატებული დილის გლუკოზა (>10.0 მმოლ/ლ)' };

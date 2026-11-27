@@ -129,8 +129,8 @@
                         <span><strong>რეფლექს-დოპლერი ({% if ev.abi_non_compressible %}ABI {{ ev.max_abi }} &gt; 1.40 — არაკომპრესირებადი{% else %}დიაბეტი / დიალიზი + CLTI{% endif %}):</strong> სამიზნე კიდურზე თითის წნევა (Toe Pressure, mmHg) ან TBI{% if ev.is_venous %} <small class="text-muted">(კომპრესიამდე TP &ge; 60 ან TBI &ge; 0.70)</small>{% endif %}</span>
                         <div class="d-flex flex-wrap align-items-center gap-1">
                             <span class="small">TP R/L:</span>
-                            <input type="number" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="R mmHg" min="0" max="400" class="form-control form-control-sm" style="width:78px">
-                            <input type="number" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="L mmHg" min="0" max="400" class="form-control form-control-sm" style="width:78px">
+                            <input type="number" step="any" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="R mmHg" min="0" max="400" class="form-control form-control-sm" style="width:78px">
+                            <input type="number" step="any" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="L mmHg" min="0" max="400" class="form-control form-control-sm" style="width:78px">
                             <span class="small ms-1">TBI R/L:</span>
                             <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="0.72" min="0" max="3.0" class="form-control form-control-sm" style="width:72px">
                             <input type="number" step="0.01" name="tbi_l" value="{{ s.tbi_l|default_if_none:'' }}" placeholder="0.70" min="0" max="3.0" class="form-control form-control-sm" style="width:72px">
@@ -215,7 +215,7 @@
                         <span><strong>სპირომეტრია</strong> <small class="text-muted">(ESAIC 2024: ფილტვის პათოლოგიის / SpO₂ &lt;94% / ქოშინის გამო)</small></span>
                         <div class="d-flex align-items-center gap-2">
                             <span class="small">FEV1 (%):</span>
-                            <input type="number" name="spiro_fev1" value="{{ s.spiro_fev1|default_if_none:'' }}" placeholder="მაგ. 75" class="form-control form-control-sm" style="width:95px">
+                            <input type="number" step="any" name="spiro_fev1" value="{{ s.spiro_fev1|default_if_none:'' }}" placeholder="მაგ. 75" class="form-control form-control-sm" style="width:95px">
                         </div>
                     </div>
                     {% endif %}

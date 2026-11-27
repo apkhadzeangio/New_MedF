@@ -124,6 +124,8 @@ def _eval_early_neuraxial_gate(ctx):
     doac_nx_lims = [lim for cond, lim in ((q.get('med_doac'), doac_low), (q.get('med_dabigatran'), dabi_low), ('rivaroxaban_2_5' in ctx.med_chips, ren_red)) if cond]
     if doac_nx_lims and (ctx.on_dialysis or (eff_ren_nx is not None and eff_ren_nx < max(doac_nx_lims))):
         hard_nx_reasons.append(f'CrCl/eGFR < {max(doac_nx_lims)} ანტიკოაგულანტზე — ნეირაქსიული ბლოკადა მოერიდეთ!')
+    elif doac_nx_lims and eff_ren_nx is None:
+        hard_nx_reasons.append('კრეატინინი/CrCl შეუფასებელია DOAC/დაბიგატრანის ფონზე — ნეირაქსიული ბლოკადა დაბლოკილია თირკმლის ფუნქციის დადასტურებამდე!')
     if bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in ctx.allergy_chips):
         hard_nx_reasons.append('ადგილობრივ ანესთეტიკზე (ლიდოკაინი/მარკაინი/ბუპივაკაინი) ალერგია — ნეირაქსიული ბლოკადა უკუნაჩვენებია!')
     if bool(s.get('echo_valve_issue')):
@@ -187,12 +189,13 @@ def _resolve_effective_anesth_label(ctx, lido_alg, needs_ett_airway):
                 'ზოგადი ანესთეზია (ლიდოკაინზე/ადგილობრივ ანესთეტიკზე ალერგია — სპინალური/ტუმესცენტური ანესთეზიოლოგთან!)'
                 if lido_alg else 'სპინალური / ზოგადი ანესთეზია' + epi_sfx
             )
+        doac_nx_h = rule_value('MED_DOAC_HOLD_INTERVALS')['neuraxial_days'] * 24
         if patient.op_subtype == 'evar':
             return (
                 'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია!)'
-                if lido_alg else 'ზოგადი ან ადგილობრივი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)' + epi_sfx
+                if lido_alg else f'ზოგადი ან ადგილობრივი ანესთეზია (სპინალურის არჩევისას — ASRA {doac_nx_h} სთ რეჟიმი)' + epi_sfx
             )
-        return 'ზოგადი ანესთეზია (სპინალურის არჩევისას — ASRA 72 სთ რეჟიმი)' + epi_sfx
+        return f'ზოგადი ანესთეზია (სპინალურის არჩევისას — ASRA {doac_nx_h} სთ რეჟიმი)' + epi_sfx
     if epi_valid:
         return 'ზოგადი ენდოტრაქეული + ეპიდურული ანალგეზია'
     if ctx.hard_nx_reasons:
@@ -313,7 +316,7 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
                 )
             elif not is_mycotic_w and ((aaa_eff_w is not None and aaa_eff_w >= min_aaa_thresh) or is_high_risk_aaa) and wait_to_op > aaa_wait_std:
                 ctx.amber_flags.append(
-                    f'AAA ({aaa_lbl_w}): დაგეგმილი ოპერაციის მოლოდინი {wait_to_op} დღეა (UK NVR / ESVS სამიზნე ≤8 კვირა / {aaa_wait_std} დღე).'
+                    f'AAA ({aaa_lbl_w}): დაგეგმილი ოპერაციის მოლოდინი {wait_to_op} დღეა (UK NVR / ESVS სამიზნე ≤{round(aaa_wait_std / 7)} კვირა / {aaa_wait_std} დღე).'
                 )
         elif getattr(ctx, 'is_ali_acute', False):
             ali_wait_lim = rule_value('PAD_CLTI_HEMO_THRESHOLDS')['ali_wait_days']
@@ -446,18 +449,25 @@ def _build_dos_checks(ctx):
         dos_checks.append({'key': 'dos_bhcg_negative', 'label': f'ორსულობის გამორიცხვა (β-hCG უარყოფითია) — ფლუოროსკოპიის/კონტრასტის/ვენური ჩარევის უსაფრთხოება ({preg_lo}–{preg_hi} წ. ქალი)', 'done': bool(s.get('dos_bhcg_negative'))})
     ctx.is_uncomplicated_pta_abx = ctx.is_pta and not (q.get('abf_wet_infection') or q.get('abf_groin_issue'))
     is_std_evla_no_abx = ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not (q.get('ven_ceap') == 'C6' or q.get('ven_acute_svt') or q.get('ven_skin_infection'))
+    is_mycotic_dos = (pathway == PreopPatient.Pathway.AAA_INFRA and s.get('aaa_morphology') == 'inflammatory_mycotic')
     if not (is_std_evla_no_abx or ctx.is_uncomplicated_pta_abx):
         wt_eff = getattr(ctx, 'weight_sat', ctx.weight_num)
         cefaz_dose = f'3 გ (≥{cefaz_3g_kg} კგ!)' if (wt_eff is not None and wt_eff >= cefaz_3g_kg) else '2 გ'
-        if 'beta_lactam' in ctx.allergy_chips and getattr(ctx, 'has_vancomycin_allergy', False):
-            abx_hint = 'კლინდამიცინი 900 მგ IV (β-ლაქტამსა და ვანკომიცინზე ალერგია!)'
-        elif 'beta_lactam' in ctx.allergy_chips:
-            abx_hint = 'ვანკომიცინი / კლინდამიცინი (β-ლაქტამზე ალერგია!)'
+        if is_mycotic_dos:
+            abx_lbl = 'ემპირიული ფართო სპექტრის IV ანტიბიოტიკოთერაპია და სისხლის ნათესები ×2 მზადაა: მიკოზური AAA (იხ. 2A)'
+            if ctx.unclarified_allergy_other:
+                abx_lbl += ' [დააზუსტეთ უცნობი ალერგია შეყვანამდე!]'
+            dos_checks.append({'key': 'dos_abx_ready', 'label': abx_lbl, 'done': bool(s.get('dos_abx_ready'))})
         else:
-            abx_hint = f'ცეფაზოლინი {cefaz_dose} (ჭრილობამდე ≤60 წთ)'
-        if ctx.unclarified_allergy_other:
-            abx_hint += ' [დააზუსტეთ უცნობი ალერგია შეყვანამდე!]'
-        dos_checks.append({'key': 'dos_abx_ready', 'label': f'ანტიბიოტიკოპროფილაქტიკა მზადაა: {abx_hint}', 'done': bool(s.get('dos_abx_ready'))})
+            if 'beta_lactam' in ctx.allergy_chips and getattr(ctx, 'has_vancomycin_allergy', False):
+                abx_hint = 'კლინდამიცინი 900 მგ IV (β-ლაქტამსა და ვანკომიცინზე ალერგია!)'
+            elif 'beta_lactam' in ctx.allergy_chips:
+                abx_hint = 'ვანკომიცინი / კლინდამიცინი (β-ლაქტამზე ალერგია!)'
+            else:
+                abx_hint = f'ცეფაზოლინი {cefaz_dose} (ჭრილობამდე ≤60 წთ)'
+            if ctx.unclarified_allergy_other:
+                abx_hint += ' [დააზუსტეთ უცნობი ალერგია შეყვანამდე!]'
+            dos_checks.append({'key': 'dos_abx_ready', 'label': f'ანტიბიოტიკოპროფილაქტიკა მზადაა: {abx_hint}', 'done': bool(s.get('dos_abx_ready'))})
     if ctx.open_major or patient.op_subtype == 'evar' or ctx.has_synthetic_implant:
         decol_sfx = ''
         if ctx.has_synthetic_implant:
@@ -524,6 +534,7 @@ def _eval_dos_and_vqi(ctx):
         and not (
             q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips
             or getattr(ctx, 'has_ft_full_oac', False) or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))
+            or bool((ctx.ft_meds.get('matched_keys') or set()) & {'parenteral_oac', 'parenteral_dti'})
         )
     )
     evla_inr_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
@@ -627,15 +638,19 @@ def _eval_triage_and_passport_cautions(ctx):
     ctx.has_bad_med = any(r.get('contraindicated') or r.get('unstructured') for r in (ctx.med_schedule or ()))
     has_med_blocker = bool(ctx.has_bad_med or getattr(ctx, 'has_elapsed_hold_window', False))
     ctx.dos_ready = bool(
-        q_filled and (ctx.dos_done_count == ctx.dos_total_count)
-        and not ctx.dos_hold_danger and not ctx.has_unacked_red
-        and not ctx.neuraxial_hard_blocked and not has_med_blocker
+        ctx.is_active_case and not patient.archived
+        and q_filled and (ctx.dos_done_count == ctx.dos_total_count)
+        and not ctx.has_hard_contraindication and not ctx.dos_hold_danger
+        and not ctx.has_unacked_red and not ctx.neuraxial_hard_blocked
+        and not ctx.solo_neuraxial_anatomic_mismatch and not has_med_blocker
     )
 
-    if ctx.has_unacked_red or ctx.has_hard_contraindication or ctx.dos_hold_danger or ctx.neuraxial_hard_blocked or has_med_blocker:
+    if ctx.has_unacked_red or ctx.has_hard_contraindication or ctx.dos_hold_danger or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch or has_med_blocker:
         ctx.status = STATUS_ALERT
     elif not q_filled:
         ctx.status = STATUS_NO_Q
+    elif not ctx.is_active_case or patient.archived:
+        ctx.status = STATUS_PROGRESS
     elif patient.approved_at or ctx.all_tasks_done:
         ctx.status = STATUS_READY
     else:

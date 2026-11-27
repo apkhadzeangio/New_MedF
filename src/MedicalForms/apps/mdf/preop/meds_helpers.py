@@ -30,6 +30,20 @@ def _apply_stop_lock_to_med_schedule(rows):
     return rows
 
 
+def _apply_inactive_lock_to_med_schedule(rows):
+    """Suppress active future discontinuation dates on archived, cancelled, deferred, or operated cards."""
+    for r in rows:
+        r['hold_or_skip'] = False
+        if r.get('contraindicated') or r.get('acute_hold'):
+            r['date_plan'] = 'არააქტიური ბარათი — უკუნაჩვენები/საშიში წამალი გადაამოწმეთ მკურნალ ექიმთან!'
+            r['tone'] = 'red'
+        else:
+            r['date_plan'] = 'არააქტიური ბარათი — ძველი თარიღები გაუქმებულია, გადაამოწმეთ ექიმთან!'
+            r['rule'] = 'ბარათი დაარქივებული ან არააქტიურია — დაგეგმილი შეჩერების/მიღების რეჟიმი აღარ მოქმედებს; არცერთი წამალი არ შეწყვიტოთ ექიმთან შეთანხმების გარეშე!'
+            r['tone'] = 'amber'
+    return rows
+
+
 def _make_med_row_helpers(op_dt):
     rows = []
     safe_dt = op_dt if (op_dt and 1900 <= op_dt.year <= 2100) else None
@@ -96,15 +110,19 @@ def _med_renal_and_flags(patient, q, s, egfr, crcl):
     on_dialysis = bool(q.get('on_dialysis'))
     egfr = int(round(1.0 if v < 0 else min(v, 300))) if (v := _num(egfr)) is not None else None
     crcl = int(round(1.0 if v < 0 else min(v, 2000))) if (v := _num(crcl)) is not None else None
-    if not on_dialysis and egfr is None and crcl is None:
+    if not on_dialysis and (egfr is None or crcl is None):
         raw_cr, cr_u = _s_raw(s, 'creat'), s.get('creat_unit') or ''
-        age_raw, cr_raw_n = _num(patient.age), _num(raw_cr)
-        out_of_rng = bool((age_raw is not None and age_raw > 120) or (cr_raw_n is not None and cr_raw_n > 3000))
-        if out_of_rng and not is_creat_unit_mismatch(raw_cr, cr_u) and not _parse_scr_mgdl(raw_cr, cr_u)[1]:
-            eg_s = _sat_egfr(raw_cr, patient.age, patient.sex, creat_unit=cr_u)
-            cr_s = _sat_crcl(raw_cr, patient.age, patient.sex, weight_kg=_s_raw(s, 'weight_kg'), creat_unit=cr_u, height_cm=_s_raw(s, 'height_cm'))
-            egfr = int(round(eg_s)) if eg_s is not None else None
-            crcl = int(round(cr_s)) if cr_s is not None else None
+        wt_raw = _s_raw(s, 'weight_kg')
+        age_raw, cr_raw_n, wt_raw_n = _num(patient.age), _num(raw_cr), _num(wt_raw)
+        bad_cr = is_creat_unit_mismatch(raw_cr, cr_u) or _parse_scr_mgdl(raw_cr, cr_u)[1]
+        if not bad_cr:
+            age_or_cr_oob = bool((age_raw is not None and age_raw > 120) or (cr_raw_n is not None and cr_raw_n > 3000))
+            if egfr is None and age_or_cr_oob:
+                eg_s = _sat_egfr(raw_cr, patient.age, patient.sex, creat_unit=cr_u)
+                egfr = int(round(eg_s)) if eg_s is not None else None
+            if crcl is None and (age_or_cr_oob or (wt_raw_n is not None and (wt_raw_n < 25 or wt_raw_n > 260))):
+                cr_s = _sat_crcl(raw_cr, patient.age, patient.sex, weight_kg=wt_raw, creat_unit=cr_u, height_cm=_s_raw(s, 'height_cm'))
+                crcl = int(round(cr_s)) if cr_s is not None else None
     renal_vals = [x for x in (egfr, crcl) if x is not None]
     eff_renal = None if on_dialysis else (min(renal_vals) if renal_vals else None)
     cl_label = 'დიალიზი' if on_dialysis else (f'CrCl {crcl}' if crcl is not None and (egfr is None or crcl <= egfr) else (f'eGFR {egfr}' if egfr is not None else ''))

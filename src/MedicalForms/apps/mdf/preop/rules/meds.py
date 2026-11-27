@@ -66,6 +66,8 @@ def _eval_allergies_and_cied(ctx):
             ('hit_heparin' in ctx.allergy_chips and (ctx.ft_meds.get('has_ft_lmwh') or ctx.ft_meds.get('has_ft_ufh')))
             or (sev_ren_al and (ctx.ft_meds.get('has_ft_lmwh') or ctx.ft_meds.get('has_ft_fondaparinux')))
             or (ctx.liver_3x and ctx.ft_meds.get('has_ft_argatroban'))
+            or (ctx.has_mech_valve and ctx.ft_meds.get('has_ft_fondaparinux'))
+            or (ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and q.get('med_warfarin'))
             or getattr(ctx, 'active_gi_bleed', False)
             or bool(q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips or (ft_u_al & {'doac', 'dabigatran'}))
         )
@@ -195,7 +197,7 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
     elif eff_ren_c is not None and eff_ren_c < dabi_low and q.get('med_dabigatran'):
         ctx.red_flags.append(f'დაბიგატრანი (პრადაქსა) CrCl <{dabi_low} ფონზე უკუნაჩვენებია (EMA / EHRA 2021) — სავალდებულოა შეჩერება ≥{dabi_cfg["std"]["lt30"] * 24} სთ, თრომბინის დროის (TT) კონტროლი და კარდიოლოგ/ნეფროლოგთან ჩანაცვლება!')
     if ctx.on_dialysis and q.get('med_doac'):
-        ctx.red_flags.append(f'DOAC პროგრამული დიალიზის ფონზე — პრეპარატის აკუმულაციისა და სისხლდენის მაღალი რისკი (EHRA 2021): სავალდებულოა ≥96–{doac_cfg["dialysis_days"] * 24} სთ შეჩერება, ანტი-Xa კონტროლი და ნეფროლოგ/ქირურგის კონსილიუმი!')
+        ctx.red_flags.append(f'DOAC პროგრამული დიალიზის ფონზე — პრეპარატის აკუმულაციისა და სისხლდენის მაღალი რისკი (EHRA 2021): სავალდებულოა ≥{doac_cfg["crcl_lt30_days"] * 24}–{doac_cfg["dialysis_days"] * 24} სთ შეჩერება, ანტი-Xa კონტროლი და ნეფროლოგ/ქირურგის კონსილიუმი!')
     elif eff_ren_c is not None and eff_ren_c < doac_low and q.get('med_doac'):
         ctx.red_flags.append(f'DOAC (CrCl <{doac_low}) ფონზე პრეპარატის აკუმულაციისა და სისხლდენის მაღალი რისკი (EHRA 2021): სავალდებულოა ≥{doac_cfg["crcl_lt30_days"] * 24} სთ შეჩერება, ნეირაქსიული ბლოკადის აკრძალვა და ნეფროლოგ/ქირურგის კონსილიუმი!')
     if 'rivaroxaban_2_5' in ctx.med_chips and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < voy_min_egfr)):
@@ -229,6 +231,8 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
         ctx.red_flags.append('ორსულობის დროს ACEi / ARB (პრილი/სარტანი) აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!')
     if repro_preg and q.get('med_prasugrel'):
         ctx.red_flags.append('ორსულობის დროს პრასუგრელი არ არის რეკომენდებული (FDA / EMA) — დაუყოვნებლივ შეათანხმეთ უსაფრთხო ალტერნატივა მეან-გინეკოლოგთან და კარდიოლოგთან!')
+    if repro_preg and q.get('med_ticagrelor'):
+        ctx.red_flags.append('ორსულობის დროს ტიკაგრელორი უკუნაჩვენებია / არ არის რეკომენდებული (EMA / FDA) — დაუყოვნებლივ შეათანხმეთ უსაფრთხო ალტერნატივა მეან-გინეკოლოგთან და კარდიოლოგთან!')
     if repro_preg and q.get('sglt2'):
         ctx.red_flags.append('ორსულობის დროს SGLT2 ინჰიბიტორი უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ენდოკრინოლოგთან და მეან-გინეკოლოგთან!')
     elif ctx.on_dialysis and q.get('sglt2'):
@@ -237,6 +241,17 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
         ctx.red_flags.append('ორსულობის დროს GLP-1 აგონისტი უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და შეათანხმეთ ენდოკრინოლოგთან და მეან-გინეკოლოგთან!')
     if ctx.liver_3x and (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips):
         ctx.red_flags.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN) ანტიკოაგულანტის ფონზე: კოაგულოპათიის / Child-Pugh B–C დროს DOAC უკუნაჩვენებია (EHRA 2021) — გადაამოწმეთ სქემა!')
+    if ctx.liver_3x and q.get('med_ticagrelor'):
+        ctx.red_flags.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN): ტიკაგრელორი უკუნაჩვენებია (EMA Brilique SmPC 4.3 / FDA 5.5 — სისხლდენის რისკი)! დაუყოვნებლივ შეცვალეთ კარდიოლოგთან!')
+    if ctx.liver_3x and q.get('med_prasugrel'):
+        ctx.red_flags.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN): პრასუგრელი უკუნაჩვენებია (FDA Effient PI 5.1 — მძიმე სისხლდენის რისკი)! დაუყოვნებლივ შეცვალეთ კარდიოლოგთან!')
+    if q.get('med_prasugrel') or ('prasugrel' in (ctx.ft_meds.get('unstructured_keys') or ())):
+        age_pr = ctx.age if ctx.age is not None else (getattr(ctx, 'age_sat', None) or 0)
+        wt_pr = getattr(ctx, 'weight_sat', ctx.weight_num)
+        if age_pr >= 75:
+            ctx.red_flags.append(f'პრასუგრელი ≥75 წლის პაციენტთან (ასაკი {age_pr} წ. — FDA Boxed Warning): ფატალური და ქალასშიდა სისხლდენის მაღალი რისკის გამო ზოგადად არ არის რეკომენდებული — შეათანხმეთ კლოპიდოგრელზე დე-ესკალაცია კარდიოლოგთან!')
+        if wt_pr is not None and wt_pr < 60:
+            ctx.red_flags.append(f'პრასუგრელი <60 კგ წონის პაციენტთან ({wt_pr} კგ — FDA Boxed Warning): სისხლდენის მაღალი რისკი — განიხილეთ 5 მგ/დღ დოზა ან კლოპიდოგრელზე დე-ესკალაცია კარდიოლოგთან!')
     if ctx.q_filled and ctx.has_afib and not (ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False)):
         ctx.amber_flags.append('ფიქსირდება მოციმციმე არითმია (AFib) პერორალური ანტიკოაგულაციის გარეშე — შეაფასეთ CHA2DS2-VA და ინსულტის პროფილაქტიკა კარდიოლოგთან!')
 
@@ -292,10 +307,10 @@ def _eval_antithrombotic_conflicts(ctx):
         ctx.red_flags.append('ერთდროულად მონიშნულია ორი P2Y12 ანტიაგრეგანტი — გადაამოწმეთ მედიკამენტური დუბლირება!')
     if total_at_count >= triple_min:
         ctx.red_flags.append(
-            'პაციენტი ერთდროულად იღებს ≥3 ანტითრომბოზულ პრეპარატს (სამმაგი ანტითრომბოზული თერაპია — სისხლდენის მაღალი რისკი)! '
+            f'პაციენტი ერთდროულად იღებს ≥{triple_min} ანტითრომბოზულ პრეპარატს (სამმაგი ანტითრომბოზული თერაპია — სისხლდენის მაღალი რისკი)! '
             'ESC / ESVS / EMA გაიდლაინით გადაამოწმეთ დე-ესკალაცია (ასპირინის/ცილოსტაზოლის მოხსნა და OAC + მონო-ანტიაგრეგანტი).'
         )
-    if (has_full_oac_any or 'rivaroxaban_2_5' in ctx.med_chips or 'rivaroxaban_2_5' in ft_u_keys) and (q.get('med_ticagrelor') or q.get('med_prasugrel') or bool(ft_u_keys & {'ticagrelor', 'prasugrel'})):
+    if (has_full_oac_any or 'rivaroxaban_2_5' in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))) and (q.get('med_ticagrelor') or q.get('med_prasugrel') or bool(ft_u_keys & {'ticagrelor', 'prasugrel'})):
         asa_alg, clop_intol = 'nsaid' in ctx.allergy_chips, 'clopidogrel_intol' in ctx.allergy_chips
         deesc_opt = (
             'ინდივიდუალურ უსაფრთხო რეჟიმზე (ასპირინზე და კლოპიდოგრელზე ალერგია!)' if (clop_intol and asa_alg)
@@ -474,7 +489,7 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
         if getattr(ctx, 'has_contra_full_oac', False) and not ctx.has_mech_valve:
             return _contra_full_oac_postop_label(ctx, oac_partner_lbl)
         return f'SAPT უკუნაჩვენებია OAC-ზე! შეცვალეთ: OAC + {oac_partner_lbl}'
-    if (post_at_raw in ('voyager', 'dapt') and has_full_oac_any) or (post_at_raw == 'dapt' and 'rivaroxaban_2_5' in ctx.med_chips):
+    if (post_at_raw in ('voyager', 'dapt') and has_full_oac_any) or (post_at_raw == 'dapt' and ('rivaroxaban_2_5' in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low')))):
         return _eval_explicit_triple_therapy(ctx, asa_allergy, voyager_safe, stent_p2y12, oac_partner_lbl, has_full_oac_any)
     if post_at_raw == 'voyager' and not voyager_safe:
         ctx.red_flags.append(
@@ -722,7 +737,8 @@ def _eval_stent_dapt_and_hold_alerts(ctx):
         if getattr(ctx, 'sglt2_unlisted_dm', False):
             ctx.amber_flags.append('პაციენტი იღებს SGLT2 ინჰიბიტორს დიაბეტის, გულის უკმარისობის ან CKD-ს მითითების გარეშე — დააზუსტეთ ჩვენება (დიაბეტი / HbA1c) და შეჩერების სქემა!')
         if q.get('glp1') and not ctx.has_known_dm:
-            ctx.amber_flags.append('პაციენტი იღებს GLP-1 აგონისტს დიაბეტის მითითების გარეშე — დააზუსტეთ ჩვენება (დიაბეტი / HbA1c vs წონის კლება) და 24 სთ თხევადი დიეტა!')
+            glp_liq_h = rule_value('MED_GLP1_FASTING_PROTOCOL')['liquid_hours']
+            ctx.amber_flags.append(f'პაციენტი იღებს GLP-1 აგონისტს დიაბეტის მითითების გარეშე — დააზუსტეთ ჩვენება (დიაბეტი / HbA1c vs წონის კლება) და {glp_liq_h} სთ თხევადი დიეტა!')
         has_cv_vte_hx = bool(q.get('cad') or ctx.cad_chips or q.get('recent_stent') or q.get('ven_dvt_history') or q.get('ven_dvt_chips') or q.get('ven_thrombophilia'))
         has_full_oac_r = bool(ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False))
         if not has_cv_vte_hx and (has_full_oac_r or (ctx.p2y12_count >= 1 and q.get('med_aspirin')) or 'amiodarone' in ctx.med_chips or ctx.ft_meds.get('has_ft_amiodarone')):

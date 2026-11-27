@@ -609,8 +609,23 @@
                                 {% if ev.show_pregnancy_check and not ev.is_venous or q.pregnant_possible %}
                                 <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="pregnant_possible" value="1" {% if q.pregnant_possible %}checked{% endif %}>შესაძლო ორსულობა / ლაქტაცია</label>
                                 {% endif %}
+                                {% if not ev.is_venous and q.ven_hormones %}
+                                <input type="hidden" name="ven_hormones_presented" value="1">
+                                <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="ven_hormones" value="1" checked>ჰორმონული პრეპარატი / კონტრაცეპტივი (გადმოტანილი ვენური გზიდან)</label>
+                                {% endif %}
                             </div>
                         </div>
+                        {% if not ev.is_venous and q.ven_dvt_chips %}
+                        <div class="po-q-sub">
+                            <input type="hidden" name="ven_dvt_chips_presented" value="1">
+                            <div class="small text-muted mb-1">ვენური თრომბოემბოლიის ანამნეზი (გადმოტანილი ვენური გზიდან):</div>
+                            <div class="po-chip-row">
+                                {% for ck, cl in chips.ven_dvt_chips %}
+                                <label class="chip-check"><input type="checkbox" name="ven_dvt_chips" value="{{ ck }}" {% if ck in q.ven_dvt_chips %}checked{% endif %}>{{ cl }}</label>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
 

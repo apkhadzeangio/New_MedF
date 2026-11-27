@@ -36,6 +36,8 @@ _PHRASE_REPLACEMENTS = (
     (' [CYP2C9: ვარფარინთან აძლიერებს ანტიკოაგულაციას — გადაამოწმეთ INR!]', ' (ვარფარინთან ერთად მიღებისას აუცილებელია სისხლის შედედების ანალიზის გადამოწმება ექიმთან)'),
     ('[CYP2C9: ვარფარინთან აძლიერებს ანტიკოაგულაციას — გადაამოწმეთ INR!]', '(ვარფარინთან ერთად მიღებისას აუცილებელია სისხლის შედედების ანალიზის გადამოწმება ექიმთან)'),
     ('ღვიძლი ≥3x — შეათანხმეთ ექიმთან!', 'ღვიძლის ანალიზის გამო მიღება ან შეწყვეტა აუცილებლად შეათანხმეთ ექიმთან!'),
+    ('≥3x-ზე', '3-ჯერ მეტზე'),
+    ('≥3x', '3-ჯერ მეტი'),
     (' [≥3 ანტითრომბოზული — შეათანხმეთ დე-ესკალაცია ქირურგთან!]', ' (რამდენიმე გამათხელებელი წამლის გამო სქემა აუცილებლად შეათანხმეთ ქირურგთან!)'),
     ('შეათანხმეთ დე-ესკალაცია ქირურგთან!', 'სქემა აუცილებლად შეათანხმეთ ქირურგთან!'),
     ('შეათანხმეთ დე-ესკალაცია!', 'სქემა აუცილებლად შეათანხმეთ ექიმთან!'),
@@ -238,6 +240,26 @@ _PHRASE_REPLACEMENTS = (
     (' / P2Y12', ''),
     (' (P2Y12)', ''),
     (' (CEA, მხარე B)', ' (ორივე მხარეს ერთდროულად)'),
+    ('(მხარე B)', '(ორივე მხარე)'),
+    ('(R ან L)', '(მარჯვენა ან მარცხენა)'),
+    ('R ან L', 'მარჯვენა ან მარცხენა'),
+    ('(R)', '(მარჯვენა)'),
+    ('(L)', '(მარცხენა)'),
+    ('(B)', '(ორივე მხარე)'),
+    ('/ ICU /', '/ რეანიმაციის /'),
+    ('ვიტ. K', 'ვიტამინი კ'),
+    ('ვიტამინი K', 'ვიტამინი კ'),
+    ('EMA Brilique SmPC 4.3 / FDA 5.5', ''),
+    ('EMA SmPC 4.3', ''),
+    ('EMA SmPC 4.6', ''),
+    ('FDA Effient PI 5.1', ''),
+    ('FDA PI 5.1', ''),
+    ('RE-ALIGN / ESC Class III', 'მაღალი რისკის'),
+    ('RE-ALIGN', ''),
+    ('PROACT Xa', ''),
+    ('ALI, Rutherford IIa/IIb', 'მწვავე იშემია'),
+    ('Rutherford IIa/IIb', ''),
+    ('Rutherford', ''),
     (' (CEA)', ''),
     (' (CTA)', ''),
     (' (AAA)', ''),
@@ -458,8 +480,10 @@ _2ND_PERSON_REPLACEMENTS = (
 _QUOTED_FT_RE = re.compile(r'თავისუფალ ტექსტში\s*\(„[^“”]{1,220}“\)')
 _BAD_LATIN_VAL_RE = re.compile(r'=\s*[A-Za-z][A-Za-z0-9_.-]*')
 _REG_CITATION_RE = re.compile(
-    r'\b(?:EMA\s+(?:Brilique\s+)?(?:EPAR\s+)?SmPC|FDA\s+(?:Effient\s+|Brilinta\s+)?PI)(?:\s+\d+(?:\.\d+)*)?\b'
+    r'\b(?:EMA\s+(?:Brilique\s+)?(?:EPAR\s+)?SmPC|FDA\s+(?:Effient\s+|Brilinta\s+)?(?:PI\s+)?)(?:\s*\d+(?:\.\d+)*)?\b'
 )
+_DIGIT_UNIT_RE = re.compile(r'(\d)\s*(mg|mcg|ml|iu)\b', re.IGNORECASE)
+_DIGIT_UNIT_KA = {'mg': 'მგ', 'mcg': 'მკგ', 'ml': 'მლ', 'iu': 'სე'}
 _ORPHAN_SEC_PAREN_RE = re.compile(r'\(\s*\d+\.\d+(?:\.\d+)*\s*\)')
 _RESIDUAL_LATIN_RE = re.compile(r'(?<![A-Za-z0-9])(?!STOP\b)(?!x2\b)(?!2x\b)(?!3x\b)[A-Za-zβµ][A-Za-z0-9_+./-]{1,}(?![A-Za-z0-9])')
 
@@ -480,6 +504,7 @@ def scrub_plain_ka(txt, second_person=True, strip_quoted_ft=False):
         out = _QUOTED_FT_RE.sub('თავისუფალ ტექსტში', out)
         out = _BAD_LATIN_VAL_RE.sub(' (არასწორი ჩანაწერი)', out)
     out = _REG_CITATION_RE.sub('', out)
+    out = _DIGIT_UNIT_RE.sub(lambda m: f'{m.group(1)} {_DIGIT_UNIT_KA[m.group(2).lower()]}', out)
     for old, new in _PHRASE_REPLACEMENTS:
         if old in out:
             out = out.replace(old, new)
@@ -493,6 +518,15 @@ def scrub_plain_ka(txt, second_person=True, strip_quoted_ft=False):
     out = _ORPHAN_SEC_PAREN_RE.sub('', out)
     out = re.sub(r'\(\s*[/·;,:—–\s-]*\s*\)', '', out)
     out = re.sub(r'\[\s*[/·;,:—–\s-]*\s*\]', '', out)
+    out = re.sub(r'\(\s*(?:[/·;,:—–-]+\s*)+(?:\d+\.\d+(?:\.\d+)*\s*(?:[/·;,:—–-]+\s*)+)?', '(', out)
+    out = re.sub(r'\s*(?:[/·;,:—–-]+\s*)+\)', ')', out)
+    out = re.sub(r'\[\s*(?:[/·;,:—–-]+\s*)+', '[', out)
+    out = re.sub(r'\s*(?:[/·;,:—–-]+\s*)+\]', ']', out)
+    out = re.sub(r'\(\s+', '(', out)
+    out = re.sub(r'\s+\)', ')', out)
+    out = re.sub(r'\[\s+', '[', out)
+    out = re.sub(r'\s+\]', ']', out)
+    out = re.sub(r'\s*[—–-]+\s*([!?.])', r'\1', out)
     out = re.sub(r'\s+([.,;:!?])', r'\1', out)
     out = re.sub(r'\s{2,}', ' ', out).strip()
     return out

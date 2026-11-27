@@ -122,6 +122,8 @@
             </li>
             {% endfor %}
         </ol>
+        {% elif is_inactive_card %}
+        <div class="nw-banner warn m-0">ეს ბარათი დაარქივებული ან არააქტიურია — ოპერაციაზე მომზადება დახურულია.</div>
         {% else %}
         <div class="nw-banner ok m-0">ყველა სავალდებულო პუნქტი შევსებულია — პაციენტი მზადაა ქირურგის დასტურისთვის ✓</div>
         {% endif %}
@@ -371,7 +373,7 @@
                 <div class="nw-field">
                     <label for="nw-file-cat">დოკუმენტის ტიპი</label>
                     <select id="nw-file-cat" name="category">
-                        {% for fkey, flbl in file_categories %}
+                        {% for fkey, flbl in nw_file_categories %}
                         <option value="{{ fkey }}" {% if fkey == 'labs' %}selected{% endif %}>{{ flbl }}</option>
                         {% endfor %}
                     </select>
@@ -440,9 +442,9 @@
                     <div class="nw-field">
                         <label for="nw-hdr-op">ოპერაციის ტიპი / გზა</label>
                         <select id="nw-hdr-op" name="op_subtype">
-                            {% for grp_lbl, grp_items in op_subtype_groups %}
+                            {% for grp_lbl, grp_items in nw_procedure_groups %}
                             <optgroup label="{{ grp_lbl }}">
-                                {% for ov, ol in grp_items %}
+                                {% for ov, ol, _oh in grp_items %}
                                 <option value="{{ ov }}" {% if p.op_subtype == ov %}selected{% endif %}>{{ ol }}</option>
                                 {% endfor %}
                             </optgroup>

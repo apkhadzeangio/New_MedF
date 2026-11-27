@@ -178,7 +178,7 @@ SCORES_AND_WORKFLOW_RULES = (
         },
         value_label='Mallampati IV · STOP-Bang პროქსი · ICU/MINS/დელირიუმი',
         status=STATUS_LOCAL,
-        match_patterns=('მოსალოდნელი რთული ინტუბაცია', 'ობსტრუქციული ძილის აპნოეს'),
+        match_patterns=('მოსალოდნელი რთული ინტუბაცია', 'ობსტრუქციული ძილის აპნოეს', 'ასიმპტომური CEA ≥{val[cea_asymp_futility_age]} წლის ASA IV', 'ასიმპტომური CEA ≥'),
     ),
     RuleEntry(
         id='DOS_WHO_SIGNIN_THRESHOLDS',

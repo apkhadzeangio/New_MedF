@@ -370,23 +370,26 @@ def _venous_vte_task_label(ctx, ren_red, eff_ren_t):
         if ven_severe_renal_t:
             return 'კონსილიუმი (ორსულობა + მექ. სარქველი + CrCl<30/დიალიზი: LMWH კუმულირდება, DOAC არა — IV/SC UFH ან ტრიმესტრით VKA!)'
         return 'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (ორსულობა + მექ. სარქველი — DOAC არა!)'
+    has_full_oac_t = bool(ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False))
+    is_evla_vka_t, has_contra_oac_t = False, False
+    if has_full_oac_t:
+        from ..caprini import _oac_venous_vte_flags
+        _, is_evla_vka_t, has_contra_oac_t = _oac_venous_vte_flags(
+            ctx.patient, ctx.q, ctx.s, ven_severe_renal_t, ctx.liver_3x,
+            active_gi_bleed=getattr(ctx, 'active_gi_bleed', False), eff_preg=getattr(ctx, 'eff_pregnant', False),
+        )
+    hit_oac_t = ' · HIT: ჰეპარინი/LMWH აკრძალულია!' if has_hit else ''
+    if has_full_oac_t and is_evla_vka_t:
+        return f'თერაპიული ვარფარინი მოუხსნელად (INR ≤ {evla_inr_lim}) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
     if 'mech_valve' in ctx.cad_chips:
         return f'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT!){arg_liv_t}' if has_hit else 'ვარფარინი (VKA) — DOAC აკრძალულია!'
     if getattr(ctx, 'eff_pregnant', False):
         if has_hit:
             return 'IPC / არაჰეპარინული სქემა (ორსულობა + HIT — DOAC და ჰეპარინი არა!)'
         return 'UFH (ორსულობა + CrCl<30: LMWH კუმულირდება, DOAC არა!)' if ven_severe_renal_t else 'LMWH / UFH (ორსულობაზე DOAC არა!)'
-    if ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False):
-        from ..caprini import _oac_venous_vte_flags
-        _, is_evla_vka_t, has_contra_oac_t = _oac_venous_vte_flags(
-            ctx.patient, ctx.q, ctx.s, ven_severe_renal_t, ctx.liver_3x,
-            active_gi_bleed=getattr(ctx, 'active_gi_bleed', False), eff_preg=getattr(ctx, 'eff_pregnant', False),
-        )
-        hit_oac_t = ' · HIT: ჰეპარინი/LMWH აკრძალულია!' if has_hit else ''
+    if has_full_oac_t:
         if getattr(ctx, 'has_contra_full_oac', False) or has_contra_oac_t:
             return f'უკუნაჩვენები OAC არ განაახლოთ — უსაფრთხო ანტიკოაგულაციის სქემა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
-        if is_evla_vka_t:
-            return f'თერაპიული ვარფარინი მოუხსნელად (INR ≤ {evla_inr_lim}) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
         return f'მუდმივი OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე; ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
     if has_hit:
         return f'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<30!){arg_liv_t}' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')

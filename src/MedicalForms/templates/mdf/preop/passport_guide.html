@@ -67,7 +67,9 @@
 
     <section class="nw-card">
         <h2 class="nw-card-title">3. რომელი წამალი უნდა შეწყვიტოთ</h2>
-        {% if guide.stop_locked %}
+        {% if guide.inactive_banner %}
+        <div class="nw-banner warn m-0">ბარათი დაარქივებული ან არააქტიურია — წინა შეჩერების თარიღები გაუქმებულია! თვითნებურად არცერთი წამალი არ შეწყვიტოთ; დააზუსტეთ მკურნალ ექიმთან.</div>
+        {% elif guide.stop_locked %}
         {% if guide.urgent_meds %}
         <div class="nw-banner danger mb-2">ოპერაციაზე დაშვება შეჩერებულია (STOP) — გეგმური წამლები თვითნებურად არ შეწყვიტოთ; ქვემოთ მონიშნული მწვავე ან უკუნაჩვენები წამლების გამო დაუყოვნებლივ დაუკავშირდით ექიმს!</div>
         <div class="d-flex flex-column gap-2">
@@ -95,7 +97,7 @@
         {% endif %}
     </section>
 
-    {% if not guide.stop_locked and guide.caution_meds %}
+    {% if not guide.inactive_banner and not guide.stop_locked and guide.caution_meds %}
     <section class="nw-card">
         <h2 class="nw-card-title">ექიმთან შესათანხმებელი წამლები (თვითნებურად არ შეწყვიტოთ!)</h2>
         <div class="d-flex flex-column gap-2">
@@ -110,7 +112,7 @@
     {% endif %}
 
     <section class="nw-card">
-        <h2 class="nw-card-title">{% if guide.stop_locked %}4. მიმდინარე წამლები — გააგრძელეთ ექიმთან შეთანხმებით (ოპერაცია დროებით შეჩერებულია){% else %}4. რომელი წამალი აუცილებლად დალიოთ დილას (ყლუპი წყლით){% endif %}</h2>
+        <h2 class="nw-card-title">{% if guide.inactive_banner %}4. მიმდინარე წამლები — დააზუსტეთ მკურნალ ექიმთან (ბარათი არააქტიურია){% elif guide.stop_locked %}4. მიმდინარე წამლები — გააგრძელეთ ექიმთან შეთანხმებით (ოპერაცია დროებით შეჩერებულია){% else %}4. რომელი წამალი აუცილებლად დალიოთ დილას (ყლუპი წყლით){% endif %}</h2>
         {% if guide.keep_meds %}
         <div class="d-flex flex-column gap-2">
             {% for m in guide.keep_meds %}

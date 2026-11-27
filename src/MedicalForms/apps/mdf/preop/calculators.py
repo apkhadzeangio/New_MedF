@@ -17,9 +17,12 @@ def _s_raw(s, key):
         return None
     v = s.get(key)
     if v is not None:
-        if isinstance(v, int) and not isinstance(v, bool) and abs(v) > 10**18:
+        if isinstance(v, (dict, list, tuple, set)):
+            if v:
+                return v
+        elif isinstance(v, int) and not isinstance(v, bool) and abs(v) > 10**18:
             return None
-        if str(v).strip() != '':
+        elif str(v).strip() != '':
             return v
     inv = s.get('_invalid_inputs')
     return inv.get(key) if isinstance(inv, dict) else None

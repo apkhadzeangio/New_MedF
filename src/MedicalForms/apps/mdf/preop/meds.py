@@ -420,7 +420,8 @@ def _append_doac_dabigatran_rows(c):
             cl_hdr = cl_label if cl_label else 'CrCl/eGFR'
             add_row('დაბიგატრანი (პრადაქსა)', f'{cl_hdr} (<{dabi_low}) — დაბიგატრანი უკუნაჩვენებია (EMA/EHRA 2021)! {nx_tag}შეჩერება ≥{d_map["lt30"] * 24} საათით + TT კონტროლი და ნეფროლოგ/კარდიოლოგთან ჩანაცვლება!{frail_no_wt_note}{doac_extra_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=True, force_date_plan=True, contraindicated=True, mandatory_hold_days=d_map['lt30'])
         elif renal_cl is None:
-            cr_dmsg = 'კრეატინინის ერთეული დასაზუსტებელია (µmol/L თუ mg/dL) — პრადაქსას შეჩერების დრო (48–120 სთ) მკაცრად დამოკიდებულია თირკმლის ფუნქციაზე!' if c['creat_ambig'] else 'შეიყვანეთ კრეატინინი და წონა (CrCl) — პრადაქსას შეჩერების დრო (48–120 სთ) მკაცრად დამოკიდებულია თირკმლის ფუნქციაზე!'
+            d_min_h, d_max_h = min(d_map.values()) * 24, max(d_map.values()) * 24
+            cr_dmsg = f'კრეატინინის ერთეული დასაზუსტებელია (µmol/L თუ mg/dL) — პრადაქსას შეჩერების დრო ({d_min_h}–{d_max_h} სთ) მკაცრად დამოკიდებულია თირკმლის ფუნქციაზე!' if c['creat_ambig'] else f'შეიყვანეთ კრეატინინი და წონა (CrCl) — პრადაქსას შეჩერების დრო ({d_min_h}–{d_max_h} სთ) მკაცრად დამოკიდებულია თირკმლის ფუნქციაზე!'
             cr_ddp = _IMMED_STOP_PLAN if contra_doac else ('ერთეული დასაზუსტებელია' if c['creat_ambig'] else 'შეიყვანეთ CrCl თარიღისთვის')
             add_row('დაბიგატრანი (პრადაქსა)', f'{cr_dmsg}{doac_extra_warn}', 'red', cr_ddp, hold_or_skip=True, force_date_plan=True, contraindicated=contra_doac, reconcile_only=True)
         elif is_evla and not is_neuraxial and not contra_doac:
@@ -440,7 +441,7 @@ def _append_rivaroxaban_row(c):
     q, add_row, d_str, hold_str = c['q'], c['add_row'], c['d_str'], c['hold_str']
     if 'rivaroxaban_2_5' not in c['med_chips']:
         return
-    potent_p2y_riva = bool(q.get('med_ticagrelor') or q.get('med_prasugrel'))
+    potent_p2y_riva = bool(q.get('med_ticagrelor') or q.get('med_prasugrel') or ((c['ft_meds'].get('unstructured_keys') or set()) & {'ticagrelor', 'prasugrel'}))
     contra_riva = bool(c['oac_count'] >= 2 or c['liver_3x'] or potent_p2y_riva)
     riva_red = c['force_doac_red'] or potent_p2y_riva
     doac_extra_warn, renal_cl = c['doac_extra_warn'], c['renal_cl']
@@ -469,7 +470,7 @@ def _append_rivaroxaban_row(c):
         add_row('ქსარელტო 2.5 მგ x2', f'{cr_rmsg}{doac_extra_warn}', 'red', cr_rdp, hold_or_skip=True, force_date_plan=True, contraindicated=contra_riva, reconcile_only=True)
     elif c['is_evla'] and not c['is_neuraxial'] and not riva_red:
         t3_ev = c['total_at_cnt'] >= triple_min
-        add_row('ქსარელტო 2.5 მგ x2', 'EVLA-ზე შესაძლებელია დილის დოზის გამოტოვებით (ასპირინი გრძელდება) · აღდგენა: ~24 სთ-ში ჰემოსტაზით' + (' [≥3 ანტითრომბოზული — დე-ესკალაცია!]' if t3_ev else ''), 'amber' if t3_ev else 'ok', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=True, reconcile_only=True)
+        add_row('ქსარელტო 2.5 მგ x2', 'EVLA-ზე შესაძლებელია დილის დოზის გამოტოვებით (ასპირინი გრძელდება) · აღდგენა: ~24 სთ-ში ჰემოსტაზით' + (f' [≥{triple_min} ანტითრომბოზული — დე-ესკალაცია!]' if t3_ev else ''), 'amber' if t3_ev else 'ok', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=True, reconcile_only=True)
     elif c['is_neuraxial']:
         nx_h = voy_cfg['nx_days'] * 24
         nx_res = '' if contra_riva else '; აღდგენა ≥6 სთ კათეტერიდან'
@@ -499,6 +500,7 @@ def _append_warfarin_row(c):
     )
     liver_vka_warn = f' [ღვიძლის ≥3x დისფუნქცია: ვარფარინის გამორეცხვა შეიძლება გახანგრძლივდეს >{vka_cfg["hold_days"]} დღემდე — გადაამოწმეთ INR!]' if c['liver_3x'] else ''
     dup_vka = c['oac_count'] >= 2
+    has_ft_par_vka = bool((c['ft_meds'].get('matched_keys') or set()) & {'parenteral_oac', 'parenteral_dti'})
     asra_cfg = rule_value('ASRA_NEURAXIAL_COAG_GATE')
     asra_inr_max, asra_inr_norm = asra_cfg['inr_max'], asra_cfg['inr_vka_norm']
     raw_s_v = c['patient'].studies if isinstance(c['patient'].studies, dict) else {}
@@ -523,7 +525,7 @@ def _append_warfarin_row(c):
             add_row('ვარფარინი', f'ორსულობის დროს ვარფარინი (VKA) ტერატოგენულია (ნაყოფის ვარფარინის სინდრომი) — დაუყოვნებლივ შეცვალეთ {c["preg_oac_alt"]}{dup_oac_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
     elif c['active_gi_bleed']:
         add_row('ვარფარინი', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ვარფარინი სასწრაფოდ შეათანხმეთ შეჩერება/ჰემოსტაზზე ექიმთან (მექ. სარქველზე — კარდიოლოგის კონსილიუმი)!{liver_vka_warn}{dup_oac_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
-    elif is_evla and not is_neuraxial and not dup_vka and not c['liver_3x']:
+    elif is_evla and not is_neuraxial and not dup_vka and not c['liver_3x'] and not has_ft_par_vka:
         if dos_inr_bad_v:
             add_row('ვარფარინი', f'ოპერაციის დილის INR დაუშვებელია EVLA-ს წინ — გადაამოწმეთ საკონტროლო INR (≤ {vka_cfg["inr_evla_max"]}) ჩარევამდე!{dup_oac_warn}', 'red', 'INR დაუშვებელია — გადაამოწმეთ!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif eff_inr_vka is not None and eff_inr_vka > vka_cfg['inr_evla_max']:
@@ -749,6 +751,8 @@ def _append_hormone_ppi_steroid_ft_rows(c):
 
 def build_med_schedule(patient, q, s, egfr, crcl=None, stop_blocked=False, has_neuraxial_override=None, today=None):
     """Deterministic perioperative medication hold/continue table (ESVS 2023/2024 + ESC 2022 + ASRA 5th Ed)."""
+    from .constants import INACTIVE_CASE_OUTCOMES
+    from .meds_helpers import _apply_inactive_lock_to_med_schedule
     q_d = q if isinstance(q, dict) else {}
     s_d = s if isinstance(s, dict) else {}
     c = _med_schedule_ctx(patient, q_d, s_d, egfr, crcl, has_neuraxial_override, today=today)
@@ -758,6 +762,9 @@ def build_med_schedule(patient, q, s, egfr, crcl=None, stop_blocked=False, has_n
     _append_warfarin_row(c)
     _append_metabolic_rows(c)
     _append_cardio_other_rows(c)
-    if stop_blocked:
+    is_inactive = bool(getattr(patient, 'archived', False)) or (s_d.get('case_outcome_status') in INACTIVE_CASE_OUTCOMES)
+    if is_inactive:
+        _apply_inactive_lock_to_med_schedule(c['rows'])
+    elif stop_blocked:
         _apply_stop_lock_to_med_schedule(c['rows'])
     return c['rows']

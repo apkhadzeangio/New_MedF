@@ -128,6 +128,9 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
                     if ven_severe_renal else 'მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (ორსულობა + მექ. სარქველი: VKA vs LMWH/UFH ტრიმესტრით — DOAC აკრძალულია!)'
                 )
             )
+        elif has_full_oac_v and is_evla_vka_v:
+            hit_oac_s = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit else ''
+            vte_agents = f'თერაპიული ვარფარინი გრძელდება მოუხსნელად (INR ≤ {evla_inr_lim}) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
         elif 'mech_valve' in ctx.cad_chips:
             vte_agents = (
                 f'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT + მექ. სარქველი — ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!){arg_liv}'

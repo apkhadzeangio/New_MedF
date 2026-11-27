@@ -320,14 +320,15 @@ def _build_surgical_anatomy_brief(ctx):
     myc_part = ' · მიკოზური AAA: სისხლის ნათესები ×2 + ემპირიული IV ანტიბიოტიკი!' if s.get('aaa_morphology') == 'inflammatory_mycotic' else ''
     rup_oac_bits = []
     ft_keys_r = ctx.ft_meds.get('matched_keys') or set()
-    if ctx.is_rupture_suspect and (ctx.on_oral_anticoag or getattr(ctx, 'has_ft_full_oac', False) or 'rivaroxaban_2_5' in ctx.med_chips or 'rivaroxaban_2_5' in ft_keys_r):
+    has_ft_riva_low = bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))
+    if ctx.is_rupture_suspect and (ctx.on_oral_anticoag or getattr(ctx, 'has_ft_full_oac', False) or 'rivaroxaban_2_5' in ctx.med_chips or has_ft_riva_low):
         if q.get('med_warfarin') or 'warfarin' in ft_keys_r:
             rup_oac_bits.append('4F-PCC 25–50 სე/კგ IV + ვიტამინი K 10 მგ IV')
         if q.get('med_dabigatran') or 'dabigatran' in ft_keys_r:
             rup_oac_bits.append('იდარუციზუმაბი (Praxbind) 5 გ IV')
-        if q.get('med_doac') or 'doac' in ft_keys_r:
+        if q.get('med_doac') or (bool('doac' in ft_keys_r) and not has_ft_riva_low):
             rup_oac_bits.append('Xa-DOAC: 4F-PCC 50 სე/კგ IV (მოერიდეთ ანდექსანეტ ალფას კლამპირებამდე — ESVS 2024)')
-        elif 'rivaroxaban_2_5' in ctx.med_chips or 'rivaroxaban_2_5' in ft_keys_r:
+        elif 'rivaroxaban_2_5' in ctx.med_chips or has_ft_riva_low:
             rup_oac_bits.append('რივაროქსაბანი 2.5 მგ (Xa): საჭიროებისას 4F-PCC კლინიკური სისხლდენის მიხედვით')
     rup_oac_part = f' · სასწრაფო OAC რევერსია: {" + ".join(rup_oac_bits)}!' if rup_oac_bits else ''
     return anat_summary, f"{neck_part}მუხლქვეშა სკრინინგი: {pop_map.get(s.get('popliteal_screen_status') or 'pending', '—')}{rv_part}{myc_part}{rup_oac_part}"
@@ -572,6 +573,10 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
             neuraxial_blockers.append('PLT უცნობია')
         if ctx.eff_inr_nx is None:
             neuraxial_blockers.append('INR უცნობია')
+        eff_ren_b = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
+        if (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips) and not ctx.on_dialysis and eff_ren_b is None:
+            if not any('კრეატინინი/CrCl' in b for b in neuraxial_blockers):
+                neuraxial_blockers.append('კრეატინინი/CrCl უცნობია DOAC-ზე')
         if not ctx.uninterrupted_p2y12 and (
             q.get('med_doac') or q.get('med_dabigatran') or q.get('med_warfarin')
             or q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel')
@@ -588,9 +593,10 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
     elif ctx.auto_spinal_candidate and ctx.hard_nx_reasons:
         neuraxial_gate = 'ნეირაქსიული შეზღუდულია (ავტო-გადართვა ზოგადზე — ASRA 5th Ed): ' + ', '.join(ctx.hard_nx_reasons)
     elif ctx.auto_spinal_candidate:
+        doac_nx_hb = rule_value('MED_DOAC_HOLD_INTERVALS')['neuraxial_days'] * 24
         neuraxial_gate = (
             f'ASRA 5th Ed: ნეირაქსიული დასაშვებია (INR {ctx.eff_inr_nx if ctx.eff_inr_nx is not None else "—"}, PLT {ctx.plt if ctx.plt is not None else "—"}) '
-            '— არჩევისას მიუთითეთ „სპინალური / ეპიდურული“ (72 სთ DOAC / ≥60 წთ UFH წესისთვის)'
+            f'— არჩევისას მიუთითეთ „სპინალური / ეპიდურული“ ({doac_nx_hb} სთ DOAC / ≥60 წთ UFH წესისთვის)'
         )
     else:
         neuraxial_gate = 'ნეირაქსიული ბლოკადა/ეპიდურული კათეტერი არ იგეგმება'

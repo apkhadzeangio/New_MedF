@@ -134,7 +134,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 messages.error(request, 'ბარათი დაარქივებულია — რედაქტირება და მოქმედებები დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
             cur_outcome = merged_studies(patient).get('case_outcome_status') or 'scheduled'
-            if cur_outcome in ('operated', 'deferred', 'cancelled_logistics', 'cancelled_medical') and section != 'dos_vqi':
+            from ..constants import INACTIVE_CASE_OUTCOMES
+            if cur_outcome in INACTIVE_CASE_OUTCOMES and section != 'dos_vqi':
                 messages.error(request, 'არააქტიურ (ნაოპერაციებ/გადადებულ/გაუქმებულ) ბარათზე წინასაოპერაციო მონაცემების შეცვლა დაბლოკილია — რედაქტირებისთვის ჯერ გადართეთ სტატუსი „დაგეგმილზე“.')
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
 
@@ -233,8 +234,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 dob_age = _age_from_dob(bd)
                 if dob_age is not None:
                     age_in = dob_age
-                    if not had_bad_age:
-                        inv.pop('age', None)
+                    inv.pop('age', None)
+                    had_bad_age = False
         if had_bad_age:
             messages.warning(request, 'ასაკი უნდა იყოს 12–120 წლამდე — არასწორი მნიშვნელობა უარყოფილია.')
         if inv:
@@ -634,9 +635,11 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 patient.archived
                 or not ev['q'].get('filled')
                 or ev.get('case_outcome', 'scheduled') != 'scheduled'
+                or ev['clearance_seal']['code'] == 'stop'
                 or ev.get('has_hard_contraindication')
                 or ev.get('dos_hold_danger')
                 or ev.get('neuraxial_hard_blocked')
+                or ev.get('solo_neuraxial_anatomic_mismatch')
                 or ev.get('has_blocking_unknown_state')
                 or ev.get('has_elapsed_hold_window')
                 or any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ()))

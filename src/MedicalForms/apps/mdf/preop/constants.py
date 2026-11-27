@@ -126,6 +126,7 @@ CASE_OUTCOME_CHOICES = (
     ('cancelled_logistics', 'გაუქმდა / გადაიდო — საოპერაციო / ICU / იმპლანტის რესურსი'),
     ('cancelled_patient', 'გაუქმდა / გადაიდო — პაციენტის მიზეზით / არგამოცხადება'),
 )
+INACTIVE_CASE_OUTCOMES = ('operated', 'deferred', 'cancelled_medical', 'cancelled_logistics', 'cancelled_patient')
 
 VQI_30D_CHOICES = (
     ('pending', '30 დღე ჯერ არ გასულა / მონიტორინგშია'),

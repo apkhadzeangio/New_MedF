@@ -256,6 +256,7 @@ def eval_hematology_coag(ctx):
         and not (
             q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips
             or getattr(ctx, 'has_ft_full_oac', False) or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))
+            or bool((ctx.ft_meds.get('matched_keys') or set()) & {'parenteral_oac', 'parenteral_dti'})
         )
     )
     evla_inr_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
@@ -444,7 +445,7 @@ def eval_glycemia_endocrine(ctx):
             f'ამიოდარონი + {amio_drug_lbl} დაქვეითებული თირკმლის ფუნქციის (CrCl/eGFR < {doac_cfg["amio_renal"]}) ფონზე — '
             'P-gp ინჰიბირება ზრდის პრეპარატის აკუმულაციას (EHRA 2021: განიხილეთ +24 სთ-ით ადრე შეჩერება)!'
         )
-    if has_amio_any and has_warf_any and ('amiodarone' not in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_warfarin'))):
+    if has_amio_any and has_warf_any:
         ctx.amber_flags.append(
             'ამიოდარონი + ვარფარინი — CYP2C9 ინჰიბირება აძლიერებს ანტიკოაგულაციას (INR-ის 30–50%-ით მატება); გადაამოწმეთ INR და კარდიოლოგის სქემა!'
         )

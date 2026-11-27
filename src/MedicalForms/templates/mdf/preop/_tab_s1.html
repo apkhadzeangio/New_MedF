@@ -360,10 +360,10 @@
                     <summary class="small text-muted fw-semibold" style="cursor:pointer">+ თითის წნევა / TBI (Toe Pressure — დიაბეტის, დიალიზის ან ABI &gt;1.40-ის დროს)</summary>
                     <div class="grid-4 pt-2">
                         <label class="fld">მარჯვენა Toe Pressure (mmHg)
-                            <input type="number" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="მაგ. 45" min="0" max="400" class="form-control">
+                            <input type="number" step="any" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="მაგ. 45" min="0" max="400" class="form-control">
                         </label>
                         <label class="fld">მარცხენა Toe Pressure (mmHg)
-                            <input type="number" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 40" min="0" max="400" class="form-control">
+                            <input type="number" step="any" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 40" min="0" max="400" class="form-control">
                         </label>
                         <label class="fld">მარჯვენა TBI (თით-მხრის ინდექსი)
                             <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.42" min="0" max="3.0" class="form-control">
@@ -438,10 +438,10 @@
                     <summary class="small text-muted fw-semibold" style="cursor:pointer">+ თითის წნევა / TBI (Toe Pressure — დიაბეტის, დიალიზის ან ABI &gt;1.40-ის დროს)</summary>
                     <div class="grid-4 pt-2">
                         <label class="fld">მარჯვენა Toe Pressure (mmHg)
-                            <input type="number" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="მაგ. 35" min="0" max="400" class="form-control">
+                            <input type="number" step="any" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="მაგ. 35" min="0" max="400" class="form-control">
                         </label>
                         <label class="fld">მარცხენა Toe Pressure (mmHg)
-                            <input type="number" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 75" min="0" max="400" class="form-control">
+                            <input type="number" step="any" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 75" min="0" max="400" class="form-control">
                         </label>
                         <label class="fld">მარჯვენა TBI
                             <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.30" min="0" max="3.0" class="form-control">
@@ -525,10 +525,10 @@
                     <summary class="small text-muted fw-semibold" style="cursor:pointer">+ თითის წნევა / TBI (Toe Pressure — დიაბეტის, დიალიზის ან ABI &gt;1.40-ის დროს)</summary>
                     <div class="grid-4 pt-2">
                         <label class="fld">მარჯვენა Toe Pressure (mmHg)
-                            <input type="number" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="მაგ. 45" min="0" max="400" class="form-control">
+                            <input type="number" step="any" name="tp_r" value="{{ s.tp_r|default_if_none:'' }}" placeholder="მაგ. 45" min="0" max="400" class="form-control">
                         </label>
                         <label class="fld">მარცხენა Toe Pressure (mmHg)
-                            <input type="number" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 80" min="0" max="400" class="form-control">
+                            <input type="number" step="any" name="tp_l" value="{{ s.tp_l|default_if_none:'' }}" placeholder="მაგ. 80" min="0" max="400" class="form-control">
                         </label>
                         <label class="fld">მარჯვენა TBI
                             <input type="number" step="0.01" name="tbi_r" value="{{ s.tbi_r|default_if_none:'' }}" placeholder="მაგ. 0.40" min="0" max="3.0" class="form-control">
@@ -628,6 +628,18 @@
                     <label class="chip-check"><input type="checkbox" name="cta_disc" value="1" {% if s.cta_disc %}checked{% endif %}>CTA დისკი ადგილზეა</label>
                 </div>
                 <input type="hidden" name="cta_months" value="{{ s.cta_months|default_if_none:'' }}">
+                {% endif %}
+
+                {% if not ev.is_venous and s.ven_duplex_status == 'acute_dvt' %}
+                <div class="pt-2">
+                    <label class="fld">ღრმა ვენების დუპლექსი (გადმოტანილი ვენური გზიდან — გადაამოწმეთ/განაახლეთ)
+                        <select name="ven_duplex_status" class="form-select border-danger">
+                            <option value="acute_dvt" selected>მწვავე ღრმა ვენების თრომბოზი (DVT — წითელი სიგნალი!)</option>
+                            <option value="pending">მოხსნა / არ ეხება</option>
+                            <option value="reflux_only">✓ ღრმა ვენები თავისუფალია (DVT გამორიცხულია)</option>
+                        </select>
+                    </label>
+                </div>
                 {% endif %}
 
                 {% if not is_inactive_card %}

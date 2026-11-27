@@ -199,8 +199,8 @@ class PreopClaudePeerReviewFixesTests(PrivateMediaTest):
         # Resolve lethal dual-OAC/ESC-III conflict & complete venous workup before surgeon sign-off
         p.questionnaire.update({'med_doac': False, 'med_ticagrelor': False})
         p.studies.update({
-            'ven_duplex_status': 'deep_patent_reflux', 'ecg': 'normal',
-            'compression_ready': True, 'vte_prophylaxis_planned': True,
+            'ven_duplex_status': 'deep_patent_reflux', 'ecg': 'normal', 'glucose': 5.4,
+            'nephro_panel_done': True, 'compression_ready': True, 'vte_prophylaxis_planned': True,
             'med_hold_agreed': True, 'anesth_done': True,
         })
         p.save()
