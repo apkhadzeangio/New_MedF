@@ -340,7 +340,7 @@ class PreopStressFixesR19Tests(TestCase):
             self.assertNotIn(acro, m_hop.group(0))
 
     def test_r19_s3_registry_mutations_and_html_step_any(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.24')
+        self.assertEqual(REGISTRY_VERSION, '1.2.25')
         # Clin S2-5: mutated cea_asymp_futility_age attributes to live ANES_AIRWAY_STOPBANG_ICU
         orig_sb = RULES_BY_ID['ANES_AIRWAY_STOPBANG_ICU']
         try:

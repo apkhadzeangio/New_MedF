@@ -369,9 +369,11 @@ PRIORITY_LABELS = {
 _FREETEXT_ALLERGY_STEMS = (
     ('beta_lactam', (
         'პენიცილ', 'ამოქსი', 'აუგმენტ', 'ამპიცილ', 'ცეფაზოლ', 'კეფაზოლ', 'კეფზოლ', 'ცეფალექს',
-        'ცეფტრიაქს', 'როცეფინ', 'ცეფეპიმ', 'ცეფუროქს', 'მეროპენემ', 'ცეფალოსპ', 'ბეტა-ლაქტ', 'ბეტალაქტ',
+        'ცეფტრიაქს', 'როცეფინ', 'ცეფეპიმ', 'ცეფუროქს', 'ცეფტაზიდიმ', 'ცეფოპერაზონ', 'პიპერაცილინ', 'ტაზოცინ',
+        'მეროპენემ', 'იმიპენემ', 'ერტაპენემ', 'ბიცილინ', 'ცეფალოსპ', 'ბეტა-ლაქტ', 'ბეტალაქტ',
         'penicil', 'amoxi', 'augment', 'ampicil', 'cefazol', 'kefzol', 'cephalex', 'cefalex', 'cefurox',
-        'ceftriax', 'rocephin', 'cefepim', 'meropenem', 'cephalosp', 'beta-lact', 'ოგმენტინ', 'ამოქსიკლავ', 'amoxiclav',
+        'ceftriax', 'rocephin', 'cefepim', 'ceftazidim', 'cefoperazon', 'piperacil', 'tazocin',
+        'meropenem', 'imipenem', 'ertapenem', 'bicillin', 'cephalosp', 'beta-lact', 'ოგმენტინ', 'ამოქსიკლავ', 'amoxiclav',
     )),
     ('vancomycin', (
         'ვანკომიც', 'vancomyc',
@@ -399,7 +401,7 @@ _FREETEXT_ALLERGY_STEMS = (
         'ანალგინ', 'კეტოროლ', 'კეტონალ', 'დექსკეტო', 'დექსალგინ', 'დიკლოფენ', 'იბუპროფ', 'აასს',
         'არა-სტეროიდ', 'არასტეროიდ',
         'ასპირინ', 'კარდიომაგნ', 'ასპიკარდ', 'თრომბო-ას', 'თრომბოას', 'ნიმესილ', 'ნიმესულ', 'მელოქსიკ',
-        'ვოლტარენ', 'ნუროფენ', 'ნაფროქსენ',
+        'ვოლტარენ', 'ნუროფენ', 'ნაპროქსენ', 'ნაფროქსენ',
         'nsaid', 'ketorol', 'ketonal', 'dexketo', 'dexalgin', 'diclofen', 'ibuprof', 'analgin',
         'aspirin', 'cardiomagn', 'aspicard', 'nimesil', 'nimesul', 'voltaren', 'nurofen', 'naproxen',
     )),

@@ -97,10 +97,12 @@
             <section class="x-card">
                 <h2>ქირურგის შეფასება და დადასტურება</h2>
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    {% if not ev.is_rupture_suspect %}
                     <label class="chip-check">
                         <input type="checkbox" name="move_ready" value="1" {% if not p.approved_at %}checked{% endif %}>
                         დადასტურებისას გადავიდეს „მზადაა — ელოდება ოპერაციის თარიღს“ სიაში
                     </label>
+                    {% endif %}
 
                     <div class="d-flex flex-wrap align-items-center gap-2">
                         {% if ev.has_hard_contraindication %}

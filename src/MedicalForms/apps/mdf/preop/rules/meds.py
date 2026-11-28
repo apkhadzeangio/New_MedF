@@ -74,7 +74,10 @@ def _eval_allergies_and_cied(ctx):
             or bool(q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips or (ft_u_al & {'doac', 'dabigatran'}))
         )
         if par_contra:
-            arg_note = ' (ღვიძლის ≥3x დისფუნქციაზე არგატრობანის დოზა მცირდება 75%-ით — უპირატესია ბივალირუდინი!)' if (ctx.liver_3x and ctx.ft_meds.get('has_ft_argatroban')) else ''
+            arg_note = (
+                (' (ორსულობა + ღვიძლის ≥3x: არგატრობანი მოერიდეთ — კოაგულოგრამის კონტროლით შეათანხმეთ ჰემატოლოგთან და მეან-გინეკოლოგთან!)' if getattr(ctx, 'eff_pregnant', False) else ' (ღვიძლის ≥3x დისფუნქციაზე არგატრობანის დოზა მცირდება 75%-ით — უპირატესია ბივალირუდინი!)')
+                if (ctx.liver_3x and ctx.ft_meds.get('has_ft_argatroban')) else ''
+            )
             ctx.red_flags.append(f'თავისუფალ ტექსტში („{raw_other_meds_disp}“) მითითებულია უკუნაჩვენები/დუბლირებული პარენტერული ანტიკოაგულანტი{arg_note} — დაუყოვნებლივ შეათანხმეთ ექიმთან!')
         else:
             ctx.amber_flags.append(f'თავისუფალ ტექსტში („{raw_other_meds_disp}“) მითითებულია პარენტერული ანტიკოაგულანტი — შეათანხმეთ შეჩერების დრო ქირურგთან/ანესთეზიოლოგთან (ASRA/ESVS).')
@@ -104,27 +107,14 @@ def _eval_allergies_and_cied(ctx):
 
 
 def _eval_allergy_cied_and_med_hold(ctx):
-    patient, q, s, q_filled = ctx.patient, ctx.q, ctx.s, ctx.q_filled
+    patient, q, s = ctx.patient, ctx.q, ctx.s
     metf_cfg = rule_value('MED_METFORMIN_RENAL_CONTRAST')
     _eval_allergies_and_cied(ctx)
 
-    ft_m_hold = ctx.ft_meds.get('matched_keys') or set()
-    has_ft_par = bool(ft_m_hold & {'parenteral_oac', 'parenteral_dti'})
-    has_crit_q_meds = bool(
-        q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran')
-        or q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel')
-        or q.get('med_aspirin') or ('rivaroxaban_2_5' in ctx.med_chips) or ('cilostazol' in ctx.med_chips)
-        or (ctx.med_chips & {'statin', 'beta_blocker', 'acei_arb', 'ccb', 'steroid', 'amiodarone', 'diuretic', 'ppi'})
-        or q.get('metformin') or q.get('sglt2') or q.get('glp1') or q.get('dm_insulin')
-        or q.get('ven_hormones') or q.get('recent_stent') or ctx.has_acs_stent_12m
-        or ctx.ft_meds['unstructured_labels'] or ctx.ft_meds.get('has_ft_nsaid')
-        or ctx.ft_meds.get('has_ft_statin') or ctx.ft_meds.get('has_ft_acei_arb') or has_ft_par
-        or q.get('self_filled') or q.get('self_fill_submitted')
-    )
     ctx.med_schedule = build_med_schedule(
         patient, q, s, ctx.egfr, crcl=ctx.crcl,
         has_neuraxial_override=ctx.has_neuraxial_plan, today=ctx.today,
-    ) if (q_filled or has_crit_q_meds) else []
+    )
     clop_needs_hold = bool(q.get('med_clopidogrel') and not ctx.is_pta and not ctx.is_symp_cea)
     is_evla_only = (
         ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
@@ -146,20 +136,20 @@ def _eval_allergy_cied_and_med_hold(ctx):
         and any('ასპირინი' in r.get('drug', '') and r.get('hold_or_skip') for r in ctx.med_schedule)
     )
     has_red_or_contra_med = any(r.get('contraindicated') or r.get('tone') == 'red' or r.get('hold_or_skip') for r in ctx.med_schedule)
-    ctx.needs_med_hold = (q_filled or has_crit_q_meds) and (
+    ctx.needs_med_hold = bool(
         clop_needs_hold or bool(q.get('med_ticagrelor') and not ctx.is_pta) or bool(q.get('med_prasugrel'))
         or bool(q.get('med_doac')) or bool(q.get('med_dabigatran')) or bool(q.get('med_warfarin'))
         or ('cilostazol' in ctx.med_chips) or ('rivaroxaban_2_5' in ctx.med_chips)
         or bool(q.get('glp1')) or bool(q.get('sglt2')) or bool(q.get('dm_insulin'))
         or bool(q.get('metformin')) or bool(q.get('ven_hormones')) or phleb_asa_hold
-        or metf_contra_any or metf_hold_48h or bool(ctx.ft_meds['unstructured_labels']) or has_ft_par or has_red_or_contra_med
+        or metf_contra_any or metf_hold_48h or bool(ctx.ft_meds['unstructured_labels']) or bool(getattr(ctx, 'has_ft_parenteral', False)) or has_red_or_contra_med
     )
-    if (q_filled or has_crit_q_meds) and metf_contra_any:
+    if metf_contra_any:
         ctx.red_flags.append(
             f'მეტფორმინი უკუნაჩვენებია თირკმლის მძიმე უკმარისობის (CrCl/eGFR <{metf_cfg["contra_renal"]} / დიალიზი) ან ღვიძლის ≥3x დისფუნქციის დროს '
             '(ლაქტატ-აციდოზის რისკი) — შეწყვიტეთ დაუყოვნებლივ და შეათანხმეთ ენდოკრინოლოგთან!'
         )
-    elif (q_filled or has_crit_q_meds) and q.get('metformin') and not ctx.uses_contrast and eff_ren_m is not None and eff_ren_m < metf_cfg['dose_cap_renal']:
+    elif q.get('metformin') and not ctx.uses_contrast and eff_ren_m is not None and eff_ren_m < metf_cfg['dose_cap_renal']:
         hold_note = f' და ოპერაციაზე {metf_cfg["hold_hours"]} სთ შეჩერება კრეატინინის კონტროლით' if metf_hold_48h else ''
         ren_d = ctx.eff_renal if ctx.eff_renal is not None else int(round(eff_ren_m))
         ctx.amber_flags.append(
@@ -232,6 +222,8 @@ def _eval_cilo_voyager_and_liver_contra(ctx, cilo_min_crcl, voy_min_egfr):
     if repro_preg and ('acei_arb' in ctx.med_chips or ctx.ft_meds.get('has_ft_acei_arb')):
         ctx.red_flags.append('ორსულობის დროს ACEi / ARB (პრილი/სარტანი) აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!')
     ft_u_pr = ctx.ft_meds.get('unstructured_keys') or ()
+    if repro_preg and ('amiodarone' in ctx.med_chips or 'amiodarone' in ft_u_pr):
+        ctx.red_flags.append('ორსულობის დროს ამიოდარონი იწვევს ნაყოფის თირეოიდულ ტოქსიკურობას/ჰიპოთირეოზს და ბრადიკარდიას (ESC 2018 / FDA Category D) — თვითნებურად არ შეწყვიტოთ, სასწრაფოდ ჩართეთ კარდიოლოგისა და მეან-გინეკოლოგის კონსილიუმი!')
     if repro_preg and (q.get('med_prasugrel') or 'prasugrel' in ft_u_pr):
         ctx.red_flags.append('ორსულობის დროს პრასუგრელი არ არის რეკომენდებული (FDA / EMA) — დაუყოვნებლივ შეათანხმეთ უსაფრთხო ალტერნატივა მეან-გინეკოლოგთან და კარდიოლოგთან!')
     if repro_preg and (q.get('med_ticagrelor') or 'ticagrelor' in ft_u_pr):
@@ -289,11 +281,11 @@ def _eval_antithrombotic_conflicts(ctx):
     _, dos_inr_bad_m, base_inr_bad_m, eff_inr_m = _vka_inr_status(ctx.patient, s, getattr(ctx, 'raw_s', None))
     inr_bad_m = dos_inr_bad_m or base_inr_bad_m
     has_vka_evla = bool(q.get('med_warfarin') or ctx.ft_meds.get('has_ft_unstruct_warfarin'))
+    has_ft_par_m = bool(getattr(ctx, 'has_ft_parenteral', False))
     evla_vka_bad = bool(
         ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and has_vka_evla
-        and (inr_bad_m or (eff_inr_m is not None and eff_inr_m > evla_inr_lim) or (has_mech_valve and eff_inr_m is not None and eff_inr_m < mech_inr_min))
+        and (inr_bad_m or has_ft_par_m or (eff_inr_m is not None and eff_inr_m > evla_inr_lim))
     )
-    has_ft_par_m = bool(getattr(ctx, 'has_ft_parenteral', False))
     has_full_oac_any = bool(ctx.on_oral_anticoag or getattr(ctx, 'has_ft_full_oac', False))
     ft_full_oac_contra = bool(getattr(ctx, 'has_ft_full_oac', False) and (
         oac_count >= 2 or eff_preg_m or active_gi_bleed or (ctx.ft_meds.get('has_ft_unstruct_warfarin') and evla_vka_bad)
@@ -322,8 +314,7 @@ def _eval_antithrombotic_conflicts(ctx):
             f'პაციენტი ერთდროულად იღებს ≥{triple_min} ანტითრომბოზულ პრეპარატს (სამმაგი ანტითრომბოზული თერაპია — სისხლდენის მაღალი რისკი)! '
             'ESC / ESVS / EMA გაიდლაინით გადაამოწმეთ დე-ესკალაცია (ასპირინის/ცილოსტაზოლის მოხსნა და OAC + მონო-ანტიაგრეგანტი).'
         )
-    has_ft_par_c = bool(getattr(ctx, 'has_ft_parenteral', False))
-    if (has_full_oac_any or has_ft_par_c or 'rivaroxaban_2_5' in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))) and (q.get('med_ticagrelor') or q.get('med_prasugrel') or bool(ft_u_keys & {'ticagrelor', 'prasugrel'})):
+    if (has_full_oac_any or has_ft_par_m or 'rivaroxaban_2_5' in ctx.med_chips or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))) and (q.get('med_ticagrelor') or q.get('med_prasugrel') or bool(ft_u_keys & {'ticagrelor', 'prasugrel'})):
         asa_alg, clop_intol = 'nsaid' in ctx.allergy_chips, 'clopidogrel_intol' in ctx.allergy_chips
         deesc_opt = (
             'ინდივიდუალურ უსაფრთხო რეჟიმზე (ასპირინზე და კლოპიდოგრელზე ალერგია!)' if (clop_intol and asa_alg)
@@ -352,7 +343,12 @@ def _eval_mech_valve_conflicts(ctx, has_mech_valve, mech_inr_min, vka_hold_days)
         return
     op_dt_early = _date(s.get('planned_surgery_date'))
     has_hit = 'hit_heparin' in ctx.allergy_chips
-    liv_arg = ' (ღვიძლის ≥3x-ზე უპირატესია ბივალირუდინი; არგატრობანი −75%!)' if ctx.liver_3x else ''
+    eff_preg_mv = bool(getattr(ctx, 'eff_pregnant', False))
+    liv_arg = (
+        ' (ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — უპირატესია ბივალირუდინი, არგატრობანი მოერიდეთ!)'
+        if (ctx.liver_3x and eff_preg_mv) else
+        (' (ღვიძლის ≥3x-ზე უპირატესია ბივალირუდინი; არგატრობანი −75%!)' if ctx.liver_3x else '')
+    )
     if q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips:
         ctx.red_flags.append(
             'მექანიკურ სარქველზე DOAC / დაბიგატრანი / რივაროქსაბანი აბსოლუტურად უკუნაჩვენებია '
@@ -367,7 +363,7 @@ def _eval_mech_valve_conflicts(ctx, has_mech_valve, mech_inr_min, vka_hold_days)
         eff_inr_mv = dos_inr_mv if dos_inr_mv is not None else ctx.inr
         is_evla_cont = (
             ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and not ctx.has_neuraxial_plan
-            and not ctx.liver_3x and not getattr(ctx, 'active_gi_bleed', False) and not getattr(ctx, 'eff_pregnant', False)
+            and not ctx.liver_3x and not getattr(ctx, 'active_gi_bleed', False) and not eff_preg_mv
             and getattr(ctx, 'oac_count', 1) == 1
         )
         in_vka_washout = bool(op_dt_early and 0 <= (op_dt_early - ctx.today).days <= vka_hold_days and not is_evla_cont)
@@ -378,15 +374,27 @@ def _eval_mech_valve_conflicts(ctx, has_mech_valve, mech_inr_min, vka_hold_days)
                     'ანტიკოაგულაცია დაბლოკილია ენდოსკოპიურ ჰემოსტაზამდე; სასწრაფოდ ჩართეთ კარდიოლოგისა და გასტროენტეროლოგის კონსილიუმი!'
                 )
             else:
-                bridge_opt = f'IV ბივალირუდინის/არგატრობანის ხიდი (HIT!{liv_arg})' if has_hit else 'ჰეპარინის ხიდი'
+                if has_hit:
+                    bridge_opt = (
+                        f'არაჰეპარინული IV სქემა მეან-გინეკოლოგთან და ჰემატოლოგთან (ორსულობა + HIT: UFH/LMWH და არგატრობანი მოერიდეთ!{liv_arg})'
+                        if eff_preg_mv else f'IV ბივალირუდინის/არგატრობანის ხიდი (HIT!{liv_arg})'
+                    )
+                else:
+                    bridge_opt = 'ჰეპარინის ხიდი'
                 ctx.red_flags.append(
                     f'მექანიკურ სარქველზე INR სუბთერაპიულია ({eff_inr_mv} < {mech_inr_min}) — სარქვლის თრომბოზის რისკი, სასწრაფოდ შეაფასეთ {bridge_opt} კარდიოლოგთან!'
                 )
     if has_hit:
-        ctx.red_flags.append(
-            f'მექანიკური სარქველი + HIT ანამნეზში — ვარფარინის მოხსნისას უხიდოდ დატოვება და ჰეპარინი/LMWH აკრძალულია! '
-            f'სავალდებულოა სტაციონარული IV ბივალირუდინი ან არგატრობანი (aPTT კონტროლით){liv_arg}!'
-        )
+        if eff_preg_mv:
+            ctx.red_flags.append(
+                f'მექანიკური სარქველი + HIT + ორსულობა — ვარფარინის მოხსნისას უხიდოდ დატოვება და ჰეპარინი/LMWH აკრძალულია! '
+                f'სავალდებულოა ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის კონსილიუმი (არაჰეპარინული IV სქემა — არგატრობანი მოერიდეთ){liv_arg}!'
+            )
+        else:
+            ctx.red_flags.append(
+                f'მექანიკური სარქველი + HIT ანამნეზში — ვარფარინის მოხსნისას უხიდოდ დატოვება და ჰეპარინი/LMWH აკრძალულია! '
+                f'სავალდებულოა სტაციონარული IV ბივალირუდინი ან არგატრობანი (aPTT კონტროლით){liv_arg}!'
+            )
 
 
 from .postop_at import (  # noqa: E402, F401

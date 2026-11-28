@@ -112,7 +112,7 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
         has_hit = 'hit_heparin' in ctx.allergy_chips
         arg_liv = ' (ღვიძლის ≥3x: არგატრობანი −75% / უპირატესია ბივალირუდინი!)' if ctx.liver_3x else ''
         evla_inr_lim = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
-        has_full_oac_v, is_evla_vka_v, has_contra_oac_v, has_ft_par_v = _oac_venous_vte_flags(
+        has_full_oac_v, is_evla_vka_v, has_contra_oac_v, has_ft_par_v, _ = _oac_venous_vte_flags(
             ctx.patient, q, s, ven_severe_renal, ctx.liver_3x,
             active_gi_bleed=getattr(ctx, 'active_gi_bleed', False),
             eff_preg=getattr(ctx, 'eff_pregnant', False),

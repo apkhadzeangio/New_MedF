@@ -215,7 +215,7 @@ class PreopStressFixesR20Tests(TestCase):
         self.assertNotIn('age', p_sf.studies.get('_invalid_inputs') or {})
 
     def test_r20_s2_neuraxial_parity_prasugrel_anamnesis_stop_and_registry(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.24')
+        self.assertEqual(REGISTRY_VERSION, '1.2.25')
         # Standalone build_med_schedule fail-closed neuraxial parity on missing/ambiguous CrCl
         for cr_s in ({'creat': None}, {'creat': 22, 'creat_unit': ''}, {'creat': 1.2, 'creat_unit': 'umol'}):
             p_nx = _mk('phlebectomy', q={'med_doac': True}, s={'anesthesia_plan': 'auto', **cr_s})

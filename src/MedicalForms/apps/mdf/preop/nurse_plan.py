@@ -342,7 +342,7 @@ def detect_postponement_impacts(patient, ev, today):
     from django.utils import timezone
 
     from .registry import rule_value
-    if bool(patient.archived) or (ev.get('case_outcome') not in (None, '', 'scheduled')) or (ev.get('clearance_seal') or {}).get('code') == 'inactive':
+    if bool(patient.archived) or bool(ev.get('is_rupture_suspect')) or (ev.get('case_outcome') not in (None, '', 'scheduled')) or (ev.get('clearance_seal') or {}).get('code') == 'inactive':
         return None
     today = _date(today) or timezone.localdate()
     stale_lab_d = rule_value('INF_STALE_LABS_DAYS')

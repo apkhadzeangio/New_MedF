@@ -503,6 +503,14 @@ def _eval_dos_bp_alerts(ctx, dos_sys, dos_dia, dos_cfg, dos_warnings):
     if dos_sys is not None and dos_dia is not None and dos_sys <= dos_dia:
         dos_warnings.append(f'ოპერაციის დილის წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი და მაჩვენებელი!')
         return
+    if ctx.is_rupture_suspect:
+        if (dos_sys and dos_sys >= dos_cfg['sbp_hi']) or (dos_dia and dos_dia >= dos_cfg['dbp_hi']):
+            ctx.red_flags.append(f'ოპერაციის დილის კრიტიკული ჰიპერტენზია საეჭვო რუპტურაზე ({dos_sys or "?"}/{dos_dia or "?"} mmHg) — დაუყოვნებლივ IV კონტროლი (პერმისიული მიზანი SBP 70–90 mmHg) გადაუდებელი ოპერაციის გადავადების გარეშე!')
+        elif dos_sys and dos_sys < 70:
+            ctx.red_flags.append(f'ოპერაციის დილის ჰიპოტენზია / კრიტიკული შოკი საეჭვო რუპტურაზე ({dos_sys}/{dos_dia or "?"} mmHg < 70) — დაუყოვნებლივ საოპერაციოში + მასიური ტრანსფუზიის პროტოკოლი (გადავადების გარეშე!)')
+        elif dos_sys and dos_sys < dos_cfg['sbp_lo']:
+            ctx.amber_flags.append(f'ოპერაციის დილის ჰიპოტენზია (პერმისიული მიზანი SBP 70–90 mmHg, ESVS 2024) საეჭვო რუპტურაზე ({dos_sys}/{dos_dia or "?"} mmHg) — გადაუდებელი ოპერაცია გადავადების გარეშე!')
+        return
     if (dos_sys and dos_sys >= dos_cfg['sbp_hi']) or (dos_dia and dos_dia >= dos_cfg['dbp_hi']):
         dos_warnings.append(f'ოპერაციის დილის კრიტიკული ჰიპერტენზია ({dos_sys or "?"}/{dos_dia or "?"} mmHg >= {dos_cfg["sbp_hi"]}/{dos_cfg["dbp_hi"]}) — გეგმური ინდუქცია საშიშია, საჭიროა სტაბილიზაცია!')
     elif dos_sys and dos_sys < dos_cfg['sbp_lo']:
@@ -517,8 +525,49 @@ def _eval_dos_bp_alerts(ctx, dos_sys, dos_dia, dos_cfg, dos_warnings):
         ctx.amber_flags.append(f'ოპერაციის დილის ვიწრო პულსური წნევა ({dos_pp_d} mmHg < {hypo_cfg["narrow_pp"]} mmHg; {dos_sys}/{dos_dia}) — გადაამოწმეთ მანჟეტი და ჰემოდინამიკა.')
 
 
-def _eval_dos_and_vqi(ctx):
+def _eval_dos_inr_alerts(ctx, dos_inr, dos_inr_bad, dos_cfg, dos_checks, dos_warnings):
     patient, q, s = ctx.patient, ctx.q, ctx.s
+    evla_vka_elig = (
+        ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
+        and not ctx.has_neuraxial_plan and bool(q.get('med_warfarin'))
+        and not getattr(ctx, 'eff_pregnant', False) and not getattr(ctx, 'active_gi_bleed', False) and not ctx.liver_3x
+        and not (
+            q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips
+            or getattr(ctx, 'has_ft_full_oac', False) or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))
+            or bool((ctx.ft_meds.get('matched_keys') or set()) & {'parenteral_oac', 'parenteral_dti'})
+        )
+    )
+    from ..meds_helpers import _vka_inr_status
+    evla_inr_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
+    mech_inr_min = rule_value('MED_MECH_VALVE_SAFETY')
+    inr_lim = evla_inr_max if evla_vka_elig else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
+    _, dos_inr_bad_e, base_inr_bad_e, eff_inr_check = _vka_inr_status(patient, s, getattr(ctx, 'raw_s', None))
+    has_any_vka = bool(q.get('med_warfarin') or ctx.ft_meds.get('has_ft_unstruct_warfarin'))
+    inr_eff_dos = ctx.inr if ctx.inr is not None else getattr(ctx, 'inr_sat', None)
+    dos_inr_eff = None if (dos_inr_bad or dos_inr_bad_e) else (dos_inr if dos_inr is not None else getattr(ctx, 'dos_inr_sat', None))
+    evla_subther_mv = bool(ctx.has_mech_valve and eff_inr_check is not None and eff_inr_check < mech_inr_min)
+    ctx.is_evla_warfarin_only = bool(evla_vka_elig and not dos_inr_bad and not dos_inr_bad_e and not base_inr_bad_e and not evla_subther_mv and (eff_inr_check is None or eff_inr_check <= evla_inr_max))
+    any_dos_ticked = any(c['done'] for c in dos_checks if c.get('key') != 'icu_bed_booked')
+    if ctx.is_rupture_suspect:
+        if dos_inr_eff is not None and dos_inr_eff > inr_lim:
+            ctx.red_flags.append(f'ოპერაციის დილის INR ({dos_inr if dos_inr is not None else dos_inr_eff}) მომატებულია საეჭვო რუპტურაზე — გადაუდებელი რევერსია (4F-PCC + ვიტამინი K 10 მგ IV) გადავადების გარეშე!')
+        return
+    if dos_inr_eff is not None:
+        if dos_inr_eff > inr_lim:
+            dos_warnings.append(f'ოპერაციის დილის INR ({dos_inr if dos_inr is not None else dos_inr_eff}) აჭარბებს უსაფრთხო ზღვარს (≤ {inr_lim}) — სისხლდენის / სპინალური ჰემატომის რისკი!')
+    elif any_dos_ticked:
+        if inr_eff_dos is not None and inr_eff_dos > inr_lim:
+            dos_warnings.append(f'საბაზისო INR ({ctx.inr if ctx.inr is not None else inr_eff_dos}) აჭარბებს ზღვარს (≤ {inr_lim}), ხოლო ოპერაციის დილის საკონტროლო INR შეყვანილი არ არის!')
+        elif base_inr_bad_e:
+            dos_warnings.append(f'საბაზისო INR დაუშვებელია — გადაამოწმეთ საკონტროლო INR (≤ {inr_lim}) საოპერაციოში შეყვანამდე!')
+        elif evla_vka_elig and inr_eff_dos is None:
+            dos_warnings.append(f'ვარფარინის ფონზე EVLA-მდე აუცილებელია საკონტროლო INR (≤ {evla_inr_max}) — ამჟამად INR შეყვანილი არ არის!')
+        elif has_any_vka and not evla_vka_elig:
+            dos_warnings.append('ვარფარინის ფონზე ოპერაციის დილის საკონტროლო INR სავალდებულოა საოპერაციოში შეყვანამდე!')
+
+
+def _eval_dos_and_vqi(ctx):
+    s = ctx.s
     raw_s = getattr(ctx, 'raw_s', None) or {}
     inv_in = s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {}
     dos_cfg = rule_value('DOS_WHO_SIGNIN_THRESHOLDS')
@@ -555,36 +604,7 @@ def _eval_dos_and_vqi(ctx):
     elif dos_gl is not None and dos_gl > dos_cfg['gl_amb']:
         ctx.amber_flags.append(f'ოპერაციის დილის ჰიპერგლიკემია ({dos_gl} მმოლ/ლ > {dos_cfg["gl_amb"]}) — სასურველია ინსულინით კორექცია პერიოპერაციული ინფექციის შესამცირებლად.')
 
-    evla_vka_elig = (
-        ctx.is_venous and patient.op_subtype == PreopPatient.OpSubtype.EVLA
-        and not ctx.has_neuraxial_plan and bool(q.get('med_warfarin'))
-        and not getattr(ctx, 'eff_pregnant', False) and not getattr(ctx, 'active_gi_bleed', False) and not ctx.liver_3x
-        and not (
-            q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in ctx.med_chips
-            or getattr(ctx, 'has_ft_full_oac', False) or bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))
-            or bool((ctx.ft_meds.get('matched_keys') or set()) & {'parenteral_oac', 'parenteral_dti'})
-        )
-    )
-    from ..meds_helpers import _vka_inr_status
-    evla_inr_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
-    mech_inr_min = rule_value('MED_MECH_VALVE_SAFETY')
-    inr_lim = evla_inr_max if evla_vka_elig else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
-    _, dos_inr_bad_e, base_inr_bad_e, eff_inr_check = _vka_inr_status(patient, s, getattr(ctx, 'raw_s', None))
-    inr_eff_dos = ctx.inr if ctx.inr is not None else getattr(ctx, 'inr_sat', None)
-    dos_inr_eff = dos_inr if dos_inr is not None else getattr(ctx, 'dos_inr_sat', None)
-    evla_subther_mv = bool(ctx.has_mech_valve and eff_inr_check is not None and eff_inr_check < mech_inr_min)
-    ctx.is_evla_warfarin_only = bool(evla_vka_elig and not dos_inr_bad and not dos_inr_bad_e and not base_inr_bad_e and not evla_subther_mv and (eff_inr_check is None or eff_inr_check <= evla_inr_max))
-    any_dos_ticked = any(c['done'] for c in dos_checks if c.get('key') != 'icu_bed_booked')
-    if dos_inr_eff is not None:
-        if dos_inr_eff > inr_lim:
-            dos_warnings.append(f'ოპერაციის დილის INR ({dos_inr if dos_inr is not None else dos_inr_eff}) აჭარბებს უსაფრთხო ზღვარს (≤ {inr_lim}) — სისხლდენის / სპინალური ჰემატომის რისკი!')
-    elif any_dos_ticked:
-        if evla_vka_elig and inr_eff_dos is None:
-            dos_warnings.append(f'ვარფარინის ფონზე EVLA-მდე აუცილებელია საკონტროლო INR (≤ {evla_inr_max}) — ამჟამად INR შეყვანილი არ არის!')
-        elif inr_eff_dos is not None and inr_eff_dos > inr_lim:
-            dos_warnings.append(f'საბაზისო INR ({ctx.inr if ctx.inr is not None else inr_eff_dos}) აჭარბებს ზღვარს (≤ {inr_lim}), ხოლო ოპერაციის დილის საკონტროლო INR შეყვანილი არ არის!')
-        elif q.get('med_warfarin') and not evla_vka_elig:
-            dos_warnings.append('ვარფარინის ფონზე ოპერაციის დილის საკონტროლო INR სავალდებულოა საოპერაციოში შეყვანამდე!')
+    _eval_dos_inr_alerts(ctx, dos_inr, dos_inr_bad, dos_cfg, dos_checks, dos_warnings)
 
     ctx.dos_checks, ctx.dos_warnings, ctx.dos_gl = dos_checks, dos_warnings, dos_gl
     ctx.has_hard_contraindication = bool(ctx.hard_contraindications)

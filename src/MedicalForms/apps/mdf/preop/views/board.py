@@ -286,6 +286,8 @@ def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_r
                 if sev_renal else 'LMWH/UFH'
             )
             oac_board_msg = f'VTE / ანტიკოაგულაცია: ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_agent} მეან-გინეკოლოგთან და კარდიოლოგთან!'
+        elif ev.get('has_mech_valve') and not (ev.get('oac_count', 0) >= 2 or q.get('med_doac') or q.get('med_dabigatran') or bool(ft_keys & {'doac', 'dabigatran', 'parenteral_oac', 'parenteral_dti'})):
+            oac_board_msg = 'VTE / ანტიკოაგულაცია: მექანიკური სარქველი — INR-ის კორექცია და თერაპიული ვარფარინის (VKA) გაგრძელება/ხიდი კარდიოლოგთან (DOAC აკრძალულია!)'
         else:
             oac_board_msg = 'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!'
         task_candidates.append((_VTE_PREFIXES, oac_board_msg))
@@ -400,11 +402,12 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
         if ev.get('eff_pregnant'):
             mv_hit_s = ' + მექანიკური სარქველი' if has_mv else ''
             team_s = 'ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის' if has_mv else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
+            scheme_s = 'არაჰეპარინული IV სქემა / ტრიმესტრით VKA' if has_mv else 'არაჰეპარინული IV სქემა / IPC — ვარფარინი ტერატოგენულია!'
             org_hit_s = ''.join(x for cond, x in (
                 (sev_renal, f' · CrCl<{ren_red}/დიალიზი: ფონდაპარინუქსი აკრძალულია!'),
                 (liver_3x, ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — უპირატესია ბივალირუდინი (არგატრობანი მოერიდეთ)!'),
             ) if cond)
-            hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!{org_hit_s}{oac_no_dbl}'
+            hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი ({scheme_s})!{org_hit_s}{oac_no_dbl}'
         elif has_full_oac_b and ev.get('is_evla_warfarin_only'):
             hit_board_agents = 'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
         elif has_mv:

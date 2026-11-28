@@ -115,7 +115,7 @@ def _med_call_status(ev, today):
     """Determine whether nurse must call patient about drug holds today/next 48h."""
     from django.utils import timezone
     today = _date(today) or timezone.localdate()
-    if ev['clearance_seal']['code'] in ('stop', 'inactive') or ev.get('has_hard_contraindication') or ev.get('archived'):
+    if ev['clearance_seal']['code'] in ('stop', 'inactive') or ev.get('has_hard_contraindication') or ev.get('archived') or ev.get('is_rupture_suspect'):
         return {'needs_call': False, 'urgent_call': False, 'called_valid': False, 'outdated_call': False, 'drugs': []}
     s = ev['s']
     op_dt = _date(s.get('planned_surgery_date'))

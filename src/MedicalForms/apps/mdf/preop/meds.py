@@ -531,15 +531,16 @@ def _append_warfarin_row(c):
             add_row('ვარფარინი', f'ორსულობის დროს ვარფარინი (VKA) ტერატოგენულია (ნაყოფის ვარფარინის სინდრომი) — დაუყოვნებლივ შეცვალეთ {c["preg_oac_alt"]}{dup_oac_warn}', 'red', _IMMED_STOP_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
     elif c['active_gi_bleed']:
         add_row('ვარფარინი', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ვარფარინი სასწრაფოდ შეათანხმეთ შეჩერება/ჰემოსტაზზე ექიმთან (მექ. სარქველზე — კარდიოლოგის კონსილიუმი)!{liver_vka_warn}{dup_oac_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
-    elif is_evla and not is_neuraxial and not dup_vka and not c['liver_3x'] and not has_ft_par_vka:
+    elif is_evla and not dup_vka and not has_ft_par_vka and (vka_inr_bad or (eff_inr_vka is not None and eff_inr_vka > vka_cfg['inr_evla_max']) or evla_subther_mv):
+        nx_sfx = ' (ნეირაქსიული ბლოკადა უკუნაჩვენებია!)' if is_neuraxial else ''
         if vka_inr_bad:
-            add_row('ვარფარინი', f'INR დაუშვებელია EVLA-ს წინ — გადაამოწმეთ საკონტროლო INR (≤ {vka_cfg["inr_evla_max"]}) ჩარევამდე!{dup_oac_warn}', 'red', 'INR დაუშვებელია — გადაამოწმეთ!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+            add_row('ვარფარინი', f'INR დაუშვებელია EVLA-ს წინ — გადაამოწმეთ საკონტროლო INR (≤ {vka_cfg["inr_evla_max"]}) ჩარევამდე!{liver_vka_warn}{nx_sfx}', 'red', 'INR დაუშვებელია — გადაამოწმეთ!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif eff_inr_vka is not None and eff_inr_vka > vka_cfg['inr_evla_max']:
-            add_row('ვარფარინი', f'სუპრათერაპიული INR ({eff_inr_vka} > {vka_cfg["inr_evla_max"]}) EVLA-ს წინ — სისხლდენის რისკი, გადაამოწმეთ/შეაჩერეთ დოზა ქირურგთან!{liver_vka_warn}{dup_oac_warn}', 'red', f'INR {eff_inr_vka} > {vka_cfg["inr_evla_max"]} — გადაამოწმეთ!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
-        elif evla_subther_mv:
-            add_row('ვარფარინი', f'მექანიკურ სარქველზე INR სუბთერაპიულია ({eff_inr_vka} < {mech_inr_min}) EVLA-ს წინ — სარქვლის თრომბოზის რისკი! არ შეწყვიტოთ ვარფარინი, სასწრაფოდ შეაფასეთ ხიდი კარდიოლოგთან!', 'red', f'INR {eff_inr_vka} < {mech_inr_min} — სასწრაფოდ კარდიოლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+            add_row('ვარფარინი', f'სუპრათერაპიული INR ({eff_inr_vka} > {vka_cfg["inr_evla_max"]}) EVLA-ს წინ — სისხლდენის რისკი, გადაამოწმეთ/შეაჩერეთ დოზა ქირურგთან!{liver_vka_warn}{nx_sfx}', 'red', f'INR {eff_inr_vka} > {vka_cfg["inr_evla_max"]} — გადაამოწმეთ!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         else:
-            add_row('ვარფარინი', f'ESVS 2022: EVLA შესაძლებელია მოუხსნელად, თუ INR ≤ {vka_cfg["inr_evla_max"]}{liver_vka_warn}{dup_oac_warn}', 'amber', f'INR ≤{vka_cfg["inr_evla_max"]} შემოწმება {d_str(-1)}', hold_or_skip=False)
+            add_row('ვარფარინი', f'მექანიკურ სარქველზე INR სუბთერაპიულია ({eff_inr_vka} < {mech_inr_min}) EVLA-ს წინ — სარქვლის თრომბოზის რისკი! არ შეწყვიტოთ ვარფარინი, სასწრაფოდ შეაფასეთ ხიდი კარდიოლოგთან!{liver_vka_warn}{nx_sfx}', 'red', f'INR {eff_inr_vka} < {mech_inr_min} — სასწრაფოდ კარდიოლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+    elif is_evla and not is_neuraxial and not dup_vka and not c['liver_3x'] and not has_ft_par_vka:
+        add_row('ვარფარინი', f'ESVS 2022: EVLA შესაძლებელია მოუხსნელად, თუ INR ≤ {vka_cfg["inr_evla_max"]}{liver_vka_warn}{dup_oac_warn}', 'amber', f'INR ≤{vka_cfg["inr_evla_max"]} შემოწმება {d_str(-1)}', hold_or_skip=False)
     else:
         inr_target = f'INR ≤ {asra_inr_max} (ASRA 5th Ed: ნეირაქსიულამდე სასურველია ≤{asra_inr_norm} ნორმალიზება!)' if is_neuraxial else f'INR ≤ {vka_cfg["inr_surg_max"]} (ქირურგიული ჰემოსტაზისთვის)'
         if has_mech_valve and c['has_hit']:
@@ -715,7 +716,10 @@ def _append_cardio_other_rows(c):
         amio_doac = (q.get('med_doac') or q.get('med_dabigatran') or 'rivaroxaban_2_5' in med_chips or c['has_ft_unstruct_doac'] or c['has_ft_unstruct_riva_low']) and (c['on_dialysis'] or (eff_renal is not None and eff_renal < amio_renal))
         amio_pgp_warn = f' [P-gp ურთიერთქმედება: DOAC/დაბიგატრანთან და CrCl <{amio_renal}/დიალიზზე ზრდის სისხლდენის რისკს!]' if amio_doac else ''
         amio_vka_warn = ' [CYP2C9: ვარფარინთან აძლიერებს ანტიკოაგულაციას — გადაამოწმეთ INR!]' if (q.get('med_warfarin') or c['has_ft_unstruct_warfarin']) else ''
-        add_row('ამიოდარონი', f'გრძელდება უწყვეტად ანტიარითმიული სქემით ოპერაციის დილის ჩათვლით{amio_pgp_warn}{amio_vka_warn}', 'amber' if (amio_doac or amio_vka_warn) else 'ok', f'მიიღეთ {d_str(0)}-ის დილას', hold_or_skip=False)
+        if c['repro_pregnant']:
+            add_row('ამიოდარონი', f'ორსულობის დროს ამიოდარონი იწვევს ნაყოფის თირეოიდულ ტოქსიკურობას/ჰიპოთირეოზს და ბრადიკარდიას (ESC 2018 / FDA Category D) — თვითნებურად არ შეწყვიტოთ, სასწრაფოდ შეათანხმეთ კარდიოლოგთან და მეან-გინეკოლოგთან!{amio_pgp_warn}{amio_vka_warn}', 'red', 'ორსულობა — კარდიოლოგისა და მეანის კონსილიუმი!', hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        else:
+            add_row('ამიოდარონი', f'გრძელდება უწყვეტად ანტიარითმიული სქემით ოპერაციის დილის ჩათვლით{amio_pgp_warn}{amio_vka_warn}', 'amber' if (amio_doac or amio_vka_warn) else 'ok', f'მიიღეთ {d_str(0)}-ის დილას', hold_or_skip=False)
     if 'diuretic' in med_chips:
         if c['is_rupture_suspect']:
             add_row('დიურეტიკი', 'საეჭვო რუპტურა / გადაუდებელი AAA — დიურეტიკი შეაჩერეთ (ჰიპოვოლემიის/შოკის რისკი)!', 'red', 'გადაუდებელი ოპერაცია — არ მიიღოთ!', hold_or_skip=True, force_date_plan=True, acute_hold=True)

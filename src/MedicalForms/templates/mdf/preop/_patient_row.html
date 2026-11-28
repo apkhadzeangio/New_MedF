@@ -21,6 +21,8 @@
         <span class="tw-mm" style="background:#EAF7F0;color:#067647">✓ ოპერ.</span>
         {% elif p.ev.case_outcome != 'scheduled' %}
         <span class="tw-mm" style="background:#FEF3F2;color:#B42318">გაუქმდა</span>
+        {% elif p.ev.is_rupture_suspect %}
+        <span class="tw-mm giant" title="საეჭვო რუპტურა — გადაუდებელი ოპერაცია">გადაუდებელი!</span>
         {% elif p.ev.planned_surgery_short %}
         <span class="tw-mm" title="დაგეგმილი ოპერაციის თარიღი">ოპ: {{ p.ev.planned_surgery_short }}</span>
         {% endif %}

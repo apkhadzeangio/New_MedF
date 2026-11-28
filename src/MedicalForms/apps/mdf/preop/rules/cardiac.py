@@ -377,7 +377,7 @@ def _venous_vte_task_label(ctx, ren_red, eff_ren_t):
     is_evla_vka_t, has_contra_oac_t = False, False
     if has_full_oac_t or has_ft_par_t:
         from ..caprini import _oac_venous_vte_flags
-        _, is_evla_vka_t, has_contra_oac_t, has_ft_par_t = _oac_venous_vte_flags(
+        _, is_evla_vka_t, has_contra_oac_t, has_ft_par_t, _ = _oac_venous_vte_flags(
             ctx.patient, ctx.q, ctx.s, ven_severe_renal_t, ctx.liver_3x,
             active_gi_bleed=getattr(ctx, 'active_gi_bleed', False), eff_preg=getattr(ctx, 'eff_pregnant', False),
         )

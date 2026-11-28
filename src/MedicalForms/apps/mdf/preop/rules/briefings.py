@@ -438,7 +438,8 @@ def _build_surgical_brief(ctx):
             p_tags = [t for cond, t in ((ctx.has_mech_valve, 'მექანიკური სარქველი'), (hit_severe_renal, f'CrCl/eGFR <{ren_red} / დიალიზი'), (ctx.liver_3x, 'ღვიძლის ≥3x')) if cond]
             p_sfx = f' + {" + ".join(p_tags)}' if p_tags else ''
             c_team = 'ჰემატოლოგის, მეან-გინეკოლოგისა და კარდიოლოგის' if ctx.has_mech_valve else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
-            heparin_plan = f'HIT ანამნეზში + ორსულობა{p_sfx}! UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {c_team} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!'
+            p_scheme = 'არაჰეპარინული IV სქემა / ტრიმესტრით VKA' if ctx.has_mech_valve else 'არაჰეპარინული IV სქემა / IPC — ვარფარინი ტერატოგენულია!'
+            heparin_plan = f'HIT ანამნეზში + ორსულობა{p_sfx}! UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {c_team} კონსილიუმი ({p_scheme})!'
         elif has_full_oac_b and getattr(ctx, 'is_evla_warfarin_only', False):
             evla_inr_m = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
             heparin_plan = f'HIT ანამნეზში! არაფრაქციული ჰეპარინი (UFH) და LMWH აკრძალულია · EVLA-ზე თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ {evla_inr_m}) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!) · VTE პროფილაქტიკა: Caprini {ctx.caprini_score} ქ. ({ctx.caprini_tier}) — {ctx.caprini_advice}'

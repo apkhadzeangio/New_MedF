@@ -217,6 +217,8 @@ def _evla_ft_vka_contra(c):
     from .registry import rule_value
     vka_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
     mech_min = rule_value('MED_MECH_VALVE_SAFETY')
+    if c.get('has_ft_parenteral'):
+        return 'ორმაგი ანტიკოაგულაცია EVLA-ზე (ვარფარინი + პარენტერული ანტიკოაგულანტი) — დაუყოვნებლივ შეათანხმეთ ქირურგთან/კარდიოლოგთან!', 'შეწყვიტეთ დაუყოვნებლივ (ექიმთან შეთანხმებით)!'
     _, dos_bad, base_bad, eff_inr = _vka_inr_status(c['patient'], c['s'])
     if dos_bad:
         return f'ოპერაციის დილის INR დაუშვებელია EVLA-ს წინ — გადაამოწმეთ საკონტროლო INR (≤ {vka_max}) ჩარევამდე!', 'INR დაუშვებელია — გადაამოწმეთ!'
@@ -312,6 +314,9 @@ def _collect_ft_contraindications(c, ft, u_keys, is_at, immed_stop_plan, gi_blee
             extra_notes.append('[<60 კგ — FDA Boxed Warning: სისხლდენის რისკი, განიხილეთ 5 მგ/დღ ან კლოპიდოგრელზე დეესკალაცია!]')
     if 'amiodarone' in u_keys:
         amio_ren = rule_value('MED_DOAC_HOLD_INTERVALS')['amio_renal']
+        if c['repro_pregnant']:
+            contra_msgs.append('ორსულობის დროს ამიოდარონი იწვევს ნაყოფის თირეოიდულ ტოქსიკურობას/ჰიპოთირეოზს და ბრადიკარდიას (ESC 2018 / FDA Category D) — თვითნებურად არ შეწყვიტოთ, სასწრაფოდ შეათანხმეთ კარდიოლოგთან და მეან-გინეკოლოგთან!')
+            plan_override = plan_override or 'ორსულობა — კარდიოლოგისა და მეანის კონსილიუმი!'
         if c['q'].get('med_warfarin') or ft.get('has_ft_unstruct_warfarin'):
             extra_notes.append('[CYP2C9: ვარფარინთან აძლიერებს ანტიკოაგულაციას — გადაამოწმეთ INR!]')
         if (c['q'].get('med_doac') or c['q'].get('med_dabigatran') or 'rivaroxaban_2_5' in c['med_chips'] or ft.get('has_ft_unstruct_doac') or ft.get('has_ft_unstruct_riva_low')) and (c['on_dialysis'] or (c['eff_renal'] is not None and c['eff_renal'] < amio_ren)):
@@ -339,14 +344,21 @@ def _append_ft_parenteral_row(c, ft, raw_txt, immed_stop_plan, gi_bleed_plan):
         msgs.append('HIT ანამნეზში: ჰეპარინი/LMWH აბსოლუტურად უკუნაჩვენებია — დაუყოვნებლივ შეწყვიტეთ და ჩართეთ ჰემატოლოგი!')
         plan_ov = plan_ov or 'STOP — HIT! ჰეპარინი/LMWH აბსოლუტურად აკრძალულია!'
     if c['severe_renal'] and (ft.get('has_ft_lmwh') or ft.get('has_ft_fondaparinux')):
-        renal_alt = (
-            'HIT-ის გამო ჰეპარინი/UFH აკრძალულია — უპირატესია არაჰეპარინული IV ბივალირუდინი / არგატრობანი ჰემატოლოგთან'
-            if c['has_hit'] else 'უპირატესია არაფრაქციული ჰეპარინი — UFH'
-        )
+        if c['has_hit']:
+            renal_alt = (
+                'ორსულობა + HIT: ჰეპარინი/UFH და ფონდაპარინუქსი აკრძალულია — არაჰეპარინული IV სქემა მეან-გინეკოლოგთან და ჰემატოლოგთან (არგატრობანი მოერიდეთ!)'
+                if c['repro_pregnant'] else
+                'HIT-ის გამო ჰეპარინი/UFH აკრძალულია — უპირატესია არაჰეპარინული IV ბივალირუდინი / არგატრობანი ჰემატოლოგთან'
+            )
+        else:
+            renal_alt = 'უპირატესია არაფრაქციული ჰეპარინი — UFH'
         msgs.append(f'CrCl/eGFR <{ren_red} ან დიალიზზე LMWH / ფონდაპარინუქსი აკუმულირდება და უკუნაჩვენებია ({renal_alt}) — სასწრაფოდ შეათანხმეთ ექიმთან!')
         plan_ov = plan_ov or immed_stop_plan
     if c['liver_3x'] and ft.get('has_ft_argatroban'):
-        msgs.append('ღვიძლის ≥3x დისფუნქციაზე არგატრობანის დოზა მცირდება 75%-ით (უპირატესია ბივალირუდინი) — სასწრაფოდ შეათანხმეთ ჰემატოლოგთან!')
+        if c['repro_pregnant']:
+            msgs.append('ორსულობა + ღვიძლის ≥3x დისფუნქციაზე არგატრობანი მოერიდეთ (უპირატესია ბივალირუდინი კოაგულოგრამის კონტროლით) — სასწრაფოდ შეათანხმეთ მეან-გინეკოლოგთან და ჰემატოლოგთან!')
+        else:
+            msgs.append('ღვიძლის ≥3x დისფუნქციაზე არგატრობანის დოზა მცირდება 75%-ით (უპირატესია ბივალირუდინი) — სასწრაფოდ შეათანხმეთ ჰემატოლოგთან!')
         plan_ov = plan_ov or immed_stop_plan
     if c['is_cea_oac_p2y_stop']:
         msgs.append('სისხლჩაქცევის/თრომბოლიზისის ფონზე დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!')

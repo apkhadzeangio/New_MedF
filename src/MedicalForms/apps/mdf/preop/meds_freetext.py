@@ -29,8 +29,16 @@ _RIVA_LOW_RE = re.compile(
     rf'(?:{_RIVA_STEM}[^\d,;:\n]{{0,12}}(?<![\d.,])2[.,]5(?![\d.,])'
     rf'|(?<![\d.,])2[.,]5 ?(?:მგ|mg)?[^\w\n]{{0,8}}{_RIVA_STEM})'
 )
-_RIVA_THER_DOSE_RE = re.compile(r'(?<![\d.,])(?:10|15|20)(?![\d.,])')
-_RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;,\n/+]| (?:და|ან|and|or) ')
+_RIVA_NON_DOSE_UNIT = (
+    r'(?:აბი|აბ|ტაბ|tab|tabs|tablets?|caps?|capsules?|pills?|დოზა|dose'
+    r'|დღის|დღე|დღით|დღეა|დღეები|კვირის|კვირა|თვის|თვე|წლის|წელი|საათის|საათით|სთ|ჯერ|-ჯერ'
+    r'|days?|weeks?|wks?|months?|mos?|years?|yrs?|hrs?|hours?|am|pm|d|h)(?![a-zა-ჰ])'
+)
+_RIVA_THER_DOSE_RE = re.compile(
+    rf'(?<![\d.,:/])(?<!\d-)(?:10|15|20)(?![\d.,:]|/\d|-\d| ?{_RIVA_NON_DOSE_UNIT})',
+    re.IGNORECASE,
+)
+_RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;\n+]|(?<!\d)[,/]|[,/](?!\d)| (?:და|ან|and|or) ')
 _RIVA_ESCALATION_STEMS = (
     'დაუნიშნ', 'შეცვ', 'შეუცვ', 'გაზარდ', 'გაიზარდ', 'მოუმატ', 'მოიმატ', 'გადავიდ', 'გადაიყვან',
     'დოზ', 'შემდეგ', 'ახლა', 'ხოლო', 'მაგრამ', 'კარდიოლოგ', 'ექიმ', 'ადრე', 'ნაცვლ',
@@ -60,9 +68,11 @@ _FT_STATIN_STEMS = (
 _FT_ACEI_ARB_STEMS = (
     'რამიპრილ', 'ენალაპრილ', 'პერინდოპრილ', 'ლიზინოპრილ', 'კაპტოპრილ', 'ფოზინოპრილ',
     'ლოზარტან', 'ვალსარტან', 'კანდესარტან', 'ტელმისარტან', 'ირბესარტან', 'ოლმესარტან',
+    'საკუბიტრილ', 'ენტრესტო', 'იუპერიო',
     'პრესტარიუმ', 'პრესტანს', 'ტრიტაცე', 'კოზაარ', 'დიოვან', 'მიკარდის', 'ატაკანდ', 'ენაპ', 'ნოლიპრელ', 'კო-პრენეს', 'პრენეს',
     'ramipril', 'enalapril', 'perindopril', 'lisinopril', 'captopril',
     'losartan', 'valsartan', 'candesartan', 'telmisartan', 'irbesartan', 'olmesartan',
+    'sacubitril', 'entresto', 'uperio',
     'prestarium', 'prestans', 'tritace', 'cozaar', 'diovan', 'micardis', 'atacand', 'enap', 'noliprel',
 )
 _FT_AMIODARONE_STEMS = ('ამიოდარონ', 'კორდარონ', 'amiodaron', 'cordaron', 'paceron')

@@ -295,15 +295,18 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             is_raaa = bool(ev_before and ev_before.get('is_rupture_suspect'))
             if slot_kind.startswith('someday:'):
                 key = slot_kind.split(':', 1)[1]
-                if is_raaa and key != old_someday:
+                if is_raaa and (key != old_someday or patient.visit_date is not None or not key):
                     messages.error(request, _RAAA_RESCHEDULE_ERR)
+                    had_err = True
+                elif not key or key not in PreopPatient.SomedayList.values:
+                    messages.error(request, 'არასწორი სიის ტიპი — აირჩიეთ კალენდრის თარიღი ან მოლოდინის სია.')
                     had_err = True
                 else:
                     if key == PreopPatient.SomedayList.READY and not can_enter_ready_queue(patient, evaluate(patient)):
                         key = old_someday if (old_someday and old_someday != PreopPatient.SomedayList.READY) else PreopPatient.SomedayList.CONF
                         messages.error(request, 'მზა სიაში გადატანა დასაშვებია მხოლოდ სრული მზაობისა და ქირურგის დადასტურების შემდეგ!')
                         had_err = True
-                    patient.someday_list = key if key in PreopPatient.SomedayList.values else PreopPatient.SomedayList.CONF
+                    patient.someday_list = key
                     patient.visit_date = None
             else:
                 vd = _date(request.POST.get('visit_date'))
@@ -637,7 +640,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 patient.alerts_ack_at = timezone.now()
                 patient.alerts_ack_by = request.user
                 uf.extend(['alerts_ack_at', 'alerts_ack_by'])
-            if request.POST.get('move_ready') == '1' and ev.get('all_tasks_done'):
+            if request.POST.get('move_ready') == '1' and ev.get('all_tasks_done') and not ev.get('is_rupture_suspect'):
                 _update_hold_pause(s, patient.someday_list, PreopPatient.SomedayList.READY, started_on=patient.started_on)
                 patient.someday_list = PreopPatient.SomedayList.READY
                 patient.visit_date = None
