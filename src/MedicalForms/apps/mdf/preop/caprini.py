@@ -209,7 +209,7 @@ def _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver, activ
     oac_cnt = (
         sum([bool(q_d.get('med_warfarin')), bool(q_d.get('med_doac')), bool(q_d.get('med_dabigatran')), ('rivaroxaban_2_5' in med_set)])
         + len(ft_unstruct & {'warfarin', 'doac', 'dabigatran'})
-        + (1 if (ft_m.get('has_ft_unstruct_doac') and ft_m.get('has_ft_unstruct_riva_low')) else 0)
+        + (1 if (ft_m.get('has_ft_dual_xa') or (ft_m.get('has_ft_unstruct_doac') and ft_m.get('has_ft_unstruct_riva_low'))) else 0)
     )
     raw_s = patient.studies if isinstance(patient.studies, dict) else {}
     inv_in = s_cur.get('_invalid_inputs') if isinstance(s_cur.get('_invalid_inputs'), dict) else {}
@@ -234,7 +234,7 @@ def _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver, activ
     has_contra_oac = bool(
         oac_cnt >= 2
         or ((q_d.get('med_doac') or q_d.get('med_dabigatran') or ft_doac) and (severe_renal or severe_liver))
-        or (not is_evla_vka and q_d.get('med_warfarin') and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not has_nx_plan and (dos_inr_bad or (inr_c is not None and inr_c > evla_max_inr)))
+        or (not is_evla_vka and (q_d.get('med_warfarin') or ft_m.get('has_ft_unstruct_warfarin')) and patient.op_subtype == PreopPatient.OpSubtype.EVLA and not has_nx_plan and (dos_inr_bad or (inr_c is not None and inr_c > evla_max_inr)))
     )
     return has_full_oac, is_evla_vka, has_contra_oac, has_ft_par
 

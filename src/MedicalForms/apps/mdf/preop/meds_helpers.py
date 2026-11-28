@@ -205,6 +205,9 @@ def _collect_ft_contraindications(c, ft, u_keys, is_at, immed_stop_plan, gi_blee
     if c.get('is_rupture_suspect') and (ft.get('has_ft_full_oac') or ft.get('has_ft_unstruct_riva_low')):
         contra_msgs.append('რუპტურირებული AAA-ის ეჭვზე აუცილებელია ანტიკოაგულაციის გადაუდებელი რევერსია (4F-PCC / იდარუციზუმაბი)!')
         plan_override = 'გადაუდებელი რევერსია (4F-PCC / იდარუციზუმაბი) — გადავადების გარეშე!'
+    elif c.get('is_rupture_suspect') and (u_keys & {'clopidogrel', 'ticagrelor', 'prasugrel'}):
+        contra_msgs.append('საეჭვო რუპტურა / გადაუდებელი AAA — ოპერაციას P2Y12-ის მოხსნის გამო არ გადავდებთ! გააუქმეთ შემდგომი დოზა და იყავით მზად ჰემოსტაზისა და თრომბოკონცენტრატის ტრანსფუზიისთვის (ESVS 2024)!')
+        plan_override = 'გადაუდებელი ოპერაცია — შეჩერებას არ ველოდებით!'
     if is_at and c['is_cea_oac_p2y_stop']:
         contra_msgs.append('სისხლჩაქცევის/თრომბოლიზისის ფონზე დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!')
         plan_override = plan_override or 'დაუყოვნებლივ შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!'
@@ -380,7 +383,7 @@ def append_freetext_med_rows(c, immed_stop_plan, gi_bleed_plan):
         if c['repro_pregnant']:
             add_row('ACEi / ARB (ტექსტიდან)', 'ორსულობის დროს ACEi / ARB აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!', 'red', immed_stop_plan, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
         elif c.get('acei_acute_hold'):
-            add_row('ACEi / ARB (ტექსტიდან)', f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია ACEi/ARB — დაბალი წნევის ან ჰიპერკალიემიის ფონზე ოპერაციის დილის დოზა გამოტოვეთ და შეათანხმეთ ექიმთან!', 'red', 'გამოტოვეთ დილას! (დაბალი წნევა / მაღალი K+)', hold_or_skip=True, force_date_plan=True, contraindicated=False, acute_hold=True)
+            add_row('ACEi / ARB (ტექსტიდან)', f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია ACEi/ARB — დაბალი წნევის ან ჰიპერკალიემიის ფონზე ოპერაციის დილის დოზა გამოტოვეთ და შეათანხმეთ ექიმთან!', 'amber', 'გამოტოვეთ დილას! (დაბალი წნევა / მაღალი K+)', hold_or_skip=True, force_date_plan=True, contraindicated=False, acute_hold=True)
     has_any_oac_ns = bool(c['has_full_oac'] or ('rivaroxaban_2_5' in med_chips) or c['has_ft_full_oac'] or ft.get('has_ft_unstruct_riva_low') or c.get('has_ft_parenteral'))
     has_dapt_ns = bool((q.get('med_aspirin') or 'aspirin' in u_keys) and c['p2y12_cnt'] >= 1) or (c['p2y12_cnt'] >= 2)
     if ft.get('has_ft_nsaid') and (

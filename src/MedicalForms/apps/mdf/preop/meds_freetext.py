@@ -24,8 +24,13 @@ _STRONG_CLAUSE_SPLIT_RE = re.compile(
 )
 _CONJ_SPLIT_RE = re.compile(r' (?:და|ან|and|or) ')
 _KA_VERBS = r'(?:იღებს|ვიღებ|სვამს|ვსვამ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აქვს|მაქვს|აღენიშნება|უფიქსირდება|აწუხებს)'
+_KA_STOP_VERBS = (
+    r'(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს|შეაჩერეს'
+    r'|მოხსნეს|შეწყვიტეს|შევწყვიტე|მოვხსენი|შევაჩერე|შევწყვიტეთ|მოვხსენით|შევაჩერეთ)'
+)
 _PREFIX_NEG_START_RE = re.compile(
-    rf'^(?:(?:არ|აღარ|არა|ვერ) {_KA_VERBS}'
+    rf'^(?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) {_KA_VERBS}'
+    rf'|{_KA_STOP_VERBS}(?![ა-ჰ])'
     r'|უარყოფს\b|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*'
     r'|(?:no|not|without|stopped|discontinued|held|denied|denies)\b)',
     re.IGNORECASE,
@@ -34,10 +39,6 @@ _AFFIRM_PRED_RE = re.compile(
     rf'(?:^| )(?:{_KA_VERBS}|უწერია|დაუნიშნ[ა-ჰ]*|გადავიდა|გადაიყვან[ა-ჰ]*'
     r'|takes?|taking|uses?|using|started|continues?|continuing|switched|changed|has|have|on |allergic)\b',
     re.IGNORECASE,
-)
-_KA_STOP_VERBS = (
-    r'(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს|შეაჩერეს'
-    r'|მოხსნეს|შეწყვიტეს|შევწყვიტე|მოვხსენი|შევაჩერე|შევწყვიტეთ|მოვხსენით|შევაჩერეთ)'
 )
 _ALLERGY_WORD_RE = re.compile(r'(?:ალერგი[ა-ჰ]*|\ballerg(?:y|ies|ic)\b)', re.IGNORECASE)
 _INLINE_NEG_SPLIT_RE = re.compile(
@@ -86,23 +87,26 @@ _EN_NEG_HEAD_SKIP = frozenset({
     'unfractionated', 'antiplatelet', 'anticoagulant', 'antithrombotic', 'dual', 'triple', 'beta',
     'calcium', 'proton', 'prior', 'previous', 'old', 'chronic', 'regular', 'daily', 'home', 'usual',
 })
-_FREQ_FORM_TOK = r'(?:x\d+|\d+x|bid|tid|qid|qd|od|once|twice|daily|ტაბ|აბი|აბ|tab|caps?|დღეში)'
+_FREQ_FORM_TOK = r'(?:x\d+|\d+x|bid|tid|qid|qd|od|once|twice|daily|ტაბ|აბი|აბ|tab|tabs|caps?|დღეში)'
+_DOSE_UNIT_TOK = r'\d+(?:[.,]\d+)? ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu)'
+_COUNT_DUR_UNIT = (
+    r'(?:აბი|აბ|ტაბ|tab|tabs|caps?|pills?|დოზა|dose'
+    r'|დღის|დღე|დღით|კვირის|კვირა|თვის|თვე|წლის|საათის|სთ|days?|weeks?|months?|years?|hrs?|hours?)'
+)
+_COUNT_OR_DUR_TOK = (
+    r'(?:\d+(?:[.,]\d+)? (?:აბი|აბ|ტაბ|tab|tabs|caps?|pills?|დოზა|dose)'
+    r'|(?:for )?\d+ (?:დღის|დღე|დღით|კვირის|კვირა|თვის|თვე|წლის|საათის|სთ|days?|weeks?|months?|years?|hrs?|hours?)(?: (?:წინ|ადრე|ago|prior|before))?)'
+)
+_BARE_NUM_TOK = rf'\d+(?:[.,]\d+)?(?! {_COUNT_DUR_UNIT}(?![a-zა-ჰ]))'
+_HEAD_MOD_TOK = rf'(?:{_DOSE_UNIT_TOK}|{_COUNT_OR_DUR_TOK}|{_FREQ_FORM_TOK}|{_BARE_NUM_TOK})'
 _KA_PREFIX_NEG_HEAD_RE = re.compile(
-    rf'^[a-zა-ჰ0-9\-]+(?: \d+(?:[.,]\d+)?(?: ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu))?)?(?: {_FREQ_FORM_TOK}){{0,3}}(?= [a-zა-ჰ])'
+    rf'^[a-zა-ჰ0-9\-]+(?: {_HEAD_MOD_TOK}){{0,5}}(?= [a-zა-ჰ])'
 )
-_STOPPED_BUT_NOT_RE = re.compile(
-    r'\b(stopped|discontinued|held|off) ([^,;.!?\n]{1,80}?),? but not (?=[a-zა-ჰ])',
-    re.IGNORECASE,
-)
-_SUFFIX_STOPPED_BUT_NOT_RE = re.compile(
-    r'([^,;.!?\n]{1,80}? (?:stopped|discontinued|held)),? but not (?=[a-zა-ჰ])',
-    re.IGNORECASE,
-)
-_KA_STOPPED_BUT_NOT_RE = re.compile(
-    rf'([^,;.!?\n]{{0,80}}{_KA_STOP_VERBS}[^,;.!?\n]{{0,40}}),? მაგრამ არა (?=[a-zა-ჰ])'
-)
-_KA_STOPPED_BUT_SOV_NOT_RE = re.compile(
-    rf'([^,;.!?\n]{{0,80}}{_KA_STOP_VERBS}[^,;.!?\n]{{0,40}}),? მაგრამ ([a-zა-ჰ0-9 .\-]{{1,40}}?) არა(?=$|[,;.!?\n(\[—–]| [(\[—–-])'
+_EN_BUT_NOT_RE = re.compile(r' but not (?=[a-zა-ჰ])', re.IGNORECASE)
+_EN_STOP_WORD_RE = re.compile(r'\b(?:stopped|discontinued|held|off)\b', re.IGNORECASE)
+_KA_BUT_NOT_RE = re.compile(r' მაგრამ არა (?=[a-zა-ჰ])')
+_KA_BUT_SOV_NOT_RE = re.compile(
+    r' მაგრამ ([a-zა-ჰ0-9 .\-]{1,40}?) არა(?=$|[,;.!?\n(\[—–]| [(\[—–-])'
 )
 _EN_STOPPED_RE = re.compile(r'\b(?:stopped|discontinued|held)\b', re.IGNORECASE)
 _DOSE_UNIT_END_RE = re.compile(r'(?:\d|მგ|mg|მკგ|mcg|გ|g)$', re.IGNORECASE)
@@ -216,9 +220,9 @@ _FT_NSAID_STEMS = (
 _DIGIT_RE = re.compile(r'\d')
 _COMPACT_STRIP_RE = re.compile(r'[\s.,;:!?()\[\]"\'—–-]+')
 _NEG_FAST_HINT_RE = re.compile(
-    r"\b(?:არ|აღარ|არა|ვერ|მოხსნ|მოვხსნ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|გამორ|უარყ|გარეშე"
+    r"\b(?:არ|აღარ|არა|ვერ|მოხსნ|მოვხსნ|მოვხსენ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|გამორ|უარყ|გარეშე"
     r"|no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b"
-    r'|\b(?:არა|არაქვს|არმაქვს|არააქვს|არანაირ|არავითარ|უარყოფს|მოხსნ|მოვხსნ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|მოუხსნ|შეუწყვ|შემიწყვ|მომიხსნ|შემიჩერ|შეგვიწყვ|მოგვიხსნ|შეგვიჩერ|გამორიცხ)',
+    r'|\b(?:არა|არაქვს|არმაქვს|არააქვს|არანაირ|არავითარ|უარყოფს|მოხსნ|მოვხსნ|მოვხსენ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|მოუხსნ|შეუწყვ|შემიწყვ|მომიხსნ|შემიჩერ|შეგვიწყვ|მოგვიხსნ|შეგვიჩერ|გამორიცხ)',
     re.IGNORECASE,
 )
 
@@ -227,16 +231,39 @@ def _has_neg_phrase(s):
     return bool(_NEG_FAST_HINT_RE.search(s) and _NEGATION_PHRASE_RE.search(s))
 
 
+def _prev_clause(s, pos, window=120):
+    end = pos - 1 if pos > 0 and s[pos - 1] == ',' else pos
+    chunk = s[max(0, end - window):end]
+    for sep in (',', ';', '.', '!', '?', '\n'):
+        idx = chunk.rfind(sep)
+        if idx != -1:
+            chunk = chunk[idx + 1:]
+    return chunk
+
+
 def _normalize_nlp_text(text):
     """Collapse whitespace to single spaces in O(N) and normalize affirmative/non-prefix clinical idioms."""
     low = _WS_RUN_RE.sub(' ', text.strip().replace('\r\n', '\n').replace('\r', '\n').lower())
     changed = False
     if ' but not ' in low:
-        low = _STOPPED_BUT_NOT_RE.sub(r'\1 \2; ', low)
-        low, changed = _SUFFIX_STOPPED_BUT_NOT_RE.sub(r'\1; ', low), True
+        src = low
+        low = _EN_BUT_NOT_RE.sub(
+            lambda m: '; ' if _EN_STOP_WORD_RE.search(_prev_clause(src, m.start(), 100)) else m.group(0),
+            src,
+        )
+        changed = changed or (low != src)
     if ' მაგრამ ' in low:
-        low = _KA_STOPPED_BUT_NOT_RE.sub(r'\1; ', low)
-        low, changed = _KA_STOPPED_BUT_SOV_NOT_RE.sub(r'\1; \2', low), True
+        src = low
+        low = _KA_BUT_NOT_RE.sub(
+            lambda m: '; ' if _KA_NEG_VERB_RE.search(_prev_clause(src, m.start())) else m.group(0),
+            src,
+        )
+        src2 = low
+        low = _KA_BUT_SOV_NOT_RE.sub(
+            lambda m: f'; {m.group(1)}' if _KA_NEG_VERB_RE.search(_prev_clause(src2, m.start())) else m.group(0),
+            src2,
+        )
+        changed = changed or (low != src)
     if 'not ' in low or 'never ' in low or "n't " in low:
         low, changed = _DOUBLE_NEG_AFFIRM_EN_RE.sub(' continues ', low), True
     if 'არ ' in low or 'არაა ' in low or 'არც ' in low or 'ვერ ' in low:
@@ -590,6 +617,27 @@ def _effective_allergy_state(q):
     return eff_chips, eff_iodine, ft
 
 
+_APIX_STEMS = ('ელიქვის', 'ელიკვის', 'აპიქსაბან', 'აპიკსაბან', 'eliquis', 'apixaban')
+_EDOX_STEMS = ('ლიქსიან', 'ედოქსაბან', 'ედიქსან', 'lixiana', 'edoxaban', 'savaysa')
+
+
+def _detect_ft_xa_flags(low, med_chips, q_d):
+    has_apix = any(st in low for st in _APIX_STEMS)
+    has_edox = any(st in low for st in _EDOX_STEMS)
+    has_riva = bool(_RIVA_STEM_RE.search(low))
+    has_riva_low_raw = bool(_RIVA_LOW_RE.search(low))
+    has_riva_ther = _riva_has_therapeutic_dose(low)
+    has_ft_dual_xa = (int(has_apix) + int(has_edox) + int(has_riva) >= 2) or (has_riva_low_raw and has_riva_ther)
+    has_ft_riva_2_5 = has_riva_low_raw and not has_riva_ther
+    has_ft_riva_low = has_ft_riva_2_5 and not (has_apix or has_edox)
+    riva_low_only = ('rivaroxaban_2_5' in med_chips) and has_ft_riva_low
+    doac_struct_ok = (
+        (bool(q_d.get('med_doac')) and not has_ft_dual_xa and not (has_ft_riva_2_5 and 'rivaroxaban_2_5' not in med_chips))
+        or (riva_low_only and not has_ft_dual_xa)
+    )
+    return has_ft_dual_xa, has_ft_riva_2_5, has_ft_riva_low, doac_struct_ok
+
+
 def _detect_freetext_high_risk_meds(text, q=None):
     """Detect high-risk anticoagulants, P2Y12, aspirin, NSAIDs, SGLT2i, GLP-1, insulin & teratogens in `q.other_meds`."""
     low = _positive_clauses_text(text)
@@ -601,18 +649,16 @@ def _detect_freetext_high_risk_meds(text, q=None):
             'has_ft_acei_arb': False, 'has_ft_amiodarone': False, 'has_ft_heparin_lmwh': False,
             'has_ft_lmwh': False, 'has_ft_ufh': False,
             'has_ft_fondaparinux': False, 'has_ft_argatroban': False, 'has_ft_nsaid': False,
-            'has_ft_riva_low': False, 'has_ft_full_oac': False,
+            'has_ft_riva_low': False, 'has_ft_dual_xa': False, 'has_ft_full_oac': False,
             'has_ft_unstruct_warfarin': False, 'has_ft_unstruct_doac': False, 'has_ft_unstruct_riva_low': False,
         }
     q_d = q if isinstance(q, dict) else {}
     med_chips = set(_str_list(q_d.get('med_chips')))
     eff_alg_chips, _, _ = _effective_allergy_state(q_d)
-    has_ft_riva_2_5 = bool(_RIVA_LOW_RE.search(low)) and not _riva_has_therapeutic_dose(low)
-    has_ft_riva_low = has_ft_riva_2_5 and not any(st in low for st in _OTHER_XA_DOAC_STEMS)
-    riva_low_only = ('rivaroxaban_2_5' in med_chips) and has_ft_riva_low
+    has_ft_dual_xa, has_ft_riva_2_5, has_ft_riva_low, doac_struct_ok = _detect_ft_xa_flags(low, med_chips, q_d)
     structured_map = {
         'warfarin': bool(q_d.get('med_warfarin')),
-        'doac': bool(q_d.get('med_doac') and not (has_ft_riva_2_5 and 'rivaroxaban_2_5' not in med_chips)) or riva_low_only,
+        'doac': doac_struct_ok,
         'dabigatran': bool(q_d.get('med_dabigatran')),
         'parenteral_oac': True,  # No structured checkbox exists; handled via dedicated parenteral row & flags (no Catch-22 deadlock)
         'parenteral_dti': True,
@@ -680,6 +726,7 @@ def _detect_freetext_high_risk_meds(text, q=None):
         'has_ft_argatroban': any(st in low for st in _FT_ARGATROBAN_STEMS),
         'has_ft_nsaid': any(st in low for st in _FT_NSAID_STEMS),
         'has_ft_riva_low': has_ft_riva_low,
+        'has_ft_dual_xa': has_ft_dual_xa,
         'has_ft_full_oac': has_ft_full_oac,
         'has_ft_unstruct_warfarin': has_ft_unstruct_warfarin,
         'has_ft_unstruct_doac': has_ft_unstruct_doac,

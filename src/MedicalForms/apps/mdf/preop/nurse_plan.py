@@ -79,9 +79,15 @@ def build_plain_georgian_missing_items(patient, ev, today):
 
     if is_stop:
         if ev.get('solo_neuraxial_anatomic_mismatch'):
+            an_plan = (ev.get('s') or {}).get('anesthesia_plan') or ''
+            an_lbl = (
+                'STOP — შეცვალეთ ანესთეზიის გეგმა: არჩეული ადგილობრივი ან წნულის გაუტკივარება ამ ოპერაციისთვის ანატომიურად შეუსაბამოა!'
+                if an_plan in ('local', 'plexus')
+                else 'STOP — შეცვალეთ ანესთეზიის გეგმა: მარტო ნეირაქსიული ბლოკადა ამ ოპერაციისთვის ანატომიურად შეუსაბამოა!'
+            )
             items.append({
                 'kind': 'stop',
-                'label': 'STOP — შეცვალეთ ანესთეზიის გეგმა: მარტო ნეირაქსიული ბლოკადა ამ ოპერაციისთვის ანატომიურად შეუსაბამოა!',
+                'label': an_lbl,
                 'target_section': 'nw-sec-s2', 'target_input': '', 'action_label': 'ანესთეზიის შეცვლა',
             })
         for dw in (ev.get('dos_warnings') or ()):

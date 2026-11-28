@@ -100,6 +100,7 @@ def _result_clinical_part(ctx):
         'has_synthetic_implant': ctx.has_synthetic_implant,
         'has_full_oac': ctx.has_full_oac,
         'has_ft_full_oac': getattr(ctx, 'has_ft_full_oac', False),
+        'has_ft_statin': bool(ctx.ft_meds.get('has_ft_statin')),
         'has_contra_oac': getattr(ctx, 'has_contra_oac', False),
         'has_contra_full_oac': getattr(ctx, 'has_contra_full_oac', False),
         'active_gi_bleed': bool(getattr(ctx, 'active_gi_bleed', False)),

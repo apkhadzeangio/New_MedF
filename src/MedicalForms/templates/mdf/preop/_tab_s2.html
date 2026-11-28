@@ -322,7 +322,7 @@
                             <thead>
                                 <tr>
                                     <th>მედიკამენტი</th>
-                                    {% if ev.has_any_date_plan %}<th>კალენდარული გეგმა{% if ev.planned_surgery_ka %} (ოპ: {{ ev.planned_surgery_ka }}){% endif %}</th>{% endif %}
+                                    {% if ev.has_any_date_plan %}<th>კალენდარული გეგმა{% if ev.planned_surgery_ka and ev.clearance_seal.code != 'inactive' %} (ოპ: {{ ev.planned_surgery_ka }}){% endif %}</th>{% endif %}
                                     <th>პროტოკოლური რეჟიმი</th>
                                 </tr>
                             </thead>
@@ -347,7 +347,7 @@
                                 ზემოთ მოცემული ავტომატური სქემა გადამოწმდეს ქირურგთან და გაეცეს პაციენტს (A4 პასპორტით).
                             </div>
                         </div>
-                        <label class="chip-check" style="height:34px"><input type="checkbox" name="med_hold_agreed" value="1" {% if s.med_hold_agreed %}checked{% endif %} {% if ev.clearance_seal.code == 'stop' %}disabled{% endif %}>შეთანხმებულია ქირურგთან ✓</label>
+                        <label class="chip-check" style="height:34px"><input type="checkbox" name="med_hold_agreed" value="1" {% if s.med_hold_agreed %}checked{% endif %} {% if ev.clearance_seal.code == 'stop' or ev.clearance_seal.code == 'inactive' %}disabled{% endif %}>შეთანხმებულია ქირურგთან ✓</label>
                     </div>
                     {% endif %}
 

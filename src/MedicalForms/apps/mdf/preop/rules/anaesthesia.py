@@ -149,6 +149,8 @@ def _resolve_effective_anesth_label(ctx, lido_alg, needs_ett_airway):
     anesth_plan_raw = ctx.anesth_plan_raw
     if ctx.open_aortic and anesth_plan_raw in ('local', 'plexus'):
         return 'ზოგადი ენდოტრაქეული ანესთეზია (არჩეული ადგილობრივი/წნულის გაუტკივარება უკუნაჩვენებია — შესაცვლელია!)'
+    if ctx.is_pad_bypass and anesth_plan_raw == 'local':
+        return 'სპინალური/ეპიდურული, ზოგადი ან წნულის ანესთეზია (მხოლოდ ადგილობრივი გაუტკივარება შუნტირებაზე შეუსაბამოა — შესაცვლელია!)'
     if ctx.neuraxial_hard_blocked:
         if patient.op_subtype == PreopPatient.OpSubtype.EVLA:
             return (

@@ -277,7 +277,7 @@ def _eval_antithrombotic_conflicts(ctx):
     oac_count = (
         sum([bool(q.get('med_warfarin')), bool(q.get('med_doac')), bool(q.get('med_dabigatran')), ('rivaroxaban_2_5' in ctx.med_chips)])
         + len(ft_u_keys & {'warfarin', 'doac', 'dabigatran'})
-        + (1 if (ctx.ft_meds.get('has_ft_unstruct_doac') and ctx.ft_meds.get('has_ft_unstruct_riva_low')) else 0)
+        + (1 if (ctx.ft_meds.get('has_ft_dual_xa') or (ctx.ft_meds.get('has_ft_unstruct_doac') and ctx.ft_meds.get('has_ft_unstruct_riva_low'))) else 0)
     )
     p2y12_count = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))]) + len(ft_u_keys & {'clopidogrel', 'ticagrelor', 'prasugrel'})
     total_at_count = oac_count + p2y12_count + (1 if (q.get('med_aspirin') or 'aspirin' in ft_u_keys) else 0) + (1 if ('cilostazol' in ctx.med_chips or 'cilostazol' in ft_u_keys) else 0)
@@ -290,10 +290,12 @@ def _eval_antithrombotic_conflicts(ctx):
     raw_di = raw_s['dos_inr'] if 'dos_inr' in raw_s else s.get('dos_inr')
     inv_in_m = s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {}
     dos_inr_bad_m = bool((_has_raw_scalar(raw_di) and _num(raw_di, lo=0.5, hi=15) is None) or ('dos_inr' in inv_in_m))
-    evla_vka_bad = bool(ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and q.get('med_warfarin') and not ctx.has_neuraxial_plan and (dos_inr_bad_m or (ctx.eff_inr_nx is not None and ctx.eff_inr_nx > evla_inr_lim)))
+    has_vka_evla = bool(q.get('med_warfarin') or ctx.ft_meds.get('has_ft_unstruct_warfarin'))
+    evla_vka_bad = bool(ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and has_vka_evla and not ctx.has_neuraxial_plan and (dos_inr_bad_m or (ctx.eff_inr_nx is not None and ctx.eff_inr_nx > evla_inr_lim)))
     has_full_oac_any = bool(ctx.on_oral_anticoag or getattr(ctx, 'has_ft_full_oac', False))
     ft_full_oac_contra = bool(getattr(ctx, 'has_ft_full_oac', False) and (
-        oac_count >= 2 or eff_preg_m or active_gi_bleed or (has_mech_valve and bool(ft_u_keys & {'doac', 'dabigatran'}))
+        oac_count >= 2 or eff_preg_m or active_gi_bleed or (ctx.ft_meds.get('has_ft_unstruct_warfarin') and evla_vka_bad)
+        or (has_mech_valve and bool(ft_u_keys & {'doac', 'dabigatran'}))
         or (bool(ft_u_keys & {'doac', 'dabigatran'}) and (ctx.on_dialysis or ctx.liver_3x or (eff_ren_c is not None and eff_ren_c < (dabi_low if 'dabigatran' in ft_u_keys else doac_low))))
     ))
     ctx.has_contra_full_oac = bool(

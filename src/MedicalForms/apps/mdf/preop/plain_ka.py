@@ -1,4 +1,5 @@
 """Plain-Georgian translation & jargon scrubbing for patient-facing and nurse-facing surfaces."""
+import math
 import re
 
 _ASA_PLAIN_MAP = {
@@ -493,8 +494,10 @@ _RESIDUAL_LATIN_RE = re.compile(r'(?<![A-Za-z0-9])(?!STOP\b)(?!x2\b)(?!2x\b)(?!3
 
 
 def _safe_ka_str(val):
-    """Safely convert scalar text to str without huge-int ValueError or container repr leakage."""
+    """Safely convert scalar text to str without huge-int ValueError, non-finite float, or container repr leakage."""
     if val is None or isinstance(val, (dict, list, tuple, set, bytes)):
+        return ''
+    if isinstance(val, float) and not math.isfinite(val):
         return ''
     if isinstance(val, int) and not isinstance(val, bool) and abs(val) > 10**12:
         return ''
@@ -517,12 +520,14 @@ _ARM_LIMB_L_RE = re.compile(r'(?<![A-Za-z0-9])L (?=კიდურ)')
 
 
 _EMPTY_PAREN_RE = re.compile(r'\([/·;,:—–\s-]*\)')
-_EMPTY_BRACK_RE = re.compile(r'\[[/·;,:—–\s-]*\]')
+_EMPTY_BRACK_RE = re.compile(r'\[[/·;,:—–!\s-]*\]')
 _LEAD_PAREN_RE = re.compile(r'\((?:[/·;,:—–\s-]+(?:\d+\.\d+(?:\.\d+)*[/·;,:—–\s-]*)?|\d+\.\d+(?:\.\d+)*[/·;,:—–\s-]+)')
 _TRAIL_PAREN_RE = re.compile(r'(?<![/·;,:—–\s-])[/·;,:—–\s-]+\)')
 _LEAD_BRACK_RE = re.compile(r'\[[/·;,:—–\s-]+')
 _TRAIL_BRACK_RE = re.compile(r'(?<![/·;,:—–\s-])[/·;,:—–\s-]+\]')
 _COLON_COMMA_RE = re.compile(r':\s*,+\s*')
+_DASH_COLON_RE = re.compile(r'([—–])\s*:(?=\s|$)')
+_DASH_SLASH_RE = re.compile(r'([—–])\s*/(?:\s*/)*\s*')
 _DASH_PUNCT_RE = re.compile(r'(?<![\s—–/-])\s*[—–-][\s—–/-]*([!?.])')
 _SPACE_PUNCT_RE = re.compile(r'(?<!\s)\s+([.,;:!]|\?(?!/))')
 _MULTI_SPACE_RE = re.compile(r'\s{2,}')
@@ -563,6 +568,8 @@ def scrub_plain_ka(txt, second_person=True, strip_quoted_ft=False):
     out = _EMPTY_PAREN_RE.sub('', out)
     out = _EMPTY_BRACK_RE.sub('', out)
     out = _COLON_COMMA_RE.sub(': ', out)
+    out = _DASH_COLON_RE.sub(r'\1', out)
+    out = _DASH_SLASH_RE.sub(r'\1 ', out)
     out = _DASH_PUNCT_RE.sub(r'\1', out)
     out = _SPACE_PUNCT_RE.sub(r'\1', out)
     out = _MULTI_SPACE_RE.sub(' ', out).strip()
@@ -595,6 +602,7 @@ _SF_UNIT_ONLY_RE = re.compile(
 _SF_KA_WORD_RE = re.compile(r'[ა-ჰ]{2,}')
 _SF_LONE_LATIN_RE = re.compile(r'(?<![A-Za-z0-9])[A-Za-z](?![A-Za-z0-9])')
 _SF_LATIN_WORD_RE = re.compile(r'[a-z]{2,}')
+_SF_MED_CLAUSE_SPLIT_RE = re.compile(r'[,;+/\n]+| (?:და|ან|and|or) ')
 _SF_LATIN_FILLER = frozenset({
     'mg', 'mcg', 'ml', 'iu', 'tab', 'tabs', 'cap', 'caps', 'bid', 'tid', 'qid', 'qd', 'od',
     'once', 'twice', 'daily', 'morning', 'evening', 'night', 'po', 'iv', 'sc', 'im', 'sq',
@@ -628,8 +636,21 @@ def _has_unrecognized_latin_word(pos_low, known_stems):
     return False
 
 
+def _has_unrecognized_med_clause(pos_low, all_stems):
+    ascii_stems = [st for st in all_stems if st.isascii()]
+    if _has_unrecognized_latin_word(pos_low, ascii_stems):
+        return True
+    for part in _SF_MED_CLAUSE_SPLIT_RE.split(pos_low or ''):
+        p = part.strip()
+        if not p or any(st in p for st in all_stems):
+            continue
+        if _has_meaningful_ka_text(p):
+            return True
+    return False
+
+
 def format_sf_freetext_med_and_allergy(q, items):
-    """Build plain-Georgian self-fill highlights for free-text meds/allergies without silent Latin erasure."""
+    """Build plain-Georgian self-fill highlights for free-text meds/allergies without silent Latin or KA drug erasure."""
     from .constants import _FREETEXT_ALLERGY_STEMS, _FREETEXT_HIGH_RISK_MED_RULES
     from .meds import _detect_freetext_high_risk_meds
     from .meds_freetext import (
@@ -652,35 +673,34 @@ def format_sf_freetext_med_and_allergy(q, items):
         ft = _detect_freetext_high_risk_meds(raw_other_meds, q=q)
         lvl = 'urgent' if ft.get('unstructured_labels') else 'info'
         pos_low = _positive_clauses_text(raw_other_meds)
-        med_stems = [
-            st for _, _, _, sts in _FREETEXT_HIGH_RISK_MED_RULES for st in sts if st.isascii()
+        all_med_stems = [
+            st for _, _, _, sts in _FREETEXT_HIGH_RISK_MED_RULES for st in sts
         ] + [
-            st for grp in (_ASPIRIN_FT_STEMS, _FT_STATIN_STEMS, _FT_ACEI_ARB_STEMS, _FT_AMIODARONE_STEMS, _FT_HEPARIN_LMWH_STEMS, _FT_FONDAPARINUX_STEMS, _FT_ARGATROBAN_STEMS, _FT_NSAID_STEMS) for st in grp if st.isascii()
-        ] + [st for sts, _ in _SF_COMMON_MED_LABELS for st in sts if st.isascii()] + ['asa', 'lmwh', 'ufh']
-        extra_latin_med = _has_unrecognized_latin_word(pos_low, med_stems)
+            st for grp in (_ASPIRIN_FT_STEMS, _FT_STATIN_STEMS, _FT_ACEI_ARB_STEMS, _FT_AMIODARONE_STEMS, _FT_HEPARIN_LMWH_STEMS, _FT_FONDAPARINUX_STEMS, _FT_ARGATROBAN_STEMS, _FT_NSAID_STEMS) for st in grp
+        ] + [st for sts, _ in _SF_COMMON_MED_LABELS for st in sts] + ['asa', 'lmwh', 'ufh', 'ლმვჰ', 'უფჰ']
+        extra_unrec_med = _has_unrecognized_med_clause(pos_low, all_med_stems)
         ft_lbls = [scrub_plain_ka(lbl, second_person=False, strip_quoted_ft=True) for lbl in (ft.get('unstructured_labels') or [])]
-        if not ft_lbls:
-            rule_lbls = {k: lbl for k, lbl, _, _ in _FREETEXT_HIGH_RISK_MED_RULES}
-            for k in (ft.get('matched_keys') or ()):
-                if k in rule_lbls:
-                    ft_lbls.append(scrub_plain_ka(rule_lbls[k], second_person=False, strip_quoted_ft=True))
-            for flag_k, ka_lbl in (('has_ft_statin', 'სტატინი'), ('has_ft_acei_arb', 'წნევის წამალი'), ('has_ft_nsaid', 'ტკივილგამაყუჩებელი'), ('has_omeprazole', 'კუჭის დამცავი')):
-                if ft.get(flag_k):
-                    ft_lbls.append(ka_lbl)
-            for stems, ka_lbl in _SF_COMMON_MED_LABELS:
-                if any(st in pos_low for st in stems):
-                    if ka_lbl == 'ვიტამინი' and 'ვიტამინი დ' in ft_lbls:
-                        continue
-                    ft_lbls.append(ka_lbl)
+        rule_lbls = {k: lbl for k, lbl, _, _ in _FREETEXT_HIGH_RISK_MED_RULES}
+        for k in (ft.get('matched_keys') or ()):
+            if k in rule_lbls and k not in (ft.get('unstructured_keys') or ()):
+                ft_lbls.append(scrub_plain_ka(rule_lbls[k], second_person=False, strip_quoted_ft=True))
+        for flag_k, ka_lbl in (('has_ft_statin', 'სტატინი'), ('has_ft_acei_arb', 'წნევის წამალი'), ('has_ft_nsaid', 'ტკივილგამაყუჩებელი'), ('has_omeprazole', 'კუჭის დამცავი')):
+            if ft.get(flag_k):
+                ft_lbls.append(ka_lbl)
+        for stems, ka_lbl in _SF_COMMON_MED_LABELS:
+            if any(st in pos_low for st in stems):
+                if ka_lbl == 'ვიტამინი' and 'ვიტამინი დ' in ft_lbls:
+                    continue
+                ft_lbls.append(ka_lbl)
         ft_lbls = [x for x in dict.fromkeys(ft_lbls) if x]
         if ft_lbls:
-            if extra_latin_med:
+            if extra_unrec_med:
                 ft_lbls.append('დამატებითი წამალი ტექსტში (გადაამოწმეთ ჩანაწერი)')
             clean_other = ', '.join(ft_lbls)
         else:
             cand = _SF_LONE_LATIN_RE.sub('', scrub_plain_ka(_safe_display_str(raw_other_meds, max_len=160), second_person=False, strip_quoted_ft=True)).strip(' ,;:-')
             if _has_meaningful_ka_text(cand):
-                clean_other = f'{cand} · დამატებითი წამალი ტექსტში (გადაამოწმეთ ჩანაწერი)' if extra_latin_med else cand
+                clean_other = f'{cand} · დამატებითი წამალი ტექსტში (გადაამოწმეთ ჩანაწერი)' if _has_unrecognized_latin_word(pos_low, [st for st in all_med_stems if st.isascii()]) else cand
             else:
                 clean_other = 'მითითებულია ტექსტში (გადაამოწმეთ ჩანაწერი)'
         items.append((lvl, f'სხვა წამალი: {clean_other}'))

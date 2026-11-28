@@ -1,7 +1,7 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.20'
+REGISTRY_VERSION = '1.2.21'
 REGISTRY_UPDATED_ON = '2026-11-27'
 
 STATUS_VERIFIED = 'source-verified'
@@ -78,6 +78,17 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.21',
+        'date': '2026-11-27',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-22: HIT პარენტერული VTE პარამეტრების გასწორება, ორმაგი ფაქტორ-Xa DOAC, ქართული/ორენოვანი პრეფიქს-უარყოფის NLP, rAAA თავისუფალი ტექსტის P2Y12, ანესთეზიის/ანამნეზის/Plain-KA და რეესტრის სრული დახურვა',
+        'changes_ka': (
+            'დაიხურა ყველა 3 S1 კლინიკური და NLP ხარვეზი: rules/venous.py-სა და rules/cardiac.py-ში გასწორდა _par_vte_advice-ის გადაცვლილი არგუმენტების რიგი (HIT + პარენტერული ანტიკოაგულანტისას აღარ გაიცემა UFH-ის რეკომენდაცია); meds_freetext/meds/caprini/rules/meds-ში დაემატა სხვადასხვა ფაქტორ-Xa DOAC-ის (apixaban+rivaroxaban/edoxaban ან rivaroxaban 20 მგ + 2.5 მგ) ორმაგი OAC STOP დეტექცია (has_ft_dual_xa); _PREFIX_NEG_START_RE და _KA_PREFIX_NEG_HEAD_RE განზოგადდა 17-ვე ქართულ შეწყვეტის ზმნაზე, რიცხობრივ ტაბლეტების რაოდენობაზე/ვადებზე („1 აბი“, „5 დღის წინ“, „5 days ago“), „ალერგია არ აქვს A და B“-სა და „მოვხსენი“ ფორმაზე.',
+            'დაიხურა ყველა 5 S2 ხარვეზი: საეჭვო rAAA-ზე თავისუფალი ტექსტის P2Y12 (კლოპიდოგრელი/ტიკაგრელორი/პრასუგრელი) აღარ გასცემს გეგმურ 4–7 დღიან შეჩერებას (გასცემს გადაუდებელ დაუყოვნებლივ მართვას/თრომბოკონცენტრატს); ქვედა კიდურის შუნტირებაზე წმინდა local ანესთეზიის არჩევისას _resolve_effective_anesth_label, neuraxial_gate და nurse_plan ზუსტად გამოყოფს local/plexus შეუსაბამობას სოლო-ნეირაქსიული წესისგან; generate_anamnesis-ში აღმოიფხვრა მკვდარი statin გასაღები (has_ft_statin), დაემატა PPI/ქრონიკული მედიკამენტები და ობიექტური ვიტალური/ლაბორატორიული/სისხლძარღვოვანი აღმოჩენები; build_self_fill_highlights აღარ შლის ამოუცნობ წამლებს ამოცნობილი წამლის გვერდით.',
+            'დაიხურა ყველა 5 S3 ხარვეზი: _safe_ka_str დაცულია float NaN/Inf-ისგან; registry/__init__.py დინამიურად შლის ყველა ინდექსიან {val0}/{val1}/{val2}… ტუპლ-პლეისჰოლდერს; plain_ka ასუფთავებს „—:“, „—/“ და „!]“ არტეფაქტებს; EVLA თავისუფალი ტექსტის სუპრათერაპიული ვარფარინი (INR>3.0) სინქრონიზდა caprini/rules/meds-ში; თავისუფალი ტექსტის ACEi/ARB acute_hold ტონი გაუთანაბრდა „amber“-ს, ხოლო არააქტიურ ბარათზე _tab_s2 მალავს ძველ საოპერაციო თარიღს და ბლოკავს med_hold_agreed მოსანიშნს.',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC 2022 NCS · ASRA 5th Ed 2025 · CHEST 2022 · EHRA 2021 · ISTH 2021 · ACC/AHA 2024 · EMA · FDA',
+    },
     {
         'version': '1.2.20',
         'date': '2026-11-27',

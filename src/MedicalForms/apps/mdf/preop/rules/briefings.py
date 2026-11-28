@@ -563,7 +563,12 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
     arm_diff_lim = rule_value('VIT_BP_HYPOTENSION_SHOCK')['arm_diff']
     neuraxial_blockers = list(ctx.hard_nx_reasons)
     if ctx.solo_neuraxial_anatomic_mismatch:
-        neuraxial_blockers.insert(0, 'ანატომიურად შეუსაბამო სოლო-ნეირაქსიული გეგმა!')
+        mm_lbl = (
+            'ანატომიურად შეუსაბამო ადგილობრივი/წნულის გაუტკივარება!'
+            if ctx.anesth_plan_raw in ('local', 'plexus')
+            else 'ანატომიურად შეუსაბამო სოლო-ნეირაქსიული გეგმა!'
+        )
+        neuraxial_blockers.insert(0, mm_lbl)
     asra_ufh_note = (
         ' · ASRA 2025 UFH წესი: ნეირაქსიული პუნქციიდან IV ჰეპარინამდე ≥60 წთ (სისხლიანი პუნქციისას — გადადება/კონსილიუმი); '
         'კათეტერის ამოღება UFH-დან ≥4–6 სთ-ში (ნორმალური aPTT) და P2Y12/DOAC/VOYAGER დაწყებამდე!'

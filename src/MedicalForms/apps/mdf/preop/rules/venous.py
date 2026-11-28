@@ -153,7 +153,8 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
             else:
                 vte_agents = f'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე) — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_s}'
         elif has_ft_par_v:
-            vte_agents = _par_vte_advice(has_contra_oac_v, has_hit, ven_severe_renal, ren_red, '')
+            hit_dtis_v = 'IV ბივალირუდინი (არგატრობანი ღვიძლის ≥3x-ზე ერიდეთ/დოზა -75%!)' if ctx.liver_3x else 'IV ბივალირუდინი/არგატრობანი'
+            vte_agents = _par_vte_advice(has_hit, ven_severe_renal, ctx.liver_3x, hit_dtis_v, '')
         elif has_hit:
             vte_agents = (
                 f'IPC / არგატრობანი-ბივალირუდინი — HIT + CrCl<{ren_red}: ჰეპარინი, ფონდაპარინუქსი და DOAC აკრძალულია!{arg_liv}'

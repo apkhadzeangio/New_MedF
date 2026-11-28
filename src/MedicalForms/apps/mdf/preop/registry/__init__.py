@@ -88,8 +88,11 @@ def match_rule_for_text(text, domain_hint=None):
             if '{val' in pat:
                 if '{val}' in pat and isinstance(ev_val, (int, float, str)):
                     pat = pat.replace('{val}', str(ev_val))
-                elif '{val0}' in pat and isinstance(ev_val, (tuple, list)) and ev_val:
-                    pat = pat.replace('{val0}', str(ev_val[0]))
+                elif isinstance(ev_val, (tuple, list)) and ev_val:
+                    for vi, vv in enumerate(ev_val):
+                        tok = f'{{val{vi}}}'
+                        if tok in pat:
+                            pat = pat.replace(tok, str(vv))
                 elif '{val[' in pat and isinstance(ev_val, dict):
                     for vk, vv in ev_val.items():
                         tok = f'{{val[{vk}]}}'

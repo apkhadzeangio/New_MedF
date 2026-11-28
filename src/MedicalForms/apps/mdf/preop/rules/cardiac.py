@@ -394,7 +394,8 @@ def _venous_vte_task_label(ctx, ren_red, eff_ren_t):
         return f'მუდმივი OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე; ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'
     if has_ft_par_t:
         from ..caprini import _par_vte_advice
-        return _par_vte_advice(has_contra_oac_t, has_hit, ven_severe_renal_t, ren_red, '')
+        hit_dtis_t = 'IV ბივალირუდინი (არგატრობანი ღვიძლის ≥3x-ზე ერიდეთ/დოზა -75%!)' if ctx.liver_3x else 'IV ბივალირუდინი/არგატრობანი'
+        return _par_vte_advice(has_hit, ven_severe_renal_t, ctx.liver_3x, hit_dtis_t, '')
     if has_hit:
         return f'IPC / არგატრობანი-ბივალირუდინი (HIT + CrCl<{ren_red}!){arg_liv_t}' if ven_severe_renal_t else ('IPC / IV ბივალირუდინი (HIT + ღვიძლის ≥3x!)' if ctx.liver_3x else 'ფონდაპარინუქსი / DOAC (HIT!)')
     if ven_severe_renal_t and ctx.liver_3x:

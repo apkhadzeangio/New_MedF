@@ -407,17 +407,59 @@ _CHRONIC_CV_MED_STEMS = (
     'losartan', 'ლოზარტან', 'valsartan', 'ვალსარტან', 'telmisartan', 'ტელმისარტ',
     'candesartan', 'კანდესარტ', 'irbesartan', 'ირბესარტ', 'olmesartan', 'ოლმესარტ',
     'furosem', 'ფუროსემ', 'torasem', 'ტორასემ', 'indapam', 'ინდაპამ',
-    'spironolact', 'სპირონოლაქტ', 'eplerenon', 'ეპლერენონ',
-    'hydrochlorothiaz', 'ჰიდროქლოროთიაზ', 'chlorthalid', 'ქლორთალიდ',
+    'spironolact', 'სპირონოლაქტ', 'eplerenon', 'ეპლერენონ', 'hydrochlorothiaz', 'ჰიდროქლოროთიაზ', 'chlorthalid', 'ქლორთალიდ',
     'aspirin', 'ასპირინ', 'cardioaspir', 'კარდიოასპირ', 'trombo ass', 'თრომბო ას',
-    'statin', 'სტატინ', 'atorva', 'ატორვა', 'rosuva', 'როზუვა', 'simva', 'სიმვა',
-    'crestor', 'კრესტორ', 'lipitor', 'ლიპიტორ',
+    'statin', 'სტატინ', 'atorva', 'ატორვა', 'rosuva', 'როზუვა', 'simva', 'სიმვა', 'crestor', 'კრესტორ', 'lipitor', 'ლიპიტორ',
+    'ezetimib', 'ეზეტიმიბ', 'fenofibr', 'ფენოფიბრ', 'propafenon', 'პროპაფენონ', 'ivabradin', 'ივაბრადინ',
     'gliclaz', 'გლიკლაზ', 'glimepir', 'გლიმეპირ', 'glibenclam', 'გლიბენკლამ',
-    'sitaglipt', 'სიტაგლიპტ', 'vildaglipt', 'ვილდაგლიპტ', 'linaglipt', 'ლინაგლიპტ',
-    'pioglitaz', 'პიოგლიტაზ', 'levothyrox', 'ლევოთიროქს', 'euthyrox', 'ეუთიროქს',
-    'thyrox', 'თიროქს', 'methimaz', 'თიამაზოლ', 'თიროზოლ', 'digoxin', 'დიგოქსინ',
-    'allopurin', 'ალოპურინ', 'febuxost', 'ფებუქსოსტ',
+    'sitaglipt', 'სიტაგლიპტ', 'vildaglipt', 'ვილდაგლიპტ', 'linaglipt', 'ლინაგლიპტ', 'pioglitaz', 'პიოგლიტაზ',
+    'levothyrox', 'ლევოთიროქს', 'euthyrox', 'ეუთიროქს', 'thyrox', 'თიროქს', 'methimaz', 'თიამაზოლ', 'thyrozol', 'თიროზოლ',
+    'digoxin', 'დიგოქსინ', 'allopurin', 'ალოპურინ', 'febuxost', 'ფებუქსოსტ',
+    'symbicort', 'სიმბიკორტ', 'salbutam', 'სალბუტამ', 'spiriva', 'სპირივა', 'tiotrop', 'ტიოტროპ', 'budeson', 'ბუდესონ', 'fluticason', 'ფლუტიკაზონ', 'seretide', 'სერეტიდ', 'ventolin', 'ვენტოლინ',
+    'methotrex', 'მეთოტრექს', 'tacrolim', 'ტაკროლიმ', 'azathiopr', 'აზათიოპრ', 'cyclospor', 'ციკლოსპორ', 'mycophenol', 'მიკოფენოლ',
+    'levetiracet', 'ლევეტირაცეტ', 'valpro', 'ვალპრო', 'carbamazep', 'კარბამაზეპ', 'lamotrig', 'ლამოტრიჯ', 'gabapent', 'გაბაპენტ', 'pregabalin', 'პრეგაბალინ',
+    'levodop', 'ლევოდოპ', 'pramipex', 'პრამიპექს', 'tamsulos', 'ტამსულოზ', 'doxazos', 'დოქსაზოზ', 'finaster', 'ფინასტერ',
+    'omepraz', 'ომეპრაზ', 'pantopraz', 'პანტოპრაზ', 'esomepraz', 'ეზომეპრაზ', 'rabepraz', 'რაბეპრაზ', 'lansopraz', 'ლანსოპრაზ',
+    'sertralin', 'სერტრალინ', 'escitalopram', 'ესციტალოპრამ', 'fluoxetin', 'ფლუოქსეტინ', 'venlafax', 'ვენლაფაქს', 'duloxet', 'დულოქსეტ',
 )
+
+
+def _append_objective_vasc_and_vitals_flags(comorb, q, s_ev, ev):
+    from .utils import parse_wbc_k
+    sbp_vals = [v for v in (_num(s_ev.get('bp_sys'), 30, 320), _num(s_ev.get('bp_sys_l'), 30, 320), _num(s_ev.get('dos_bp_sys'), 40, 300)) if v is not None]
+    dbp_vals = [v for v in (_num(s_ev.get('bp_dia'), 20, 220), _num(s_ev.get('bp_dia_l'), 20, 220), _num(s_ev.get('dos_bp_dia'), 20, 200)) if v is not None]
+    eff_sys, eff_dia = (max(sbp_vals) if sbp_vals else None), (max(dbp_vals) if dbp_vals else None)
+    min_sys = min(sbp_vals) if sbp_vals else None
+    if min_sys is not None and min_sys < 90:
+        comorb.append(f'ჰიპოტენზია (SBP {min_sys} mmHg)')
+    elif not q.get('htn') and ((eff_sys is not None and eff_sys >= 140) or (eff_dia is not None and eff_dia >= 90)):
+        comorb.append(f'მომატებული არტერიული წნევა ({eff_sys or "—"}/{eff_dia or "—"} mmHg — გადაამოწმეთ ჰიპერტენზია!)')
+    hr_v, spo2_v = _num(s_ev.get('hr'), 15, 260), _num(s_ev.get('spo2'), 30, 100)
+    if s_ev.get('irregular_hr') or (hr_v is not None and (hr_v < 55 or hr_v > 100)):
+        comorb.append(f'პულსის/რიტმის დარღვევა (HR {hr_v or "—"}/წთ)')
+    if spo2_v is not None and spo2_v < 94:
+        comorb.append(f'ჰიპოქსემია (SpO2 {spo2_v}%)')
+    bmi_v = ev.get('bmi')
+    if bmi_v is not None and (bmi_v >= 30 or bmi_v < 18.5):
+        comorb.append(f'სიმსუქნე (BMI {bmi_v})' if bmi_v >= 30 else f'წონის დეფიციტი (BMI {bmi_v})')
+    abi_vals = [v for v in (_num(s_ev.get('abi_r'), 0, 3), _num(s_ev.get('abi_l'), 0, 3)) if v is not None]
+    tp_vals = [v for v in (_num(s_ev.get('tp_r'), 0, 400), _num(s_ev.get('tp_l'), 0, 400)) if v is not None]
+    tbi_vals = [v for v in (_num(s_ev.get('tbi_r'), 0, 3), _num(s_ev.get('tbi_l'), 0, 3)) if v is not None]
+    if any(v < 0.9 or v > 1.4 for v in abi_vals) or any(v < 60 for v in tp_vals) or any(v < 0.7 for v in tbi_vals):
+        comorb.append('პერიფერიული არტერიების დაავადება / პათოლოგიური ABI/TP/TBI')
+    ica_vals = [v for v in (_num(s_ev.get('carotid_r'), 0, 100), _num(s_ev.get('carotid_l'), 0, 100)) if v is not None]
+    if any(v >= 50 for v in ica_vals):
+        comorb.append(f'საძილე არტერიის სტენოზი (ICA {max(ica_vals)}%)')
+    aaa_v = _num(s_ev.get('aaa_mm'), 10, 200)
+    if aaa_v is not None and aaa_v >= 30:
+        comorb.append(f'მუცლის აორტის ანევრიზმა (AAA {aaa_v} მმ)')
+    if s_ev.get('ven_duplex_status') in ('acute_dvt', 'deep_obstruction', 'superficial_thrombus'):
+        comorb.append('ვენური თრომბოზი / ობსტრუქცია (დუპლექსი)')
+    if s_ev.get('gastro_result') == 'acute_ulcer' and not (q.get('ulcer') or q.get('ulcer_active_symp')):
+        comorb.append('მწვავე კუჭ-ნაწლავის წყლული (ეგდს)')
+    wbc_v = parse_wbc_k(s_ev.get('wbc'))
+    if wbc_v is not None and (wbc_v > 12.0 or wbc_v < 3.5):
+        comorb.append(f'პათოლოგიური ლეიკოციტები (WBC {wbc_v})')
 
 
 def _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a):
@@ -440,40 +482,39 @@ def _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a):
     if s_ev.get('viral_positive'):
         comorb.append('ვირუსული სეროლოგია დადებითი (HBsAg/HCV/HIV)')
     plt_v = parse_plt_k(s_ev.get('plt'))
-    if plt_v is not None and plt_v < 100:
+    if plt_v is not None and plt_v < 150:
         comorb.append(f'თრომბოციტოპენია (PLT {plt_v} ×10^9/L)')
     inr_v = _num(s_ev.get('inr'), 0.4, 20)
-    if inr_v is not None and inr_v >= 1.5 and not q.get('med_warfarin') and 'warfarin' not in ft_keys_a:
-        comorb.append(f'კოაგულოპათია / მომატებული INR ({inr_v})')
-    k_v = _num(s_ev.get('k'), 1.0, 12.0)
+    if (inr_v is not None and inr_v >= 1.5 and not q.get('med_warfarin') and 'warfarin' not in ft_keys_a) or s_ev.get('aptt_prolonged') or (ev.get('fib_gl') is not None and ev['fib_gl'] < 1.8):
+        comorb.append('კოაგულოპათია / ჰემოსტაზის დარღვევა (INR/APTT/ფიბრინოგენი)')
+    k_v, na_v = _num(s_ev.get('k'), 1.0, 12.0), _num(s_ev.get('na'), 95, 190)
     if k_v is not None and (k_v >= 5.4 or k_v < 3.5):
         comorb.append(f'ელექტროლიტური დისბალანსი (K+ {k_v} მმოლ/ლ)')
-    na_v = _num(s_ev.get('na'), 95, 190)
     if na_v is not None and (na_v < 130 or na_v >= 150):
         comorb.append(f'ელექტროლიტური დისბალანსი (Na+ {na_v} მმოლ/ლ)')
-    fev1 = _num(s_ev.get('spiro_fev1'), 10, 150)
-    cxr_v = s_ev.get('cxr') or ''
-    if not (q.get('pulm') or q.get('pulm_chips')):
-        if (fev1 is not None and fev1 < 80) or cxr_v in ('emphysema', 'infiltrate', 'cardiomegaly'):
-            comorb.append('სასუნთქი სისტემის / რენტგენის პათოლოგია (სპირომეტრია/CXR)')
-    tsh_v = s_ev.get('tsh_status') or ''
-    if not q.get('thyroid_disease') and tsh_v in ('hyperthyroid', 'hypothyroid_severe', 'hypothyroid_mild'):
+    fev1, cxr_v = _num(s_ev.get('spiro_fev1'), 10, 150), s_ev.get('cxr') or ''
+    if not (q.get('pulm') or q.get('pulm_chips')) and ((fev1 is not None and fev1 < 80) or cxr_v in ('emphysema', 'infiltrate', 'cardiomegaly')):
+        comorb.append('სასუნთქი სისტემის / რენტგენის პათოლოგია (სპირომეტრია/CXR)')
+    if not q.get('thyroid_disease') and (s_ev.get('tsh_status') or '') in ('hyperthyroid', 'hypothyroid_severe', 'hypothyroid_mild'):
         comorb.append('ფარისებრი ჯირკვლის ფუნქციის დარღვევა (TSH)')
-    sbp_vals = [v for v in (_num(s_ev.get('bp_sys'), 30, 320), _num(s_ev.get('bp_sys_l'), 30, 320), _num(s_ev.get('dos_bp_sys'), 40, 300)) if v is not None]
-    dbp_vals = [v for v in (_num(s_ev.get('bp_dia'), 20, 220), _num(s_ev.get('bp_dia_l'), 20, 220), _num(s_ev.get('dos_bp_dia'), 20, 200)) if v is not None]
-    eff_sys, eff_dia = (max(sbp_vals) if sbp_vals else None), (max(dbp_vals) if dbp_vals else None)
-    if not q.get('htn') and ((eff_sys is not None and eff_sys >= 160) or (eff_dia is not None and eff_dia >= 100)):
-        comorb.append(f'მომატებული არტერიული წნევა ({eff_sys or "—"}/{eff_dia or "—"} mmHg — გადაამოწმეთ ჰიპერტენზია!)')
-    hb_gl = ev.get('hb_gl')
-    if hb_gl is not None and hb_gl < 100:
+    hb_gl, fer_v, tsat_v = ev.get('hb_gl'), _num(s_ev.get('ferritin'), 1, 5000), ev.get('tsat')
+    if hb_gl is not None and hb_gl < 120:
         comorb.append(f'ანემია (Hb {hb_gl} გ/ლ)')
+    elif (fer_v is not None and fer_v < 30) or (tsat_v is not None and tsat_v < 20):
+        comorb.append('რკინადეფიციტი (ფერიტინი/TSAT)')
+    gl_v, dos_gl_v = ev.get('gl_mmol'), ev.get('dos_gl_mmol')
+    if not any('დიაბეტ' in c or 'ჰიპერგლიკემ' in c for c in comorb) and ((gl_v is not None and (gl_v >= 7.0 or gl_v < 3.9)) or (dos_gl_v is not None and (dos_gl_v >= 10.0 or dos_gl_v < 3.9))):
+        comorb.append(f'გლიკემიის დარღვევა ({dos_gl_v if (dos_gl_v is not None and (dos_gl_v >= 10.0 or dos_gl_v < 3.9)) else gl_v} მმოლ/ლ)')
+    if ev.get('ldl') is not None and ev['ldl'] >= 3.0:
+        comorb.append(f'დისლიპიდემია (LDL {ev["ldl"]} მმოლ/ლ)')
+    _append_objective_vasc_and_vitals_flags(comorb, q, s_ev, ev)
     pos_other = _positive_clauses_text(q.get('other_meds') or '')
     has_unlisted_cv_rx = bool(
         ev.get('has_full_oac') or ev.get('has_ft_full_oac') or ('rivaroxaban_2_5' in med_ch_set)
         or any(q.get(k) for k in ('med_aspirin', 'med_clopidogrel', 'med_ticagrelor', 'med_prasugrel'))
-        or bool(ft_keys_a & {'aspirin', 'statin', 'warfarin', 'doac', 'dabigatran', 'clopidogrel', 'ticagrelor', 'prasugrel', 'cilostazol', 'steroid', 'amiodarone', 'parenteral_oac', 'parenteral_dti'})
-        or bool(med_ch_set & {'statin', 'amiodarone', 'cilostazol', 'steroid', 'beta_blocker', 'acei_arb', 'diuretic', 'ccb'})
-        or bool(ev.get('has_ft_acei_arb'))
+        or bool(ft_keys_a & {'aspirin', 'warfarin', 'doac', 'dabigatran', 'clopidogrel', 'ticagrelor', 'prasugrel', 'cilostazol', 'steroid', 'amiodarone', 'omeprazole', 'parenteral_oac', 'parenteral_dti'})
+        or bool(med_ch_set & {'statin', 'ppi', 'amiodarone', 'cilostazol', 'steroid', 'beta_blocker', 'acei_arb', 'diuretic', 'ccb'})
+        or bool(ev.get('has_ft_acei_arb')) or bool(ev.get('has_ft_statin'))
         or any(st in pos_other for st in _CHRONIC_CV_MED_STEMS)
     )
     if not comorb and has_unlisted_cv_rx:
