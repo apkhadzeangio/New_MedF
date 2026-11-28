@@ -268,6 +268,38 @@ def _build_handoff_tasks(ev, q, s, pathway, allergy_chips, eff_renal_board):
     return task_candidates
 
 
+def _contra_oac_board_msg(ev, q, ft_keys, sev_renal, ren_red):
+    if ev.get('eff_pregnant'):
+        preg_agent = (
+            'არასფრაქციული ჰეპარინი (UFH — თირკმლის მძიმე უკმარისობის/დიალიზის გამო LMWH კუმულირდება!)'
+            if sev_renal else 'LMWH/UFH'
+        )
+        return f'VTE / ანტიკოაგულაცია: ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_agent} მეან-გინეკოლოგთან და კარდიოლოგთან!'
+    if ev.get('has_mech_valve'):
+        mv_br_c = (
+            f'CrCl/eGFR <{ren_red}/დიალიზი: IV UFH ხიდი (LMWH აკუმულირდება!)'
+            if sev_renal else 'ხიდური სქემა კარდიოლოგთან'
+        )
+        has_mv_bad_oral = bool(
+            ev.get('oac_count', 0) >= 2
+            or q.get('med_doac') or q.get('med_dabigatran')
+            or ('rivaroxaban_2_5' in (q.get('med_chips') or []))
+            or bool(ft_keys & {'doac', 'dabigatran'})
+            or ev.get('has_ft_unstruct_riva_low')
+        )
+        if has_mv_bad_oral:
+            return (
+                f'VTE / ანტიკოაგულაცია: მექანიკური სარქველი — უკუნაჩვენები OAC არ განაახლოთ (DOAC/დუბლირებული OAC აკრძალულია!); '
+                f'სავალდებულოა თერაპიული ვარფარინი (VKA) და {mv_br_c}!'
+            )
+        par_mv_note = ' (ერთიანი სქემა — ორმაგი ანტიკოაგულაციის გარეშე!)' if bool(ft_keys & {'parenteral_oac', 'parenteral_dti'}) else ''
+        return (
+            f'VTE / ანტიკოაგულაცია: მექანიკური სარქველი — INR-ის კორექცია და თერაპიული ვარფარინის (VKA) '
+            f'გაგრძელება / {mv_br_c} (DOAC აკრძალულია!){par_mv_note}'
+        )
+    return 'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!'
+
+
 def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_red, has_full_oac_b, has_contra_full_oac_b):
     evla_inr_lim = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
     ft_keys = set(ev.get('ft_meds_keys') or ())
@@ -280,17 +312,7 @@ def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_r
         )
         task_candidates.append((_VTE_PREFIXES, mv_preg_board))
     elif has_contra_full_oac_b or (ev.get('eff_pregnant') and has_full_oac_b):
-        if ev.get('eff_pregnant'):
-            preg_agent = (
-                'არასფრაქციული ჰეპარინი (UFH — თირკმლის მძიმე უკმარისობის/დიალიზის გამო LMWH კუმულირდება!)'
-                if sev_renal else 'LMWH/UFH'
-            )
-            oac_board_msg = f'VTE / ანტიკოაგულაცია: ორსულობის გამო პერორალური OAC (DOAC/ვარფარინი) უკუნაჩვენებია — არ განაახლოთ, შეარჩიეთ {preg_agent} მეან-გინეკოლოგთან და კარდიოლოგთან!'
-        elif ev.get('has_mech_valve') and not (ev.get('oac_count', 0) >= 2 or q.get('med_doac') or q.get('med_dabigatran') or bool(ft_keys & {'doac', 'dabigatran', 'parenteral_oac', 'parenteral_dti'})):
-            oac_board_msg = 'VTE / ანტიკოაგულაცია: მექანიკური სარქველი — INR-ის კორექცია და თერაპიული ვარფარინის (VKA) გაგრძელება/ხიდი კარდიოლოგთან (DOAC აკრძალულია!)'
-        else:
-            oac_board_msg = 'VTE / ანტიკოაგულაცია: უკუნაჩვენები OAC არ განაახლოთ — შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ნეფროლოგთან!'
-        task_candidates.append((_VTE_PREFIXES, oac_board_msg))
+        task_candidates.append((_VTE_PREFIXES, _contra_oac_board_msg(ev, q, ft_keys, sev_renal, ren_red)))
     elif has_full_oac_b:
         if ev.get('is_evla_warfarin_only'):
             oac_res_board = f'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად (INR ≤ {evla_inr_lim} — დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ!)'
@@ -387,7 +409,15 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
     elif 'hit_heparin' in allergy_chips:
         has_mv = 'mech_valve' in (q.get('cad_chips') or [])
         liver_3x = s.get('liver_status') == '3x'
-        has_ft_par_hit = bool(set(ev.get('ft_meds_keys') or ()) & {'parenteral_oac', 'parenteral_dti'})
+        ft_keys_hit = set(ev.get('ft_meds_keys') or ())
+        has_ft_par_hit = bool(ft_keys_hit & {'parenteral_oac', 'parenteral_dti'})
+        has_mv_bad_oral_hit = bool(
+            ev.get('oac_count', 0) >= 2
+            or q.get('med_doac') or q.get('med_dabigatran')
+            or ('rivaroxaban_2_5' in (q.get('med_chips') or []))
+            or bool(ft_keys_hit & {'doac', 'dabigatran'})
+            or ev.get('has_ft_unstruct_riva_low')
+        )
         oac_no_dbl = (
             ' · პოსტოპ. მუდმივი ვარფარინის/OAC-ის აღდგენისას დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ — IPC აღდგენამდე (ორმაგი ანტიკოაგულაციის გარეშე!)'
             if (has_full_oac_b and not has_contra_full_oac_b)
@@ -407,7 +437,11 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
                 (sev_renal, f' · CrCl<{ren_red}/დიალიზი: ფონდაპარინუქსი აკრძალულია!'),
                 (liver_3x, ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — უპირატესია ბივალირუდინი (არგატრობანი მოერიდეთ)!'),
             ) if cond)
-            hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი ({scheme_s})!{org_hit_s}{oac_no_dbl}'
+            preg_hit_oac_sfx = (
+                (' · უკუნაჩვენები DOAC/დუბლირებული OAC არ განაახლოთ (ორმაგი ანტიკოაგულაციის გარეშე!)' if has_mv_bad_oral_hit else ' · VKA თვითნებურად არ მოხსნათ (ორმაგი ანტიკოაგულაციის გარეშე!)')
+                if (has_mv and has_contra_full_oac_b) else oac_no_dbl
+            )
+            hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი ({scheme_s})!{org_hit_s}{preg_hit_oac_sfx}'
         elif has_full_oac_b and ev.get('is_evla_warfarin_only'):
             hit_board_agents = 'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
         elif has_mv:

@@ -57,6 +57,16 @@ _PHRASE_REPLACEMENTS = (
     ('(FDA Black Box / EMA)', ''),
     ('FDA Black Box / EMA', ''),
     ('FDA Boxed Warning', 'მაღალი სისხლდენის რისკი'),
+    ('(ESC 2018 / FDA Category D)', ''),
+    ('ESC 2018 / FDA Category D', ''),
+    ('ESC 2018', ''),
+    ('FDA Category D', ''),
+    ('(FDA / KDIGO)', ''),
+    ('FDA / KDIGO', ''),
+    ('KDIGO', ''),
+    ('(ESUR v10 / FDA)', ''),
+    ('ESUR v10 / FDA', ''),
+    ('ESUR v10', ''),
     ('FDA Black Box', 'მაღალი რისკის გაფრთხილება'),
     ('Black Box', 'მაღალი რისკის გაფრთხილება'),
     ('Boxed Warning', 'მაღალი რისკის გაფრთხილება'),
@@ -485,7 +495,7 @@ _2ND_PERSON_REPLACEMENTS = (
 _QUOTED_FT_RE = re.compile(r'თავისუფალ ტექსტში\s*\(„[^“”]{1,220}“\)')
 _BAD_LATIN_VAL_RE = re.compile(r'=\s*[A-Za-z][A-Za-z0-9_.-]*')
 _REG_CITATION_RE = re.compile(
-    r'\b(?:EMA\s+(?:Brilique\s+)?(?:EPAR\s+)?SmPC|FDA\s+(?:Effient\s+|Brilinta\s+)?(?:PI\s+)?)(?:\s*\d+(?:\.\d+)*)?\b'
+    r'\b(?:EMA\s+(?:Brilique\s+)?(?:EPAR\s+)?SmPC|FDA\s+(?:Effient\s+|Brilinta\s+)?(?:PI\s+|Category\s+[A-DX]\b)?)(?:\s*\d+(?:\.\d+)*)?\b'
 )
 _DIGIT_UNIT_RE = re.compile(r'(\d)\s*(mg|mcg|ml|iu)\b', re.IGNORECASE)
 _DIGIT_UNIT_KA = {'mg': 'მგ', 'mcg': 'მკგ', 'ml': 'მლ', 'iu': 'სე'}

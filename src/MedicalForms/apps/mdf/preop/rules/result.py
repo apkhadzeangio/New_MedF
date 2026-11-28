@@ -100,6 +100,8 @@ def _result_clinical_part(ctx):
         'has_synthetic_implant': ctx.has_synthetic_implant,
         'has_full_oac': ctx.has_full_oac,
         'has_ft_full_oac': getattr(ctx, 'has_ft_full_oac', False),
+        'has_ft_unstruct_riva_low': bool(ctx.ft_meds.get('has_ft_unstruct_riva_low')),
+        'oac_count': getattr(ctx, 'oac_count', 0),
         'has_ft_statin': bool(ctx.ft_meds.get('has_ft_statin')),
         'has_ft_acei_arb': bool(ctx.ft_meds.get('has_ft_acei_arb')),
         'local_plexus_anatomic_mismatch': bool(getattr(ctx, 'local_plexus_anatomic_mismatch', False)),

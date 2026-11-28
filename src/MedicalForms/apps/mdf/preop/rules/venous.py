@@ -375,7 +375,20 @@ def eval_cross_pathway_and_urgency(ctx):
         )
 
     ctx.show_pregnancy_check = bool(patient.sex == 'F' and is_pregnancy_eligible(patient))
-    ctx.is_urgent_preg = False
+    is_urgent_preg = bool(
+        not ctx.is_venous and (
+            ctx.is_ali_acute
+            or ctx.is_clti_any
+            or ctx.is_symp_cea
+            or (pathway == PreopPatient.Pathway.CEA and bool(q.get('cea_crescendo')))
+            or (pathway == PreopPatient.Pathway.AAA_INFRA and (
+                bool(q.get('aaa_pain'))
+                or s.get('aaa_morphology') == 'inflammatory_mycotic'
+                or (ctx.aaa_mm_sat is not None and ctx.aaa_mm_sat >= rule_value('AAA_GIANT_MM'))
+            ))
+        )
+    )
+    ctx.is_urgent_preg = is_urgent_preg
     eff_pregnant = bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
     if eff_pregnant and not ctx.is_venous:
         if not is_pregnancy_eligible(patient):
@@ -383,18 +396,6 @@ def eval_cross_pathway_and_urgency(ctx):
                 'კითხვარში მონიშნულია „ორსულობა“, რაც შეუსაბამოა პაციენტის სქესთან/ასაკთან — გადაამოწმეთ ჩანაწერი!'
             )
         else:
-            is_urgent_preg = bool(
-                ctx.is_ali_acute
-                or ctx.is_clti_any
-                or ctx.is_symp_cea
-                or (pathway == PreopPatient.Pathway.CEA and bool(q.get('cea_crescendo')))
-                or (pathway == PreopPatient.Pathway.AAA_INFRA and (
-                    bool(q.get('aaa_pain'))
-                    or s.get('aaa_morphology') == 'inflammatory_mycotic'
-                    or (ctx.aaa_mm_sat is not None and ctx.aaa_mm_sat >= rule_value('AAA_GIANT_MM'))
-                ))
-            )
-            ctx.is_urgent_preg = is_urgent_preg
             if ctx.is_ali_acute:
                 preg_art_msg = (
                     'ორსულობა / შესაძლო ორსულობა მწვავე იშემიის (ALI) ფონზე — '

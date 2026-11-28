@@ -1,7 +1,7 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.25'
+REGISTRY_VERSION = '1.2.26'
 REGISTRY_UPDATED_ON = '2026-11-28'
 
 STATUS_VERIFIED = 'source-verified'
@@ -78,6 +78,17 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.26',
+        'date': '2026-11-28',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-27: NLP ინგლისური/ქართული ქვემდებარიანი უარყოფები, პასიური ორმაგი უარყოფა და შუაწინადადების Except/გარდა, rAAA DoS გლიკემია/შოკის BP/INR, გადაუდებელი β-hCG, მექ. სარქვლის დაფა, Caprini VKA/DOAC და Plain-KA ციტატები',
+        'changes_ka': (
+            'დაიხურა ყველა 7 S1 ხარვეზი: meds_freetext_nlp_patterns.py და meds_freetext_nlp.py-ში დაიცვა _INLINE_NEG_SPLIT_RE ინგლისური უარყოფილი პრედიკატებისა („stopped/discontinued/held taking“, „no longer taking/on“, „denies taking/being allergic“, „has not been taking“, „not taken/reported/present“) და ქვემდებარე+ზმნა („პაციენტი არ იღებს“, „პაციენტმა შეწყვიტა“, „patient stopped/denies/is not allergic to ... and/or ...“) კონსტრუქციების გახლეჩისგან; გაფართოვდა _DOUBLE_NEG_AFFIRM_EN_RE/KA_RE („cannot/can\'t be stopped/discontinued“, „not to stop“, „not stopping/discontinuing“, „wouldn\'t stop“, „არა აქვს/არაქვს/არმაქვს/არ ჰქონია მოხსნილი“) და დაემატა _try_mid_sent_passive_except შუაწინადადების პასიური „except/გარდა ... were stopped / მოხსნილია“ კლაუზებისთვის; rAAA-ზე ოპერაციის დილის კრიტიკული გლიკემია (>=14 / <3.9), შოკის წნევა (<40 / ინვერტირებული) და ექსტრემალური INR (>15) გადის წითელ პარალელურ ალამზე და აღარ ბლოკავს გადაუდებელ დადასტურებასა და დაფაზე გადაყვანას; გადაუდებელ სისხლძარღვოვან ჩვენებებზე (rAAA/ALI/CLTI) რეპროდუქციული ასაკის ქალის β-hCG შემოწმება მონოტონურია pregnant_possible=False/True-ზე (არაბლოკირებადი STAT β-hCG + დასხივების დაცვა); rules/result.py ექსპორტავს oac_count-ს, ხოლო views/board.py ინარჩუნებს მექანიკური სარქვლის VKA + ხიდის მანდატს DOAC/ორმაგ OAC/EVLA+პარენტერულ AC-ზე და გამორიცხავს თვითწინააღმდეგობას ორსულობა+HIT+მექ. სარქველი+ვარფარინზე.',
+            'დაიხურა ყველა 5 S2 ხარვეზი: meds_freetext_nlp.py O(N) რეჟიმში ხსნის დოზისა და წმინდა უარყოფის ტირე/ფრჩხილებს („ვარფარინი - მოხსნილია“, „warfarin 5mg (stopped)“, „ჰეპარინი - არა“); _INLINE_NEG_SPLIT_RE აღარ ხლეჩს წინადადების საწყის „ალერგია <პრეპარატი> არ აქვს“-ს; _RIVA_THER_DOSE_RE გამორიცხავს შეფუთვის რაოდენობას („№20“, „#20“) და ქართულ ვადის სუფიქსებს („კვირაა“, „თვეა“, „წელია“, „წლიდან“); caprini.py განასხვავებს მხოლოდ ვარფარინს DOAC-ისგან CrCl<30 / ღვიძლი >=3x შტოში და სწორად ითვლის ft_doac / has_doac_oac-ს თავისუფალი ტექსტის ქსარელტო 2.5 მგ + დაბიგატრანზე/ვარფარინზე.',
+            'დაიხურა S3 ხარვეზი: plain_ka.py-ში _REG_CITATION_RE და _PHRASE_REPLACEMENTS სრულად ასუფთავებს „(ESC 2018 / FDA Category D)“, „FDA / KDIGO“ და „ESUR v10 / FDA“ ციტატებს „(2018 / D)“ ან „(D)“ არტეფაქტების გარეშე.',
+        ),
+        'sources': 'ESVS 2022–2024 · ESC/EACTS 2021 VHD · ESC 2018 Pregnancy · EHRA 2021 · ESC 2022 NCS · ASRA 5th Ed 2025 · WHO Sign-In · EMA · FDA',
+    },
     {
         'version': '1.2.25',
         'date': '2026-11-28',

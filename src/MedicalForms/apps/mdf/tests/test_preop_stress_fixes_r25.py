@@ -54,7 +54,7 @@ class PreopStressFixesRound25Tests(TestCase):
         self.c_nurse.force_login(self.nurse)
 
     def test_r25_nlp_boundaries_pronouns_conjunctions_adverbs_and_on_riva(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.25')
+        self.assertEqual(REGISTRY_VERSION, '1.2.26')
         self.assertEqual(len(RULES_BY_ID), 83)
         # Fuzz A-S1-1 & Clin A2: sentence-boundary Except/garda + negative pronouns (nothing/არაფერი)
         for txt, exp in (

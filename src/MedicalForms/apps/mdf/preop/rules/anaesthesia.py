@@ -449,7 +449,10 @@ def _build_dos_checks(ctx):
         ant_lbl = 'ალტერნატიული უიოდო ანტისეპტიკი (ლატექსი/ქლორჰექსიდინი + იოდზე ალერგია!)' if ctx.eff_allergy_iodine else 'პოვიდონ-იოდის ანტისეპტიკი (ქლორჰექსიდინის გარეშე!)'
         dos_checks.append({'key': 'dos_latex_free_or', 'label': f'ულატექსო საოპერაციო გარემო (ხელთათმანები/კათეტერი) და {ant_lbl} მზადაა', 'done': bool(s.get('dos_latex_free_or'))})
     preg_claimed = bool(q.get('pregnant_possible') or q.get('ven_pregnant'))
-    exempt_bhcg = preg_claimed and (ctx.is_ali_acute or ctx.is_acute_emergency or ctx.is_rupture_suspect or getattr(ctx, 'is_urgent_preg', False))
+    exempt_bhcg = bool(
+        ctx.is_ali_acute or ctx.is_acute_emergency or ctx.is_rupture_suspect
+        or getattr(ctx, 'is_urgent_preg', False)
+    )
     needs_bhcg = (
         (preg_claimed and bool(s.get('dos_bhcg_negative')))
         or (
@@ -501,7 +504,12 @@ def _eval_dos_bp_alerts(ctx, dos_sys, dos_dia, dos_cfg, dos_warnings):
     htn_cfg = rule_value('VIT_BP_SEVERE_HTN')
     hypo_cfg = rule_value('VIT_BP_HYPOTENSION_SHOCK')
     if dos_sys is not None and dos_dia is not None and dos_sys <= dos_dia:
-        dos_warnings.append(f'ოპერაციის დილის წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი და მაჩვენებელი!')
+        bp_inv_msg = (
+            f'ოპერაციის დილის წნევის არასწორი ჩანაწერი საეჭვო რუპტურაზე (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი გადაუდებელი ოპერაციის გადავადების გარეშე!'
+            if ctx.is_rupture_suspect
+            else f'ოპერაციის დილის წნევის არასწორი ჩანაწერი (SBP ≤ DBP: {dos_sys}/{dos_dia} mmHg) — გადაამოწმეთ მანჟეტი და მაჩვენებელი!'
+        )
+        (ctx.red_flags if ctx.is_rupture_suspect else dos_warnings).append(bp_inv_msg)
         return
     if ctx.is_rupture_suspect:
         if (dos_sys and dos_sys >= dos_cfg['sbp_hi']) or (dos_dia and dos_dia >= dos_cfg['dbp_hi']):
@@ -549,8 +557,9 @@ def _eval_dos_inr_alerts(ctx, dos_inr, dos_inr_bad, dos_cfg, dos_checks, dos_war
     ctx.is_evla_warfarin_only = bool(evla_vka_elig and not dos_inr_bad and not dos_inr_bad_e and not base_inr_bad_e and not evla_subther_mv and (eff_inr_check is None or eff_inr_check <= evla_inr_max))
     any_dos_ticked = any(c['done'] for c in dos_checks if c.get('key') != 'icu_bed_booked')
     if ctx.is_rupture_suspect:
-        if dos_inr_eff is not None and dos_inr_eff > inr_lim:
-            ctx.red_flags.append(f'ოპერაციის დილის INR ({dos_inr if dos_inr is not None else dos_inr_eff}) მომატებულია საეჭვო რუპტურაზე — გადაუდებელი რევერსია (4F-PCC + ვიტამინი K 10 მგ IV) გადავადების გარეშე!')
+        raaa_inr = dos_inr_eff if dos_inr_eff is not None else getattr(ctx, 'dos_inr_sat', None)
+        if raaa_inr is not None and raaa_inr > inr_lim:
+            ctx.red_flags.append(f'ოპერაციის დილის INR ({dos_inr if dos_inr is not None else raaa_inr}) მომატებულია საეჭვო რუპტურაზე — გადაუდებელი რევერსია (4F-PCC + ვიტამინი K 10 მგ IV) გადავადების გარეშე!')
         return
     if dos_inr_eff is not None:
         if dos_inr_eff > inr_lim:
@@ -596,11 +605,18 @@ def _eval_dos_and_vqi(ctx):
         if _has_raw_scalar(raw_v) and parsed_v is None:
             if raw_k == 'dos_inr':
                 dos_inr_bad = True
-            dos_warnings.append(f'{_fmt_bad_val(lbl, raw_v)} — კრიტიკულად დაუშვებელია, გადაამოწმეთ მაჩვენებელი საოპერაციოში შეყვანამდე!')
+            if ctx.is_rupture_suspect:
+                ctx.red_flags.append(f'{_fmt_bad_val(lbl, raw_v)} — კრიტიკულად დაუშვებელია საეჭვო რუპტურაზე: გადაამოწმეთ და იმოქმედეთ პარალელურად გადაუდებელი ოპერაციის გადავადების გარეშე!')
+            else:
+                dos_warnings.append(f'{_fmt_bad_val(lbl, raw_v)} — კრიტიკულად დაუშვებელია, გადაამოწმეთ მაჩვენებელი საოპერაციოში შეყვანამდე!')
 
     _eval_dos_bp_alerts(ctx, dos_sys, dos_dia, dos_cfg, dos_warnings)
     if dos_gl is not None and (dos_gl >= dos_cfg['gl_hi'] or dos_gl < dos_cfg['gl_lo']):
-        dos_warnings.append(f'ოპერაციის დილის კრიტიკული გლიკემია ({dos_gl} მმოლ/ლ) — საჭიროა კორექცია საოპერაციოში შეყვანამდე!')
+        if ctx.is_rupture_suspect:
+            gl_act = 'IV დექსტროზა' if dos_gl < dos_cfg['gl_lo'] else 'IV ინსულინი'
+            ctx.red_flags.append(f'ოპერაციის დილის კრიტიკული გლიკემია საეჭვო რუპტურაზე ({dos_gl} მმოლ/ლ) — დაუყოვნებლივ {gl_act} პარალელურად, გადაუდებელი ოპერაციის გადავადების გარეშე!')
+        else:
+            dos_warnings.append(f'ოპერაციის დილის კრიტიკული გლიკემია ({dos_gl} მმოლ/ლ) — საჭიროა კორექცია საოპერაციოში შეყვანამდე!')
     elif dos_gl is not None and dos_gl > dos_cfg['gl_amb']:
         ctx.amber_flags.append(f'ოპერაციის დილის ჰიპერგლიკემია ({dos_gl} მმოლ/ლ > {dos_cfg["gl_amb"]}) — სასურველია ინსულინით კორექცია პერიოპერაციული ინფექციის შესამცირებლად.')
 

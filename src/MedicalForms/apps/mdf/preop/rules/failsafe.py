@@ -106,11 +106,16 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
     side_s = patient.side if isinstance(patient.side, str) else ''
     age_ok = _int(patient.age, lo=12, hi=120) is not None
     if getattr(ctx, 'implausible_fields', None):
+        is_raaa_imp = bool(getattr(ctx, 'is_rupture_suspect', False))
         add(
             'implausible_values', 's1', 'creat',
             f'დაუშვებელი მნიშვნელობები: {", ".join(ctx.implausible_fields[:3])}',
-            'შეყვანილია ფიზიოლოგიურ დიაპაზონს გარეთა ან არასწორი ფორმატის მონაცემი — შეფასება ვერ დადასტურდება.',
-            blocking=True,
+            (
+                'საეჭვო რუპტურაზე კრიტიკული/დიაპაზონს გარეთა მნიშვნელობა გადაამოწმეთ პარალელურად გადაუდებელი ოპერაციის გადავადების გარეშე.'
+                if is_raaa_imp
+                else 'შეყვანილია ფიზიოლოგიურ დიაპაზონს გარეთა ან არასწორი ფორმატის მონაცემი — შეფასება ვერ დადასტურდება.'
+            ),
+            blocking=not is_raaa_imp,
         )
     from ..registry import rule_value
     if getattr(ctx, 'creat_unit_ambiguous', False) and not ctx.on_dialysis:
@@ -217,7 +222,7 @@ def _eval_pregnancy_unknowns(ctx, add):
     )
     if not repro_female_risk:
         return
-    is_acute_emergency_preg = preg_claimed and (
+    is_acute_emergency_preg = bool(
         ctx.is_ali_acute or ctx.is_acute_emergency or ctx.is_rupture_suspect or getattr(ctx, 'is_urgent_preg', False)
     )
     if not is_acute_emergency_preg:
@@ -226,6 +231,13 @@ def _eval_pregnancy_unknowns(ctx, add):
             f'ორსულობის გამორიცხვა დაუზუსტებელია ({preg_lo}–{preg_hi} წ. ქალი)',
             'ორსულობის სტატუსის დაზუსტების / უარყოფითი β-hCG-ის გარეშე ოპერაციაზე GO დაშვება არ გაიცემა.',
             blocking=True,
+        )
+    elif not preg_claimed:
+        add(
+            'reproductive_pregnancy_unverified', 'dos', 'dos_bhcg_negative',
+            f'STAT β-hCG და მენჯის რადიაციული დაცვა ({preg_lo}–{preg_hi} წ. ქალი — გადაუდებელი ჩარევა)',
+            'სიცოცხლის/კიდურის გადასარჩენი გადაუდებელი ოპერაცია β-hCG-ის გამო არ გადავადდება — პარალელურად აიღეთ STAT β-hCG და მინიმიზირეთ ფლუოროსკოპია.',
+            blocking=False,
         )
 
 

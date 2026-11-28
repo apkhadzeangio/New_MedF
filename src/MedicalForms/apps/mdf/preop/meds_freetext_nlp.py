@@ -9,6 +9,7 @@ from .meds_freetext_nlp_patterns import (  # noqa: F401
     _CONJ_SPLIT_RE,
     _COUNT_DUR_UNIT,
     _COUNT_OR_DUR_TOK,
+    _DASH_NEG_UNWRAP_RE,
     _DIGIT_RE,
     _DOSE_FREQ_WORDS,
     _DOSE_UNIT_END_RE,
@@ -23,6 +24,7 @@ from .meds_freetext_nlp_patterns import (  # noqa: F401
     _EN_STOPPED_RE,
     _EXCEPT_ITEM_HEAD,
     _EXCEPT_LIST_STOP,
+    _EXCEPT_LIST_STOP_START_RE,
     _FREQ_FORM_TOK,
     _FRONTED_EXCEPT_HEAD_RE,
     _GENERIC_SOV_HEADS,
@@ -37,6 +39,7 @@ from .meds_freetext_nlp_patterns import (  # noqa: F401
     _KA_NEG_PARTICLE_VERB_RE,
     _KA_NEG_PARTICLES,
     _KA_NEG_VERB_RE,
+    _KA_PRE_GARDA_SUBJ_RE,
     _KA_PREFIX_NEG_HEAD_RE,
     _KA_STOP_PART,
     _KA_STOP_VERBS,
@@ -48,9 +51,12 @@ from .meds_freetext_nlp_patterns import (  # noqa: F401
     _NEG_FAST_HINT_RE,
     _NEGATION_PHRASE_RE,
     _NON_PREFIX_PROTECT_RE,
+    _PAREN_DOSE_UNWRAP_RE,
+    _PAREN_NEG_UNWRAP_RE,
     _POST_STOP_TAIL_RE,
     _PREFIX_NEG_START_RE,
     _SENT_CLAUSE_SPLIT_RE,
+    _SUBJECT_ONLY_RE,
     _SYMPTOM_NEG_RE,
     _TEMPORAL_ADV_TOK,
     _UNINTERRUPTED_AFFIRM_RE,
@@ -177,8 +183,32 @@ def _rewrite_inline_except_neg(low, seg_start, neg_prefix):
     return f'; {neg_prefix} ', seg_start
 
 
+def _try_mid_sent_passive_except(low, seg_start, is_en):
+    """Match '<except_kw> <obj>[,] <negated_predicate>' inside a mid-sentence passive clause in O(N)."""
+    seg = _next_sent_chunk(low, seg_start)
+    lead_ws = len(seg) - len(seg.lstrip(' '))
+    seg_s = seg[lead_ws:]
+    if not seg_s or _EXCEPT_LIST_STOP_START_RE.match(seg_s):
+        return None
+    hm = _FRONTED_EXCEPT_HEAD_RE.match(seg_s)
+    if not hm:
+        return None
+    obj = seg_s[:hm.end()].strip()
+    skip_c = 1 if seg_s[hm.end():hm.end() + 1] == ',' else 0
+    tail_full = seg_s[hm.end() + skip_c:]
+    tc = _find_clause_comma(tail_full)
+    tail_pred = tail_full[:tc] if tc != -1 else tail_full
+    if not tail_pred.strip():
+        return None
+    is_neg = _has_neg_phrase(tail_pred) or (is_en and bool(_EN_STOP_WORD_RE.search(tail_pred)))
+    if not is_neg:
+        return None
+    end_pos = seg_start + lead_ws + hm.end() + skip_c + len(tail_pred)
+    return obj, tail_pred.strip(), end_pos
+
+
 def _rewrite_en_except(low):
-    """Rewrite fronted, fragment, and inline English 'except [for]' exception clauses strictly in O(N)."""
+    """Rewrite fronted, fragment, passive mid-sentence, and inline English 'except [for]' clauses in O(N)."""
     out, last = [], 0
     for m in _EN_EXCEPT_RE.finditer(low):
         if m.start() < last:
@@ -193,20 +223,29 @@ def _rewrite_en_except(low):
             continue
         gov = prev_s or before_comma
         gov_neg = _has_neg_phrase(gov) or bool(_EN_STOP_WORD_RE.search(gov))
-        out.append(low[last:m.start()])
         if gov_neg:
+            out.append(low[last:m.start()])
             out.append('; ')
             last = m.end()
-        else:
-            repl, end_pos = _rewrite_inline_except_neg(low, m.end(), 'not')
-            out.append(repl)
-            last = end_pos
+            continue
+        if not _AFFIRM_PRED_RE.search(gov):
+            passive = _try_mid_sent_passive_except(low, m.end(), True)
+            if passive:
+                obj, tail_pred, end_pos = passive
+                out.append(low[last:m.start()].rstrip(' ,'))
+                out.append(f' {tail_pred}; {obj};')
+                last = end_pos
+                continue
+        out.append(low[last:m.start()])
+        repl, end_pos = _rewrite_inline_except_neg(low, m.end(), 'not')
+        out.append(repl)
+        last = end_pos
     out.append(low[last:])
     return ''.join(out)
 
 
 def _rewrite_ka_garda(low):
-    """Rewrite pre/post/fronted/fragment Georgian 'გარდა' exception clauses (with or without commas) in O(N)."""
+    """Rewrite pre/post/fronted/passive/fragment Georgian 'გარდა' exception clauses (with or without commas) in O(N)."""
     out, last = [], 0
     for m in _KA_GARDA_RE.finditer(low):
         if m.start() < last:
@@ -244,6 +283,23 @@ def _rewrite_ka_garda(low):
             out.append(low[last:m.start()])
             out.append(';')
             last = m.end() + skip_comma
+        elif not at_end and not bc_neg and not _AFFIRM_PRED_RE.search(prev or before_comma) and (not prev or bool(_KA_PRE_GARDA_SUBJ_RE.search(prev))):
+            passive = _try_mid_sent_passive_except(low, m.end(), False)
+            if passive:
+                obj, tail_pred, end_pos = passive
+                out.append(low[last:m.start()].rstrip(' ,'))
+                out.append(f' {tail_pred}; {obj};')
+                last = end_pos
+                continue
+            if after_neg or prev_sent_neg:
+                out.append(low[last:m.start()])
+                out.append(';')
+                last = m.end() + skip_comma
+            else:
+                repl, end_pos = _rewrite_inline_except_neg(low, m.end(), 'არ იღებს')
+                out.append(low[last:m.start()])
+                out.append(repl)
+                last = end_pos
         elif bc_neg or after_neg or prev_sent_neg:
             out.append(low[last:m.start()])
             out.append(';')
@@ -280,6 +336,10 @@ def _normalize_nlp_text(text):
     """Collapse whitespace to single spaces in O(N) and normalize affirmative/non-prefix clinical idioms."""
     low = _WS_RUN_RE.sub(' ', text.strip().replace('\r\n', '\n').replace('\r', '\n').lower())
     changed = False
+    if '(' in low:
+        src = low
+        low = _PAREN_DOSE_UNWRAP_RE.sub(r' \1 ', src)
+        changed = changed or (low != src)
     if 'except ' in low:
         src = low
         low = _rewrite_en_except(src)
@@ -309,8 +369,16 @@ def _normalize_nlp_text(text):
         changed = changed or (low != src)
     if 'not ' in low or 'never ' in low or "n't " in low or 'cannot ' in low:
         low, changed = _DOUBLE_NEG_AFFIRM_EN_RE.sub(' continues ', low), True
-    if 'არ ' in low or 'არა ' in low or 'არაა' in low or 'არც ' in low or 'ვერ ' in low:
+    if 'არ ' in low or 'არა ' in low or 'არაა' in low or 'არც ' in low or 'ვერ ' in low or 'არაქვს' in low or 'არმაქვს' in low:
         low, changed = _DOUBLE_NEG_AFFIRM_KA_RE.sub(' უწერია ', low), True
+    if '(' in low:
+        src = low
+        low = _PAREN_NEG_UNWRAP_RE.sub(r' \1 ', src)
+        changed = changed or (low != src)
+    if '-' in low or '—' in low or '–' in low:
+        src = low
+        low = _DASH_NEG_UNWRAP_RE.sub(r' \1', src)
+        changed = changed or (low != src)
     if 'გარეშე' in low or 'without ' in low:
         low, changed = _UNINTERRUPTED_AFFIRM_RE.sub(' ', low), True
     if 'არა ' in low or 'არა-' in low:
@@ -412,7 +480,7 @@ def _split_stop_verb_clauses(sub_s, verb_re, follow_stop, is_skip_fn):
             out.append(cur)
             break
         before, after = cur[:m.start()].strip(), cur[m.end():].strip()
-        if not before:
+        if not before or _SUBJECT_ONLY_RE.match(before):
             hm = _KA_PREFIX_NEG_HEAD_RE.match(after) if after else None
             if hm:
                 head, rest = hm.group(0), after[hm.end():].strip()
@@ -487,13 +555,13 @@ def _split_inline_boundaries(seg):
                 last, pieces = 0, []
                 for m in _KA_AFFIRM_VERB_AFTER_RE.finditer(sub_s):
                     before = sub_s[last:m.start()].rstrip()
-                    if not before:
+                    if not before or _SUBJECT_ONLY_RE.match(before):
                         continue
                     prev_tok = before.rsplit(' ', 1)[-1] if before else ''
                     if prev_tok in _KA_NEG_PARTICLES:
                         before_neg = before[: -len(prev_tok)].strip()
                         after_tok = sub_s[m.end() - 1:].strip().split(' ', 1)[0]
-                        if not before_neg or before_neg in _GENERIC_SOV_HEADS or after_tok in _GENERIC_SOV_HEADS:
+                        if not before_neg or before_neg in _GENERIC_SOV_HEADS or _SUBJECT_ONLY_RE.match(before_neg) or after_tok in _GENERIC_SOV_HEADS:
                             continue
                         if _KA_VERB_WORD_RE.search(before_neg) or (verb_total == 1 and _DOSE_UNIT_END_RE.search(before_neg)):
                             neg_pos = sub_s.rfind(prev_tok, last, m.start())

@@ -75,9 +75,13 @@ def _oac_vte_advice(is_evla_vka, has_contra_oac, has_hit, severe_renal, severe_l
         if has_hit:
             return f'უკუნაჩვენები OAC არ განაახლოთ — არაჰეპარინული სქემა (ფონდაპარინუქსი ან ერთი უსაფრთხო OAC კარდიოლოგ/ჰემატოლოგთან, ორმაგი ანტიკოაგულაციის გარეშე! HIT: ჰეპარინი/LMWH აკრძალულია!){comp_sfx}'
         if severe_renal and severe_liver:
-            return f'უკუნაჩვენები OAC არ განაახლოთ — CrCl/eGFR <{ren_red} + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი აკრძალულია! შეარჩიეთ კანქვეშა UFH/IPC კოაგულოგრამის კონტროლით კონსილიუმით (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+            if has_doac_oac:
+                return f'უკუნაჩვენები OAC არ განაახლოთ — CrCl/eGFR <{ren_red} + ღვიძლის ≥3x: DOAC/ფონდაპარინუქსი აკრძალულია! შეარჩიეთ კანქვეშა UFH/IPC კოაგულოგრამის კონტროლით კონსილიუმით (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+            return f'არასტაბილური/დუბლირებული ვარფარინის (VKA) რეჟიმი არ განაახლოთ INR-ის კორექციის გარეშე — CrCl/eGFR <{ren_red} + ღვიძლის ≥3x: LMWH/ფონდაპარინუქსი/DOAC აკრძალულია; კოაგულოგრამის კონტროლით შეათანხმეთ კანქვეშა UFH/IPC ან კორექტირებული VKA კონსილიუმით (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
         if severe_renal:
-            return f'უკუნაჩვენები OAC არ განაახლოთ — CrCl/eGFR <{ren_red}: DOAC/ფონდაპარინუქსი აკრძალულია! შეარჩიეთ კანქვეშა UFH ან VKA კარდიოლოგ/ნეფროლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+            if has_doac_oac:
+                return f'უკუნაჩვენები OAC არ განაახლოთ — CrCl/eGFR <{ren_red}: DOAC/ფონდაპარინუქსი აკრძალულია! შეარჩიეთ კანქვეშა UFH ან VKA კარდიოლოგ/ნეფროლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+            return f'არასტაბილური/დუბლირებული ვარფარინის (VKA) რეჟიმი არ განაახლოთ INR-ის კორექციის გარეშე — CrCl/eGFR <{ren_red}: LMWH/ფონდაპარინუქსი/DOAC აკრძალულია; შეათანხმეთ ერთიანი სქემა (კანქვეშა UFH ან კორექტირებული VKA) კარდიოლოგ/ნეფროლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
         if severe_liver:
             if has_doac_oac:
                 return f'უკუნაჩვენები OAC არ განაახლოთ — ღვიძლის ≥3x: DOAC აკრძალულია! შეარჩიეთ უსაფრთხო სქემა კარდიოლოგ/ჰეპატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
@@ -259,8 +263,11 @@ def _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver, activ
         and q_d.get('med_warfarin') and oac_cnt == 1 and not has_ft_par and not severe_liver and not inr_bad and not evla_subther_mv
         and (inr_c is None or inr_c <= evla_max_inr)
     )
-    ft_doac = bool(ft_unstruct & {'doac', 'dabigatran'}) and not ft_m.get('has_ft_riva_low')
-    has_doac_oac = bool(q_d.get('med_doac') or q_d.get('med_dabigatran') or ft_doac or ('rivaroxaban_2_5' in med_set))
+    ft_doac = bool(('dabigatran' in ft_unstruct) or ft_m.get('has_ft_unstruct_doac'))
+    has_doac_oac = bool(
+        q_d.get('med_doac') or q_d.get('med_dabigatran') or ft_doac
+        or ('rivaroxaban_2_5' in med_set) or ft_m.get('has_ft_riva_low') or ft_m.get('has_ft_unstruct_riva_low')
+    )
     has_contra_oac = bool(
         oac_cnt >= 2
         or ((q_d.get('med_doac') or q_d.get('med_dabigatran') or ft_doac) and (severe_renal or severe_liver or has_ft_par))

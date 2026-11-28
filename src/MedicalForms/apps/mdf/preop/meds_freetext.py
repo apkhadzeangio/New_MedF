@@ -31,11 +31,11 @@ _RIVA_LOW_RE = re.compile(
 )
 _RIVA_NON_DOSE_UNIT = (
     r'(?:აბი|აბ|ტაბ|tab|tabs|tablets?|caps?|capsules?|pills?|დოზა|dose'
-    r'|დღის|დღე|დღით|დღეა|დღეები|კვირის|კვირა|თვის|თვე|წლის|წელი|საათის|საათით|სთ|ჯერ|-ჯერ'
+    r'|დღის|დღე|დღით|დღეა|დღეები|კვირის|კვირა|კვირაა|კვირით|თვის|თვე|თვეა|თვით|წლის|წელი|წელია|წლიდან|წლამდე|საათის|საათით|საათი|საათია|სთ|ჯერ|-ჯერ'
     r'|days?|weeks?|wks?|months?|mos?|years?|yrs?|hrs?|hours?|am|pm|d|h)(?![a-zა-ჰ])'
 )
 _RIVA_THER_DOSE_RE = re.compile(
-    rf'(?<![\d.,:/])(?<!\d-)(?:10|15|20)(?![\d.,:]|/\d|-\d| ?{_RIVA_NON_DOSE_UNIT})',
+    rf'(?<![\d.,:/№#])(?<!\d-)(?<!№ )(?<!# )(?:10|15|20)(?![\d.,:]|/\d|-\d| ?{_RIVA_NON_DOSE_UNIT})',
     re.IGNORECASE,
 )
 _RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;\n+]|(?<!\d)[,/]|[,/](?!\d)| (?:და|ან|and|or) ')

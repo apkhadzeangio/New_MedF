@@ -129,7 +129,7 @@ class PreopStressFixesR22Tests(TestCase):
         self.assertEqual(_detect_freetext_allergies('ალერგია არ აქვს პენიცილინზე და ალერგია აქვს ვანკომიცინზე'), {'vancomycin'})
 
     def test_r22_s2_s3_raaa_ft_p2y12_bypass_local_anamnesis_highlights_and_plain_ka(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.25')
+        self.assertEqual(REGISTRY_VERSION, '1.2.26')
         # Combos S2-1: rAAA + free-text P2Y12 emits emergency do-not-delay directive
         for drug_txt in ('clopidogrel 75mg', 'ticagrelor 90mg', 'prasugrel 10mg'):
             ev_r = evaluate(_mk('open', q={'aaa_pain': True, 'med_aspirin': True, 'other_meds': drug_txt}, s={'bp_sys': 82, 'bp_dia': 50, 'hr': 110}), today=TODAY)

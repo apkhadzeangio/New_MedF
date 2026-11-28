@@ -13,11 +13,18 @@ _KA_STOP_VERBS = (
     r'(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს|შეაჩერეს'
     r'|მოხსნეს|შეწყვიტეს|შევწყვიტე|მოვხსენი|შევაჩერე|შევწყვიტეთ|მოვხსენით|შევაჩერეთ)'
 )
+_SUBJECT_PREFIX_PAT = (
+    r'(?:(?:the )?(?:patient|pt|he|she|they|i|we)(?: (?:is|are|was|were|has|have|had|does|do|did|will|would|can|could))?'
+    r'|პაციენტ[ა-ჰ]*|ავადმყოფ[ა-ჰ]*|მე|ის|მას|მან|ჩვენ)'
+)
+_SUBJECT_ONLY_RE = re.compile(rf'^{_SUBJECT_PREFIX_PAT}$', re.IGNORECASE)
 _PREFIX_NEG_START_RE = re.compile(
-    rf'^(?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) {_KA_VERBS}'
+    rf'^(?:{_SUBJECT_PREFIX_PAT} )?'
+    rf'(?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) {_KA_VERBS}'
     rf'|{_KA_STOP_VERBS}(?![ა-ჰ])'
     r'|უარყოფს\b|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*|არაფერ[ა-ჰ]*|არცერთ[ა-ჰ]*'
-    r'|(?:no|not|without|stopped|discontinued|held|denied|denies)\b)',
+    r'|(?:no|not|never|without|stopped|discontinued|held|denied|denies|off'
+    r"|doesn't|don't|didn't|hasn't|haven't|hadn't|isn't|aren't|wasn't|weren't|won't|wouldn't|can't|cannot)\b)",
     re.IGNORECASE,
 )
 _AFFIRM_PRED_RE = re.compile(
@@ -26,15 +33,28 @@ _AFFIRM_PRED_RE = re.compile(
     re.IGNORECASE,
 )
 _ALLERGY_WORD_RE = re.compile(r'(?:ალერგი[ა-ჰ]*|\ballerg(?:y|ies|ic)\b)', re.IGNORECASE)
+_EN_NEG_ADV_LB = (
+    r"(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!longer)(?<!been)(?<!being)(?<!\bbe)"
+    r'(?<!denies)(?<!denied)(?<!without)(?<!currently)(?<!regularly)(?<!actually)'
+    r'(?<!actively)(?<!presently)(?<!routinely)(?<!really)(?<!truly)(?<!recently)'
+    r'(?<!consistently)(?<!strictly)(?<!officially)(?<!formally)(?<!previously)'
+    r'(?<!ever)(?<!yet)(?<!still)(?<!known)(?<!proven)(?<!documented)'
+)
 _INLINE_NEG_SPLIT_RE = re.compile(
-    r' (?=(?:no|not|without) [a-zა-ჰ])'
-    r"|(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!longer)(?<!been) (?=(?:switched to|changed to|allergic to) [a-zა-ჰ])"
-    r"|(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!stopped)(?<!discontinued) (?=(?:taking|takes|using|uses|started|continues|continuing) [a-zა-ჰ])"
-    r"|(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!allergy)(?<!allergies) (?=on [a-z])"
-    r'|(?<=stopped) (?=(?:started|takes|taking|uses|using|switched|changed|continues|continuing|on ))'
-    r'|(?<=discontinued) (?=(?:started|takes|taking|uses|using|switched|changed|continues|continuing|on ))'
-    r'|(?<=held) (?=(?:started|takes|taking|uses|using|switched|changed|continues|continuing|on ))'
-    r'|(?<=ალერგია) (?!(?:არაფერ|არცერთ|არანაირ|არავითარ))(?=\S+ (?:არ|არა) (?:აქვს|მაქვს|აღენიშნება|უფიქსირდება|არის))'
+    r'(?<!\bpatient)(?<!\bpt)(?<!\bhe)(?<!\bshe)(?<!\bthey)(?<!\bi)(?<!\bwe)'
+    r'(?<!\bis)(?<!\bare)(?<!\bwas)(?<!\bwere)(?<!\bhas)(?<!\bhave)(?<!\bhad)'
+    r'(?<!\bdo)(?<!\bdoes)(?<!\bdid)(?<!\bcan)(?<!\bwill)(?<!\bwould)(?<!\bshould)(?<!\bmust)'
+    r'(?<!\bcurrently)(?<!\bpreviously)(?<!\bdenies)(?<!\bdenied) '
+    r'(?!not (?:taken|used|reported|present|known|confirmed|documented|noted|active|started|prescribed|continued|given|administered|tolerated|detected|identified|found|observed|seen|recorded|yet)\b)'
+    r'(?=(?:no|not|without) [a-zა-ჰ])'
+    rf'|{_EN_NEG_ADV_LB} (?=(?:switched to|changed to|allergic to) [a-zა-ჰ])'
+    rf'|{_EN_NEG_ADV_LB}(?<!stopped)(?<!discontinued)(?<!held) (?=(?:taking|takes|using|uses|started|continues|continuing) [a-zა-ჰ])'
+    rf'|{_EN_NEG_ADV_LB}(?<!allergy)(?<!allergies) (?=on [a-z])'
+    r'|(?<=stopped) (?=(?:started|takes|uses|switched|changed|continues|continuing|on ))'
+    r'|(?<=discontinued) (?=(?:started|takes|uses|switched|changed|continues|continuing|on ))'
+    r'|(?<=held) (?=(?:started|takes|uses|switched|changed|continues|continuing|on ))'
+    r'|(?<=[ა-ჰa-z0-9] ალერგია)(?<!პაციენტს ალერგია)(?<!პაციენტი ალერგია)(?<!ავადმყოფს ალერგია)(?<!ავადმყოფი ალერგია)(?<!მას ალერგია)(?<!მე ალერგია) '
+    r'(?!(?:არაფერ|არცერთ|არანაირ|არავითარ))(?=\S+ (?:არ|არა) (?:აქვს|მაქვს|აღენიშნება|უფიქსირდება|არის))'
     r'|(?:(?<=\d)|(?<=\dმგ)|(?<= მგ)|(?<=\dmg)|(?<= mg)|(?<=\dმკგ)|(?<= მკგ)|(?<=\dmcg)|(?<= mcg)'
     r'|(?<=\dგ)|(?<= გ)|(?<=\dg)|(?<= g)|(?<=\dმლ)|(?<= მლ)|(?<=\dml)|(?<= ml)|(?<=\dსე)|(?<= სე)|(?<=\diu)|(?<= iu)'
     r'|(?<= bid)|(?<= tid)|(?<= qid)|(?<= qd)|(?<= od)|(?<= daily)|(?<= x2)|(?<= 2x)|(?<= ტაბ)|(?<= tab)|(?<= აბი)) '
@@ -78,6 +98,7 @@ _EN_NEG_HEAD_SKIP = frozenset({
     'all', 'both', 'my', 'the', 'his', 'her', 'any', 'no', 'blood', 'oral', 'low', 'molecular',
     'unfractionated', 'antiplatelet', 'anticoagulant', 'antithrombotic', 'dual', 'triple', 'beta',
     'calcium', 'proton', 'prior', 'previous', 'old', 'chronic', 'regular', 'daily', 'home', 'usual',
+    'taking', 'using', 'being', 'having', 'getting', 'receiving', 'on',
 })
 _MULTIWORD_DRUG_HEAD = (
     r'(?:low[- ]molecular(?:[- ]weight)? heparin'
@@ -100,12 +121,12 @@ _DOSE_UNIT_TOK = (
 )
 _COUNT_DUR_UNIT = (
     r'(?:აბი|აბ|ტაბ|tab|tabs|tablets?|caps?|capsules?|pills?|დოზა|dose'
-    r'|დღის|დღე|დღით|დღეა|კვირის|კვირა|თვის|თვე|წლის|საათის|საათით|სთ'
+    r'|დღის|დღე|დღით|დღეა|კვირის|კვირა|კვირაა|თვის|თვე|თვეა|წლის|წელია|წლიდან|საათის|საათით|სთ'
     r'|days?|weeks?|wks?|months?|mos?|years?|yrs?|hrs?|hours?|d|h)'
 )
 _COUNT_OR_DUR_TOK = (
     r'(?:\d+(?:[.,/]\d+)? ?(?:აბი|აბ|ტაბ|tab|tabs|tablets?|caps?|capsules?|pills?|დოზა|dose)(?![a-zა-ჰ])'
-    r'|(?:for )?\d+(?:[.,/]\d+)? ?(?:დღის|დღე|დღით|დღეა|კვირის|კვირა|თვის|თვე|წლის|საათის|საათით|სთ'
+    r'|(?:for )?\d+(?:[.,/]\d+)? ?(?:დღის|დღე|დღით|დღეა|კვირის|კვირა|კვირაა|თვის|თვე|თვეა|წლის|წელია|წლიდან|საათის|საათით|სთ'
     r'|days?|weeks?|wks?|months?|mos?|years?|yrs?|hrs?|hours?|d|h)(?![a-zა-ჰ])(?: (?:წინ|ადრე|ago|prior|before)(?![a-zა-ჰ]))?)'
 )
 _TEMPORAL_ADV_TOK = (
@@ -121,8 +142,14 @@ _HEAD_MOD_TOK = rf'(?:{_DOSE_UNIT_TOK}|{_COUNT_OR_DUR_TOK}|{_TEMPORAL_ADV_TOK}|{
 _EXCEPT_ITEM_HEAD = rf'(?:{_DOSE_UNIT_TOK} )?(?:{_MULTIWORD_DRUG_HEAD}|[a-zა-ჰ0-9\-]+)(?: {_HEAD_MOD_TOK}){{0,6}}'
 _KA_PREFIX_NEG_HEAD_RE = re.compile(rf'^{_EXCEPT_ITEM_HEAD}(?= [a-zა-ჰ])', re.IGNORECASE)
 _EXCEPT_LIST_STOP = (
-    r'(?:all|both|no|not|nothing|none|stopped|discontinued|held|takes?|taking|uses?|using|has|have|patient|he|she|they|i|we'
-    r'|ყველა|ორივე|არ|არა|არაფერ|არცერთ|არანაირ|არავითარ|მოხსნ|შეწყვ|შეჩერ|იღებს|ვიღებ|სვამს|ვსვამ|აქვს|მაქვს|პაციენტ)'
+    r'(?:all|both|no|not|nothing|none|stopped|discontinued|held|off|takes?|taking|uses?|using|continues?|continuing'
+    r'|started|switched|changed|is|are|was|were|be|been|has|have|patient|pt|he|she|they|i|we'
+    r'|ყველა|ორივე|არ|არა|არაფერ[ა-ჰ]*|არცერთ[ა-ჰ]*|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*|მოხსნ[ა-ჰ]*|შეწყვ[ა-ჰ]*|შეჩერ[ა-ჰ]*'
+    r'|იღებს|ვიღებ|სვამს|ვსვამ|აგრძელებ[ა-ჰ]*|ვაგრძელებ[ა-ჰ]*|გადავიდ[ა-ჰ]*|დაუნიშნ[ა-ჰ]*|უწერია|აქვს|მაქვს|პაციენტ[ა-ჰ]*)'
+)
+_EXCEPT_LIST_STOP_START_RE = re.compile(rf'^{_EXCEPT_LIST_STOP}(?![a-zა-ჰ])', re.IGNORECASE)
+_KA_PRE_GARDA_SUBJ_RE = re.compile(
+    r'(?:ყველა|ორივე|წამალ|წამლებ|მედიკამენტ|პრეპარატ|ანტიკოაგულ|ანტიაგრეგ|ანტითრომბ|გამათხელებ|ალერგი|სხვა)'
 )
 _FRONTED_EXCEPT_HEAD_RE = re.compile(
     rf'^{_EXCEPT_ITEM_HEAD}'
@@ -147,21 +174,37 @@ _KA_VERB_WORD_RE = re.compile(
     r'(?<![ა-ჰ])(?:სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აქვს|მაქვს|აღენიშნება|უფიქსირდება|აწუხებს)(?![ა-ჰ])'
 )
 _KA_NEG_PARTICLES = frozenset({'არ', 'აღარ', 'არა', 'ვერ'})
+_EN_STOP_FORMS = r'(?:stop|stopped|stopping|discontinue|discontinued|discontinuing|hold|held|holding)'
 _DOUBLE_NEG_AFFIRM_EN_RE = re.compile(
-    r"\b(?:(?:(?:do|does|did|has|have|was|were|can|will|should|must) )?not (?:yet )?(?:been )?(?:stop|stopped|discontinue|discontinued|hold|held)"
-    r"|(?:don't|doesn't|didn't|hasn't|haven't|hadn't|isn't|aren't|wasn't|weren't|can't|cannot|won't|shouldn't) (?:yet )?(?:been )?(?:stop|stopped|discontinue|discontinued|hold|held)"
-    r"|never (?:been )?(?:stop|stopped|discontinue|discontinued|hold|held))\b",
+    rf"\b(?:(?:(?:do|does|did|is|are|has|have|had|was|were|can|could|will|would|should|must) )?not (?:yet )?(?:(?:to|be|been) )?{_EN_STOP_FORMS}"
+    rf"|(?:don't|doesn't|didn't|hasn't|haven't|hadn't|isn't|aren't|wasn't|weren't|can't|cannot|couldn't|won't|wouldn't|shouldn't|mustn't) (?:yet )?(?:(?:be|been) )?{_EN_STOP_FORMS}"
+    rf"|never (?:(?:be|been) )?{_EN_STOP_FORMS})\b",
     re.IGNORECASE,
 )
 _KA_STOP_PART = r'(?:შეწყვეტილი|მოხსნილი|შეჩერებული)'
 _DOUBLE_NEG_AFFIRM_KA_RE = re.compile(
-    rf'(?:არაა|არა არის) {_KA_STOP_PART}'
-    rf'|{_KA_STOP_PART} (?:არაა|(?:არ|არც|ვერ|არა) (?:არის|აქვს|მაქვს|გვაქვს|ჰქონია))'
+    rf'(?:არაა|არა არის|არა აქვს|არა მაქვს|არაქვს|არმაქვს|არააქვს) {_KA_STOP_PART}'
+    rf'|{_KA_STOP_PART} (?:არაა|არაქვს|არმაქვს|არააქვს|(?:არ|არც|ვერ|არა) (?:არის|აქვს|მაქვს|გვაქვს|ჰქონია))'
     r'|(?:არ|არც|ვერ) (?:შეუწყვეტია|მოუხსნია|შეუჩერებია|შემიწყვეტია|მომიხსნია|შემიჩერებია'
     r'|შეგვიწყვეტია|მოგვიხსნია|შეგვიჩერებია|შეწყვიტა|მოხსნა|შეაჩერა|შევწყვიტე|მოვხსენი|შევაჩერე'
     r'|შევწყვიტეთ|მოვხსენით|შევაჩერეთ|მოუხსნეს|შეუწყვიტეს|შეაჩერეს|მოხსნეს|შეწყვიტეს'
-    rf'|(?:არის|აქვს|მაქვს|გვაქვს) {_KA_STOP_PART})',
+    rf'|(?:არის|აქვს|მაქვს|გვაქვს|ჰქონია) {_KA_STOP_PART})',
 )
+_PAREN_DOSE_UNWRAP_RE = re.compile(
+    r'\(\s*(\d+(?:[.,/]\d+)? ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu|ტაბ|აბი|აბ|tab|tabs|caps?|x\d+|\d+x|bid|tid|qid|qd|od|daily)?)\s*\)',
+    re.IGNORECASE,
+)
+_PURE_NEG_ANNOT = (
+    rf'(?:(?:ალერგი[ა-ჰ]* )?(?:არაა?|არაქვს|არმაქვს|არააქვს|უარყოფს|გამორიცხულია'
+    rf'|(?:არ|აღარ|არა|ვერ) (?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აღნიშნავს|ჰქონია|აღენიშნება|უფიქსირდება|არის)'
+    rf'|{_KA_STOP_VERBS}(?![ა-ჰ]))'
+    r'|(?:no|none|nil|negative|denied|denies|stopped|discontinued|held|off'
+    r'|not (?:taken|used|taking|using|active|reported|present|known|confirmed|allergic)'
+    r'|allerg(?:y|ies|ic) (?:not (?:present|reported|known|confirmed)|denied|negative|absent))\b)'
+    rf'(?: (?:{_COUNT_OR_DUR_TOK}|{_TEMPORAL_ADV_TOK})){{0,3}}'
+)
+_PAREN_NEG_UNWRAP_RE = re.compile(rf'\s*\(\s*({_PURE_NEG_ANNOT})\s*\)', re.IGNORECASE)
+_DASH_NEG_UNWRAP_RE = re.compile(rf'(?: ?[—–] ?| - )({_PURE_NEG_ANNOT})(?=$|[,;.!?\n])', re.IGNORECASE)
 _UNINTERRUPTED_AFFIRM_RE = re.compile(
     r'(?:შეწყვეტის|შეჩერების|მოხსნის) გარეშე'
     r'|\bwithout (?:stopping|interruption|discontinuing|holding)\b',
