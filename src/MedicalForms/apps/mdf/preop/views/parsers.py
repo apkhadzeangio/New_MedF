@@ -32,7 +32,7 @@ _S1_NUM_FIELDS = (
 _S1_BOOL_FIELDS = (
     'cta_disc', 'irregular_hr', 'aptt_prolonged', 'viral_positive',
     'urine_nitrite', 'carotid_symp', 'echo_valve_issue',
-    'aaa_renal_vein_anom', 'abf_renal_stenosis',
+    'aaa_renal_vein_anom', 'abf_renal_stenosis', 'case_wifi_unsalvageable',
     'ven_epifascial', 'ven_tortuous', 'ven_perforator',
 )
 
@@ -286,6 +286,8 @@ def _parse_s1_flags_and_selects(post, patient, s):
         elif bf in ('ven_epifascial', 'ven_tortuous', 'ven_perforator') and patient.pathway == PreopPatient.Pathway.VENOUS:
             s[bf] = False
         elif bf == 'urine_nitrite' and (patient.pathway not in (PreopPatient.Pathway.VENOUS, PreopPatient.Pathway.PAD_PTA) or 'urine_nitrite_presented' in post):
+            s[bf] = False
+        elif bf == 'case_wifi_unsalvageable' and 'case_wifi_unsalvageable_presented' in post:
             s[bf] = False
 
     if 'blood_group' in post:

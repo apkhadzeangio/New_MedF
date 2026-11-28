@@ -451,11 +451,16 @@ def build_nurse_patient_context(request, patient, ev):
     )
     from .plain_ka import scrub_plain_ka
 
+    is_inactive_hdr = bool(patient.archived or (ev.get('clearance_seal') or {}).get('code') == 'inactive')
+    nw_op_lbl = (
+        ('არქივშია' if patient.archived else (ev.get('case_outcome_label') or 'არააქტიური ბარათი'))
+        if is_inactive_hdr else _relative_op_label(op_dt, today)
+    )
     return {
         'nw_verdict': verdict,
         'nw_procedure_ka': _plain_procedure_ka(patient, ev),
         'nw_side_ka': PLAIN_SIDE_KA.get(side_s, ''),
-        'nw_op_label': _relative_op_label(op_dt, today),
+        'nw_op_label': nw_op_lbl,
         'nw_risk_badges': plain_risk_badges(ev),
         'nw_self_fill': sf_info,
         'nw_self_fill_abs': self_path,

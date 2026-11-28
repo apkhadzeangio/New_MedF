@@ -493,15 +493,21 @@ _ORPHAN_SEC_PAREN_RE = re.compile(r'\(\s*\d+\.\d+(?:\.\d+)*\s*\)')
 _RESIDUAL_LATIN_RE = re.compile(r'(?<![A-Za-z0-9])(?!STOP\b)(?!x2\b)(?!2x\b)(?!3x\b)[A-Za-zβµ][A-Za-z0-9_+./-]{1,}(?![A-Za-z0-9])')
 
 
+_NONFINITE_KA_STRS = frozenset({'nan', '+nan', '-nan', 'inf', '+inf', '-inf', 'infinity', '+infinity', '-infinity'})
+
+
 def _safe_ka_str(val):
-    """Safely convert scalar text to str without huge-int ValueError, non-finite float, or container repr leakage."""
+    """Safely convert scalar text to str without huge-int ValueError, non-finite float/string, or container repr leakage."""
     if val is None or isinstance(val, (dict, list, tuple, set, bytes)):
         return ''
     if isinstance(val, float) and not math.isfinite(val):
         return ''
     if isinstance(val, int) and not isinstance(val, bool) and abs(val) > 10**12:
         return ''
-    return str(val)
+    s = str(val)
+    if s.strip().lower() in _NONFINITE_KA_STRS:
+        return ''
+    return s
 
 
 def plain_asa_ka(asa_raw):
@@ -521,7 +527,7 @@ _ARM_LIMB_L_RE = re.compile(r'(?<![A-Za-z0-9])L (?=კიდურ)')
 
 _EMPTY_PAREN_RE = re.compile(r'\([/·;,:—–\s-]*\)')
 _EMPTY_BRACK_RE = re.compile(r'\[[/·;,:—–!\s-]*\]')
-_LEAD_PAREN_RE = re.compile(r'\((?:[/·;,:—–\s-]+(?:\d+\.\d+(?:\.\d+)*[/·;,:—–\s-]*)?|\d+\.\d+(?:\.\d+)*[/·;,:—–\s-]+)')
+_LEAD_PAREN_RE = re.compile(r'\((?:[/·;,:—–\s-]+(?:\d+\.\d+(?:\.\d+)*(?:[/·;,:—–\s]|-(?![ა-ჰ]))*)?|\d+\.\d+(?:\.\d+)*(?:[/·;,:—–\s]|-(?![ა-ჰ]))+)')
 _TRAIL_PAREN_RE = re.compile(r'(?<![/·;,:—–\s-])[/·;,:—–\s-]+\)')
 _LEAD_BRACK_RE = re.compile(r'\[[/·;,:—–\s-]+')
 _TRAIL_BRACK_RE = re.compile(r'(?<![/·;,:—–\s-])[/·;,:—–\s-]+\]')
@@ -595,20 +601,21 @@ def plain_drug_name(raw_drug):
 
 
 _SF_UNIT_ONLY_RE = re.compile(
-    r'(?<![ა-ჰ])(?:მგ|მკგ|მლ|სე|გ|ტაბ|აბი|აბ|დღეში|დღ|კვ|სთ'
-    r'|ვიღებ|ვსვამ|იღებს|სვამს|ვიკეთებ|იკეთებს|ვაგრძელებ|აგრძელებს|მაქვს|აქვს|მქონდა|ჰქონდა'
-    r'|ალერგია|ალერგიული|ალერგიას|წამალი|წამალზე|პრეპარატი|პრეპარატზე|ზე|და|ან|დილას|საღამოს|ღამით|ყოველდღე|მხოლოდ)(?![ა-ჰ])'
+    r'(?<![ა-ჰ])(?:მგ|მკგ|მლ|სე|გ|ტაბ|ტაბლეტი|აბი|აბ|კაფსულა|დოზა|დღეში|დღ|კვ|სთ|წონის|ჯერ'
+    r'|ვიღებ|ვსვამ|იღებს|სვამს|ვიკეთებ|იკეთებს|ვაგრძელებ|აგრძელებს|მაქვს|აქვს|მქონდა|ჰქონდა|აღენიშნება'
+    r'|ალერგია|ალერგიული|ალერგიას|ანაფილაქსია|ანაფილაქსიური|შოკი|გამონაყარი|შეშუპება|ქავილი|რეაქცია'
+    r'|წამალი|წამალზე|წამლებზე|პრეპარატი|პრეპარატზე|ზე|და|ან|დილას|საღამოს|ღამით|ყოველდღე|მხოლოდ|მძიმე|მსუბუქი)(?![ა-ჰ])'
 )
 _SF_KA_WORD_RE = re.compile(r'[ა-ჰ]{2,}')
 _SF_LONE_LATIN_RE = re.compile(r'(?<![A-Za-z0-9])[A-Za-z](?![A-Za-z0-9])')
 _SF_LATIN_WORD_RE = re.compile(r'[a-z]{2,}')
 _SF_MED_CLAUSE_SPLIT_RE = re.compile(r'[,;+/\n]+| (?:და|ან|and|or) ')
 _SF_LATIN_FILLER = frozenset({
-    'mg', 'mcg', 'ml', 'iu', 'tab', 'tabs', 'cap', 'caps', 'bid', 'tid', 'qid', 'qd', 'od',
+    'mg', 'mcg', 'ml', 'iu', 'tab', 'tabs', 'tablet', 'tablets', 'cap', 'caps', 'bid', 'tid', 'qid', 'qd', 'od',
     'once', 'twice', 'daily', 'morning', 'evening', 'night', 'po', 'iv', 'sc', 'im', 'sq',
     'and', 'or', 'with', 'without', 'for', 'on', 'in', 'at', 'to', 'of', 'the', 'per', 'by',
     'taking', 'takes', 'using', 'uses', 'continuing', 'continues', 'started', 'stopped', 'held',
-    'allergy', 'allergic', 'allergies', 'drug', 'med', 'meds', 'medication', 'medicine', 'dose',
+    'allergy', 'allergic', 'allergies', 'anaphylaxis', 'rash', 'reaction', 'drug', 'med', 'meds', 'medication', 'medicine', 'dose',
     'day', 'days', 'week', 'weeks', 'month', 'months', 'stop', 'yes', 'no', 'not', 'ok', 'vit', 'vitamin',
 })
 _SF_COMMON_MED_LABELS = (
@@ -636,9 +643,20 @@ def _has_unrecognized_latin_word(pos_low, known_stems):
     return False
 
 
+def _has_unrecognized_ka_word(pos_low, ka_stems):
+    cleaned = _SF_UNIT_ONLY_RE.sub(' ', pos_low or '')
+    for w in _SF_KA_WORD_RE.findall(cleaned):
+        if not any(st in w for st in ka_stems):
+            return True
+    return False
+
+
 def _has_unrecognized_med_clause(pos_low, all_stems):
     ascii_stems = [st for st in all_stems if st.isascii()]
     if _has_unrecognized_latin_word(pos_low, ascii_stems):
+        return True
+    ka_stems = [tok for st in all_stems if not st.isascii() for tok in st.replace('-', ' ').split() if len(tok) >= 2]
+    if _has_unrecognized_ka_word(pos_low, ka_stems):
         return True
     for part in _SF_MED_CLAUSE_SPLIT_RE.split(pos_low or ''):
         p = part.strip()
@@ -704,19 +722,21 @@ def format_sf_freetext_med_and_allergy(q, items):
             else:
                 clean_other = 'მითითებულია ტექსტში (გადაამოწმეთ ჩანაწერი)'
         items.append((lvl, f'სხვა წამალი: {clean_other}'))
-    if q.get('allergy_iodine'):
-        items.append(('urgent', 'ალერგია იოდზე / კონტრასტზე!'))
     raw_alg_txt = q.get('allergy_text') if isinstance(q.get('allergy_text'), str) else ''
     pos_alg_txt = _positive_clauses_text(raw_alg_txt)
-    if q.get('allergy_other') or q.get('allergy_chips') or pos_alg_txt:
-        alg_chips_eff = list(dict.fromkeys([*_str_list(q.get('allergy_chips')), *(_detect_freetext_allergies(raw_alg_txt) - {'iodine'})]))
+    ft_algs = _detect_freetext_allergies(raw_alg_txt)
+    if q.get('allergy_iodine') or ('iodine' in ft_algs):
+        items.append(('urgent', 'ალერგია იოდზე / კონტრასტზე!'))
+    alg_ka_stems = [tok for _, sts in _FREETEXT_ALLERGY_STEMS for st in sts if not st.isascii() for tok in st.replace('-', ' ').split() if len(tok) >= 2] + ['იოდ', 'ლმვჰ']
+    alg_en_stems = [st for _, sts in _FREETEXT_ALLERGY_STEMS for st in sts if st.isascii()] + ['iodin', 'hit', 'lmwh']
+    extra_alg_unrec = bool(_has_unrecognized_allergy_clause(raw_alg_txt) or _has_unrecognized_latin_word(pos_alg_txt, alg_en_stems) or _has_unrecognized_ka_word(pos_alg_txt, alg_ka_stems))
+    alg_chips_eff = list(dict.fromkeys([*_str_list(q.get('allergy_chips')), *(ft_algs - {'iodine'})]))
+    if q.get('allergy_other') or alg_chips_eff or (pos_alg_txt and (extra_alg_unrec or 'iodine' not in ft_algs)):
         alg_txt = chip_summary(alg_chips_eff, 'allergy_chips', raw_alg_txt if (pos_alg_txt and not alg_chips_eff) else '') or 'მედიკამენტური ალერგია'
         clean_alg = _SF_LONE_LATIN_RE.sub('', scrub_plain_ka(alg_txt, second_person=False, strip_quoted_ft=True)).strip(' ,;:-')
-        alg_stems = [st for _, sts in _FREETEXT_ALLERGY_STEMS for st in sts if st.isascii()] + ['iodine', 'hit', 'lmwh']
-        extra_latin_alg = _has_unrecognized_latin_word(pos_alg_txt, alg_stems)
         if not _has_meaningful_ka_text(clean_alg):
             clean_alg = 'მედიკამენტური ალერგია (გადაამოწმეთ ჩანაწერი)'
-        elif (alg_chips_eff and _has_unrecognized_allergy_clause(raw_alg_txt)) or (not alg_chips_eff and extra_latin_alg):
+        elif extra_alg_unrec and (alg_chips_eff or _has_unrecognized_latin_word(pos_alg_txt, alg_en_stems)):
             clean_alg = f'{clean_alg} · დამატებითი ალერგენი ტექსტში (გადაამოწმეთ ჩანაწერი)'
         items.append(('urgent', f'ალერგია: {clean_alg}'))
 

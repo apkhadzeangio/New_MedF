@@ -348,7 +348,7 @@ console.log(JSON.stringify({
         self.assertLess(len(generate_anamnesis(p_fuzz, ev_f)), 5000)
 
         # 5. GI-bleed antiplatelet-block amber attribution + NSAID jargon scrub + registry version
-        self.assertEqual(REGISTRY_VERSION, '1.2.21')
+        self.assertEqual(REGISTRY_VERSION, '1.2.22')
         self.assertEqual(len(RULES_BY_ID), 83)
         ev_gi_ap = evaluate(_mk('pta_clti', q={'ulcer_active_symp': True}), today=TODAY)
         gi_amb = next(a for a in ev_gi_ap['amber_flags'] if 'ანტიაგრეგანტის დაწყება დაბლოკილია' in a)

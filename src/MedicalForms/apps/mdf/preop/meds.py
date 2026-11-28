@@ -57,7 +57,6 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     creat_ambig = (not on_dialysis) and (not creat_mismatch) and bool(_parse_scr_mgdl(raw_cr_m, cr_u_m)[1])
     creat_extreme_hi = (not on_dialysis) and (eff_renal is None) and ((_num(raw_cr_m) or 0) > 3000)
     op_dt, liver_3x = _date(s.get('planned_surgery_date')), (s.get('liver_status') == '3x')
-    rows, d_str, hold_str, add_row = _make_med_row_helpers(op_dt)
     med_chips, cad_chips = set(_str_list(q.get('med_chips'))), set(_str_list(q.get('cad_chips')))
     ven_dvt_chips, vasc_chips = set(_str_list(q.get('ven_dvt_chips'))), set(_str_list(q.get('vasc_chips')))
     eff_allergy_chips, _, _ = _effective_allergy_state(q)
@@ -80,6 +79,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     sbp_rup = bp_sys_cur if bp_sys_cur is not None else min((min(sv, dv) for sv, dv in _inverted_bp_arms(s)), default=None)
     si_rup = round(hr_cur / sbp_rup, 2) if (hr_cur is not None and sbp_rup is not None and sbp_rup > 0) else None
     is_rupture_suspect = bool(pw == PreopPatient.Pathway.AAA_INFRA and q.get('aaa_pain') and ((sbp_rup is not None and sbp_rup < hypo_cfg['red_sbp']) or (si_rup is not None and si_rup >= hypo_cfg['shock_idx'])))
+    rows, d_str, hold_str, add_row = _make_med_row_helpers(None if is_rupture_suspect else op_dt)
     lido_alg = bool(q.get('ven_lidocaine_allergy')) or ('lidocaine' in eff_allergy_chips)
     abi_vals = [v for v in (_num(s.get('abi_r'), 0, 3), _num(s.get('abi_l'), 0, 3)) if v is not None]
     min_abi = min(abi_vals) if abi_vals else None
@@ -349,6 +349,8 @@ def _append_cilostazol_row(c, cilo_cfg):
     ppi_cyp_warn = ' [CYP2C19: ომეპრაზოლს მოერიდეთ — უპირატესია პანტოპრაზოლი]' if ('ppi' in med_chips or q.get('ulcer') or s.get('ppi_started') or c['ft_meds']['has_omeprazole']) else ''
     if cilostazol_contra:
         c['add_row']('ცილოსტაზოლი (პლეტალი)', f'უკუნაჩვენებია გულის უკმარისობის / LVEF <{cilo_lvef}% / CrCl ≤{cilo_crcl} / ღვიძლის ≥3x / სტენტის / წყლულის / ტაქიარითმიის / სისხლჩაქცევის დროს (FDA Black Box / EMA) — შეათანხმეთ მოხსნა!{ppi_cyp_warn}', 'red', 'უკუნაჩვენებია — შეათანხმეთ მოხსნა!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
+    elif c['is_rupture_suspect']:
+        c['add_row']('ცილოსტაზოლი (პლეტალი)', f'საეჭვო რუპტურა / გადაუდებელი AAA — {cilo_hrs} სთ გეგმურ შეჩერებას არ ველოდებით! გააუქმეთ შემდგომი დოზა და უზრუნველყავით ჰემოსტაზი (ESVS 2024).{ppi_cyp_warn}', 'red', 'გადაუდებელი ოპერაცია — შეჩერებას არ ველოდებით!', hold_or_skip=False, force_date_plan=True, acute_hold=True)
     elif c['creat_mismatch']:
         c['add_row']('ცილოსტაზოლი (პლეტალი)', f'კრეატინინის ერთეული დასაზუსტებელია — CrCl >{cilo_crcl} უსაფრთხოებისთვის გადაამოწმეთ µmol/L / mg/dL!{ppi_cyp_warn}', 'red', 'ერთეული დასაზუსტებელია', hold_or_skip=True, force_date_plan=True, contraindicated=True, reconcile_only=True)
     elif c['creat_ambig'] or c['eff_renal'] is None:
@@ -578,6 +580,10 @@ def _append_warfarin_row(c):
 
 
 def _append_metabolic_rows(c):
+    if c['is_rupture_suspect']:
+        from .meds_helpers import _append_raaa_metabolic_rows
+        _append_raaa_metabolic_rows(c)
+        return
     from .registry import rule_value
     sglt2_cfg = rule_value('MED_SGLT2_HOLD_DAYS')
     glp_cfg = rule_value('MED_GLP1_FASTING_PROTOCOL')
@@ -714,7 +720,10 @@ def _append_cardio_other_rows(c):
         amio_vka_warn = ' [CYP2C9: ვარფარინთან აძლიერებს ანტიკოაგულაციას — გადაამოწმეთ INR!]' if (q.get('med_warfarin') or c['has_ft_unstruct_warfarin']) else ''
         add_row('ამიოდარონი', f'გრძელდება უწყვეტად ანტიარითმიული სქემით ოპერაციის დილის ჩათვლით{amio_pgp_warn}{amio_vka_warn}', 'amber' if (amio_doac or amio_vka_warn) else 'ok', f'მიიღეთ {d_str(0)}-ის დილას', hold_or_skip=False)
     if 'diuretic' in med_chips:
-        add_row('დიურეტიკი', 'გამოტოვება ოპერაციის დილას', 'amber', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=True)
+        if c['is_rupture_suspect']:
+            add_row('დიურეტიკი', 'საეჭვო რუპტურა / გადაუდებელი AAA — დიურეტიკი შეაჩერეთ (ჰიპოვოლემიის/შოკის რისკი)!', 'red', 'გადაუდებელი ოპერაცია — არ მიიღოთ!', hold_or_skip=True, force_date_plan=True, acute_hold=True)
+        else:
+            add_row('დიურეტიკი', 'გამოტოვება ოპერაციის დილას', 'amber', f'გამოტოვეთ {d_str(0)}-ის დილას', hold_or_skip=True)
     _append_hormone_ppi_steroid_ft_rows(c)
 
 
@@ -755,7 +764,8 @@ def _append_hormone_ppi_steroid_ft_rows(c):
         ppi_cyp_note = ' — ომეპრაზოლი/ეზომეპრაზოლი შეცვალეთ პანტოპრაზოლით (CYP2C19)!' if cyp_ppi_sensitive else ''
         add_row(ppi_drug_lbl, f'გრძელდება / ინიშნება უწყვეტად პერიოპერაციულად კუჭის დაცვისთვის (ESC Class I){ppi_cyp_note}', 'amber' if (cyp_ppi_sensitive and ('ppi' in med_chips or c['ft_meds']['has_omeprazole'])) else 'ok', f'მიიღეთ {d_str(0)}-ის დილას', hold_or_skip=False)
     if 'steroid' in med_chips:
-        add_row('სტეროიდი / იმუნოსუპრესანტი', 'არ მოხსნათ! სტრეს-დოზა (Assoc. of Anaesthetists 2020): არტერიულ/დიდ ოპერაციაზე — ჰიდროკორტიზონი 100 მგ IV ინდუქციაზე + 200 მგ/24 სთ ინფუზია (ან 50 მგ IV ყოველ 6 სთ-ში; მცირე ვენურზე — ჩვეული დოზა + 25–50 მგ IV); მოერიდეთ ეტომიდატს!', 'amber', f'არ შეწყვიტოთ ({d_str(0)} IV სტრეს-დოზა)', hold_or_skip=False)
+        st_dp = 'არ შეწყვიტოთ (IV სტრეს-დოზა ინდუქციაზე!)' if c['is_rupture_suspect'] else f'არ შეწყვიტოთ ({d_str(0)} IV სტრეს-დოზა)'
+        add_row('სტეროიდი / იმუნოსუპრესანტი', 'არ მოხსნათ! სტრეს-დოზა (Assoc. of Anaesthetists 2020): არტერიულ/დიდ ოპერაციაზე — ჰიდროკორტიზონი 100 მგ IV ინდუქციაზე + 200 მგ/24 სთ ინფუზია (ან 50 მგ IV ყოველ 6 სთ-ში; მცირე ვენურზე — ჩვეული დოზა + 25–50 მგ IV); მოერიდეთ ეტომიდატს!', 'amber', st_dp, hold_or_skip=False, force_date_plan=c['is_rupture_suspect'])
     append_freetext_med_rows(c, _IMMED_STOP_PLAN, _GI_BLEED_PLAN)
 
 

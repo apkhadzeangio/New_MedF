@@ -563,16 +563,20 @@ def _build_anesthetic_neuraxial_and_bp(ctx):
     arm_diff_lim = rule_value('VIT_BP_HYPOTENSION_SHOCK')['arm_diff']
     neuraxial_blockers = list(ctx.hard_nx_reasons)
     if ctx.solo_neuraxial_anatomic_mismatch:
-        mm_lbl = (
-            'ანატომიურად შეუსაბამო ადგილობრივი/წნულის გაუტკივარება!'
-            if ctx.anesth_plan_raw in ('local', 'plexus')
-            else 'ანატომიურად შეუსაბამო სოლო-ნეირაქსიული გეგმა!'
-        )
+        if getattr(ctx, 'local_plexus_anatomic_mismatch', False):
+            mm_lbl = 'ანატომიურად შეუსაბამო ადგილობრივი/წნულის გაუტკივარება!'
+        elif getattr(ctx, 'epi_anatomic_mismatch', False) and ctx.anesth_plan_raw != 'neuraxial':
+            mm_lbl = 'ანატომიურად შეუსაბამო ეპიდურული კათეტერი (CEA / EVLA)!'
+        else:
+            mm_lbl = 'ანატომიურად შეუსაბამო სოლო-ნეირაქსიული გეგმა!'
         neuraxial_blockers.insert(0, mm_lbl)
     asra_ufh_note = (
         ' · ASRA 2025 UFH წესი: ნეირაქსიული პუნქციიდან IV ჰეპარინამდე ≥60 წთ (სისხლიანი პუნქციისას — გადადება/კონსილიუმი); '
         'კათეტერის ამოღება UFH-დან ≥4–6 სთ-ში (ნორმალური aPTT) და P2Y12/DOAC/VOYAGER დაწყებამდე!'
-        if (ctx.has_neuraxial_plan and not ctx.is_venous and 'hit_heparin' not in ctx.allergy_chips) else ''
+        if (
+            ctx.has_neuraxial_plan and not ctx.is_venous and 'hit_heparin' not in ctx.allergy_chips
+            and not getattr(ctx, 'epi_anatomic_mismatch', False) and not ctx.solo_neuraxial_anatomic_mismatch
+        ) else ''
     )
     ft_m_nx = ctx.ft_meds.get('matched_keys') or set()
     has_vka_nx = bool(q.get('med_warfarin') or 'warfarin' in ft_m_nx)

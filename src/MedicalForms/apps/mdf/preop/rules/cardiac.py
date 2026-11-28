@@ -330,6 +330,8 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
             dapt_lbl = _pta_contra_oac_dapt_label(ctx, ren_red, eff_ren_t)
         elif has_full_oac_d:
             dapt_lbl = f'ანტითრომბოზული სქემა OAC ფონზე: ანტიკოაგულანტი + {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე!)'
+        elif getattr(ctx, 'has_ft_parenteral', False):
+            dapt_lbl = f'ანტითრომბოზული სქემა პარენტერული ანტიკოაგულაციის ფონზე: {ctx.post_antithrombotic_label or ("პარენტერული ანტიკოაგულაცია + " + ctx.oac_partner_lbl + " (სამმაგი თერაპიის გარეშე!)")}'
         elif ctx.has_active_stent_dapt:
             if 'nsaid' in ctx.allergy_chips:
                 dapt_lbl = f'ახალი სტენტი + ასპირინზე ალერგია: {stent_p2y} — კარდიოლოგის კონსილიუმი!'

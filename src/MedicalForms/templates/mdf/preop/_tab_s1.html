@@ -704,6 +704,12 @@
                     </div>
                     {% endif %}
                 {% endif %}
+                {% if s.case_wifi_unsalvageable %}
+                <div class="pt-2 border-top mt-2 d-flex flex-wrap gap-2">
+                    <input type="hidden" name="case_wifi_unsalvageable_presented" value="1">
+                    <label class="chip-check" style="border-color:#FECDCA"><input type="checkbox" name="case_wifi_unsalvageable" value="1" checked>WIfI Stage 5 — კიდური გადარჩენადი არ არის (კონფერენციიდან იმპორტირებული — გადაამოწმეთ/მოხსენით)</label>
+                </div>
+                {% endif %}
 
                 {% if not is_inactive_card %}
                 <div class="d-flex justify-content-end pt-1">

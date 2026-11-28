@@ -434,6 +434,8 @@ def _append_objective_vasc_and_vitals_flags(comorb, q, s_ev, ev):
         comorb.append(f'ჰიპოტენზია (SBP {min_sys} mmHg)')
     elif not q.get('htn') and ((eff_sys is not None and eff_sys >= 140) or (eff_dia is not None and eff_dia >= 90)):
         comorb.append(f'მომატებული არტერიული წნევა ({eff_sys or "—"}/{eff_dia or "—"} mmHg — გადაამოწმეთ ჰიპერტენზია!)')
+    if ev.get('bp_arm_diff') is not None and ev['bp_arm_diff'] >= 20:
+        comorb.append(f'მკლავებს შორის წნევის ასიმეტრია (Δ{ev["bp_arm_diff"]} mmHg)')
     hr_v, spo2_v = _num(s_ev.get('hr'), 15, 260), _num(s_ev.get('spo2'), 30, 100)
     if s_ev.get('irregular_hr') or (hr_v is not None and (hr_v < 55 or hr_v > 100)):
         comorb.append(f'პულსის/რიტმის დარღვევა (HR {hr_v or "—"}/წთ)')
@@ -453,16 +455,22 @@ def _append_objective_vasc_and_vitals_flags(comorb, q, s_ev, ev):
     aaa_v = _num(s_ev.get('aaa_mm'), 10, 200)
     if aaa_v is not None and aaa_v >= 30:
         comorb.append(f'მუცლის აორტის ანევრიზმა (AAA {aaa_v} მმ)')
-    if s_ev.get('ven_duplex_status') in ('acute_dvt', 'deep_obstruction', 'superficial_thrombus'):
-        comorb.append('ვენური თრომბოზი / ობსტრუქცია (დუპლექსი)')
+    if s_ev.get('abf_mesenteric') == 'sma_stenosis':
+        comorb.append('მეზენტერული არტერიის (SMA) სტენოზი')
+    if s_ev.get('ven_duplex_status') in ('acute_dvt', 'deep_obstruction', 'superficial_thrombus') or q.get('ven_dvt_history') or q.get('ven_thrombophilia') or q.get('ven_cancer_immob'):
+        comorb.append('ვენური თრომბოემბოლიური / თრომბოფილიის ან ონკო-რისკის ანამნეზი')
+    if s_ev.get('laryngoscopy_res') == 'palsy':
+        comorb.append('ხმის იოგის პარეზი (ლარინგოსკოპია)')
     if s_ev.get('gastro_result') == 'acute_ulcer' and not (q.get('ulcer') or q.get('ulcer_active_symp')):
         comorb.append('მწვავე კუჭ-ნაწლავის წყლული (ეგდს)')
+    if s_ev.get('urine_nitrite') or (_num(s_ev.get('urine_wbc'), 0, 2000) or 0) >= 10:
+        comorb.append('საშარდე გზების ინფექციის ნიშნები (შარდის ანალიზი)')
     wbc_v = parse_wbc_k(s_ev.get('wbc'))
     if wbc_v is not None and (wbc_v > 12.0 or wbc_v < 3.5):
         comorb.append(f'პათოლოგიური ლეიკოციტები (WBC {wbc_v})')
 
 
-def _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a):
+def _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a, sex=''):
     from .meds_freetext import _positive_clauses_text
     from .utils import parse_plt_k
     eff_ren = ev.get('eff_renal_sat') if ev.get('eff_renal_sat') is not None else ev.get('eff_renal')
@@ -488,7 +496,7 @@ def _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a):
     if (inr_v is not None and inr_v >= 1.5 and not q.get('med_warfarin') and 'warfarin' not in ft_keys_a) or s_ev.get('aptt_prolonged') or (ev.get('fib_gl') is not None and ev['fib_gl'] < 1.8):
         comorb.append('კოაგულოპათია / ჰემოსტაზის დარღვევა (INR/APTT/ფიბრინოგენი)')
     k_v, na_v = _num(s_ev.get('k'), 1.0, 12.0), _num(s_ev.get('na'), 95, 190)
-    if k_v is not None and (k_v >= 5.4 or k_v < 3.5):
+    if k_v is not None and (k_v > 5.0 or k_v < 3.5):
         comorb.append(f'ელექტროლიტური დისბალანსი (K+ {k_v} მმოლ/ლ)')
     if na_v is not None and (na_v < 130 or na_v >= 150):
         comorb.append(f'ელექტროლიტური დისბალანსი (Na+ {na_v} მმოლ/ლ)')
@@ -498,8 +506,11 @@ def _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a):
     if not q.get('thyroid_disease') and (s_ev.get('tsh_status') or '') in ('hyperthyroid', 'hypothyroid_severe', 'hypothyroid_mild'):
         comorb.append('ფარისებრი ჯირკვლის ფუნქციის დარღვევა (TSH)')
     hb_gl, fer_v, tsat_v = ev.get('hb_gl'), _num(s_ev.get('ferritin'), 1, 5000), ev.get('tsat')
-    if hb_gl is not None and hb_gl < 120:
+    hb_lo, hb_hi = (120, 165) if sex == 'F' else (130, 185)
+    if hb_gl is not None and hb_gl < hb_lo:
         comorb.append(f'ანემია (Hb {hb_gl} გ/ლ)')
+    elif hb_gl is not None and hb_gl > hb_hi:
+        comorb.append(f'პოლიციტემია / მაღალი ჰემოგლობინი (Hb {hb_gl} გ/ლ)')
     elif (fer_v is not None and fer_v < 30) or (tsat_v is not None and tsat_v < 20):
         comorb.append('რკინადეფიციტი (ფერიტინი/TSAT)')
     gl_v, dos_gl_v = ev.get('gl_mmol'), ev.get('dos_gl_mmol')
@@ -597,7 +608,7 @@ def _anam_comorb_meds_allergy(patient, pathway, ev, q):
     if q.get('smoker'):
         comorb.append('თამბაქოს მწეველი')
     med_ch_set = set(_str_list(q.get('med_chips')))
-    _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a)
+    _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a, sex=patient.sex)
     lines.append(f"თანმხლები ფონი: {', '.join(comorb) if comorb else 'მნიშვნელოვანი ქრონიკული დაავადებების გარეშე'}.")
 
     med_pairs = (

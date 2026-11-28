@@ -363,6 +363,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
             q_mig['neuro'] = True
             s['carotid_symp'] = False
             q_changed = True
+        pad_pws = (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA)
+        if old_pw in pad_pws and new_pw not in pad_pws and s.get('case_wifi_unsalvageable'):
+            s['case_wifi_unsalvageable'] = False
         if q_changed:
             patient.questionnaire = q_mig
             uf.append('questionnaire')

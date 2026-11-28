@@ -90,11 +90,29 @@ def _par_vte_advice(has_hit, severe_renal, severe_liver, hit_dtis, comp_sfx):
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
     if has_hit:
         return f'აქტიური პარენტერული ანტიკოაგულაცია + HIT: ჰეპარინი/LMWH კატეგორიულად აკრძალულია — შეათანხმეთ ერთიანი არაჰეპარინული სქემა ({hit_dtis}) ჰემატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!){comp_sfx}'
+    if severe_renal and severe_liver:
+        return f'აქტიური პარენტერული ანტიკოაგულაცია + CrCl/eGFR <{ren_red} + ღვიძლის ≥3x: LMWH/ფონდაპარინუქსი კუმულირდება — კოაგულოგრამის კონტროლით შეათანხმეთ ერთიანი სქემა (UFH) ქირურგთან (დამატებითი პროფილაქტიკური LMWH/DOAC არ დაუმატოთ!){comp_sfx}'
     if severe_renal:
         return f'აქტიური პარენტერული ანტიკოაგულაცია + CrCl/eGFR <{ren_red}: LMWH/ფონდაპარინუქსი კუმულირდება — შეათანხმეთ ერთიანი სქემა (UFH) ქირურგთან (დამატებითი პროფილაქტიკური LMWH/DOAC არ დაუმატოთ!){comp_sfx}'
     if severe_liver:
         return f'აქტიური პარენტერული ანტიკოაგულაცია + ღვიძლის ≥3x: კოაგულოგრამის კონტროლით ერთიანი სქემა ქირურგთან (დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ!){comp_sfx}'
     return f'პაციენტი უკვე იღებს პარენტერულ ანტიკოაგულანტს — შეათანხმეთ ერთიანი პოსტოპ. სქემა ქირურგთან (დამატებითი პროფილაქტიკური LMWH/DOAC არ დაუმატოთ!){comp_sfx}'
+
+
+def _preg_vte_advice(is_high, has_hit, severe_renal, severe_liver, has_ft_par, ren_red, comp_sfx):
+    liv_s = ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით!' if severe_liver else ''
+    par_s = ' (აქტიური პარენტერული ანტიკოაგულაცია — დამატებითი პროფილაქტიკა არ დაუმატოთ!)' if has_ft_par else ''
+    if is_high:
+        if has_hit:
+            return f'მექანიკური პროფილაქტიკა (IPC) / არაჰეპარინული სქემა მეან-გინეკოლოგთან და ჰემატოლოგთან (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!){liv_s}{par_s}{comp_sfx}'
+        if severe_renal:
+            return f'ფარმაკოლოგიური პროფილაქტიკა: კანქვეშა UFH ან anti-Xa კონტროლირებადი LMWH (ორსულობა + CrCl<{ren_red} — DOAC უკუნაჩვენებია!){liv_s}{par_s}{comp_sfx}'
+        return f'ფარმაკოლოგიური პროფილაქტიკა (მხოლოდ LMWH / UFH 7–10 დღე — ორსულობაზე DOAC უკუნაჩვენებია!){liv_s}{par_s}{comp_sfx}'
+    if has_hit:
+        return f'ადრეული მობილიზაცია{comp_sfx} + IPC (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!){liv_s}{par_s}'
+    if severe_renal:
+        return f'ადრეული მობილიზაცია{comp_sfx} ± კანქვეშა UFH მეან-გინეკოლოგის შეფასებით (ორსულობა + CrCl<{ren_red}: LMWH კუმულირდება, DOAC უკუნაჩვენებია!){liv_s}{par_s}'
+    return f'ადრეული მობილიზაცია{comp_sfx} ± LMWH / UFH მეან-გინეკოლოგის შეფასებით (ორსულობაზე DOAC უკუნაჩვენებია!){liv_s}{par_s}'
 
 
 def _caprini_tier_and_advice(
@@ -134,12 +152,7 @@ def _caprini_tier_and_advice(
                 )
             )
         elif eff_pregnant:
-            advice = (
-                f'მექანიკური პროფილაქტიკა (IPC) / არაჰეპარინული სქემა მეან-გინეკოლოგთან და ჰემატოლოგთან (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!){comp_sfx}' if has_hit else (
-                    f'ფარმაკოლოგიური პროფილაქტიკა: კანქვეშა UFH ან anti-Xa კონტროლირებადი LMWH (ორსულობა + CrCl<{ren_red} — DOAC უკუნაჩვენებია!){comp_sfx}' if severe_renal
-                    else f'ფარმაკოლოგიური პროფილაქტიკა (მხოლოდ LMWH / UFH 7–10 დღე — ორსულობაზე DOAC უკუნაჩვენებია!){comp_sfx}'
-                )
-            )
+            advice = _preg_vte_advice(True, has_hit, severe_renal, severe_liver, has_ft_par, ren_red, comp_sfx)
         elif has_full_oac or has_ft_par:
             advice = oac_vte_txt
         elif has_hit:
@@ -170,12 +183,7 @@ def _caprini_tier_and_advice(
         elif has_mech_valve:
             advice = f'მექანიკური სარქველი + HIT: {hit_dtis} და უვადო VKA (ჰეპარინი/LMWH და DOAC აკრძალულია!){comp_sfx}' if has_hit else f'ადრეული მობილიზაცია{comp_sfx} + უვადო ვარფარინის (VKA) რეჟიმი (DOAC აკრძალულია!)'
         elif eff_pregnant:
-            advice = (
-                f'ადრეული მობილიზაცია{comp_sfx} + IPC (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!)' if has_hit else (
-                    f'ადრეული მობილიზაცია{comp_sfx} ± კანქვეშა UFH მეან-გინეკოლოგის შეფასებით (ორსულობა + CrCl<{ren_red}: LMWH კუმულირდება, DOAC უკუნაჩვენებია!)' if severe_renal
-                    else f'ადრეული მობილიზაცია{comp_sfx} ± LMWH / UFH მეან-გინეკოლოგის შეფასებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
-                )
-            )
+            advice = _preg_vte_advice(False, has_hit, severe_renal, severe_liver, has_ft_par, ren_red, comp_sfx)
         elif has_full_oac or has_ft_par:
             advice = oac_vte_txt
         elif has_hit:

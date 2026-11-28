@@ -36,7 +36,9 @@
                     {{ ev.status_label }}
                 </span>
                 <span class="po-badge st-in_progress" title="ანესთეზიოლოგიური ფიზიკური სტატუსი">{{ ev.effective_asa }}</span>
-                {% if ev.case_outcome == 'operated' %}
+                {% if p.archived %}
+                <span class="po-badge st-needs_doctor">არქივშია</span>
+                {% elif ev.case_outcome == 'operated' %}
                 <span class="po-badge st-ready">✓ ნაოპერაციები{% if ev.operated_date_ka %} ({{ ev.operated_date_ka }}){% endif %}</span>
                 {% elif ev.case_outcome != 'scheduled' %}
                 <span class="po-badge st-needs_doctor">{{ ev.case_outcome_label }}</span>

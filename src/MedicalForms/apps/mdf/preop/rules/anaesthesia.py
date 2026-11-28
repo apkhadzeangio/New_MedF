@@ -55,6 +55,8 @@ def _eval_anatomic_anesth_mismatch(ctx, open_aortic, hard_nx_reasons, prewashout
         else:
             ctx.red_flags.append('არჩეულია მხოლოდ სპინალური/ეპიდურული გაუტკივარება კისრის (CEA) ან ღია აორტის ოპერაციაზე — ანატომიურად შეუსაბამოა! შეარჩიეთ ზოგადი ენდოტრაქეული ანესთეზია (± ეპიდურული ანალგეზია ღია აორტაზე) ან კისრის წნულის ბლოკადა.')
     ctx.hard_nx_reasons, ctx.auto_nx_blockers, ctx.explicit_nx_blockers = hard_nx_reasons, auto_nx_blockers, explicit_nx_blockers
+    ctx.local_plexus_anatomic_mismatch = bool(open_aortic_non_ga or pad_bypass_local)
+    ctx.epi_anatomic_mismatch = bool(epi_anatomic_mismatch)
     ctx.solo_neuraxial_anatomic_mismatch = solo_mismatch
     ctx.auto_spinal_candidate = (ctx.anesth_plan_raw == 'auto') and (ctx.is_phleb or patient.op_subtype == 'evar' or ctx.is_pad_bypass)
     ctx.has_neuraxial_plan = ctx.explicit_neuraxial or ((ctx.anesth_plan_raw == 'auto') and ctx.is_phleb and not auto_nx_blockers)
@@ -157,6 +159,12 @@ def _resolve_effective_anesth_label(ctx, lido_alg, needs_ett_airway):
                 'ანესთეზიოლოგთან შესათანხმებელი (ლიდოკაინზე ალერგია და ნეირაქსიული უკუნაჩვენებია!)'
                 if lido_alg else
                 'ადგილობრივი / ტუმესცენტური ანესთეზია (არჩეული ნეირაქსიული უკუნაჩვენებია — შესაცვლელია!)'
+            )
+        if pathway == PreopPatient.Pathway.CEA and anesth_plan_raw in ('local', 'plexus') and getattr(ctx, 'epi_anatomic_mismatch', False):
+            return (
+                'ზოგადი ენდოტრაქეული ანესთეზია (ლიდოკაინზე ალერგია და ეპიდურული უკუნაჩვენებია!)'
+                if lido_alg else
+                f'{dict(ANESTH_PLAN_CHOICES)[anesth_plan_raw]} (მოხსენით შეუსაბამო ეპიდურული კათეტერი!)'
             )
         return 'ზოგადი ანესთეზია (არჩეული ნეირაქსიული უკუნაჩვენებია — შესაცვლელია!)'
     if lido_alg and (anesth_plan_raw in ('local', 'plexus') or (anesth_plan_raw == 'auto' and (patient.op_subtype == PreopPatient.OpSubtype.EVLA or ctx.is_pta))):
@@ -583,6 +591,9 @@ def _eval_dos_and_vqi(ctx):
     if patient.archived or not ctx.is_active_case:
         ctx.is_local_evla_fasting = False
         ctx.fasting_instruction = 'არააქტიური / დაარქივებული ბარათი — ძველი უზმოდ ყოფნის რეჟიმი გაუქმებულია; დააზუსტეთ მკურნალ ექიმთან.'
+    elif ctx.is_rupture_suspect:
+        ctx.is_local_evla_fasting = False
+        ctx.fasting_instruction = 'გადაუდებელი ოპერაცია (საეჭვო რუპტურა) — უზმოდ ყოფნის ან 24 სთ თხევადი დიეტის გამო ოპერაცია არ გადაიდება! მართეთ „სავსე კუჭის“ RSI პროტოკოლით (ASA 2024).'
     elif ctx.dos_hold_danger or ctx.has_hard_contraindication or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch:
         ctx.is_local_evla_fasting = False
         if ctx.has_glp1_any:
@@ -643,7 +654,7 @@ def _eval_triage_and_passport_cautions(ctx):
     if ctx.is_urgent_case:
         priority_tier = 'urgent'
     elif (
-        (ctx.aaa_mm is not None and ctx.aaa_mm >= aaa_high_mm)
+        (ctx.aaa_mm_sat is not None and ctx.aaa_mm_sat >= aaa_high_mm)
         or (ctx.ipsi_car is not None and ctx.ipsi_car >= cea_urg_pct)
         or (ctx.is_venous and q_filled and q.get('ven_ceap') == 'C6')
         or (not ctx.is_venous and not ctx.is_on_hold and ctx.is_active_case and ctx.days >= max(4, ctx.t_days - 1))

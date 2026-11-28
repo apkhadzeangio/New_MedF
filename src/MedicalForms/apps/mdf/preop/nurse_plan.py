@@ -68,6 +68,8 @@ def _append_missing_and_unknown_items(items, ev, has_q_banner):
 
 def build_plain_georgian_missing_items(patient, ev, today):
     """Numbered plain-Georgian checklist of everything missing before surgeon approval."""
+    if patient.archived or (ev.get('clearance_seal') or {}).get('code') == 'inactive':
+        return []
     items = []
     q = ev['q']
     is_stop = bool(
@@ -80,11 +82,12 @@ def build_plain_georgian_missing_items(patient, ev, today):
     if is_stop:
         if ev.get('solo_neuraxial_anatomic_mismatch'):
             an_plan = (ev.get('s') or {}).get('anesthesia_plan') or ''
-            an_lbl = (
-                'STOP — შეცვალეთ ანესთეზიის გეგმა: არჩეული ადგილობრივი ან წნულის გაუტკივარება ამ ოპერაციისთვის ანატომიურად შეუსაბამოა!'
-                if an_plan in ('local', 'plexus')
-                else 'STOP — შეცვალეთ ანესთეზიის გეგმა: მარტო ნეირაქსიული ბლოკადა ამ ოპერაციისთვის ანატომიურად შეუსაბამოა!'
-            )
+            if ev.get('local_plexus_anatomic_mismatch'):
+                an_lbl = 'STOP — შეცვალეთ ანესთეზიის გეგმა: არჩეული ადგილობრივი ან წნულის გაუტკივარება ამ ოპერაციისთვის ანატომიურად შეუსაბამოა!'
+            elif ev.get('epi_anatomic_mismatch') and an_plan != 'neuraxial':
+                an_lbl = 'STOP — მოხსენით ეპიდურული კათეტერის მონიშვნა: ეპიდურული გაუტკივარება ამ ოპერაციისთვის ანატომიურად შეუსაბამოა!'
+            else:
+                an_lbl = 'STOP — შეცვალეთ ანესთეზიის გეგმა: მარტო ნეირაქსიული ბლოკადა ამ ოპერაციისთვის ანატომიურად შეუსაბამოა!'
             items.append({
                 'kind': 'stop',
                 'label': an_lbl,

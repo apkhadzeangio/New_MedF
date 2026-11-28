@@ -316,10 +316,17 @@ def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_r
             f'VTE / ანტიკოაგულაცია: მექანიკური სარქველი — სავალდებულოა თერაპიული ვარფარინი (VKA) / {mv_br} (პროფილაქტიკური LMWH ან DOAC არასაკმარისია/აკრძალულია!)',
         ))
     elif bool(ft_keys & {'parenteral_oac', 'parenteral_dti'}):
-        par_ren = f' (CrCl/eGFR <{ren_red}/დიალიზი: LMWH/ფონდაპარინუქსი აკრძალულია — უპირატესია UFH!)' if sev_renal else ''
+        par_notes = []
+        if ev.get('eff_pregnant'):
+            par_notes.append('ორსულობა: მეან-გინეკოლოგის ჩართვით, DOAC/ფონდაპარინუქსი/არგატრობანი მოერიდეთ!')
+        if sev_renal:
+            par_notes.append(f'CrCl/eGFR <{ren_red}/დიალიზი: LMWH/ფონდაპარინუქსი აკრძალულია — უპირატესია UFH!')
+        if s.get('liver_status') == '3x':
+            par_notes.append('ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — არგატრობანი −75% / DOAC აკრძალულია!')
+        par_sfx = f' ({" · ".join(par_notes)})' if par_notes else ''
         task_candidates.append((
             _VTE_PREFIXES,
-            f'VTE / ანტიკოაგულაცია: პაციენტი უკვე იღებს პარენტერულ ანტიკოაგულანტს{par_ren} — შეათანხმეთ ერთიანი პოსტოპ. სქემა ქირურგთან (დამატებითი პროფილაქტიკური LMWH/DOAC არ დაუმატოთ!)',
+            f'VTE / ანტიკოაგულაცია: პაციენტი უკვე იღებს პარენტერულ ანტიკოაგულანტს{par_sfx} — შეათანხმეთ ერთიანი პოსტოპ. სქემა ქირურგთან (დამატებითი პროფილაქტიკური LMWH/DOAC არ დაუმატოთ!)',
         ))
     elif ev['caprini_score'] > cap_low_max or not ev['is_venous']:
         if ev.get('eff_pregnant'):
@@ -376,12 +383,18 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
         oac_no_dbl = (
             ' · პოსტოპ. მუდმივი ვარფარინის/OAC-ის აღდგენისას დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ — IPC აღდგენამდე (ორმაგი ანტიკოაგულაციის გარეშე!)'
             if (has_full_oac_b and not has_contra_full_oac_b)
-            else (' · უკუნაჩვენები OAC არ განაახლოთ (ორმაგი ანტიკოაგულაციის გარეშე!)' if has_contra_full_oac_b else '')
+            else (
+                ' · უკუნაჩვენები OAC არ განაახლოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
+                if has_contra_full_oac_b else (
+                    ' · აქტიური პარენტერული ანტიკოაგულაცია — შეათანხმეთ ერთიანი არაჰეპარინული სქემა ჰემატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!)'
+                    if has_ft_par_hit else ''
+                )
+            )
         )
         if ev.get('eff_pregnant'):
             mv_hit_s = ' + მექანიკური სარქველი' if has_mv else ''
             team_s = 'ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის' if has_mv else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
-            hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!'
+            hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!{oac_no_dbl}'
         elif has_full_oac_b and ev.get('is_evla_warfarin_only'):
             hit_board_agents = 'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
         elif has_mv:

@@ -493,7 +493,10 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
         ctx.red_flags.append('მექანიკური სარქვლის მქონე პაციენტთან პოსტოპ. სავალდებულოა უვადო ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი — VOYAGER / მონო-SAPT დაუშვებელია!')
         mv_ap = f' + {oac_partner_lbl} (კორონარული სტენტის დაცვა — ESC Class I!)' if has_active_stent_dapt else (f' + ჩვენებისას {oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ')
         return f'არჩეული სქემა უკუნაჩვენებია მექ. სარქველზე! უვადო ვარფარინი (VKA){mv_ap} (DOAC / VOYAGER აკრძალულია!)'
-    if post_at_raw == 'sapt' and has_full_oac_any:
+    if post_at_raw == 'sapt' and (has_full_oac_any or has_ft_par):
+        if not has_full_oac_any and has_ft_par:
+            ctx.red_flags.append('პაციენტი იღებს აქტიურ პარენტერულ ანტიკოაგულანტს — პოსტოპ. მხოლოდ მონო-ანტიაგრეგანტზე (SAPT) ჩამოქვეითება ანტიკოაგულაციის შეთანხმების გარეშე საშიშია! შეათანხმეთ ერთიანი ანტიკოაგულაციური სქემა.')
+            return f'SAPT არასაკმარისია პარენტერულ ანტიკოაგულაციაზე! შეათანხმეთ: პარენტერული ანტიკოაგულაცია + ჩვენებისას {oac_partner_lbl} (ორმაგი ანტიკოაგულაციის გარეშე!)'
         if getattr(ctx, 'eff_pregnant', False):
             ctx.red_flags.append('ორსულობის ფონზე არჩეულია პოსტოპ. SAPT, მაგრამ პაციენტს აქვს ანტიკოაგულაციის ჩვენება და პერორალური OAC უკუნაჩვენებია — შეარჩიეთ უსაფრთხო არაორალური ანტიკოაგულაცია კონსილიუმით!')
             return _contra_full_oac_postop_label(ctx, oac_partner_lbl)
@@ -620,7 +623,15 @@ def _eval_postop_voyager(ctx):
         elif has_full_oac_any:
             post_antithrombotic_label = f'OAC + {oac_partner_lbl} (სამმაგი თერაპიის გარეშე — ESC/ESVS)'
         elif has_ft_par:
-            par_sfx = ' (HIT: ჰეპარინი/LMWH აკრძალულია — არაჰეპარინული სქემა!)' if 'hit_heparin' in ctx.allergy_chips else ''
+            ren_red_p = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+            eff_r_p = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
+            par_flags = [msg for cond, msg in (
+                ('hit_heparin' in ctx.allergy_chips, 'HIT: ჰეპარინი/LMWH აკრძალულია — არაჰეპარინული სქემა!'),
+                (getattr(ctx, 'eff_pregnant', False), 'ორსულობა: მეან-გინეკოლოგის ჩართვით, DOAC/ფონდაპარინუქსი/არგატრობანი მოერიდეთ!'),
+                (ctx.on_dialysis or (eff_r_p is not None and eff_r_p < ren_red_p), f'CrCl/eGFR <{ren_red_p}/დიალიზი: LMWH/ფონდაპარინუქსი კუმულირდება — უპირატესია UFH!'),
+                (ctx.liver_3x, 'ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — არგატრობანი −75%!'),
+            ) if cond]
+            par_sfx = f' ({" · ".join(par_flags)})' if par_flags else ''
             post_antithrombotic_label = f'აქტიური პარენტერული ანტიკოაგულაცია{par_sfx} + ჩვენებისას {oac_partner_lbl} (ერთიანი სქემა ჰემოსტაზით — დამატებითი VOYAGER / პროფილაქტიკური LMWH არ დაუმატოთ!)'
         elif has_active_stent_dapt:
             st_lbl = f'{stent_p2y12_lbl} (ასპირინზე ალერგია — კარდიოლოგის კონსილიუმი!)' if asa_allergy else f'ასპირინი 100 მგ + {stent_p2y12_lbl}'
