@@ -186,9 +186,10 @@ def build_phone_med_script(patient, ev, today):
     from django.utils import timezone
     today = _date(today) or timezone.localdate()
     s = ev['s']
-    op_dt = _date(s.get('planned_surgery_date'))
-    op_ka = _fmt_ka_date(op_dt, short=True) if op_dt else ''
     is_inactive = bool(patient.archived) or (ev.get('case_outcome') not in (None, '', 'scheduled'))
+    is_rup = bool(ev.get('is_rupture_suspect'))
+    op_dt = None if (is_inactive or is_rup) else _date(s.get('planned_surgery_date'))
+    op_ka = _fmt_ka_date(op_dt, short=True) if op_dt else ''
     stop_locked = (not is_inactive) and (ev['clearance_seal']['code'] == 'stop' or ev['has_hard_contraindication'])
     med_call = _med_call_status(ev, today)
 
@@ -249,7 +250,7 @@ def build_phone_med_script(patient, ev, today):
         'keep_rows': keep_rows,
         'stop_locked': stop_locked,
         'inactive_locked': is_inactive,
-        'needs_op_date': bool(any(r['hold_or_skip'] for r in stop_rows) and not op_dt and not stop_locked and not is_inactive),
+        'needs_op_date': bool(any(r['hold_or_skip'] for r in stop_rows) and not op_dt and not stop_locked and not is_inactive and not is_rup),
         'op_date_ka': _fmt_ka_date(op_dt) if op_dt else '',
         'called_valid': med_call['called_valid'],
         'outdated_call': med_call['outdated_call'],
@@ -487,9 +488,10 @@ def build_patient_plain_explanation(patient, ev, today):
     today = _date(today) or timezone.localdate()
     glp_cfg = rule_value('MED_GLP1_FASTING_PROTOCOL')
     q, s, pw = ev['q'], ev['s'], ev['pathway']
-    op_dt = _date(s.get('planned_surgery_date'))
-    med_script = build_phone_med_script(patient, ev, today)
     is_inactive = bool(patient.archived) or (ev.get('case_outcome') not in (None, '', 'scheduled'))
+    is_rup = bool(ev.get('is_rupture_suspect'))
+    op_dt = None if (is_inactive or is_rup) else _date(s.get('planned_surgery_date'))
+    med_script = build_phone_med_script(patient, ev, today)
     if patient.archived:
         inactive_banner = 'ეს ბარათი დაარქივებულია — ძველი თარიღები და დაშვება აღარ მოქმედებს. ახალი დანიშნულებისთვის დაუკავშირდით მკურნალ ექიმს.'
     elif is_inactive:
@@ -500,6 +502,8 @@ def build_patient_plain_explanation(patient, ev, today):
 
     if is_inactive:
         first_arrival = 'ეს ბარათი აღარ არის აქტიური — დაგეგმილი ოპერაციის თარიღი გადაამოწმეთ მკურნალ ექიმთან.'
+    elif is_rup:
+        first_arrival = 'გადაუდებელი ოპერაცია (საეჭვო რუპტურა) — სასწრაფოდ დაუკავშირდით ქირურგს / მიემართეთ გადაუდებელი დახმარების განყოფილებას!'
     elif med_script['stop_locked']:
         first_arrival = 'ოპერაციის თარიღი დროებით შეჩერებულია — ზუსტ თარიღს მკურნალი ექიმი შეგატყობინებთ.'
     elif op_dt:
@@ -529,6 +533,8 @@ def build_patient_plain_explanation(patient, ev, today):
     )
     if is_inactive:
         fasting_plain = 'ბარათი არააქტიურია — უზმოდ ყოფნის რეჟიმი დააზუსტეთ მკურნალ ექიმთან.'
+    elif is_rup:
+        fasting_plain = f"გადაუდებელი ოპერაცია (საეჭვო რუპტურა) — უზმოდ ყოფნის ან {glp_cfg['liquid_hours']}-საათიანი თხევადი დიეტის გამო ოპერაცია არ გადაიდება! ნურაფერს მიირთმევთ და სასწრაფოდ მიემართეთ საოპერაციოს / ქირურგს."
     elif med_script['stop_locked']:
         if has_glp1:
             fasting_plain = f"ოპერაცია შეჩერებულია დაზუსტებამდე — {glp_cfg['liquid_hours']}-საათიანი დიეტა ან უზმოდ რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!"

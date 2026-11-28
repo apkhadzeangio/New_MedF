@@ -67,7 +67,7 @@ class PreopStressFixesR23Tests(TestCase):
         self.c_doc.force_login(self.doc)
 
     def test_r23_s1_nlp_digitfree_counts_except_garda_and_xa_stems(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.22')
+        self.assertEqual(REGISTRY_VERSION, '1.2.23')
         # Fuzz S1-1: digit-free prefix-stopped drug switches never dropped by _is_uniform_neg_chain
         for txt, exp in (
             ('stopped warfarin apixaban', {'doac'}),
@@ -159,7 +159,7 @@ class PreopStressFixesR23Tests(TestCase):
         self.assertIn('ორსულობა', ev_pta['post_antithrombotic_label'])
         self.assertIn('CrCl/eGFR <30', ev_pta['post_antithrombotic_label'])
         self.assertIn('ღვიძლის ≥3x', ev_pta['caprini_advice'])
-        self.assertIn('CrCl<30', ev_pta['caprini_advice'])
+        self.assertIn('CrCl/eGFR <30', ev_pta['caprini_advice'])
         ev_rl = evaluate(_mk('evla', q={'other_meds': 'enoxaparin 40mg'}, s={'creat': 340, 'creat_unit': 'umol', 'liver_status': '3x'}), today=TODAY)
         self.assertIn('CrCl/eGFR <30', ev_rl['caprini_advice'])
         self.assertIn('ღვიძლის ≥3x', ev_rl['caprini_advice'])

@@ -593,7 +593,7 @@ def _eval_dos_and_vqi(ctx):
         ctx.fasting_instruction = 'არააქტიური / დაარქივებული ბარათი — ძველი უზმოდ ყოფნის რეჟიმი გაუქმებულია; დააზუსტეთ მკურნალ ექიმთან.'
     elif ctx.is_rupture_suspect:
         ctx.is_local_evla_fasting = False
-        ctx.fasting_instruction = 'გადაუდებელი ოპერაცია (საეჭვო რუპტურა) — უზმოდ ყოფნის ან 24 სთ თხევადი დიეტის გამო ოპერაცია არ გადაიდება! მართეთ „სავსე კუჭის“ RSI პროტოკოლით (ASA 2024).'
+        ctx.fasting_instruction = f'გადაუდებელი ოპერაცია (საეჭვო რუპტურა) — უზმოდ ყოფნის ან {glp_liq_h} სთ თხევადი დიეტის გამო ოპერაცია არ გადაიდება! მართეთ „სავსე კუჭის“ RSI პროტოკოლით (ASA 2024).'
     elif ctx.dos_hold_danger or ctx.has_hard_contraindication or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch:
         ctx.is_local_evla_fasting = False
         if ctx.has_glp1_any:

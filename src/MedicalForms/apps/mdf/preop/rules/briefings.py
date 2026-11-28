@@ -320,17 +320,22 @@ def _build_surgical_anatomy_brief(ctx):
     myc_part = ' · მიკოზური AAA: სისხლის ნათესები ×2 + ემპირიული IV ანტიბიოტიკი!' if s.get('aaa_morphology') == 'inflammatory_mycotic' else ''
     rup_oac_bits = []
     ft_keys_r = ctx.ft_meds.get('matched_keys') or set()
-    has_ft_riva_low = bool(ctx.ft_meds.get('has_ft_unstruct_riva_low'))
-    if ctx.is_rupture_suspect and (ctx.on_oral_anticoag or getattr(ctx, 'has_ft_full_oac', False) or 'rivaroxaban_2_5' in ctx.med_chips or has_ft_riva_low):
+    has_ft_riva_only = bool(ctx.ft_meds.get('has_ft_riva_low'))
+    has_ft_par_r = bool(ft_keys_r & {'parenteral_oac', 'parenteral_dti'})
+    if ctx.is_rupture_suspect and (ctx.on_oral_anticoag or getattr(ctx, 'has_ft_full_oac', False) or 'rivaroxaban_2_5' in ctx.med_chips or has_ft_riva_only or has_ft_par_r):
         if q.get('med_warfarin') or 'warfarin' in ft_keys_r:
             rup_oac_bits.append('4F-PCC 25–50 სე/კგ IV + ვიტამინი K 10 მგ IV')
         if q.get('med_dabigatran') or 'dabigatran' in ft_keys_r:
             rup_oac_bits.append('იდარუციზუმაბი (Praxbind) 5 გ IV')
-        if q.get('med_doac') or (bool('doac' in ft_keys_r) and not has_ft_riva_low):
+        if q.get('med_doac') or (('doac' in ft_keys_r) and not has_ft_riva_only):
             rup_oac_bits.append('Xa-DOAC: 4F-PCC 50 სე/კგ IV (მოერიდეთ ანდექსანეტ ალფას კლამპირებამდე — ESVS 2024)')
-        elif 'rivaroxaban_2_5' in ctx.med_chips or has_ft_riva_low:
+        elif 'rivaroxaban_2_5' in ctx.med_chips or has_ft_riva_only:
             rup_oac_bits.append('რივაროქსაბანი 2.5 მგ (Xa): საჭიროებისას 4F-PCC კლინიკური სისხლდენის მიხედვით')
-    rup_oac_part = f' · სასწრაფო OAC რევერსია: {" + ".join(rup_oac_bits)}!' if rup_oac_bits else ''
+        if ctx.ft_meds.get('has_ft_lmwh') or ctx.ft_meds.get('has_ft_ufh'):
+            rup_oac_bits.append('UFH/LMWH: პროტამინის სულფატი IV და სასწრაფო ჰემოსტაზი')
+        elif has_ft_par_r:
+            rup_oac_bits.append('პარენტერული ანტიკოაგულანტი (ფონდაპარინუქსი/DTI): შეაჩერეთ ინფუზია + ჰემატოლოგი და სასწრაფო ჰემოსტაზი')
+    rup_oac_part = f' · სასწრაფო OAC/ანტიკოაგულაციის რევერსია: {" + ".join(rup_oac_bits)}!' if rup_oac_bits else ''
     return anat_summary, f"{neck_part}მუხლქვეშა სკრინინგი: {pop_map.get(s.get('popliteal_screen_status') or 'pending', '—')}{rv_part}{myc_part}{rup_oac_part}"
 
 
@@ -544,8 +549,8 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
             return f'ვარფარინის (VKA) აღდგენა 12–24 სთ-ში ჰემოსტაზით ({vka_br_note}) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
         return f'მუდმივი ანტიკოაგულანტის (DOAC) აღდგენა {pause_oac_win} ჰემოსტაზით (PAUSE) + ჩვენებისას {ctx.oac_partner_lbl} (სამმაგი თერაპიის გარეშე){statin_tail}'
     if bool(ft_keys_p & {'parenteral_oac', 'parenteral_dti'}):
-        par_hit_s = ' (HIT: ჰეპარინი/LMWH აკრძალულია — არაჰეპარინული სქემა!)' if has_hit else ''
-        return f'აქტიური პარენტერული ანტიკოაგულაცია{par_hit_s} — შეათანხმეთ ერთიანი პოსტოპ. სქემა ქირურგთან/ჰემატოლოგთან + ჩვენებისას {ctx.oac_partner_lbl} (დამატებითი პროფილაქტიკური ანტიკოაგულანტი არ დაუმატოთ!){statin_tail}'
+        from .meds import _parenteral_caveat_suffix
+        return f'აქტიური პარენტერული ანტიკოაგულაცია{_parenteral_caveat_suffix(ctx)} — შეათანხმეთ ერთიანი პოსტოპ. სქემა ქირურგთან/ჰემატოლოგთან + ჩვენებისას {ctx.oac_partner_lbl} (დამატებითი პროფილაქტიკური ანტიკოაგულანტი არ დაუმატოთ!){statin_tail}'
     if ctx.has_active_stent_dapt:
         st_b = f'{stent_p2y} (ასპირინზე ალერგია — კონსილიუმი!)' if asa_allergy else f'ასპირინი 100 მგ + {stent_p2y}'
         return f'უწყვეტი DAPT: {st_b} (კორონარული სტენტის დაცვა!){statin_tail}'

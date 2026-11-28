@@ -31,7 +31,8 @@ class StagingTablesTests(TestCase):
         self.assertEqual([grade_tp(v) for v in (60, 59, 40, 39, 30, 29)], [0, 1, 1, 2, 2, 3])
         self.assertEqual(suggest_ischemia(abi=0.95, ap=114, tp=25), (3, 'TP'))      # TP decides
         self.assertEqual(suggest_ischemia(abi=0.55, ap=66), (2, 'ABI/AP'))         # the worse of the two
-        self.assertEqual(suggest_ischemia(abi=1.5, ap=180), (0, 'AP'))             # incompressible ABI
+        self.assertIsNone(suggest_ischemia(abi=1.5, ap=180)[0])                    # incompressible ABI: AP unreliable
+        self.assertEqual(suggest_ischemia(abi=1.5, ap=180, tp=25), (3, 'TP'))      # TP decides when ABI > 1.3
         self.assertEqual(suggest_ischemia(), (None, ''))
 
     def test_glass_table_5_3_and_calcification(self):

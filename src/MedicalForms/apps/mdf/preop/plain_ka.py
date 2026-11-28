@@ -560,6 +560,8 @@ def scrub_plain_ka(txt, second_person=True, strip_quoted_ft=False):
     if second_person:
         for old, new in _2ND_PERSON_REPLACEMENTS:
             out = out.replace(old, new)
+    if 'β-' in out or 'β ' in out:
+        out = out.replace('β-', 'ბეტა-').replace('β ', 'ბეტა ')
     # Strip any residual non-Georgian technical token (e.g. raw English drug brand or code)
     if strip_quoted_ft:
         out = _RESIDUAL_LATIN_RE.sub('', out)

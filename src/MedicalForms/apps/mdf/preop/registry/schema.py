@@ -1,8 +1,8 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.22'
-REGISTRY_UPDATED_ON = '2026-11-27'
+REGISTRY_VERSION = '1.2.23'
+REGISTRY_UPDATED_ON = '2026-11-28'
 
 STATUS_VERIFIED = 'source-verified'
 STATUS_LOCAL = 'local-decision'
@@ -78,6 +78,17 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.23',
+        'date': '2026-11-28',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-24: NLP გარდა/except/ვადები/ესკალაცია, პარენტერული HIT+CrCl/ორსულობა/PTA/დაფა, rAAA შოკის ვაზოაქტიურები/რევერსია/5 ზედაპირი, WIfI არაკომპრესირებადი ABI>1.3, EVLA INR და ბეტა-პრეფიქსი',
+        'changes_ka': (
+            'დაიხურა ყველა 10 S1 ხარვეზი: meds_freetext_nlp.py-ში სრულად გასწორდა ქართული „გარდა“ მძიმით (წინწამოწეული და პოსტპოზიციური უარყოფა/დადებითი), წინადადების საწყისი „except [for]“, სუფიქს-შეწყვეტის შემდგომი ვადების კუდი („stopped 5 days ago apixaban“, „მოხსნილია 5 დღის წინ ელიქვისი“), 2-წამლიანი კავშირი + შეწყვეტილი წამალი („taking aspirin and apixaban warfarin stopped“), სლეშ-დოზები („5mg/day“), სიტყვიერი დროითი ზმნიზედები („yesterday“, „last week“, „ადრე“) და მრავალსიტყვიანი თავები („low molecular weight heparin“, „დაბალმოლეკულური ჰეპარინი“); _riva_has_therapeutic_dose იჭერს რეალურ ქართულ/ინგლისურ დოზის გაზრდას („გაზარდა 20 მგ-მდე“, „შეუცვალა 20 მგ-ზე“, „გადავიდა 20 მგ-ზე“, „now taking 20mg“, „increased to 20mg for afib“); rules/postop_at.py გამოყოფს _parenteral_caveat_suffix-ს (HIT + CrCl<30/დიალიზზე UFH აღარასოდეს რეკომენდებულია; ორსულობა + პარენტერულ AC-ზე ექსპლიციტური DAPT/VOYAGER აღარ სთავაზობს პერორალურ OAC-ს); rules/pta.py კლოპიდოგრელის აუტანლობაზე + პარენტერულ AC-ზე ბლოკავს ტიკაგრელორს; caprini/venous/cardiac აღმოფხვრის ორმაგი ანტიკოაგულაციის წინააღმდეგობას ორსულობა + პარენტერულ AC-ზე; საეჭვო rAAA-ზე 5-ვე ზედაპირზე (phone_script, passport_guide, passport, ძველი/ახალი UI, _tab_s2) დამალულია ძველი მომავალი თარიღი, დაბლოკილია ექთნის +3დ გადატანა, პასპორტის გზამკვლევი აჩვენებს გადაუდებელ RSI უზმოდ რეჟიმს, შოკის ინდექსზე (SI>=1.0) ჩერდება ბეტა-ბლოკატორი/ACEi/CCB და ჰორმონები, ხოლო surgical_brief-ში გასწორდა dual-Xa vs 2.5მგ რევერსიის ინვერსია; staging/tables.py-ში WIfI ABI>1.3 აღარ ეყრდნობა კალციფიცირებულ AP-ს (მოითხოვს TP/TcPO2-ს).',
+            'დაიხურა ყველა 7 S2 ხარვეზი: meds_freetext_nlp.py-ში სიხშირის/დროის სიტყვები („1-ჯერ“, „დილას“, „once/twice daily“, „in the morning“) აღარ იწვევს ცრუ-დადებით შეწყვეტილ OAC-ს; _riva_has_therapeutic_dose აღარ იძლევა ცრუ ორმაგ OAC-ს ჰარით გამოყოფილ თანმხლებ წამალზე („ქსარელტო 2.5 მგ ატორვასტატინი 20 მგ“); rAAA-ს შტოში meds_helpers.py და rules/anaesthesia.py დინამიურად კითხულობენ SGLT2/GLP-1/მეტფორმინის ზღვრებს რეესტრიდან, ხოლო surgical_brief ამატებს პარენტერული ანტიკოაგულანტის რევერსიას (პროტამინი / ჰემატოლოგი); EVLA-ზე სტრუქტურირებული და თავისუფალი ტექსტის ვარფარინი აფიქსირებს დაუშვებელ საბაზისო INR-ს და მექ. სარქვლის სუბთერაპიულ INR<2.0-ს; დაფის VTE ჰენდოფი ინარჩუნებს ღვიძლის >=3x და CrCl<30/დიალიზის გაფრთხილებებს ორსულობაზე და ორსულობა+HIT-ზე; პოსტოპ. AT შეჯამება ინარჩუნებს პარენტერული AC-ს ორგანულ/HIT გაფრთხილებებს AAA/CEA/SAPT-ზე და აფრთხილებს ექსპლიციტურ oac_sapt-ზე OAC-ის გარეშე.',
+            'დაიხურა S3 ხარვეზი: plain_ka.py-ში ბერძნული „β-“ პრეფიქსი („β-ლაქტამი“, „β-ბლოკერი“) გადადის სუფთა ქართულ „ბეტა-“-ზე („ბეტა-ლაქტამი“, „ბეტა-ბლოკერი“) „(ლაქტამი)“-მდე შეკვეცის გარეშე.',
+        ),
+        'sources': 'ESVS 2022–2024 · GVG 2019 (WIfI / Mills 2014) · ESC 2022 NCS · ASRA 5th Ed 2025 · CHEST 2022 · EHRA 2021 · ACC/AHA 2024 · ASA 2024 · EMA · FDA',
+    },
     {
         'version': '1.2.22',
         'date': '2026-11-27',

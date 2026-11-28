@@ -274,7 +274,7 @@ class PreopStressFixesR21Tests(TestCase):
         self.assertNotIn('წითლად მონიშნული', self.c_doc.get(f'/preop/{p_st.pk}/').content.decode('utf-8'))
 
     def test_r21_clin_plain_ka_anamnesis_registry_js_and_html(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.22')
+        self.assertEqual(REGISTRY_VERSION, '1.2.23')
         self.assertEqual(len(RULES_BY_ID), 83)
 
         # Clin F-02: mixed KA+EN unrecognized meds & allergens never silently erased

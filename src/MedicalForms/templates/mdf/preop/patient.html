@@ -42,6 +42,8 @@
                 <span class="po-badge st-ready">✓ ნაოპერაციები{% if ev.operated_date_ka %} ({{ ev.operated_date_ka }}){% endif %}</span>
                 {% elif ev.case_outcome != 'scheduled' %}
                 <span class="po-badge st-needs_doctor">{{ ev.case_outcome_label }}</span>
+                {% elif ev.is_rupture_suspect %}
+                <span class="po-badge prio-urgent">გადაუდებელი ოპერაცია (საეჭვო რუპტურა)!</span>
                 {% elif ev.planned_surgery_ka %}
                 <span class="tw-clock" style="font-size:13px;padding:4px 10px">ოპერაცია: {{ ev.planned_surgery_ka }}</span>
                 {% endif %}

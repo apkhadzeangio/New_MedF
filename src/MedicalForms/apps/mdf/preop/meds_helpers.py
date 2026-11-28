@@ -198,10 +198,11 @@ def _standalone_is_neuraxial(patient, anesth_plan, is_phleb, has_epidural_line, 
 
 
 def _evla_ft_vka_contra(c):
-    from .calculators import _s_raw, _sat_num
+    from .calculators import _sat_num
     from .registry import rule_value
     from .utils import _has_raw_scalar
     vka_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
+    mech_min = rule_value('MED_MECH_VALVE_SAFETY')
     s_ft = c['s']
     raw_s_ft = c['patient'].studies if isinstance(c['patient'].studies, dict) else {}
     inv_ft = s_ft.get('_invalid_inputs') if isinstance(s_ft.get('_invalid_inputs'), dict) else {}
@@ -209,9 +210,15 @@ def _evla_ft_vka_contra(c):
     dos_pres = _has_raw_scalar(raw_dos_ft) or ('dos_inr' in inv_ft)
     if dos_pres and (_num(raw_dos_ft, 0.5, 15.0) is None):
         return f'ოპერაციის დილის INR დაუშვებელია EVLA-ს წინ — გადაამოწმეთ საკონტროლო INR (≤ {vka_max}) ჩარევამდე!', 'INR დაუშვებელია — გადაამოწმეთ!'
-    eff_inr = _sat_num(raw_dos_ft, 0.5, 15.0) if dos_pres else _sat_num(_s_raw(s_ft, 'inr'), 0.4, 20.0)
+    raw_base_ft = _pick_study_raw(s_ft, raw_s_ft, inv_ft, 'inr')
+    base_pres = (not dos_pres) and (_has_raw_scalar(raw_base_ft) or ('inr' in inv_ft))
+    if base_pres and (_num(raw_base_ft, 0.4, 20.0) is None):
+        return f'საბაზისო INR დაუშვებელია EVLA-ს წინ — გადაამოწმეთ საკონტროლო INR (≤ {vka_max}) ჩარევამდე!', 'INR დაუშვებელია — გადაამოწმეთ!'
+    eff_inr = _sat_num(raw_dos_ft, 0.5, 15.0) if dos_pres else _sat_num(raw_base_ft, 0.4, 20.0)
     if eff_inr is not None and eff_inr > vka_max:
         return f'სუპრათერაპიული INR ({eff_inr} > {vka_max}) EVLA-ს წინ — სისხლდენის რისკი, გადაამოწმეთ/შეაჩერეთ დოზა ქირურგთან!', f'INR {eff_inr} > {vka_max} — გადაამოწმეთ!'
+    if c.get('has_mech_valve') and eff_inr is not None and eff_inr < mech_min:
+        return f'მექანიკურ სარქველზე INR სუბთერაპიულია ({eff_inr} < {mech_min}) EVLA-ს წინ — სარქვლის თრომბოზის რისკი! არ შეწყვიტოთ ვარფარინი, სასწრაფოდ შეაფასეთ ხიდი კარდიოლოგთან!', f'INR {eff_inr} < {mech_min} — სასწრაფოდ კარდიოლოგთან!'
     return '', ''
 
 
@@ -219,6 +226,7 @@ def _collect_ft_contraindications(c, ft, u_keys, is_at, immed_stop_plan, gi_blee
     from .calculators import _sat_age
     from .registry import rule_value
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    glp_h = rule_value('MED_GLP1_FASTING_PROTOCOL')['liquid_hours']
     contra_msgs, extra_notes, plan_override = [], [], ''
     if c.get('is_rupture_suspect') and (ft.get('has_ft_full_oac') or ft.get('has_ft_unstruct_riva_low')):
         contra_msgs.append('რუპტურირებული AAA-ის ეჭვზე აუცილებელია ანტიკოაგულაციის გადაუდებელი რევერსია (4F-PCC / იდარუციზუმაბი)!')
@@ -227,7 +235,7 @@ def _collect_ft_contraindications(c, ft, u_keys, is_at, immed_stop_plan, gi_blee
         contra_msgs.append('საეჭვო რუპტურა / გადაუდებელი AAA — ოპერაციას P2Y12-ის მოხსნის გამო არ გადავდებთ! გააუქმეთ შემდგომი დოზა და იყავით მზად ჰემოსტაზისა და თრომბოკონცენტრატის ტრანსფუზიისთვის (ESVS 2024)!')
         plan_override = plan_override or 'გადაუდებელი ოპერაცია — შეჩერებას არ ველოდებით!'
     if c.get('is_rupture_suspect') and (u_keys & {'sglt2', 'glp1', 'metformin', 'insulin', 'cilostazol'}):
-        contra_msgs.append('საეჭვო რუპტურა / გადაუდებელი AAA — გეგმურ შეჩერებას ან 24 სთ თხევად დიეტას არ ველოდებით! გააუქმეთ შემდგომი დოზა და უზრუნველყავით ინტრაოპერაციული RSI/კეტონების/ლაქტატის/გლიკემიის მონიტორინგი!')
+        contra_msgs.append(f'საეჭვო რუპტურა / გადაუდებელი AAA — გეგმურ შეჩერებას ან {glp_h} სთ თხევად დიეტას არ ველოდებით! გააუქმეთ შემდგომი დოზა და უზრუნველყავით ინტრაოპერაციული RSI/კეტონების/ლაქტატის/გლიკემიის მონიტორინგი!')
         plan_override = plan_override or 'გადაუდებელი ოპერაცია — შეჩერებას არ ველოდებით!'
     if c.get('is_evla') and ft.get('has_ft_unstruct_warfarin'):
         ev_msg, ev_plan = _evla_ft_vka_contra(c)
@@ -487,16 +495,20 @@ def _parse_med_confirm_date(patient, s, med_schedule):
 
 def _append_raaa_metabolic_rows(c):
     """Emit emergency non-delay / acute-monitoring directives on suspected ruptured AAA instead of elective future hold dates."""
+    from .registry import rule_value
     q, add_row = c['q'], c['add_row']
+    sglt2_h = rule_value('MED_SGLT2_HOLD_DAYS')['std_days'] * 24
+    glp_h = rule_value('MED_GLP1_FASTING_PROTOCOL')['liquid_hours']
+    metf_con = rule_value('MED_METFORMIN_RENAL_CONTRAST')['contra_renal']
     emerg_dp = 'გადაუდებელი ოპერაცია — შეჩერებას არ ველოდებით!'
     if q.get('dm_insulin'):
         add_row('ინსულინი', 'საეჭვო რუპტურა / გადაუდებელი AAA — ოპერაციას არ გადავდებთ; შეაჩერეთ კანქვეშა პრანდიალური დოზები და მართეთ გლიკემია ინტრაოპერაციული IV ინსულინითა და ხშირი გლუკოზის კონტროლით!', 'red', emerg_dp, hold_or_skip=False, force_date_plan=True, acute_hold=True)
     if q.get('sglt2'):
         sglt2_c = bool(c['repro_pregnant'] or c['on_dialysis'])
-        add_row('SGLT2 (ჯარდიანსი / ფორსიგა)', 'საეჭვო რუპტურა / გადაუდებელი AAA — 72 სთ გეგმურ შეჩერებას არ ველოდებით! გააუქმეთ შემდგომი დოზა და აკონტროლეთ სისხლის კეტონები, pH/ლაქტატი და გლიკემია (ეუგლიკემიური DKA-ს პრევენცია — FDA / ADA 2024)!', 'red', emerg_dp, hold_or_skip=False, force_date_plan=True, contraindicated=sglt2_c, acute_hold=True)
+        add_row('SGLT2 (ჯარდიანსი / ფორსიგა)', f'საეჭვო რუპტურა / გადაუდებელი AAA — {sglt2_h} სთ გეგმურ შეჩერებას არ ველოდებით! გააუქმეთ შემდგომი დოზა და აკონტროლეთ სისხლის კეტონები, pH/ლაქტატი და გლიკემია (ეუგლიკემიური DKA-ს პრევენცია — FDA / ADA 2024)!', 'red', emerg_dp, hold_or_skip=False, force_date_plan=True, contraindicated=sglt2_c, acute_hold=True)
     if q.get('glp1'):
-        add_row('GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)', 'საეჭვო რუპტურა / გადაუდებელი AAA — 24 სთ თხევად დიეტას ან გეგმურ შეჩერებას არ ველოდებით! მართეთ „სავსე კუჭის“ პროტოკოლით (RSI / ასპირაციის პროფილაქტიკა — ASA 2024)!', 'red', emerg_dp, hold_or_skip=False, force_date_plan=True, contraindicated=bool(c['repro_pregnant']), acute_hold=True)
+        add_row('GLP-1 (ოზემპიკი / მუნჯარო / საქსენდა)', f'საეჭვო რუპტურა / გადაუდებელი AAA — {glp_h} სთ თხევად დიეტას ან გეგმურ შეჩერებას არ ველოდებით! მართეთ „სავსე კუჭის“ პროტოკოლით (RSI / ასპირაციის პროფილაქტიკა — ASA 2024)!', 'red', emerg_dp, hold_or_skip=False, force_date_plan=True, contraindicated=bool(c['repro_pregnant']), acute_hold=True)
     if q.get('metformin'):
-        metf_c = bool(c['creat_mismatch'] or c['on_dialysis'] or c['creat_extreme_hi'] or c['liver_3x'] or (c['eff_renal'] is not None and c['eff_renal'] < 30))
+        metf_c = bool(c['creat_mismatch'] or c['on_dialysis'] or c['creat_extreme_hi'] or c['liver_3x'] or (c['eff_renal'] is not None and c['eff_renal'] < metf_con))
         add_row('მეტფორმინი', 'საეჭვო რუპტურა / გადაუდებელი AAA — ოპერაციას არ გადავდებთ! გააუქმეთ შემდგომი დოზა და აკონტროლეთ ლაქტატი და თირკმლის ფუნქცია (ლაქტატ-აციდოზის პრევენცია)!', 'red', emerg_dp, hold_or_skip=False, force_date_plan=True, contraindicated=metf_c, acute_hold=True)
 

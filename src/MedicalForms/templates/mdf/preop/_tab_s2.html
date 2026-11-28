@@ -322,7 +322,7 @@
                             <thead>
                                 <tr>
                                     <th>მედიკამენტი</th>
-                                    {% if ev.has_any_date_plan %}<th>კალენდარული გეგმა{% if ev.planned_surgery_ka and ev.clearance_seal.code != 'inactive' %} (ოპ: {{ ev.planned_surgery_ka }}){% endif %}</th>{% endif %}
+                                    {% if ev.has_any_date_plan %}<th>კალენდარული გეგმა{% if ev.is_rupture_suspect and ev.clearance_seal.code != 'inactive' %} (გადაუდებელი!){% elif ev.planned_surgery_ka and ev.clearance_seal.code != 'inactive' %} (ოპ: {{ ev.planned_surgery_ka }}){% endif %}</th>{% endif %}
                                     <th>პროტოკოლური რეჟიმი</th>
                                 </tr>
                             </thead>

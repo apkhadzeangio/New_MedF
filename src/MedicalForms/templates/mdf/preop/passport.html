@@ -214,7 +214,7 @@
                 · <span class="pp-side-tag">{{ ev.side_badge }}</span>
                 · <span class="{% if ev.asa_roman == 'IV' %}bad{% else %}ok{% endif %}">{{ ev.effective_asa }}</span>
             </div>
-            {% if ev.clearance_seal.code == 'inactive' %}{% if ev.case_outcome == 'operated' and ev.operated_date_ka %}<div class="pp-sub"><strong>ჩატარებული ოპერაცია: {{ ev.operated_date_ka }}</strong></div>{% endif %}{% elif ev.planned_surgery_ka %}<div class="pp-sub"><strong>დაგეგმილი ოპერაცია: {{ ev.planned_surgery_ka }}</strong></div>{% endif %}
+            {% if ev.clearance_seal.code == 'inactive' %}{% if ev.case_outcome == 'operated' and ev.operated_date_ka %}<div class="pp-sub"><strong>ჩატარებული ოპერაცია: {{ ev.operated_date_ka }}</strong></div>{% endif %}{% elif ev.is_rupture_suspect %}<div class="pp-sub"><strong class="bad">გადაუდებელი ოპერაცია (საეჭვო რუპტურა)!</strong></div>{% elif ev.planned_surgery_ka %}<div class="pp-sub"><strong>დაგეგმილი ოპერაცია: {{ ev.planned_surgery_ka }}</strong></div>{% endif %}
             <div class="pp-seal seal-{{ ev.clearance_seal.code }}">{{ ev.clearance_seal.badge }}</div>
             <div class="pp-sub">პრიორიტეტი: {{ ev.priority_label }} · დღე {{ ev.days_elapsed }}/{{ ev.target_days }} · {{ printed_on }}</div>
         </div>
@@ -410,7 +410,7 @@
     <section class="pp-sec">
         <h2>
             <span>5. უზმოდ ყოფნა და მედიკამენტების პერიოპერაციული კალენდარი (ESC / EHRA / ASRA)</span>
-            <span>{% if ev.planned_surgery_ka and ev.clearance_seal.code != 'inactive' %}ოპერაცია: {{ ev.planned_surgery_ka }}{% endif %}</span>
+            <span>{% if ev.clearance_seal.code != 'inactive' %}{% if ev.is_rupture_suspect %}გადაუდებელი ოპერაცია (საეჭვო რუპტურა)!{% elif ev.planned_surgery_ka %}ოპერაცია: {{ ev.planned_surgery_ka }}{% endif %}{% endif %}</span>
         </h2>
         {% if ev.clearance_seal.code == 'stop' %}
         <div class="pp-med-gate" style="margin-bottom:5px;padding:5px 8px;border-radius:6px;background:#FEF3F2;border:1.5px solid #D92D20;color:#912018;font-size:11.2px">

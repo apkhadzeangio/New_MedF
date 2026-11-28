@@ -454,7 +454,9 @@ def build_nurse_patient_context(request, patient, ev):
     is_inactive_hdr = bool(patient.archived or (ev.get('clearance_seal') or {}).get('code') == 'inactive')
     nw_op_lbl = (
         ('არქივშია' if patient.archived else (ev.get('case_outcome_label') or 'არააქტიური ბარათი'))
-        if is_inactive_hdr else _relative_op_label(op_dt, today)
+        if is_inactive_hdr else (
+            'გადაუდებელი ოპერაცია (საეჭვო რუპტურა)!' if ev.get('is_rupture_suspect') else _relative_op_label(op_dt, today)
+        )
     )
     return {
         'nw_verdict': verdict,

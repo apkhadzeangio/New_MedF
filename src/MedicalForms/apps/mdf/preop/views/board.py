@@ -330,10 +330,11 @@ def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_r
         ))
     elif ev['caprini_score'] > cap_low_max or not ev['is_venous']:
         if ev.get('eff_pregnant'):
+            liv_pr = ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით!' if s.get('liver_status') == '3x' else ''
             if sev_renal:
-                vte_board_drug = f'კანქვეშა UFH + IPC მეან-გინეკოლოგის შეფასებით (ორსულობა + CrCl/eGFR <{ren_red}/დიალიზი: LMWH კუმულირდება, DOAC უკუნაჩვენებია!)'
+                vte_board_drug = f'კანქვეშა UFH + IPC მეან-გინეკოლოგის შეფასებით (ორსულობა + CrCl/eGFR <{ren_red}/დიალიზი: LMWH კუმულირდება, DOAC უკუნაჩვენებია!){liv_pr}'
             else:
-                vte_board_drug = 'LMWH / კანქვეშა UFH მეან-გინეკოლოგის შეფასებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
+                vte_board_drug = f'LMWH / კანქვეშა UFH მეან-გინეკოლოგის შეფასებით (ორსულობაზე DOAC უკუნაჩვენებია!){liv_pr}'
         elif s.get('liver_status') == '3x' and sev_renal:
             vte_board_drug = f'კანქვეშა UFH + IPC კოაგულოგრამის კონტროლით (ღვიძლის ≥3x + CrCl<{ren_red}/დიალიზი: DOAC აკრძალულია, სტანდარტული LMWH კუმულირდება!)'
         elif s.get('liver_status') == '3x':
@@ -394,7 +395,11 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
         if ev.get('eff_pregnant'):
             mv_hit_s = ' + მექანიკური სარქველი' if has_mv else ''
             team_s = 'ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის' if has_mv else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
-            hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!{oac_no_dbl}'
+            org_hit_s = ''.join(x for cond, x in (
+                (sev_renal, f' · CrCl<{ren_red}/დიალიზი: ფონდაპარინუქსი აკრძალულია!'),
+                (liver_3x, ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — ბივალირუდინი უპირატესია, არგატრობანი −75%!'),
+            ) if cond)
+            hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!{org_hit_s}{oac_no_dbl}'
         elif has_full_oac_b and ev.get('is_evla_warfarin_only'):
             hit_board_agents = 'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
         elif has_mv:

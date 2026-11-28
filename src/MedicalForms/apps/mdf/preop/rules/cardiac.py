@@ -387,9 +387,8 @@ def _venous_vte_task_label(ctx, ren_red, eff_ren_t):
     if 'mech_valve' in ctx.cad_chips:
         return f'ვარფარინი (VKA) + IV ბივალირუდინი/არგატრობანი (HIT!){arg_liv_t}' if has_hit else 'ვარფარინი (VKA) — DOAC აკრძალულია!'
     if getattr(ctx, 'eff_pregnant', False):
-        if has_hit:
-            return 'IPC / არაჰეპარინული სქემა (ორსულობა + HIT — DOAC და ჰეპარინი არა!)'
-        return f'UFH (ორსულობა + CrCl<{ren_red}: LMWH კუმულირდება, DOAC არა!)' if ven_severe_renal_t else 'LMWH / UFH (ორსულობაზე DOAC არა!)'
+        from ..caprini import _preg_vte_advice
+        return _preg_vte_advice(True, has_hit, ven_severe_renal_t, ctx.liver_3x, has_ft_par_t, ren_red, '')
     if has_full_oac_t:
         if getattr(ctx, 'has_contra_full_oac', False) or has_contra_oac_t:
             return f'უკუნაჩვენები OAC არ განაახლოთ — უსაფრთხო ანტიკოაგულაციის სქემა (ორმაგი ანტიკოაგულაციის გარეშე!){hit_oac_t}'

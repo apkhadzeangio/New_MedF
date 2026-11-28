@@ -53,7 +53,7 @@ def suggest_ischemia(abi=None, ap=None, tp=None):
     if g_tp is not None:
         return g_tp, 'TP'                       # "TP will be the primary determinant"
     if abi is not None and abi > 1.3:
-        return (g_ap, 'AP') if g_ap is not None else (None, 'ABI არაკომპრესირებადია — საჭიროა TP/TcPO2')
+        return None, 'ABI არაკომპრესირებადია (>1.3) — AP არასანდოა, საჭიროა TP/TcPO2'
     grades = [g for g in (g_abi, g_ap) if g is not None]
     if not grades:
         return None, ''

@@ -249,6 +249,10 @@ class PreopNurseRescheduleView(LoginRequiredMixin, generic.View):
                 patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
                 return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
 
+            if evaluate(patient).get('is_rupture_suspect'):
+                messages.error(request, 'საეჭვო რუპტურირებული AAA გადაუდებელი მდგომარეობაა — ოპერაციის თარიღის გადადება/შეცვლა დაბლოკილია; სასწრაფოდ დაუკავშირდით ქირურგს!')
+                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '#nw-reschedule-card')
+
             old_dt = _date(s.get('planned_surgery_date'))
             today = timezone.localdate()
             if action == 'shift_3d':

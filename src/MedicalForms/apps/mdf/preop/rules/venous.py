@@ -106,7 +106,7 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
     cap_thresh = vte_cfg['caprini_high']
     ctx.needs_vte_prophylaxis = high_vte or (q_filled and (mod_vte_count >= 2 or ctx.caprini_score >= cap_thresh))
     if ctx.needs_vte_prophylaxis and not s.get('vte_prophylaxis_planned'):
-        from ..caprini import _oac_venous_vte_flags, _par_vte_advice
+        from ..caprini import _oac_venous_vte_flags, _par_vte_advice, _preg_vte_advice
         eff_ren_v = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
         ven_severe_renal = ctx.on_dialysis or (eff_ren_v is not None and eff_ren_v < ren_red)
         has_hit = 'hit_heparin' in ctx.allergy_chips
@@ -137,13 +137,7 @@ def _eval_venous_vte_prophylaxis(ctx, ceap, age_eff, bmi_eff):
                 if has_hit else 'ვარფარინი (VKA) კარდიოლოგის სქემით — DOAC აკრძალულია!'
             )
         elif getattr(ctx, 'eff_pregnant', False):
-            vte_agents = (
-                'IPC / არაჰეპარინული სქემა მეან-გინეკოლოგთან და ჰემატოლოგთან (ორსულობა + HIT — ჰეპარინი და DOAC აკრძალულია!)'
-                if has_hit else (
-                    f'კანქვეშა UFH მეან-გინეკოლოგთან (ორსულობა + CrCl<{ren_red}: LMWH კუმულირდება, DOAC აკრძალულია!)'
-                    if ven_severe_renal else 'LMWH / UFH მეან-გინეკოლოგთან შეთანხმებით (ორსულობაზე DOAC უკუნაჩვენებია!)'
-                )
-            )
+            vte_agents = _preg_vte_advice(True, has_hit, ven_severe_renal, ctx.liver_3x, has_ft_par_v, ren_red, '')
         elif has_full_oac_v:
             hit_oac_s = ' (HIT: ჰეპარინი/LMWH აკრძალულია!)' if has_hit else ''
             if has_contra_oac_v:

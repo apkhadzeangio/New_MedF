@@ -7,6 +7,20 @@ from .constants import (
     _HIT_WORD_RE,
     _IODINE_WORD_RE,
 )
+from .meds_freetext_nlp import (  # noqa: F401
+    _ALLERGY_NEGATION_WORDS,
+    _DIGIT_RE,
+    _KA_NEG_VERB_RE,
+    _NEGATION_PHRASE_RE,
+    _WS_RUN_RE,
+    _has_neg_phrase,
+    _normalize_nlp_text,
+    _positive_clauses_text,
+    _rewrite_en_except,
+    _rewrite_ka_garda,
+    _split_inline_boundaries,
+    _split_neg_clauses,
+)
 from .utils import _str_list
 
 _RIVA_STEM = r'(?:ქსარელტ\w*|კსარელტ\w*|xarelto|რივაროქს\w*|რივაროკს\w*|rivarox\w*)'
@@ -16,156 +30,19 @@ _RIVA_LOW_RE = re.compile(
     rf'|(?<![\d.,])2[.,]5 ?(?:მგ|mg)?[^\w\n]{{0,8}}{_RIVA_STEM})'
 )
 _RIVA_THER_DOSE_RE = re.compile(r'(?<![\d.,])(?:10|15|20)(?![\d.,])')
-_WS_RUN_RE = re.compile(r'[ \t\u00a0]+')
-# All split regexes run AFTER _WS_RUN_RE collapses horizontal spaces to a single ' ', guaranteeing O(N) linear time.
 _RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;,\n/+]| (?:და|ან|and|or) ')
-_STRONG_CLAUSE_SPLIT_RE = re.compile(
-    r'[;,\n!()—–]+| - |\.(?!\d)| (?:მაგრამ|ხოლო|თუმცა|but) '
-)
-_CONJ_SPLIT_RE = re.compile(r' (?:და|ან|and|or) ')
-_KA_VERBS = r'(?:იღებს|ვიღებ|სვამს|ვსვამ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აქვს|მაქვს|აღენიშნება|უფიქსირდება|აწუხებს)'
-_KA_STOP_VERBS = (
-    r'(?:შეწყვეტილია|მოხსნილია|შეჩერებულია|შეწყვიტა|მოხსნა|შეაჩერა|მოუხსნეს|შეუწყვიტეს|შეაჩერეს'
-    r'|მოხსნეს|შეწყვიტეს|შევწყვიტე|მოვხსენი|შევაჩერე|შევწყვიტეთ|მოვხსენით|შევაჩერეთ)'
-)
-_PREFIX_NEG_START_RE = re.compile(
-    rf'^(?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) {_KA_VERBS}'
-    rf'|{_KA_STOP_VERBS}(?![ა-ჰ])'
-    r'|უარყოფს\b|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*'
-    r'|(?:no|not|without|stopped|discontinued|held|denied|denies)\b)',
-    re.IGNORECASE,
-)
-_AFFIRM_PRED_RE = re.compile(
-    rf'(?:^| )(?:{_KA_VERBS}|უწერია|დაუნიშნ[ა-ჰ]*|გადავიდა|გადაიყვან[ა-ჰ]*'
-    r'|takes?|taking|uses?|using|started|continues?|continuing|switched|changed|has|have|on |allergic)\b',
-    re.IGNORECASE,
-)
-_ALLERGY_WORD_RE = re.compile(r'(?:ალერგი[ა-ჰ]*|\ballerg(?:y|ies|ic)\b)', re.IGNORECASE)
-_INLINE_NEG_SPLIT_RE = re.compile(
-    r' (?=(?:no|not|without) [a-zა-ჰ])'
-    r'| (?=(?:switched to|changed to|allergic to) [a-zა-ჰ])'
-    r"|(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!stopped)(?<!discontinued) (?=(?:taking|takes|using|uses|started|continues|continuing) [a-zა-ჰ])"
-    r"|(?<!\bnot)(?<!\bno)(?<!never)(?<!n't)(?<!allergy)(?<!allergies) (?=on [a-z])"
-    r'|(?<=stopped) (?=(?:started|takes|taking|uses|using|switched|changed|continues|continuing|on ))'
-    r'|(?<=discontinued) (?=(?:started|takes|taking|uses|using|switched|changed|continues|continuing|on ))'
-    r'|(?<=held) (?=(?:started|takes|taking|uses|using|switched|changed|continues|continuing|on ))'
-    r'|(?<=ალერგია) (?=\S+ (?:არ|არა) (?:აქვს|მაქვს|აღენიშნება|უფიქსირდება|არის))'
-    r'|(?:(?<=\d)|(?<=\dმგ)|(?<= მგ)|(?<=\dmg)|(?<= mg)|(?<=\dმკგ)|(?<= მკგ)|(?<=\dmcg)|(?<= mcg)'
-    r'|(?<=\dგ)|(?<= გ)|(?<=\dg)|(?<= g)|(?<=\dმლ)|(?<= მლ)|(?<=\dml)|(?<= ml)|(?<=\dსე)|(?<= სე)|(?<=\diu)|(?<= iu)'
-    r'|(?<= bid)|(?<= tid)|(?<= qid)|(?<= qd)|(?<= od)|(?<= daily)|(?<= x2)|(?<= 2x)|(?<= ტაბ)|(?<= tab)|(?<= აბი)) '
-    r'(?!(?:მგ|mg|მკგ|mcg|გ|g|სე|u|iu|მლ|ml|ტაბ|აბი|აბ|tab|x2|2x|bid|tid|qid|qd|od|once|twice|daily) )'
-    r'(?=[a-zა-ჰ0-9\-]+ (?:\d+(?:[.,]\d+)?(?: ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu))? )?'
-    rf'(?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) {_KA_VERBS}|{_KA_STOP_VERBS}|stopped|discontinued|held))'
-)
-_KA_NEG_VERB_RE = re.compile(rf'(?<![ა-ჰ]){_KA_STOP_VERBS}(?![ა-ჰ])')
-_KA_NEG_FOLLOW_STOP = frozenset({
-    'და', 'ან', 'მაგრამ', 'ხოლო', 'თუმცა', 'რომ', 'გამო', 'წინ', 'ადრე', 'უკვე', 'მანამდე', 'საერთოდ',
-    'and', 'or', 'but', 'in', 'the', 'at', 'for', 'ago',
-    'დღე', 'დღის', 'დღით', 'დღეა', 'დღეები', 'თვე', 'თვის', 'თვეა', 'კვირა', 'კვირის', 'კვირით', 'კვირაა',
-    'წელ', 'წლის', 'წლიდან', 'წელია', 'საათ', 'საათის', 'საათით', 'სთ', 'დილას', 'საღამოს', 'ღამით', 'ჯერ', 'დოზა',
-    'მგ', 'mg', 'მკგ', 'mcg', 'გ', 'g', 'მლ', 'ml', 'სე', 'iu', 'ტაბ', 'აბი', 'აბ', 'tab', 'tabs', 'tablet', 'tablets',
-    'x2', '2x', 'bid', 'tid', 'qid', 'qd', 'od', 'once', 'twice', 'daily', 'დღეში', 'd', 'h',
-})
-_KA_MULTIWORD_HEAD_PREFIXES = (
-    'დაბალმოლეკულ', 'არაფრაქციულ', 'სისხლის', 'ანტითრომბ', 'ანტიკოაგულ', 'პერორალურ', 'ყველა', 'ორივე',
-)
-_EN_NEG_FOLLOW_STOP = frozenset({
-    'and', 'or', 'but', 'და', 'ან', 'მაგრამ', 'ხოლო', 'თუმცა', 'the', 'am', 'pm', 'bedtime',
-    'for', 'ago', 'day', 'days', 'week', 'weeks', 'wk', 'wks', 'month', 'months', 'mo', 'mos', 'year', 'years', 'yr', 'yrs', 'd', 'h',
-    'hr', 'hrs', 'hour', 'hours', 'prior', 'before', 'due', 'because', 'by', 'on', 'in', 'at', 'per',
-    'with', 'without', 'since', 'last', 'yesterday', 'today', 'after', 'already', 'recently', 'previously',
-    'completely', 'all', 'both', 'med', 'meds', 'medication', 'medications', 'drug', 'drugs', 'therapy',
-    'anticoagulant', 'anticoagulants', 'antiplatelet', 'antiplatelets', 'blood', 'thinner', 'thinners',
-    'pill', 'pills', 'tablet', 'tablets', 'tabs', 'capsule', 'capsules', 'dose', 'doses', 'injection', 'injections', 'preop', 'pre-op',
-    'surgery', 'operation', 'procedure', 'bleeding', 'bleed', 'doctor', 'physician', 'cardiologist',
-    'mg', 'mcg', 'g', 'ml', 'iu', 'u', 'tab', 'caps', 'cap', 'x2', '2x', 'bid', 'tid', 'qid', 'qd', 'od', 'qhs', 'qod', 'hs', 'prn',
-    'once', 'twice', 'daily', 'morning', 'evening', 'night', 'po', 'iv', 'sc', 'im', 'sq',
-    'მგ', 'მკგ', 'გ', 'მლ', 'სე', 'ტაბ', 'აბი', 'აბ', 'დღეში', 'დილას', 'საღამოს', 'ღამით', 'დოზა',
-})
-_EN_NEG_HEAD_SKIP = frozenset({
-    'all', 'both', 'my', 'the', 'his', 'her', 'any', 'no', 'blood', 'oral', 'low', 'molecular',
-    'unfractionated', 'antiplatelet', 'anticoagulant', 'antithrombotic', 'dual', 'triple', 'beta',
-    'calcium', 'proton', 'prior', 'previous', 'old', 'chronic', 'regular', 'daily', 'home', 'usual',
-})
-_FREQ_FORM_TOK = (
-    r'(?:x\d+|\d+x|\d+-?ჯერ|bid|tid|qid|qd|od|q\d+h|qhs|qod|hs|prn|po|iv|sc|sq|im'
-    r'|once|twice|daily|morning|evening|night|დილას|საღამოს|ღამით|დღეში'
-    r'|in the (?:morning|evening|am|pm)|at (?:night|bedtime)'
-    r'|ტაბ|აბი|აბ|tab|tabs|tablets?|caps?|capsules?)(?![a-zა-ჰ])'
-)
-_DOSE_UNIT_TOK = r'\d+(?:[.,/]\d+)? ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu)(?![a-zა-ჰ])'
-_COUNT_DUR_UNIT = (
-    r'(?:აბი|აბ|ტაბ|tab|tabs|tablets?|caps?|capsules?|pills?|დოზა|dose'
-    r'|დღის|დღე|დღით|დღეა|კვირის|კვირა|თვის|თვე|წლის|საათის|საათით|სთ'
-    r'|days?|weeks?|wks?|months?|mos?|years?|yrs?|hrs?|hours?|d|h)'
-)
-_COUNT_OR_DUR_TOK = (
-    r'(?:\d+(?:[.,/]\d+)? ?(?:აბი|აბ|ტაბ|tab|tabs|tablets?|caps?|capsules?|pills?|დოზა|dose)(?![a-zა-ჰ])'
-    r'|(?:for )?\d+(?:[.,/]\d+)? ?(?:დღის|დღე|დღით|დღეა|კვირის|კვირა|თვის|თვე|წლის|საათის|საათით|სთ'
-    r'|days?|weeks?|wks?|months?|mos?|years?|yrs?|hrs?|hours?|d|h)(?![a-zა-ჰ])(?: (?:წინ|ადრე|ago|prior|before)(?![a-zა-ჰ]))?)'
-)
-_BARE_NUM_TOK = rf'\d+(?:[.,/]\d+)?(?! ?{_COUNT_DUR_UNIT}(?![a-zა-ჰ]))'
-_HEAD_MOD_TOK = rf'(?:{_DOSE_UNIT_TOK}|{_COUNT_OR_DUR_TOK}|{_FREQ_FORM_TOK}|{_BARE_NUM_TOK})'
-_KA_PREFIX_NEG_HEAD_RE = re.compile(
-    rf'^[a-zა-ჰ0-9\-]+(?: {_HEAD_MOD_TOK}){{0,6}}(?= [a-zა-ჰ])'
-)
-_EN_BUT_NOT_RE = re.compile(r' but not (?=[a-zა-ჰ])', re.IGNORECASE)
-_EN_EXCEPT_RE = re.compile(r' except (?:for )?(?=[a-zა-ჰ])', re.IGNORECASE)
-_EN_STOP_WORD_RE = re.compile(r'\b(?:stopped|discontinued|held|off)\b', re.IGNORECASE)
-_KA_BUT_NOT_RE = re.compile(r' მაგრამ არა (?=[a-zა-ჰ])')
-_KA_BUT_SOV_NOT_RE = re.compile(
-    r' მაგრამ ([a-zა-ჰ0-9 .\-]{1,40}?) არა(?=$|[,;.!?\n(\[—–]| [(\[—–-])'
-)
-_KA_GARDA_RE = re.compile(r' გარდა(?=$|[,;.!?\n ])')
-_EN_STOPPED_RE = re.compile(r'\b(?:stopped|discontinued|held)\b', re.IGNORECASE)
-_DOSE_UNIT_END_RE = re.compile(r'(?:\d|მგ|mg|მკგ|mcg|გ|g)$', re.IGNORECASE)
-_KA_AFFIRM_VERB_AFTER_RE = re.compile(
-    r'(?<![ა-ჰ])(?:სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აქვს|მაქვს|აღენიშნება|უფიქსირდება|აწუხებს)'
-    r' (?!(?:და|ან|მაგრამ|ხოლო|თუმცა|რომ)(?![ა-ჰ]))(?=[a-zა-ჰ0-9])'
-)
-_KA_VERB_WORD_RE = re.compile(
-    r'(?<![ა-ჰ])(?:სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აქვს|მაქვს|აღენიშნება|უფიქსირდება|აწუხებს)(?![ა-ჰ])'
-)
-_KA_NEG_PARTICLES = frozenset({'არ', 'აღარ', 'არა', 'ვერ'})
-_DOUBLE_NEG_AFFIRM_EN_RE = re.compile(
-    r"\b(?:(?:did |has |have |was |were )?not (?:yet )?(?:been )?(?:stop|stopped|discontinue|discontinued|hold|held)"
-    r"|(?:hasn't|haven't|didn't|hadn't|isn't|aren't|wasn't|weren't) (?:yet )?(?:been )?(?:stop|stopped|discontinue|discontinued|hold|held)"
-    r"|never (?:been )?(?:stop|stopped|discontinue|discontinued|hold|held))\b",
-    re.IGNORECASE,
-)
-_DOUBLE_NEG_AFFIRM_KA_RE = re.compile(
-    r'არაა (?:შეწყვეტილი|მოხსნილი|შეჩერებული)'
-    r'|(?:არ|არც|ვერ) (?:შეუწყვეტია|მოუხსნია|შეუჩერებია|შემიწყვეტია|მომიხსნია|შემიჩერებია'
-    r'|შეგვიწყვეტია|მოგვიხსნია|შეგვიჩერებია|შეწყვიტა|მოხსნა|შეაჩერა|შევწყვიტე|მოვხსენი|შევაჩერე'
-    r'|შევწყვიტეთ|მოვხსენით|შევაჩერეთ|მოუხსნეს|შეუწყვიტეს|შეაჩერეს|მოხსნეს|შეწყვიტეს'
-    r'|(?:არის|აქვს|მაქვს) (?:შეწყვეტილი|მოხსნილი|შეჩერებული))',
-)
-_UNINTERRUPTED_AFFIRM_RE = re.compile(
-    r'(?:შეწყვეტის|შეჩერების|მოხსნის) გარეშე'
-    r'|\bwithout (?:stopping|interruption|discontinuing|holding)\b',
-    re.IGNORECASE,
-)
-_NON_PREFIX_PROTECT_RE = re.compile(
-    r'(?<![ა-ჰ])არა[- ]+(?=ანაფილაქსი|სტეროიდ|ინვაზიურ|სპეციფიკურ|ალკოჰოლ|ჰემორაგ|კარდი|ჰეპარინ|ფრაქციულ|ვიტამინ|სელექტიურ)'
-)
-_SYMPTOM_NEG_RE = re.compile(
-    r'(?:სისხლდენ[ა-ჰ]*|ჩივილ[ა-ჰ]*|გართულებ[ა-ჰ]*|ტკივილ[ა-ჰ]*|ანაფილაქსი[ა-ჰ]*|შოკ[ა-ჰ]*|შეშუპებ[ა-ჰ]*'
-    r'|დანიშნულებ[ა-ჰ]*|რეცეპტ[ა-ჰ]*|კონტროლ[ა-ჰ]*|მონიტორინგ[ა-ჰ]*|ექიმ[ა-ჰ]*|პრობლემ[ა-ჰ]*|ჩვენებ[ა-ჰ]*) '
-    r'(?:(?:არ|არა) (?:აქვს|მაქვს|აღნიშნავს|აღენიშნება|ჰქონია|უფიქსირდება|არის)|გარეშე)'
-    r'|(?:არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*) (?:სისხლდენ[ა-ჰ]*|ჩივილ[ა-ჰ]*|გართულებ[ა-ჰ]*|ტკივილ[ა-ჰ]*|ანაფილაქსი[ა-ჰ]*|შოკ[ა-ჰ]*|შეშუპებ[ა-ჰ]*)'
-    r'|\b(?:without|no) (?:active )?(?:bleed[a-z]*|hemorrhag[a-z]*|pain|symptom[a-z]*|complication[a-z]*|anaphyla[a-z]*|shock|edema)\b',
-    re.IGNORECASE,
-)
 _RIVA_ESCALATION_STEMS = (
-    'დაუნიშნ', 'შეცვ', 'გაიზარდ', 'გადაიყვან', 'დოზ', 'შემდეგ', 'ახლა', 'ხოლო',
-    'მაგრამ', 'კარდიოლოგ', 'ექიმ', 'ადრე', 'ნაცვლ',
-    'prescrib', 'switch', 'increas', 'chang', 'dose', 'then', 'now', 'instead', 'also', 'cardiol', 'doctor', 'physician',
+    'დაუნიშნ', 'შეცვ', 'შეუცვ', 'გაზარდ', 'გაიზარდ', 'მოუმატ', 'მოიმატ', 'გადავიდ', 'გადაიყვან',
+    'დოზ', 'შემდეგ', 'ახლა', 'ხოლო', 'მაგრამ', 'კარდიოლოგ', 'ექიმ', 'ადრე', 'ნაცვლ',
+    'იღებ', 'ვიღებ', 'სვამ', 'ფიბრილ', 'თრომბ', 'ემბოლ', 'ინსულტ',
+    'prescrib', 'switch', 'increas', 'chang', 'escalat', 'rais', 'dose', 'then', 'now', 'instead',
+    'also', 'cardiol', 'doctor', 'physician', 'tak', 'us', 'afib', 'fibril', 'dvt', 'vte', 'pe', 'thromb', 'stroke',
 )
 _RIVA_NON_DRUG_WORDS = frozenset({
     'მგ', 'mg', 'x2', '2x', 'bid', 'qd', 'od', '×', 'x', 'tab', 'tabs', 'ტაბ', 'აბი', 'აბ',
-    'მერე', 'მხოლოდ', 'only', 'daily', 'morning', 'evening', 'once', 'twice',
-    'to', 'of', 'on', 'from', 'for', 'the', 'at', 'per', 'by', 'in', 'day', 'days', 'am', 'pm',
-    'მდე', 'ზე', 'ით', 'დან', 'დღეში', 'დილას', 'საღამოს', 'ღამით', 'უკვე', 'წინ',
+    'მერე', 'მხოლოდ', 'only', 'daily', 'morning', 'evening', 'once', 'twice', 'up', 'has', 'been',
+    'to', 'of', 'on', 'from', 'for', 'the', 'at', 'per', 'by', 'in', 'day', 'days', 'am', 'pm', 'a',
+    'მდე', 'ზე', 'ით', 'დან', 'ს', 'ში', 'დღეში', 'დილას', 'საღამოს', 'ღამით', 'უკვე', 'წინ', 'გამო',
 })
 _ASPIRIN_FT_STEMS = (
     'ასპირინ', 'ასპიკარდ', 'კარდიომაგნ', 'კარდიო მაგნ', 'თრომბო-ას', 'თრომბოას', 'თრომბო ას',
@@ -174,19 +51,6 @@ _ASPIRIN_FT_STEMS = (
     'duoplavin', 'coplavix',
 )
 _ASA_WORD_RE = re.compile(r'(?<![a-zა-ჰ])asa(?![a-zა-ჰ])')
-_ALLERGY_NEGATION_WORDS = frozenset({
-    'არა', 'უარყოფს', 'არაქვს', 'არმაქვს', 'არააქვს', 'ალერგიაარაქვს', 'ალერგიაარმაქვს', 'ალერგიაარააქვს',
-    'ალერგიისგარეშე', 'არანაირიალერგია', 'არავითარიალერგია', 'ალერგიაარარის',
-    'no', 'none', 'nil', 'nkda', 'nka', 'noallergy', 'noallergies',
-})
-_NEGATION_PHRASE_RE = re.compile(
-    r'(?:(?:არ|აღარ|არა|ვერ) (?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აღნიშნავს|ჰქონია|აღენიშნება|უფიქსირდება|არის|აწუხებს)'
-    r'|(?<![ა-ჰ])(?:არაა?(?![ა-ჰ\-—–])|არაქვს(?![ა-ჰ])|არმაქვს(?![ა-ჰ])|არააქვს(?![ა-ჰ])|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*)'
-    rf'|უარყოფს|{_KA_STOP_VERBS}|გამორიცხულია'
-    r'|(?<![ა-ჰ])გარეშე(?![ა-ჰ])'
-    r"|(?<![a-z])(?:no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b)",
-    re.IGNORECASE,
-)
 _FT_STATIN_STEMS = (
     'ატორვასტატინ', 'ატორვა', 'როზუვასტატინ', 'სიმვასტატინ', 'პრავასტატინ', 'პიტავასტატინ', 'ფლუვასტატინ',
     'სტატინ', 'კრესტორ', 'ლიპიტორ', 'ლიპრიმ', 'ტულიპ', 'როქსერ', 'მერტენილ', 'ატორის', 'ზოკორ',
@@ -224,404 +88,36 @@ _FT_NSAID_STEMS = (
     'მოვალიზ', 'movalis', 'ცელეკოქსიბ', 'celecoxib', 'ინდომეტაცინ', 'indomethacin', 'დექსალგინ', 'dexalgin',
     'დექსკეტოპროფენ', 'dexketoprofen',
 )
-_DIGIT_RE = re.compile(r'\d')
-_COMPACT_STRIP_RE = re.compile(r'[\s.,;:!?()\[\]"\'—–-]+')
-_NEG_FAST_HINT_RE = re.compile(
-    r"\b(?:არ|აღარ|არა|ვერ|მოხსნ|მოვხსნ|მოვხსენ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|გამორ|უარყ|გარეშე"
-    r"|no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b"
-    r'|\b(?:არა|არაქვს|არმაქვს|არააქვს|არანაირ|არავითარ|უარყოფს|მოხსნ|მოვხსნ|მოვხსენ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|მოუხსნ|შეუწყვ|შემიწყვ|მომიხსნ|შემიჩერ|შეგვიწყვ|მოგვიხსნ|შეგვიჩერ|გამორიცხ)',
-    re.IGNORECASE,
-)
+_APIX_STEMS = ('ელიქვის', 'ელიკვის', 'აპიქსაბ', 'აპიკსაბ', 'eliquis', 'apixab')
+_EDOX_STEMS = ('ლიქსიან', 'ედოქსაბ', 'ედოკსაბ', 'ედიქსან', 'სავაის', 'lixiana', 'edoxab', 'savaysa')
 
 
-def _has_neg_phrase(s):
-    return bool(_NEG_FAST_HINT_RE.search(s) and _NEGATION_PHRASE_RE.search(s))
-
-
-def _prev_clause(s, pos, window=120):
-    end = pos - 1 if pos > 0 and s[pos - 1] == ',' else pos
-    chunk = s[max(0, end - window):end]
-    for sep in (',', ';', '.', '!', '?', '\n'):
-        idx = chunk.rfind(sep)
-        if idx != -1:
-            chunk = chunk[idx + 1:]
-    return chunk
-
-
-def _rewrite_ka_garda(low):
-    """Rewrite pre/post/fronted Georgian 'გარდა' exception clauses strictly in O(N)."""
-    out, last = [], 0
-    for m in _KA_GARDA_RE.finditer(low):
-        prev = _prev_clause(low, m.start())
-        nxt_ch = low[m.end():m.end() + 1]
-        after = low[m.end():min(len(low), m.end() + 120)]
-        for sep in (',', ';', '.', '!', '?', '\n'):
-            i = after.find(sep)
-            if i != -1:
-                after = after[:i]
-        prev_neg, after_neg = _has_neg_phrase(prev), _has_neg_phrase(after)
-        at_end = nxt_ch in ('', ',', ';', '.', '!', '?', '\n')
-        if not at_end:
-            out.append(low[last:m.start()])
-            out.append(';' if (prev_neg or after_neg) else '; არ იღებს')
-            last = m.end()
-        elif prev_neg:
-            neg_ms = list(_NEGATION_PHRASE_RE.finditer(prev))
-            obj = prev[neg_ms[-1].end():].strip() if neg_ms else ''
-            if obj:
-                cut = m.start() - len(obj)
-                if cut >= last:
-                    out.append(low[last:cut].rstrip())
-                    out.append(f'; {obj}')
-                    last = m.end()
-                    continue
-            out.append(low[last:m.end()])
-            last = m.end()
-        else:
-            tok = prev.rsplit(' ', 1)[-1] if prev else ''
-            cut = m.start() - len(tok) if tok else -1
-            if tok and cut >= last:
-                out.append(low[last:cut].rstrip())
-                out.append(f'; არ იღებს {tok}')
-                last = m.end()
-    out.append(low[last:])
-    return ''.join(out)
-
-
-def _normalize_nlp_text(text):
-    """Collapse whitespace to single spaces in O(N) and normalize affirmative/non-prefix clinical idioms."""
-    low = _WS_RUN_RE.sub(' ', text.strip().replace('\r\n', '\n').replace('\r', '\n').lower())
-    changed = False
-    if ' except ' in low:
-        src = low
-        low = _EN_EXCEPT_RE.sub(
-            lambda m: '; ' if (_has_neg_phrase(_prev_clause(src, m.start())) or _EN_STOP_WORD_RE.search(_prev_clause(src, m.start()))) else '; not ',
-            src,
-        )
-        changed = changed or (low != src)
-    if ' გარდა' in low:
-        low, changed = _rewrite_ka_garda(low), True
-    if ' but not ' in low:
-        src = low
-        low = _EN_BUT_NOT_RE.sub(
-            lambda m: '; ' if _EN_STOP_WORD_RE.search(_prev_clause(src, m.start(), 100)) else m.group(0),
-            src,
-        )
-        changed = changed or (low != src)
-    if ' მაგრამ ' in low:
-        src = low
-        low = _KA_BUT_NOT_RE.sub(
-            lambda m: '; ' if _KA_NEG_VERB_RE.search(_prev_clause(src, m.start())) else m.group(0),
-            src,
-        )
-        src2 = low
-        low = _KA_BUT_SOV_NOT_RE.sub(
-            lambda m: f'; {m.group(1)}' if _KA_NEG_VERB_RE.search(_prev_clause(src2, m.start())) else m.group(0),
-            src2,
-        )
-        changed = changed or (low != src)
-    if 'not ' in low or 'never ' in low or "n't " in low:
-        low, changed = _DOUBLE_NEG_AFFIRM_EN_RE.sub(' continues ', low), True
-    if 'არ ' in low or 'არაა ' in low or 'არც ' in low or 'ვერ ' in low:
-        low, changed = _DOUBLE_NEG_AFFIRM_KA_RE.sub(' უწერია ', low), True
-    if 'გარეშე' in low or 'without ' in low:
-        low, changed = _UNINTERRUPTED_AFFIRM_RE.sub(' ', low), True
-    if 'არა ' in low or 'არა-' in low:
-        low = _NON_PREFIX_PROTECT_RE.sub('არა-', low)
-    if 'არ ' in low or 'არა ' in low or 'არანაირ' in low or 'არავითარ' in low or 'გარეშე' in low or 'without ' in low or 'no ' in low:
-        low, changed = _SYMPTOM_NEG_RE.sub(' ', low), True
-    if changed and '  ' in low:
-        low = _WS_RUN_RE.sub(' ', low)
-    return low.strip()
-
-
-_GENERIC_SOV_HEADS = frozenset({'ალერგია', 'ალერგიას', 'ალერგიები', 'წამალს', 'წამლებს', 'მედიკამენტს', 'მედიკამენტებს', 'პრეპარატს'})
-
-
-def _split_ka_two_verb_tail(piece):
-    """Split unpunctuated Georgian neg->pos or pos->neg 2-verb clauses in O(N)."""
-    matches = list(_KA_VERB_WORD_RE.finditer(piece))
-    if len(matches) < 2:
-        return [piece]
-    m0, m_last = matches[0], matches[-1]
-    pre0 = piece[:m0.start()].rstrip()
-    tok0 = pre0.rsplit(' ', 1)[-1] if pre0 else ''
-    pre_last = piece[:m_last.start()].rstrip()
-    tok_last = pre_last.rsplit(' ', 1)[-1] if pre_last else ''
-    is_neg_then_pos = (tok0 in _KA_NEG_PARTICLES and tok_last not in _KA_NEG_PARTICLES)
-    is_pos_then_neg = (tok0 not in _KA_NEG_PARTICLES and tok_last in _KA_NEG_PARTICLES)
-    if not (is_neg_then_pos or is_pos_then_neg):
-        return [piece]
-    end_limit = m_last.start() if is_neg_then_pos else piece.rfind(tok_last, m0.end(), m_last.start())
-    if end_limit <= m0.end():
-        return [piece]
-    between = piece[m0.end():end_limit].strip()
-    if not between:
-        return [piece]
-    b_toks = between.split(' ')
-    if len(b_toks) == 1:
-        if is_pos_then_neg:
-            return [piece]
-        left, right = piece[:m0.end()].strip(), piece[m0.end():].strip()
-    else:
-        cut_idx = len(b_toks) - 1
-        while cut_idx > 1 and (_DIGIT_RE.search(b_toks[cut_idx]) or b_toks[cut_idx] in ('მგ', 'mg', 'მკგ', 'mcg', 'გ', 'g')):
-            cut_idx -= 1
-        cut_tok = b_toks[cut_idx]
-        cut_pos = piece.rfind(' ' + cut_tok, m0.end(), end_limit)
-        if cut_pos <= m0.end():
-            return [piece]
-        left, right = piece[:cut_pos].strip(), piece[cut_pos:].strip()
-    return [x for x in (left, right) if x]
-
-
-_DOSE_FREQ_WORDS = frozenset({
-    'მგ', 'mg', 'მკგ', 'mcg', 'გ', 'g', 'მლ', 'ml', 'სე', 'iu',
-    'ტაბ', 'აბი', 'აბ', 'tab', 'tabs', 'tablet', 'tablets', 'daily', 'bid', 'tid', 'qd', 'od',
-})
-
-
-def _split_affirm_before_stop(before, stop_tail):
-    """Peel trailing suffix-stopped drug (+ dose/unit) off an affirmative clause."""
-    m_aff = list(_AFFIRM_PRED_RE.finditer(before))
-    if not m_aff:
-        return before, stop_tail
-    aff_end = m_aff[-1].end()
-    toks = before[aff_end:].strip().split(' ') if before[aff_end:].strip() else []
-    if len(toks) < 2:
-        return before, stop_tail
-    cut = len(toks) - 1
-    while cut > 0 and (_DIGIT_RE.search(toks[cut]) or toks[cut] in _DOSE_FREQ_WORDS):
-        cut -= 1
-    if cut < 1:
-        return before, stop_tail
-    return (before[:aff_end] + ' ' + ' '.join(toks[:cut])).strip(), (' '.join(toks[cut:]) + ' ' + stop_tail).strip()
-
-
-def _split_stop_verb_clauses(sub_s, verb_re, follow_stop, is_skip_fn):
-    """Split unpunctuated prefix/suffix stop-verb clauses cleanly in O(N)."""
-    if not verb_re.search(sub_s):
-        return [sub_s]
-    out, cur = [], sub_s
-    while cur:
-        m = verb_re.search(cur)
-        if not m:
-            out.append(cur)
-            break
-        before, after = cur[:m.start()].strip(), cur[m.end():].strip()
-        if not before:
-            hm = _KA_PREFIX_NEG_HEAD_RE.match(after) if after else None
-            if hm:
-                head, rest = hm.group(0), after[hm.end():].strip()
-                nxt = rest.split(' ', 1)[0] if rest else ''
-                if nxt and not is_skip_fn(head) and nxt not in follow_stop and not _DIGIT_RE.match(nxt):
-                    out.append(f'{cur[:m.end()]} {head}'.strip())
-                    cur = rest
-                    continue
-            out.append(cur)
-            break
-        nxt_a = after.split(' ', 1)[0] if after else ''
-        if _AFFIRM_PRED_RE.search(before):
-            is_pref_after = bool(nxt_a and nxt_a not in follow_stop and not _DIGIT_RE.match(nxt_a))
-            left, right = (before, cur[m.start():].strip()) if is_pref_after else _split_affirm_before_stop(before, cur[m.start():].strip())
-            out.append(left)
-            cur = right
-            continue
-        if nxt_a and nxt_a not in follow_stop and not _DIGIT_RE.match(nxt_a):
-            out.append(cur[:m.end()].strip())
-            cur = after
-            continue
-        out.append(cur)
-        break
-    return out or [sub_s]
-
-
-def _split_ka_neg_clauses(sub_s):
-    return _split_stop_verb_clauses(
-        sub_s, _KA_NEG_VERB_RE, _KA_NEG_FOLLOW_STOP,
-        lambda h: (not _DIGIT_RE.search(h)) and h.startswith(_KA_MULTIWORD_HEAD_PREFIXES),
-    )
-
-
-def _split_en_stopped(sub_s):
-    if 'stopped' not in sub_s and 'discontinued' not in sub_s and 'held' not in sub_s:
-        return [sub_s]
-    return _split_stop_verb_clauses(
-        sub_s, _EN_STOPPED_RE, _EN_NEG_FOLLOW_STOP,
-        lambda h: h.split(' ', 1)[0] in _EN_NEG_HEAD_SKIP or h.split(' ', 1)[0].split('-', 1)[0] in _EN_NEG_HEAD_SKIP,
-    )
-
-
-def _split_inline_boundaries(seg):
-    """Split unpunctuated multi-clause utterances in O(N) time."""
-    if not _has_neg_phrase(seg):
-        return [seg]
-    out, seen_subs = [], set()
-    for raw_sub in _INLINE_NEG_SPLIT_RE.split(seg):
-        for ka_sub in _split_ka_neg_clauses(raw_sub.strip()):
-            for sub in _split_en_stopped(ka_sub.strip()):
-                sub_s = sub.strip()
-                if not sub_s or sub_s in seen_subs:
-                    continue
-                seen_subs.add(sub_s)
-                if not _has_neg_phrase(sub_s):
-                    out.append(sub_s)
-                    continue
-                verb_total = len(_KA_VERB_WORD_RE.findall(sub_s))
-                last, pieces = 0, []
-                for m in _KA_AFFIRM_VERB_AFTER_RE.finditer(sub_s):
-                    before = sub_s[last:m.start()].rstrip()
-                    if not before:
-                        continue
-                    prev_tok = before.rsplit(' ', 1)[-1] if before else ''
-                    if prev_tok in _KA_NEG_PARTICLES:
-                        before_neg = before[: -len(prev_tok)].strip()
-                        if not before_neg or before_neg in _GENERIC_SOV_HEADS:
-                            continue
-                        if _KA_VERB_WORD_RE.search(before_neg) or (verb_total == 1 and _DOSE_UNIT_END_RE.search(before_neg)):
-                            neg_pos = sub_s.rfind(prev_tok, last, m.start())
-                            if neg_pos > last:
-                                pieces.append(sub_s[last:neg_pos].strip())
-                                last = neg_pos
-                                continue
-                    if _PREFIX_NEG_START_RE.search(before):
-                        pieces.append(before)
-                        last = m.start()
-                        continue
-                    verb_end = m.end() - 1
-                    piece = sub_s[last:verb_end].strip()
-                    if piece:
-                        pieces.append(piece)
-                    last = verb_end + 1
-                tail = sub_s[last:].strip()
-                if tail:
-                    pieces.append(tail)
-                for pc in pieces:
-                    out.extend(_split_ka_two_verb_tail(pc))
-    return out
-
-
-def _is_uniform_neg_chain(chunk_s):
-    """Fast O(N) check for pure prefix- or suffix-negated conjunction chains."""
-    if _ALLERGY_WORD_RE.search(chunk_s) or _DIGIT_RE.search(chunk_s):
-        return False
-    m_pref = _PREFIX_NEG_START_RE.search(chunk_s)
-    if m_pref:
-        rest = chunk_s[m_pref.end():]
-        if _CONJ_SPLIT_RE.search(rest) and not _AFFIRM_PRED_RE.search(rest) and not _INLINE_NEG_SPLIT_RE.search(rest):
-            return True
-    if len(chunk_s) > 200:
-        for conj in (' და ', ' ან ', ' and ', ' or '):
-            r_idx = chunk_s.rfind(conj)
-            if r_idx > 0:
-                tail = chunk_s[r_idx + len(conj):].strip()
-                if not _PREFIX_NEG_START_RE.search(tail) and _has_neg_phrase(tail):
-                    head = chunk_s[:r_idx]
-                    if not _has_neg_phrase(head) and not _AFFIRM_PRED_RE.search(head):
-                        return True
-    return False
-
-
-def _split_neg_clauses(cleaned_txt):
-    """Split text into negation-scoped clauses strictly in O(N) time (no O(N^2) string re-scans)."""
-    out, seen_chunks, seen_segs = [], set(), set()
-    for chunk in _STRONG_CLAUSE_SPLIT_RE.split(cleaned_txt):
-        chunk_s = chunk.strip()
-        if not chunk_s or chunk_s in seen_chunks:
-            continue
-        seen_chunks.add(chunk_s)
-        if not _has_neg_phrase(chunk_s):
-            out.append(chunk_s)
-            continue
-        if _is_uniform_neg_chain(chunk_s):
-            continue
-        parts = [p.strip() for p in _CONJ_SPLIT_RE.split(chunk_s) if p.strip()]
-        if not parts:
-            continue
-        cur_buf = [parts[0]]
-        cur_neg = _has_neg_phrase(parts[0])
-        cur_pref_neg = cur_neg and bool(_PREFIX_NEG_START_RE.search(parts[0]))
-        cur_alg = cur_dig = cur_aff = None
-        groups = []
-        for nxt in parts[1:]:
-            nxt_neg = _has_neg_phrase(nxt)
-            if cur_neg and not nxt_neg and cur_pref_neg:
-                if cur_alg is None:
-                    cur_alg = bool(_ALLERGY_WORD_RE.search(cur_buf[0]))
-                if cur_dig is None:
-                    cur_dig = bool(_DIGIT_RE.search(cur_buf[0]))
-                nxt_aff = bool(_AFFIRM_PRED_RE.search(nxt))
-                nxt_alg = bool(_ALLERGY_WORD_RE.search(nxt)) if cur_alg else False
-                nxt_dig = bool(_DIGIT_RE.search(nxt)) if not cur_dig else False
-                if not nxt_aff and not (cur_alg and nxt_alg) and (not nxt_dig or cur_dig):
-                    cur_buf.append(nxt)
-                    continue
-            elif not cur_neg and nxt_neg and not _PREFIX_NEG_START_RE.search(nxt):
-                if cur_aff is None:
-                    cur_aff = bool(_AFFIRM_PRED_RE.search(cur_buf[0]))
-                if cur_alg is None:
-                    cur_alg = bool(_ALLERGY_WORD_RE.search(cur_buf[0]))
-                if cur_dig is None:
-                    cur_dig = bool(_DIGIT_RE.search(cur_buf[0]))
-                nxt_dig = bool(_DIGIT_RE.search(nxt)) if cur_dig else False
-                if not cur_aff and not cur_alg and (not cur_dig or nxt_dig):
-                    cur_buf.append(nxt)
-                    cur_neg = True
-                    continue
-            groups.append(' და '.join(cur_buf))
-            cur_buf = [nxt]
-            cur_neg = nxt_neg
-            cur_pref_neg = nxt_neg and bool(_PREFIX_NEG_START_RE.search(nxt))
-            cur_alg = cur_dig = cur_aff = None
-        groups.append(' და '.join(cur_buf))
-        for seg in groups:
-            if seg in seen_segs:
-                continue
-            seen_segs.add(seg)
-            out.extend(_split_inline_boundaries(seg))
-    return out
-
-
-def _positive_clauses_text(text):
-    """Strip explicitly negated clauses ('არ აქვს', 'არ სვამს', 'no ...', 'stopped ...') before stem matching."""
-    if not isinstance(text, str) or not text.strip():
-        return ''
-    cleaned_txt = _normalize_nlp_text(text)
-    if not cleaned_txt:
-        return ''
-    if not _has_neg_phrase(cleaned_txt):
-        if len(cleaned_txt) <= 40 and _COMPACT_STRIP_RE.sub('', cleaned_txt) in _ALLERGY_NEGATION_WORDS:
-            return ''
-        return cleaned_txt
-    pos, seen_pos = [], set()
-    for cl_s in _split_neg_clauses(cleaned_txt):
-        if cl_s in seen_pos or _has_neg_phrase(cl_s):
-            continue
-        if len(cl_s) <= 40:
-            compact = _COMPACT_STRIP_RE.sub('', cl_s)
-            if not compact or compact in _ALLERGY_NEGATION_WORDS:
-                continue
-        seen_pos.add(cl_s)
-        pos.append(cl_s)
-    return ', '.join(pos)
+def _is_riva_escalation_words(seg):
+    words = [w for w in re.findall(r'[a-zა-ჰ]+', seg) if w not in _RIVA_NON_DRUG_WORDS]
+    return not words or all(any(st in w for st in _RIVA_ESCALATION_STEMS) for w in words)
 
 
 def _riva_has_therapeutic_dose(low):
-    """Detect therapeutic rivaroxaban (10/15/20 mg) while ignoring unrelated co-med doses like '+ 10 mg bisoprolol'."""
+    """Detect therapeutic rivaroxaban (10/15/20 mg) while ignoring unrelated co-med doses (comma- or space-separated)."""
     clauses = [c.strip() for c in _RIVA_CLAUSE_SPLIT_RE.split(low) if c.strip()]
     seen_riva = False
     for clause in clauses:
-        has_riva = bool(_RIVA_STEM_RE.search(clause))
-        has_ther = bool(_RIVA_THER_DOSE_RE.search(clause))
-        if has_riva:
+        riva_ms = list(_RIVA_STEM_RE.finditer(clause))
+        ther_ms = list(_RIVA_THER_DOSE_RE.finditer(clause))
+        if riva_ms:
             seen_riva = True
-            if has_ther:
-                return True
+            for tm in ther_ms:
+                prev_r = [rm for rm in riva_ms if rm.end() <= tm.start()]
+                if prev_r:
+                    if _is_riva_escalation_words(clause[prev_r[-1].end():tm.start()]):
+                        return True
+                elif (
+                    _is_riva_escalation_words(clause[:tm.start()])
+                    and _is_riva_escalation_words(clause[tm.end():riva_ms[0].start()])
+                ):
+                    return True
             continue
-        if not seen_riva or not has_ther:
-            continue
-        words = [w for w in re.findall(r'[a-zა-ჰ]+', clause) if w not in _RIVA_NON_DRUG_WORDS]
-        if not words or all(any(st in w for st in _RIVA_ESCALATION_STEMS) for w in words):
+        if seen_riva and ther_ms and _is_riva_escalation_words(clause):
             return True
     return False
 
@@ -665,10 +161,6 @@ def _effective_allergy_state(q):
     eff_chips = chips | (ft - {'iodine'})
     eff_iodine = bool(q_d.get('allergy_iodine')) or ('iodine' in ft)
     return eff_chips, eff_iodine, ft
-
-
-_APIX_STEMS = ('ელიქვის', 'ელიკვის', 'აპიქსაბ', 'აპიკსაბ', 'eliquis', 'apixab')
-_EDOX_STEMS = ('ლიქსიან', 'ედოქსაბ', 'ედოკსაბ', 'ედიქსან', 'სავაის', 'lixiana', 'edoxab', 'savaysa')
 
 
 def _detect_ft_xa_flags(low, med_chips, q_d):

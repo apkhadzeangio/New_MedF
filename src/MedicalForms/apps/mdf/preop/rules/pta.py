@@ -97,7 +97,7 @@ def _eval_pta_access_and_meds(ctx, is_clti, hemo_cfg, ldl_target):
                 q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran')
                 or ('rivaroxaban_2_5' in ctx.med_chips)
                 or s.get('post_antithrombotic_plan') in ('voyager', 'voyager_pad', 'oac_sapt')
-                or bool(ft_keys & {'warfarin', 'doac', 'dabigatran', 'rivaroxaban_2_5'})
+                or bool(ft_keys & {'warfarin', 'doac', 'dabigatran', 'rivaroxaban_2_5', 'parenteral_oac', 'parenteral_dti'})
             )
             ren_red_pta = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
             eff_r_pta = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
