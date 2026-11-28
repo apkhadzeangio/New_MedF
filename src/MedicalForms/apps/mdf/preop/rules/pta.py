@@ -106,9 +106,9 @@ def _eval_pta_access_and_meds(ctx, is_clti, hemo_cfg, ldl_target):
             has_preg_pta = bool(getattr(ctx, 'eff_pregnant', False))
             has_hit_pta = 'hit_heparin' in ctx.allergy_chips
             asa_allergy_pta = 'nsaid' in ctx.allergy_chips
-            if has_oac_pta and has_preg_pta:
+            if (has_oac_pta or has_mv_pta) and has_preg_pta:
                 alt_pta_txt = 'ინდივიდუალური რეჟიმი მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმით (ორსულობაზე DOAC/რივაროქსაბანი 2.5 მგ და პერორალური OAC უკუნაჩვენებია; ტიკაგრელორი + OAC აკრძალულია!)'
-            elif has_oac_pta and has_mv_pta:
+            elif has_mv_pta:
                 mv_ap = 'ინდივიდუალური კონსილიუმის რეჟიმი (ასპირინზე და კლოპიდოგრელზე ალერგია!)' if asa_allergy_pta else 'ასპირინი 75–100 მგ'
                 alt_pta_txt = f'უვადო ვარფარინი (VKA) + {mv_ap} (მექ. სარქველზე DOAC / რივაროქსაბანი 2.5 მგ და ტიკაგრელორი + OAC აკრძალულია!)'
             elif has_oac_pta and (sev_ren_pta or ctx.liver_3x or has_hit_pta or asa_allergy_pta):

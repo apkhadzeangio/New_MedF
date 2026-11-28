@@ -306,20 +306,21 @@ def build_nurse_handover_queues(all_non_archived, ev_by_id, today, q_search=''):
         stale_pending = bool(ev.get('needs_stale_labs') and not ev['s'].get('stale_labs_refreshed'))
         side_s = p.side if isinstance(p.side, str) else ''
 
+        is_rup = bool(ev.get('is_rupture_suspect'))
         item = {
             'p': p,
             'ev': ev,
             'surgeon_name': person_name(p.surgeon),
             'procedure_ka': _plain_procedure_ka(p, ev),
             'side_ka': PLAIN_SIDE_KA.get(side_s, ''),
-            'op_date': op_dt,
-            'op_label': _relative_op_label(op_dt, today),
-            'days_to_op': days_to_op,
+            'op_date': None if is_rup else op_dt,
+            'op_label': 'გადაუდებელი (საეჭვო რუპტურა)!' if is_rup else _relative_op_label(op_dt, today),
+            'days_to_op': 0 if is_rup else days_to_op,
             'verdict': verdict,
             'med_call': med_call,
             'self_fill': sf_info,
             'dos_progress': f"{ev['dos_done_count']}/{ev['dos_total_count']}",
-            'is_or_soon': bool(days_to_op is not None and 0 <= days_to_op <= 1),
+            'is_or_soon': bool(is_rup or (days_to_op is not None and 0 <= days_to_op <= 1)),
             'search_blob': f"{p.patient_name} {p.phone} {PLAIN_PATHWAY_KA.get(pw, '')} {person_name(p.surgeon)}".lower(),
         }
         directory.append(item)

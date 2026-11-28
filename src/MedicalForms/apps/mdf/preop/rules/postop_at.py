@@ -4,20 +4,26 @@ from ..constants import POST_ANTITHROMBOTIC_CHOICES
 from ..registry import rule_value
 
 
-def _preg_mech_valve_postop_msg(has_hit, severe_renal=False):
+def _preg_mech_valve_postop_msg(has_hit, severe_renal=False, severe_liver=False):
+    ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
+    ren_hit_s = f' · CrCl<{ren_red}/დიალიზი: ფონდაპარინუქსი აკრძალულია!' if (has_hit and severe_renal) else ''
+    liv_s = (
+        ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — უპირატესია ბივალირუდინი (არგატრობანი მოერიდეთ)!'
+        if (severe_liver and has_hit) else (' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით!' if severe_liver else '')
+    )
     if has_hit:
         return (
             'ორსულობა + მექანიკური სარქველი + HIT — UFH, LMWH და DOAC კატეგორიულად აკრძალულია! '
-            'სავალდებულოა ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!'
+            f'სავალდებულოა ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!{ren_hit_s}{liv_s}'
         )
     if severe_renal:
         return (
             'ორსულობა + მექანიკური სარქველი + თირკმლის მძიმე უკმარისობა/დიალიზი — DOAC / VOYAGER აკრძალულია, LMWH კუმულირდება! '
-            'სავალდებულოა მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (IV/SC UFH ან ტრიმესტრით VKA — თვითნებური მოხსნა დაუშვებელია)!'
+            f'სავალდებულოა მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (IV/SC UFH ან ტრიმესტრით VKA — თვითნებური მოხსნა დაუშვებელია)!{liv_s}'
         )
     return (
         'ორსულობა + მექანიკური სარქველი — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი '
-        '(DOAC / VOYAGER აკრძალულია; VKA vs LMWH/UFH ტრიმესტრით — თვითნებური მოხსნა დაუშვებელია)!'
+        f'(DOAC / VOYAGER აკრძალულია; VKA vs LMWH/UFH ტრიმესტრით — თვითნებური მოხსნა დაუშვებელია)!{liv_s}'
     )
 
 
@@ -53,17 +59,28 @@ def _parenteral_caveat_suffix(ctx):
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
     eff_r = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
     has_hit, sev_ren = ('hit_heparin' in ctx.allergy_chips), bool(ctx.on_dialysis or (eff_r is not None and eff_r < ren_red))
+    eff_preg = bool(getattr(ctx, 'eff_pregnant', False))
     flags = []
     if has_hit and sev_ren:
-        flags.append(f'HIT + CrCl/eGFR <{ren_red}/დიალიზი: ჰეპარინი/UFH/LMWH/ფონდაპარინუქსი აკრძალულია — არაჰეპარინული IV სქემა (ბივალირუდინი/არგატრობანი) ჰემატოლოგთან!')
+        if eff_preg:
+            flags.append(f'HIT + CrCl/eGFR <{ren_red}/დიალიზი: ჰეპარინი/UFH/LMWH/ფონდაპარინუქსი აკრძალულია — არაჰეპარინული IV სქემა (უპირატესია ბივალირუდინი / კონსილიუმი) ჰემატოლოგთან და მეან-გინეკოლოგთან!')
+        elif ctx.liver_3x:
+            flags.append(f'HIT + CrCl/eGFR <{ren_red}/დიალიზი: ჰეპარინი/UFH/LMWH/ფონდაპარინუქსი აკრძალულია — უპირატესია IV ბივალირუდინი ჰემატოლოგთან!')
+        else:
+            flags.append(f'HIT + CrCl/eGFR <{ren_red}/დიალიზი: ჰეპარინი/UFH/LMWH/ფონდაპარინუქსი აკრძალულია — არაჰეპარინული IV სქემა (ბივალირუდინი/არგატრობანი) ჰემატოლოგთან!')
     elif has_hit:
         flags.append('HIT: ჰეპარინი/LMWH აკრძალულია — არაჰეპარინული სქემა!')
     elif sev_ren:
         flags.append(f'CrCl/eGFR <{ren_red}/დიალიზი: LMWH/ფონდაპარინუქსი კუმულირდება — უპირატესია UFH!')
-    if getattr(ctx, 'eff_pregnant', False):
+    if eff_preg:
         flags.append('ორსულობა: მეან-გინეკოლოგის ჩართვით, DOAC/VKA/ფონდაპარინუქსი/არგატრობანი მოერიდეთ!')
     if ctx.liver_3x:
-        flags.append('ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — არგატრობანი −75%!')
+        if eff_preg:
+            flags.append('ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — DOAC აკრძალულია!')
+        elif has_hit:
+            flags.append('ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — უპირატესია ბივალირუდინი (არგატრობანის გამოყენებისას −75%)!')
+        else:
+            flags.append('ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — DOAC აკრძალულია!')
     return f' ({" · ".join(flags)})' if flags else ''
 
 
@@ -77,8 +94,14 @@ def _eval_explicit_oac_sapt(ctx, asa_allergy, clop_intol, oac_partner_lbl):
     if getattr(ctx, 'has_contra_full_oac', False) and not ctx.has_mech_valve:
         ctx.red_flags.append('არჩეულია პოსტოპ. OAC + ანტიაგრეგანტი, მაგრამ მიმდინარე OAC უკუნაჩვენებია (თირკმლის/ღვიძლის/დუბლირების გამო) — შეარჩიეთ უსაფრთხო ანტიკოაგულანტი კონსილიუმით!')
         return _contra_full_oac_postop_label(ctx, oac_partner_lbl)
-    has_any_oac_on_file = bool(ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False) or getattr(ctx, 'has_ft_parenteral', False) or ctx.has_mech_valve)
-    if not has_any_oac_on_file:
+    has_oral_oac_or_mv = bool(ctx.has_full_oac or getattr(ctx, 'has_ft_full_oac', False) or ctx.has_mech_valve)
+    if not has_oral_oac_or_mv and getattr(ctx, 'has_ft_parenteral', False):
+        ctx.amber_flags.append(
+            'არჩეულია პოსტოპ. OAC + ანტიაგრეგანტი, თუმცა პაციენტი იღებს პარენტერულ ანტიკოაგულანტს (პერორალური OAC არ უფიქსირდება) — '
+            'შეათანხმეთ ერთიანი ანტიკოაგულაციური სქემა ქირურგთან/ჰემატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!).'
+        )
+        return f'პარენტერული ანტიკოაგულაცია{_parenteral_caveat_suffix(ctx)} + ჩვენებისას {oac_partner_lbl} (ორმაგი ანტიკოაგულაციის გარეშე!)'
+    if not has_oral_oac_or_mv:
         ctx.amber_flags.append('არჩეულია პოსტოპ. OAC + ანტიაგრეგანტი, თუმცა ბარათში მუდმივი ანტიკოაგულანტი (OAC / პარენტერული) მითითებული არ არის — დააზუსტეთ ანტიკოაგულაციის ჩვენება ქირურგთან/კარდიოლოგთან!')
     oac_base = 'ვარფარინი (VKA)' if ctx.has_mech_valve else 'OAC'
     mv_sfx = ' (DOAC აკრძალულია!)' if ctx.has_mech_valve else ''
@@ -130,7 +153,7 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
         eff_r_mv = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
         sev_ren_mv = bool(ctx.on_dialysis or (eff_r_mv is not None and eff_r_mv < ren_red))
         ctx.red_flags.append('ორსულობისა და მექანიკური სარქვლის ფონზე პოსტოპ. ანტიკოაგულაციის სქემა სავალდებულოდ უნდა შეთანხმდეს მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმით (DOAC / VOYAGER აკრძალულია)!')
-        return _preg_mech_valve_postop_msg('hit_heparin' in ctx.allergy_chips, severe_renal=sev_ren_mv)
+        return _preg_mech_valve_postop_msg('hit_heparin' in ctx.allergy_chips, severe_renal=sev_ren_mv, severe_liver=ctx.liver_3x)
     if ctx.has_mech_valve and post_at_raw in ('voyager', 'dapt', 'sapt'):
         ctx.red_flags.append('მექანიკური სარქვლის მქონე პაციენტთან პოსტოპ. სავალდებულოა უვადო ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი — VOYAGER / მონო-SAPT დაუშვებელია!')
         mv_ap = f' + {oac_partner_lbl} (კორონარული სტენტის დაცვა — ESC Class I!)' if has_active_stent_dapt else (f' + ჩვენებისას {oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ')
@@ -180,7 +203,7 @@ def _eval_explicit_postop_plan(ctx, post_at_raw, asa_allergy, voyager_safe, alt_
         return 'მონოთერაპია: ასპირინი 100 მგ (კლოპიდოგრელზე აუტანლობა!)'
     if post_at_raw == 'dapt' and clop_intol:
         if getattr(ctx, 'tica_blocked', False):
-            ctx.red_flags.append('არჩეულია პოსტოპ. DAPT კლოპიდოგრელის აუტანლობის ფონზე, მაგრამ ტიკაგრელორი უკუნაჩვენებია (ღვიძლის ≥3x / ორსულობა / OAC) — შეათანხმეთ უსაფრთხო რეჟიმი კონსილიუმით!')
+            ctx.red_flags.append('არჩეულია პოსტოპ. DAPT კლოპიდოგრელის აუტანლობის ფონზე, მაგრამ ტიკაგრელორი უკუნაჩვენებია (ღვიძლის ≥3x / ორსულობა / OAC / მექ. სარქველი) — შეათანხმეთ უსაფრთხო რეჟიმი კონსილიუმით!')
             return f'DAPT: ასპირინი + {alt_p2y12_lbl}'
         ctx.amber_flags.append('კლოპიდოგრელის აუტანლობის გამო პოსტოპ. DAPT სქემაში გამოიყენეთ ალტერნატიული P2Y12 (ტიკაგრელორი).')
         return 'DAPT: ასპირინი + ტიკაგრელორი (კლოპიდოგრელზე აუტანლობა!)'
@@ -218,7 +241,7 @@ def _eval_postop_voyager(ctx):
         and not q.get('recent_stent') and not ctx.has_acs_stent_12m and not asa_allergy
     )
     ctx.voyager_safe = voyager_safe
-    tica_blocked = bool(ctx.liver_3x or getattr(ctx, 'eff_pregnant', False) or has_full_oac_any or has_ft_par)
+    tica_blocked = bool(ctx.liver_3x or getattr(ctx, 'eff_pregnant', False) or has_full_oac_any or has_ft_par or ctx.has_mech_valve)
     ctx.tica_blocked = tica_blocked
     if 'clopidogrel_intol' in ctx.allergy_chips:
         alt_p2y12_lbl = 'ინდივიდუალური რეჟიმი კონსილიუმით (P2Y12 აუტანლობა/უკუჩვენება!)' if tica_blocked else 'ტიკაგრელორი'
@@ -256,7 +279,7 @@ def _eval_postop_voyager(ctx):
             ren_red_mv = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
             eff_ren_mv = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
             sev_ren_mv = ctx.on_dialysis or (eff_ren_mv is not None and eff_ren_mv < ren_red_mv)
-            post_antithrombotic_label = _preg_mech_valve_postop_msg('hit_heparin' in ctx.allergy_chips, severe_renal=sev_ren_mv)
+            post_antithrombotic_label = _preg_mech_valve_postop_msg('hit_heparin' in ctx.allergy_chips, severe_renal=sev_ren_mv, severe_liver=ctx.liver_3x)
         elif ctx.has_mech_valve:
             mv_ap = f' + {oac_partner_lbl} (კორონარული სტენტის დაცვა — ESC Class I!)' if has_active_stent_dapt else (f' + ჩვენებისას {oac_partner_lbl}' if asa_allergy else ' + ჩვენებისას ასპირინი 75–100 მგ')
             post_antithrombotic_label = f'უვადო ვარფარინი (VKA) კარდიოლოგის სამიზნე INR-ით{mv_ap} (DOAC / VOYAGER აკრძალულია!)'

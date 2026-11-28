@@ -316,7 +316,7 @@ def _eval_wait_fasting_and_allergy_summary(ctx):
                     f'დაგეგმილი CEA-ს თარიღი ({ctx.planned_surgery_ka}) სცდება სიმპტომიდან {cea_win_d}-დღიან ფანჯარას '
                     f'({symp_to_op} დღე — ESVS 2023 / NVR სამიზნე ≤{cea_win_d} დღე)! განიხილეთ უფრო ადრეული საოპერაციო სლოტი.'
                 )
-        elif pathway == PreopPatient.Pathway.AAA_INFRA and (aaa_eff_w is not None or is_high_risk_aaa):
+        elif pathway == PreopPatient.Pathway.AAA_INFRA and not ctx.is_rupture_suspect and (aaa_eff_w is not None or is_high_risk_aaa):
             min_aaa_thresh = rule_value('AAA_FEMALE_MIN_MM') if patient.sex == 'F' else rule_value('AAA_MALE_MIN_MM')
             aaa_lbl_w = f'{aaa_eff_w} მმ' if aaa_eff_w is not None else ('სიმპტომური' if q.get('aaa_pain') else 'საკულარული/მიკოზური')
             if is_mycotic_w and wait_to_op > 7:
@@ -565,14 +565,15 @@ def _eval_dos_and_vqi(ctx):
             or bool((ctx.ft_meds.get('matched_keys') or set()) & {'parenteral_oac', 'parenteral_dti'})
         )
     )
+    from ..meds_helpers import _vka_inr_status
     evla_inr_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
     mech_inr_min = rule_value('MED_MECH_VALVE_SAFETY')
     inr_lim = evla_inr_max if evla_vka_elig else (dos_cfg['inr_nx'] if ctx.has_neuraxial_plan else dos_cfg['inr_std'])
+    _, dos_inr_bad_e, base_inr_bad_e, eff_inr_check = _vka_inr_status(patient, s, getattr(ctx, 'raw_s', None))
     inr_eff_dos = ctx.inr if ctx.inr is not None else getattr(ctx, 'inr_sat', None)
     dos_inr_eff = dos_inr if dos_inr is not None else getattr(ctx, 'dos_inr_sat', None)
-    eff_inr_check = dos_inr_eff if dos_inr_eff is not None else inr_eff_dos
     evla_subther_mv = bool(ctx.has_mech_valve and eff_inr_check is not None and eff_inr_check < mech_inr_min)
-    ctx.is_evla_warfarin_only = bool(evla_vka_elig and not dos_inr_bad and not evla_subther_mv and (eff_inr_check is None or eff_inr_check <= evla_inr_max))
+    ctx.is_evla_warfarin_only = bool(evla_vka_elig and not dos_inr_bad and not dos_inr_bad_e and not base_inr_bad_e and not evla_subther_mv and (eff_inr_check is None or eff_inr_check <= evla_inr_max))
     any_dos_ticked = any(c['done'] for c in dos_checks if c.get('key') != 'icu_bed_booked')
     if dos_inr_eff is not None:
         if dos_inr_eff > inr_lim:
@@ -588,18 +589,7 @@ def _eval_dos_and_vqi(ctx):
     ctx.dos_checks, ctx.dos_warnings, ctx.dos_gl = dos_checks, dos_warnings, dos_gl
     ctx.has_hard_contraindication = bool(ctx.hard_contraindications)
     ctx.dos_hold_danger = bool(dos_warnings)
-    if patient.archived or not ctx.is_active_case:
-        ctx.is_local_evla_fasting = False
-        ctx.fasting_instruction = 'არააქტიური / დაარქივებული ბარათი — ძველი უზმოდ ყოფნის რეჟიმი გაუქმებულია; დააზუსტეთ მკურნალ ექიმთან.'
-    elif ctx.is_rupture_suspect:
-        ctx.is_local_evla_fasting = False
-        ctx.fasting_instruction = f'გადაუდებელი ოპერაცია (საეჭვო რუპტურა) — უზმოდ ყოფნის ან {glp_liq_h} სთ თხევადი დიეტის გამო ოპერაცია არ გადაიდება! მართეთ „სავსე კუჭის“ RSI პროტოკოლით (ASA 2024).'
-    elif ctx.dos_hold_danger or ctx.has_hard_contraindication or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch:
-        ctx.is_local_evla_fasting = False
-        if ctx.has_glp1_any:
-            ctx.fasting_instruction = f'STOP — ოპერაცია დაბლოკილია! {glp_liq_h}-საათიანი თხევადი დიეტა და GLP-1 რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!'
-        else:
-            ctx.fasting_instruction = 'STOP — ოპერაცია შეჩერებულია საოპერაციო დილის / უკუჩვენების დაზუსტებამდე (უზმოდ ყოფნის რეჟიმი შეათანხმეთ ექიმთან)!'
+    _apply_fasting_override(ctx, dos_checks, glp_liq_h)
     ctx.dos_done_count = sum(1 for c in dos_checks if c['done'])
     ctx.dos_total_count = len(dos_checks)
     ctx.vqi_bundle_applicable = not ctx.is_venous
@@ -609,6 +599,30 @@ def _eval_dos_and_vqi(ctx):
     )
     ctx.vqi_30d_status = s.get('vqi_30d_status') if s.get('vqi_30d_status') in dict(VQI_30D_CHOICES) else 'pending'
     ctx.vqi_30d_label = dict(VQI_30D_CHOICES).get(ctx.vqi_30d_status, '')
+
+
+def _apply_fasting_override(ctx, dos_checks, glp_liq_h):
+    dos_fast_ov = ''
+    if ctx.patient.archived or not ctx.is_active_case:
+        ctx.is_local_evla_fasting = False
+        ctx.fasting_instruction = 'არააქტიური / დაარქივებული ბარათი — ძველი უზმოდ ყოფნის რეჟიმი გაუქმებულია; დააზუსტეთ მკურნალ ექიმთან.'
+        dos_fast_ov = 'არააქტიური / დაარქივებული ბარათი — უზმოდ ყოფნის რეჟიმი გაუქმებულია'
+    elif ctx.is_rupture_suspect:
+        ctx.is_local_evla_fasting = False
+        ctx.fasting_instruction = f'გადაუდებელი ოპერაცია (საეჭვო რუპტურა) — უზმოდ ყოფნის ან {glp_liq_h} სთ თხევადი დიეტის გამო ოპერაცია არ გადაიდება! მართეთ „სავსე კუჭის“ RSI პროტოკოლით (ASA 2024).'
+        dos_fast_ov = 'გადაუდებელი ოპერაცია (საეჭვო რუპტურა) — უზმოდ ყოფნის/თხევადი დიეტის გამო გადავადება არ ხდება („სავსე კუჭის“ RSI პროტოკოლი)'
+    elif ctx.dos_hold_danger or ctx.has_hard_contraindication or ctx.neuraxial_hard_blocked or ctx.solo_neuraxial_anatomic_mismatch:
+        ctx.is_local_evla_fasting = False
+        if ctx.has_glp1_any:
+            ctx.fasting_instruction = f'STOP — ოპერაცია დაბლოკილია! {glp_liq_h}-საათიანი თხევადი დიეტა და GLP-1 რეჟიმი არ დაიწყოთ ექიმის დადასტურებამდე!'
+        else:
+            ctx.fasting_instruction = 'STOP — ოპერაცია შეჩერებულია საოპერაციო დილის / უკუჩვენების დაზუსტებამდე (უზმოდ ყოფნის რეჟიმი შეათანხმეთ ექიმთან)!'
+        dos_fast_ov = 'STOP — ოპერაცია შეჩერებულია (უზმოდ ყოფნის / GLP-1 რეჟიმი შეათანხმეთ ექიმთან)'
+    if dos_fast_ov:
+        for dc in dos_checks:
+            if dc.get('key') == 'dos_fasting_confirmed':
+                dc['label'] = dos_fast_ov
+                break
 
 
 def _eval_triage_and_passport_cautions(ctx):

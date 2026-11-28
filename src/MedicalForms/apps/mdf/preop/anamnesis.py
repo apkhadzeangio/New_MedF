@@ -425,32 +425,36 @@ _CHRONIC_CV_MED_STEMS = (
 
 
 def _append_objective_vasc_and_vitals_flags(comorb, q, s_ev, ev):
+    from .registry import rule_value
     from .utils import parse_wbc_k
+    hypo, htn, hr_c = rule_value('VIT_BP_HYPOTENSION_SHOCK'), rule_value('VIT_BP_SEVERE_HTN'), rule_value('VIT_HR_SPO2_METS')
+    asa_c, nutr_c, pad_ic = rule_value('SCORE_ASA_PHYSICAL_STATUS'), rule_value('LAB_NUTRITION_ALBUMIN_LIVER'), rule_value('PAD_IC_BMT_3M')
+    hemo_c, cea_c, uti_c, coag_c = rule_value('PAD_CLTI_HEMO_THRESHOLDS'), rule_value('CEA_STENOSIS_THRESHOLDS'), rule_value('INF_UTI_VS_ASB'), rule_value('LAB_WBC_PLT_COAG')
     sbp_vals = [v for v in (_num(s_ev.get('bp_sys'), 30, 320), _num(s_ev.get('bp_sys_l'), 30, 320), _num(s_ev.get('dos_bp_sys'), 40, 300)) if v is not None]
     dbp_vals = [v for v in (_num(s_ev.get('bp_dia'), 20, 220), _num(s_ev.get('bp_dia_l'), 20, 220), _num(s_ev.get('dos_bp_dia'), 20, 200)) if v is not None]
     eff_sys, eff_dia = (max(sbp_vals) if sbp_vals else None), (max(dbp_vals) if dbp_vals else None)
     min_sys = min(sbp_vals) if sbp_vals else None
-    if min_sys is not None and min_sys < 90:
+    if min_sys is not None and min_sys < hypo['red_sbp']:
         comorb.append(f'ჰიპოტენზია (SBP {min_sys} mmHg)')
-    elif not q.get('htn') and ((eff_sys is not None and eff_sys >= 140) or (eff_dia is not None and eff_dia >= 90)):
+    elif not q.get('htn') and ((eff_sys is not None and eff_sys >= min(140, htn['amb_sbp'])) or (eff_dia is not None and eff_dia >= htn['cea_dia_amber'])):
         comorb.append(f'მომატებული არტერიული წნევა ({eff_sys or "—"}/{eff_dia or "—"} mmHg — გადაამოწმეთ ჰიპერტენზია!)')
-    if ev.get('bp_arm_diff') is not None and ev['bp_arm_diff'] >= 20:
+    if ev.get('bp_arm_diff') is not None and ev['bp_arm_diff'] >= hypo['arm_diff']:
         comorb.append(f'მკლავებს შორის წნევის ასიმეტრია (Δ{ev["bp_arm_diff"]} mmHg)')
     hr_v, spo2_v = _num(s_ev.get('hr'), 15, 260), _num(s_ev.get('spo2'), 30, 100)
-    if s_ev.get('irregular_hr') or (hr_v is not None and (hr_v < 55 or hr_v > 100)):
+    if s_ev.get('irregular_hr') or (hr_v is not None and (hr_v < hr_c['hr_brady_amb'] or hr_v > min(100, hr_c['hr_hi']))):
         comorb.append(f'პულსის/რიტმის დარღვევა (HR {hr_v or "—"}/წთ)')
-    if spo2_v is not None and spo2_v < 94:
+    if spo2_v is not None and spo2_v < hr_c['spo2_amb']:
         comorb.append(f'ჰიპოქსემია (SpO2 {spo2_v}%)')
-    bmi_v = ev.get('bmi')
-    if bmi_v is not None and (bmi_v >= 30 or bmi_v < 18.5):
-        comorb.append(f'სიმსუქნე (BMI {bmi_v})' if bmi_v >= 30 else f'წონის დეფიციტი (BMI {bmi_v})')
+    bmi_v, bmi_ob, bmi_un = ev.get('bmi'), asa_c['bmi_ii'], nutr_c['bmi_underweight']
+    if bmi_v is not None and (bmi_v >= bmi_ob or bmi_v < bmi_un):
+        comorb.append(f'სიმსუქნე (BMI {bmi_v})' if bmi_v >= bmi_ob else f'წონის დეფიციტი (BMI {bmi_v})')
     abi_vals = [v for v in (_num(s_ev.get('abi_r'), 0, 3), _num(s_ev.get('abi_l'), 0, 3)) if v is not None]
     tp_vals = [v for v in (_num(s_ev.get('tp_r'), 0, 400), _num(s_ev.get('tp_l'), 0, 400)) if v is not None]
     tbi_vals = [v for v in (_num(s_ev.get('tbi_r'), 0, 3), _num(s_ev.get('tbi_l'), 0, 3)) if v is not None]
-    if any(v < 0.9 or v > 1.4 for v in abi_vals) or any(v < 60 for v in tp_vals) or any(v < 0.7 for v in tbi_vals):
+    if any(v < pad_ic[0] or v > pad_ic[1] for v in abi_vals) or any(v < hemo_c['normal_tp'] for v in tp_vals) or any(v < hemo_c['normal_tbi'] for v in tbi_vals):
         comorb.append('პერიფერიული არტერიების დაავადება / პათოლოგიური ABI/TP/TBI')
     ica_vals = [v for v in (_num(s_ev.get('carotid_r'), 0, 100), _num(s_ev.get('carotid_l'), 0, 100)) if v is not None]
-    if any(v >= 50 for v in ica_vals):
+    if any(v >= cea_c['symp_min'] for v in ica_vals):
         comorb.append(f'საძილე არტერიის სტენოზი (ICA {max(ica_vals)}%)')
     aaa_v = _num(s_ev.get('aaa_mm'), 10, 200)
     if aaa_v is not None and aaa_v >= 30:
@@ -463,59 +467,64 @@ def _append_objective_vasc_and_vitals_flags(comorb, q, s_ev, ev):
         comorb.append('ხმის იოგის პარეზი (ლარინგოსკოპია)')
     if s_ev.get('gastro_result') == 'acute_ulcer' and not (q.get('ulcer') or q.get('ulcer_active_symp')):
         comorb.append('მწვავე კუჭ-ნაწლავის წყლული (ეგდს)')
-    if s_ev.get('urine_nitrite') or (_num(s_ev.get('urine_wbc'), 0, 2000) or 0) >= 10:
+    if s_ev.get('urine_nitrite') or (_num(s_ev.get('urine_wbc'), 0, 2000) or 0) >= uti_c['wbc_asb']:
         comorb.append('საშარდე გზების ინფექციის ნიშნები (შარდის ანალიზი)')
     wbc_v = parse_wbc_k(s_ev.get('wbc'))
-    if wbc_v is not None and (wbc_v > 12.0 or wbc_v < 3.5):
+    if wbc_v is not None and (wbc_v > coag_c['wbc_hi'] or wbc_v < coag_c['wbc_lo']):
         comorb.append(f'პათოლოგიური ლეიკოციტები (WBC {wbc_v})')
 
 
 def _append_objective_chronic_flags(comorb, q, s_ev, ev, med_ch_set, ft_keys_a, sex=''):
     from .meds_freetext import _positive_clauses_text
+    from .registry import rule_value
     from .utils import parse_plt_k
+    ren_c, card_c, nutr_c = rule_value('REN_CKD_NEPHRO_HYDRATION'), rule_value('CARDIO_BIOMARKERS_ECHO'), rule_value('LAB_NUTRITION_ALBUMIN_LIVER')
+    coag_c, el_c, hb_c = rule_value('LAB_WBC_PLT_COAG'), rule_value('REN_ELECTROLYTES_K_NA'), rule_value('LAB_HB_PBM_THRESHOLDS')
+    gly_c, dos_c, vka_c = rule_value('GLY_GLUCOSE_HBA1C'), rule_value('DOS_WHO_SIGNIN_THRESHOLDS'), rule_value('MED_WARFARIN_HOLD_DAYS')
     eff_ren = ev.get('eff_renal_sat') if ev.get('eff_renal_sat') is not None else ev.get('eff_renal')
-    if not q.get('on_dialysis') and eff_ren is not None and eff_ren < 60:
+    if not q.get('on_dialysis') and eff_ren is not None and eff_ren < ren_c['hydration']:
         comorb.append(f'თირკმლის ფუნქციის დაქვეითება (eGFR/CrCl {eff_ren})')
     if s_ev.get('liver_status') == '3x':
         comorb.append('ღვიძლის მძიმე დისფუნქცია (≥3x ULN)')
     elif s_ev.get('liver_status') == '2x':
         comorb.append('ღვიძლის ფერმენტების ზომიერი მატება (2x ULN)')
     lvef_c = _num(s_ev.get('lvef'), 5, 95)
-    if lvef_c is not None and lvef_c < 50 and not (q.get('cad') or q.get('recent_stent') or q.get('cad_chips')) and not any('LVEF' in c for c in comorb):
+    if lvef_c is not None and lvef_c < card_c['lvef_amb'] and not (q.get('cad') or q.get('recent_stent') or q.get('cad_chips')) and not any('LVEF' in c for c in comorb):
         comorb.append(f'ზომიერად დაქვეითებული განდევნის ფრაქცია (LVEF {lvef_c}%)')
     if s_ev.get('ecg') == 'lbbb' and not any('ეკგ' in c for c in comorb):
         comorb.append('ჰისის კონის მარცხენა ფეხის ბლოკადა (LBBB — ეკგ)')
-    if ev.get('alb_gl') is not None and ev['alb_gl'] < 30:
+    if ev.get('alb_gl') is not None and ev['alb_gl'] < nutr_c['alb_red']:
         comorb.append(f'მძიმე ჰიპოალბუმინემია (ალბუმინი {ev["alb_gl"]} გ/ლ)')
     if s_ev.get('viral_positive'):
         comorb.append('ვირუსული სეროლოგია დადებითი (HBsAg/HCV/HIV)')
     plt_v = parse_plt_k(s_ev.get('plt'))
-    if plt_v is not None and plt_v < 150:
+    if plt_v is not None and plt_v < coag_c['plt_amb']:
         comorb.append(f'თრომბოციტოპენია (PLT {plt_v} ×10^9/L)')
     inr_v = _num(s_ev.get('inr'), 0.4, 20)
-    if (inr_v is not None and inr_v >= 1.5 and not q.get('med_warfarin') and 'warfarin' not in ft_keys_a) or s_ev.get('aptt_prolonged') or (ev.get('fib_gl') is not None and ev['fib_gl'] < 1.8):
+    if (inr_v is not None and inr_v >= vka_c['inr_surg_max'] and not q.get('med_warfarin') and 'warfarin' not in ft_keys_a) or s_ev.get('aptt_prolonged') or (ev.get('fib_gl') is not None and ev['fib_gl'] < coag_c['fib_low']):
         comorb.append('კოაგულოპათია / ჰემოსტაზის დარღვევა (INR/APTT/ფიბრინოგენი)')
     k_v, na_v = _num(s_ev.get('k'), 1.0, 12.0), _num(s_ev.get('na'), 95, 190)
-    if k_v is not None and (k_v > 5.0 or k_v < 3.5):
+    if k_v is not None and (k_v > el_c['k_amb_hi'] or k_v < el_c['k_amb_lo']):
         comorb.append(f'ელექტროლიტური დისბალანსი (K+ {k_v} მმოლ/ლ)')
-    if na_v is not None and (na_v < 130 or na_v >= 150):
+    if na_v is not None and (na_v < el_c['na_lo'] or na_v >= el_c['na_hi']):
         comorb.append(f'ელექტროლიტური დისბალანსი (Na+ {na_v} მმოლ/ლ)')
     fev1, cxr_v = _num(s_ev.get('spiro_fev1'), 10, 150), s_ev.get('cxr') or ''
-    if not (q.get('pulm') or q.get('pulm_chips')) and ((fev1 is not None and fev1 < 80) or cxr_v in ('emphysema', 'infiltrate', 'cardiomegaly')):
+    if not (q.get('pulm') or q.get('pulm_chips')) and ((fev1 is not None and fev1 < max(80, rule_value('PULM_CXR_SPIROMETRY')['fev1_amb'])) or cxr_v in ('emphysema', 'infiltrate', 'cardiomegaly')):
         comorb.append('სასუნთქი სისტემის / რენტგენის პათოლოგია (სპირომეტრია/CXR)')
     if not q.get('thyroid_disease') and (s_ev.get('tsh_status') or '') in ('hyperthyroid', 'hypothyroid_severe', 'hypothyroid_mild'):
         comorb.append('ფარისებრი ჯირკვლის ფუნქციის დარღვევა (TSH)')
     hb_gl, fer_v, tsat_v = ev.get('hb_gl'), _num(s_ev.get('ferritin'), 1, 5000), ev.get('tsat')
-    hb_lo, hb_hi = (120, 165) if sex == 'F' else (130, 185)
+    hb_lo, hb_hi = (hb_c['hb_norm_f'], hb_c['hb_poly_f']) if sex == 'F' else (hb_c['hb_norm_m'], hb_c['hb_poly_m'])
     if hb_gl is not None and hb_gl < hb_lo:
         comorb.append(f'ანემია (Hb {hb_gl} გ/ლ)')
     elif hb_gl is not None and hb_gl > hb_hi:
         comorb.append(f'პოლიციტემია / მაღალი ჰემოგლობინი (Hb {hb_gl} გ/ლ)')
-    elif (fer_v is not None and fer_v < 30) or (tsat_v is not None and tsat_v < 20):
+    elif (fer_v is not None and fer_v < hb_c['ferritin_abs']) or (tsat_v is not None and tsat_v < hb_c['tsat_low']):
         comorb.append('რკინადეფიციტი (ფერიტინი/TSAT)')
     gl_v, dos_gl_v = ev.get('gl_mmol'), ev.get('dos_gl_mmol')
-    if not any('დიაბეტ' in c or 'ჰიპერგლიკემ' in c for c in comorb) and ((gl_v is not None and (gl_v >= 7.0 or gl_v < 3.9)) or (dos_gl_v is not None and (dos_gl_v >= 10.0 or dos_gl_v < 3.9))):
-        comorb.append(f'გლიკემიის დარღვევა ({dos_gl_v if (dos_gl_v is not None and (dos_gl_v >= 10.0 or dos_gl_v < 3.9)) else gl_v} მმოლ/ლ)')
+    gl_hi, gl_lo, dgl_hi, dgl_lo = gly_c['gl_hba1c'], gly_c['gl_red_lo'], dos_c['gl_amb'], dos_c['gl_lo']
+    if not any('დიაბეტ' in c or 'ჰიპერგლიკემ' in c for c in comorb) and ((gl_v is not None and (gl_v >= gl_hi or gl_v < gl_lo)) or (dos_gl_v is not None and (dos_gl_v >= dgl_hi or dos_gl_v < dgl_lo))):
+        comorb.append(f'გლიკემიის დარღვევა ({dos_gl_v if (dos_gl_v is not None and (dos_gl_v >= dgl_hi or dos_gl_v < dgl_lo)) else gl_v} მმოლ/ლ)')
     if ev.get('ldl') is not None and ev['ldl'] >= 3.0:
         comorb.append(f'დისლიპიდემია (LDL {ev["ldl"]} მმოლ/ლ)')
     _append_objective_vasc_and_vitals_flags(comorb, q, s_ev, ev)

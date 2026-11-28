@@ -64,7 +64,7 @@ class PreopStressFixesR24Tests(TestCase):
         self.c_nurse.force_login(self.nurse)
 
     def test_r24_nlp_garda_except_tails_conj_freq_and_riva_escalations(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.23')
+        self.assertEqual(REGISTRY_VERSION, '1.2.24')
         # Fuzz A1 / Clin S1-3: Georgian garda with comma punctuation (fronted & post-positioned)
         for txt, want in (
             ('ვარფარინის გარდა, ყველა მოხსნილია', 'warfarin'),

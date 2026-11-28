@@ -264,7 +264,7 @@ class PreopStressFixesR17EngineTests(TestCase):
 
     def test_clin16_registry_honesty_vignettes_and_zero_jargon_leaks(self):
         # Pillar 1: Registry v1.2.16 honesty (0 UNVERIFIED in STATUS_VERIFIED) + live threshold reactivity
-        self.assertEqual(REGISTRY_VERSION, '1.2.23')
+        self.assertEqual(REGISTRY_VERSION, '1.2.24')
         ver = [r for r in RULES_BY_ID.values() if r.status == STATUS_VERIFIED]
         loc = [r for r in RULES_BY_ID.values() if r.status == STATUS_LOCAL]
         self.assertEqual(len(ver), 13)

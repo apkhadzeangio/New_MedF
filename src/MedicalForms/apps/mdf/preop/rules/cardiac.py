@@ -323,7 +323,7 @@ def _build_dynamic_tasks_part2(ctx, tasks, bypass_em):
         elif (s.get('post_antithrombotic_plan') not in (None, '', 'auto')) and ctx.post_antithrombotic_label:
             dapt_lbl = f'ანტითრომბოზული მზაობა: {ctx.post_antithrombotic_label}'
         elif ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
-            dapt_lbl = f'ანტითრომბოზული მზაობა: {_preg_mech_valve_postop_msg("hit_heparin" in ctx.allergy_chips, severe_renal=sev_ren_d)}'
+            dapt_lbl = f'ანტითრომბოზული მზაობა: {_preg_mech_valve_postop_msg("hit_heparin" in ctx.allergy_chips, severe_renal=sev_ren_d, severe_liver=ctx.liver_3x)}'
         elif ctx.has_mech_valve:
             dapt_lbl = 'ანტითრომბოზული სქემა მექ. სარქველზე: ვარფარინი (VKA) ± მონო-ანტიაგრეგანტი (DOAC / VOYAGER აკრძალულია!)'
         elif getattr(ctx, 'has_contra_full_oac', False):

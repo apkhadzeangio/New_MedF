@@ -475,6 +475,12 @@ class PreopMoveView(LoginRequiredMixin, generic.View):
                     return JsonResponse({'ok': False, 'error': 'inactive_card'}, status=400)
                 messages.error(request, 'დაარქივებულ, გაუქმებულ, გადადებულ ან ნაოპერაციებ ბარათზე გადაადგილება დაბლოკილია!')
                 return HttpResponseRedirect(reverse('preop'))
+            if evaluate(patient).get('is_rupture_suspect'):
+                from .parsers import _RAAA_RESCHEDULE_ERR
+                if ajax:
+                    return JsonResponse({'ok': False, 'error': 'rupture_locked'}, status=400)
+                messages.error(request, _RAAA_RESCHEDULE_ERR)
+                return HttpResponseRedirect(reverse('preop'))
 
             old_someday = patient.someday_list
             was_unstarted = (patient.started_on is None)

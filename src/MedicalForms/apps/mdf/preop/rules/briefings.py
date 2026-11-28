@@ -526,7 +526,7 @@ def _build_surgical_postop_at(ctx, has_hit, hit_severe_renal):
     if ctx.post_antithrombotic_label:
         return ctx.post_antithrombotic_label + (statin_tail if 'სტატინი' not in ctx.post_antithrombotic_label else '')
     if ctx.has_mech_valve and getattr(ctx, 'eff_pregnant', False):
-        return _preg_mech_valve_postop_msg(has_hit, severe_renal=hit_severe_renal)
+        return _preg_mech_valve_postop_msg(has_hit, severe_renal=hit_severe_renal, severe_liver=ctx.liver_3x)
     if ctx.has_mech_valve:
         if ctx.has_active_stent_dapt:
             mv_ap_b = f' + {ctx.oac_partner_lbl} (კორონარული სტენტის დაცვა!)'

@@ -3,6 +3,9 @@ import re
 
 _WS_RUN_RE = re.compile(r'[ \t\u00a0]+')
 # All split regexes run AFTER _WS_RUN_RE collapses horizontal spaces to a single ' ', guaranteeing O(N) linear time.
+_SENT_CLAUSE_SPLIT_RE = re.compile(
+    r'[;\n!()—–]+| - |\.(?!\d)| (?:მაგრამ|ხოლო|თუმცა|but) '
+)
 _STRONG_CLAUSE_SPLIT_RE = re.compile(
     r'[;,\n!()—–]+| - |\.(?!\d)| (?:მაგრამ|ხოლო|თუმცა|but) '
 )
@@ -39,13 +42,17 @@ _INLINE_NEG_SPLIT_RE = re.compile(
     r'|(?<= bid)|(?<= tid)|(?<= qid)|(?<= qd)|(?<= od)|(?<= daily)|(?<= x2)|(?<= 2x)|(?<= ტაბ)|(?<= tab)|(?<= აბი)) '
     r'(?!(?:\d\S*|მგ|mg|მკგ|mcg|გ|g|სე|u|iu|მლ|ml|ტაბ|აბი|აბ|tab|tabs|tablets?|caps?|capsules?|pills?'
     r'|x2|2x|bid|tid|qid|qd|od|qhs|qod|hs|prn|po|iv|sc|sq|im|once|twice|daily|per|day|days|d|h'
-    r'|in|at|the|morning|evening|night|bedtime|am|pm|დღეში|დილას|საღამოს|ღამით|ძილის|წინ|ჯერ|დოზა)(?: |$))'
+    r'|in|at|the|morning|evening|night|bedtime|am|pm|დღეში|დილას|საღამოს|ღამით|ძილის|წინ|წინა|ჯერ|დოზა'
+    r'|ყოველდღე|უზმოზე|გუშინ|დღეს|ადრე|უკვე|მანამდე|საერთოდ'
+    r'|yesterday|today|previously|already|recently|earlier|nightly|orally|weekly|before|prior|last)(?: |$))'
     r'(?=[a-zა-ჰ0-9\-]+ (?:\d+(?:[.,/]\d+)?(?: ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu))? )?'
     rf'(?:(?:ალერგი[ა-ჰ]* )?(?:არ|აღარ|არა|ვერ) {_KA_VERBS}|{_KA_STOP_VERBS}|stopped|discontinued|held))'
 )
 _KA_NEG_VERB_RE = re.compile(rf'(?<![ა-ჰ]){_KA_STOP_VERBS}(?![ა-ჰ])')
+_KA_NEG_PARTICLE_VERB_RE = re.compile(rf'(?<![ა-ჰ])(?:არ|აღარ|არა|ვერ) {_KA_VERBS}(?![ა-ჰ])')
 _KA_NEG_FOLLOW_STOP = frozenset({
-    'და', 'ან', 'მაგრამ', 'ხოლო', 'თუმცა', 'რომ', 'გამო', 'წინ', 'ადრე', 'უკვე', 'მანამდე', 'საერთოდ', 'გუშინ',
+    'და', 'ან', 'მაგრამ', 'ხოლო', 'თუმცა', 'რომ', 'გამო', 'წინ', 'წინა', 'ადრე', 'უკვე', 'მანამდე', 'საერთოდ', 'გუშინ', 'დღეს',
+    'ყოველდღე', 'უზმოზე',
     'and', 'or', 'but', 'in', 'the', 'at', 'for', 'ago',
     'დღე', 'დღის', 'დღით', 'დღეა', 'დღეები', 'თვე', 'თვის', 'თვეა', 'კვირა', 'კვირის', 'კვირით', 'კვირაა',
     'წელ', 'წლის', 'წლიდან', 'წელია', 'საათ', 'საათის', 'საათით', 'სთ', 'დილას', 'საღამოს', 'ღამით', 'ჯერ', 'დოზა',
@@ -60,6 +67,7 @@ _EN_NEG_FOLLOW_STOP = frozenset({
     'for', 'ago', 'day', 'days', 'week', 'weeks', 'wk', 'wks', 'month', 'months', 'mo', 'mos', 'year', 'years', 'yr', 'yrs', 'd', 'h',
     'hr', 'hrs', 'hour', 'hours', 'prior', 'before', 'due', 'because', 'by', 'on', 'in', 'at', 'per',
     'with', 'without', 'since', 'last', 'yesterday', 'today', 'after', 'already', 'recently', 'previously', 'earlier',
+    'nightly', 'orally', 'weekly',
     'completely', 'all', 'both', 'med', 'meds', 'medication', 'medications', 'drug', 'drugs', 'therapy',
     'anticoagulant', 'anticoagulants', 'antiplatelet', 'antiplatelets', 'blood', 'thinner', 'thinners',
     'pill', 'pills', 'tablet', 'tablets', 'tabs', 'capsule', 'capsules', 'dose', 'doses', 'injection', 'injections', 'preop', 'pre-op',
@@ -84,13 +92,13 @@ _MULTIWORD_DRUG_HEAD = (
 _MULTIWORD_DRUG_HEAD_RE = re.compile(rf'^{_MULTIWORD_DRUG_HEAD}(?=$| )', re.IGNORECASE)
 _FREQ_FORM_TOK = (
     r'(?:x\d+|\d+x|\d+-?ჯერ|bid|tid|qid|qd|od|q\d+h|qhs|qod|hs|prn|po|iv|sc|sq|im'
-    r'|once|twice|daily|morning|evening|night|დილას|საღამოს|ღამით|დღეში'
+    r'|once|twice|daily|nightly|orally|weekly|morning|evening|night|დილას|საღამოს|ღამით|დღეში|ყოველდღე|უზმოზე'
     r'|in the (?:morning|evening|am|pm)|at (?:night|bedtime)'
     r'|ტაბ|აბი|აბ|tab|tabs|tablets?|caps?|capsules?)(?![a-zა-ჰ])'
 )
 _DOSE_UNIT_TOK = (
     r'\d+(?:[.,/]\d+)? ?(?:მგ|mg|მკგ|mcg|გ|g|მლ|ml|სე|iu)'
-    r'(?:/(?:day|d|daily|24h|დღე|დღ|სთ))?(?![a-zა-ჰ])'
+    r'(?:/(?:day|d|daily|24h|24hr|24hrs|დღეში|დღე|დღ|სთ))?(?![a-zა-ჰ])'
 )
 _COUNT_DUR_UNIT = (
     r'(?:აბი|აბ|ტაბ|tab|tabs|tablets?|caps?|capsules?|pills?|დოზა|dose'
@@ -104,7 +112,7 @@ _COUNT_OR_DUR_TOK = (
 )
 _TEMPORAL_ADV_TOK = (
     r'(?:yesterday|today|earlier|previously|recently|already|before|prior'
-    r'|last (?:day|week|month|year)|ადრე|უკვე|გუშინ|მანამდე|საერთოდ|წინა (?:კვირას|თვეს|დღეს))(?![a-zა-ჰ])'
+    r'|last (?:day|week|month|year)|ადრე|უკვე|გუშინ|დღეს|მანამდე|საერთოდ|წინა (?:კვირას|თვეს|დღეს))(?![a-zა-ჰ])'
 )
 _POST_STOP_TAIL_RE = re.compile(
     rf'^(?:(?:{_COUNT_OR_DUR_TOK}|{_TEMPORAL_ADV_TOK})(?: |$))+',
@@ -112,8 +120,13 @@ _POST_STOP_TAIL_RE = re.compile(
 )
 _BARE_NUM_TOK = rf'\d+(?:[.,/]\d+)?(?! ?{_COUNT_DUR_UNIT}(?![a-zა-ჰ]))'
 _HEAD_MOD_TOK = rf'(?:{_DOSE_UNIT_TOK}|{_COUNT_OR_DUR_TOK}|{_TEMPORAL_ADV_TOK}|{_FREQ_FORM_TOK}|{_BARE_NUM_TOK})'
-_KA_PREFIX_NEG_HEAD_RE = re.compile(
-    rf'^(?:{_MULTIWORD_DRUG_HEAD}|[a-zა-ჰ0-9\-]+)(?: {_HEAD_MOD_TOK}){{0,6}}(?= [a-zა-ჰ])',
+_EXCEPT_ITEM_HEAD = rf'(?:{_MULTIWORD_DRUG_HEAD}|[a-zა-ჰ0-9\-]+)(?: {_HEAD_MOD_TOK}){{0,6}}'
+_KA_PREFIX_NEG_HEAD_RE = re.compile(rf'^{_EXCEPT_ITEM_HEAD}(?= [a-zა-ჰ])', re.IGNORECASE)
+_FRONTED_EXCEPT_HEAD_RE = re.compile(
+    rf'^{_EXCEPT_ITEM_HEAD}'
+    r'(?: (?:and|or|და|ან) '
+    r'(?!(?:all|both|no|not|nothing|none|stopped|discontinued|held|ყველა|ორივე|არ|არა|არაფერ|არცერთ|მოხსნ|შეწყვ|შეჩერ)(?![a-zა-ჰ]))'
+    rf'{_EXCEPT_ITEM_HEAD}){{0,4}}(?=$| )',
     re.IGNORECASE,
 )
 _EN_BUT_NOT_RE = re.compile(r' but not (?=[a-zა-ჰ])', re.IGNORECASE)
@@ -166,22 +179,24 @@ _SYMPTOM_NEG_RE = re.compile(
 _ALLERGY_NEGATION_WORDS = frozenset({
     'არა', 'უარყოფს', 'არაქვს', 'არმაქვს', 'არააქვს', 'ალერგიაარაქვს', 'ალერგიაარმაქვს', 'ალერგიაარააქვს',
     'ალერგიისგარეშე', 'არანაირიალერგია', 'არავითარიალერგია', 'ალერგიაარარის',
-    'no', 'none', 'nil', 'nkda', 'nka', 'noallergy', 'noallergies',
+    'არაფერი', 'არაფერზე', 'არაფერს', 'არაფრის', 'არცერთი', 'არცერთზე', 'არცერთს',
+    'არაფერსვიღებ', 'არაფერსვსვამ', 'არაფერსარვიღებ',
+    'no', 'none', 'nothing', 'nil', 'nkda', 'nka', 'noallergy', 'noallergies',
 })
 _NEGATION_PHRASE_RE = re.compile(
     r'(?:(?:არ|აღარ|არა|ვერ) (?:აქვს|მაქვს|სვამს|ვსვამ|იღებს|ვიღებ|ღებულობს|იკეთებს|ვიკეთებ|აგრძელებს|ვაგრძელებ|აღნიშნავს|ჰქონია|აღენიშნება|უფიქსირდება|არის|აწუხებს)'
-    r'|(?<![ა-ჰ])(?:არაა?(?![ა-ჰ\-—–])|არაქვს(?![ა-ჰ])|არმაქვს(?![ა-ჰ])|არააქვს(?![ა-ჰ])|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*)'
+    r'|(?<![ა-ჰ])(?:არაა?(?![ა-ჰ\-—–])|არაქვს(?![ა-ჰ])|არმაქვს(?![ა-ჰ])|არააქვს(?![ა-ჰ])|არანაირ[ა-ჰ]*|არავითარ[ა-ჰ]*|არაფერ[ა-ჰ]*|არაფრის(?![ა-ჰ])|არცერთ[ა-ჰ]*)'
     rf'|უარყოფს|{_KA_STOP_VERBS}|გამორიცხულია'
     r'|(?<![ა-ჰ])გარეშე(?![ა-ჰ])'
-    r"|(?<![a-z])(?:no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b)",
+    r"|(?<![a-z])(?:no|not|none|nothing|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b)",
     re.IGNORECASE,
 )
 _DIGIT_RE = re.compile(r'\d')
 _COMPACT_STRIP_RE = re.compile(r'[\s.,;:!?()\[\]"\'—–-]+')
 _NEG_FAST_HINT_RE = re.compile(
     r"\b(?:არ|აღარ|არა|ვერ|მოხსნ|მოვხსნ|მოვხსენ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|გამორ|უარყ|გარეშე"
-    r"|no|not|none|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b"
-    r'|\b(?:არა|არაქვს|არმაქვს|არააქვს|არანაირ|არავითარ|უარყოფს|მოხსნ|მოვხსნ|მოვხსენ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|მოუხსნ|შეუწყვ|შემიწყვ|მომიხსნ|შემიჩერ|შეგვიწყვ|მოგვიხსნ|შეგვიჩერ|გამორიცხ)',
+    r"|no|not|none|nothing|nil|nkda|nka|denied|denies|stopped|discontinued|held|without|never|cannot|doesn't|don't|isn't|aren't|didn't|hasn't|haven't|hadn't|wasn't|weren't|won't|wouldn't|can't)\b"
+    r'|\b(?:არა|არაქვს|არმაქვს|არააქვს|არანაირ|არავითარ|არაფერ|არაფრის|არცერთ|უარყოფს|მოხსნ|მოვხსნ|მოვხსენ|შეწყვ|შევწყვ|შეჩერ|შეაჩერ|შევაჩერ|მოუხსნ|შეუწყვ|შემიწყვ|მომიხსნ|შემიჩერ|შეგვიწყვ|მოგვიხსნ|შეგვიჩერ|გამორიცხ)',
     re.IGNORECASE,
 )
 _GENERIC_SOV_HEADS = frozenset({'ალერგია', 'ალერგიას', 'ალერგიები', 'წამალს', 'წამლებს', 'მედიკამენტს', 'მედიკამენტებს', 'პრეპარატს'})
@@ -190,7 +205,9 @@ _DOSE_FREQ_WORDS = frozenset({
     'ტაბ', 'აბი', 'აბ', 'tab', 'tabs', 'tablet', 'tablets', 'cap', 'caps', 'capsule', 'capsules', 'pill', 'pills',
     'daily', 'once', 'twice', 'bid', 'tid', 'qid', 'qd', 'od', 'qhs', 'qod', 'hs', 'prn', 'x2', '2x',
     'po', 'iv', 'sc', 'sq', 'im', 'in', 'at', 'the', 'per', 'day', 'days', 'morning', 'evening', 'night', 'bedtime', 'am', 'pm',
-    'დღეში', 'დილას', 'საღამოს', 'ღამით', 'ძილის', 'წინ', 'ჯერ', 'დოზა',
+    'დღეში', 'დილას', 'საღამოს', 'ღამით', 'ძილის', 'წინ', 'წინა', 'ჯერ', 'დოზა',
+    'ყოველდღე', 'უზმოზე', 'გუშინ', 'დღეს', 'ადრე', 'უკვე', 'მანამდე', 'საერთოდ',
+    'yesterday', 'today', 'previously', 'already', 'recently', 'earlier', 'nightly', 'orally', 'weekly', 'before', 'prior', 'last',
 })
 _MULTIWORD_DRUG_PREV_MODS = frozenset({'low', 'molecular', 'weight', 'unfractionated', 'acetylsalicylic', 'დაბალმოლეკულური', 'არაფრაქციული', 'წონის'})
 
@@ -199,33 +216,59 @@ def _has_neg_phrase(s):
     return bool(_NEG_FAST_HINT_RE.search(s) and _NEGATION_PHRASE_RE.search(s))
 
 
+def _rfind_sent_sep(text):
+    for i in range(len(text) - 1, -1, -1):
+        ch = text[i]
+        if ch in (';', '!', '?', '\n'):
+            return i
+        if ch == '.' and not (0 < i < len(text) - 1 and text[i - 1].isdigit() and text[i + 1].isdigit()):
+            return i
+    return -1
+
+
+def _find_sent_sep(text):
+    n = len(text)
+    for i, ch in enumerate(text):
+        if ch in (';', '!', '?', '\n'):
+            return i
+        if ch == '.' and not (0 < i < n - 1 and text[i - 1].isdigit() and text[i + 1].isdigit()):
+            return i
+    return -1
+
+
 def _prev_clause(s, pos, window=120):
     end = pos - 1 if pos > 0 and s[pos - 1] == ',' else pos
     chunk = s[max(0, end - window):end]
-    for sep in (',', ';', '.', '!', '?', '\n'):
-        idx = chunk.rfind(sep)
-        if idx != -1:
-            chunk = chunk[idx + 1:]
-    return chunk
+    idx = _rfind_sent_sep(chunk)
+    if idx != -1:
+        chunk = chunk[idx + 1:]
+    c_idx = chunk.rfind(',')
+    return chunk[c_idx + 1:] if c_idx != -1 else chunk
 
 
 def _prev_clause_info(s, pos, window=140):
     chunk = s[max(0, pos - window):pos]
-    for sep in (';', '.', '!', '?', '\n'):
-        idx = chunk.rfind(sep)
-        if idx != -1:
-            chunk = chunk[idx + 1:]
+    idx = _rfind_sent_sep(chunk)
+    if idx != -1:
+        chunk = chunk[idx + 1:]
     c_idx = chunk.rfind(',')
     return (chunk[c_idx + 1:], chunk[:c_idx]) if c_idx != -1 else (chunk, '')
 
 
+def _prev_sentence(s, pos, window=140):
+    chunk = s[max(0, pos - window):pos]
+    idx = _rfind_sent_sep(chunk)
+    if idx == -1:
+        return ''
+    before = chunk[:idx].rstrip(' ;.!?\n')
+    prev_idx = _rfind_sent_sep(before)
+    return before[prev_idx + 1:] if prev_idx != -1 else before
+
+
 def _next_sent_chunk(s, pos, window=140):
     chunk = s[pos:min(len(s), pos + window)]
-    for sep in (';', '.', '!', '?', '\n'):
-        i = chunk.find(sep)
-        if i != -1:
-            chunk = chunk[:i]
-    return chunk
+    idx = _find_sent_sep(chunk)
+    return chunk[:idx] if idx != -1 else chunk
 
 
 def _rewrite_en_except(low):
@@ -243,11 +286,12 @@ def _rewrite_en_except(low):
                 obj, tail = seg[:c_idx].strip(), seg[c_idx + 1:]
                 end_pos = m.end() + c_idx + 1
             else:
-                hm = _KA_PREFIX_NEG_HEAD_RE.match(seg)
+                hm = _FRONTED_EXCEPT_HEAD_RE.match(seg)
                 obj_len = hm.end() if hm else len(seg.split(' ', 1)[0])
                 obj, tail = seg[:obj_len].strip(), seg[obj_len:]
                 end_pos = m.end() + obj_len
-            gov_neg = _has_neg_phrase(tail) or bool(_EN_STOP_WORD_RE.search(tail))
+            gov_ctx = tail if tail.strip() else _prev_sentence(low, m.start())
+            gov_neg = _has_neg_phrase(gov_ctx) or bool(_EN_STOP_WORD_RE.search(gov_ctx))
             out.append(low[last:m.start()])
             out.append(f'{obj};' if gov_neg else f'not {obj};')
             last = end_pos
@@ -282,15 +326,22 @@ def _rewrite_ka_garda(low):
                 obj, tail = seg_s[:c_idx].strip(), seg_s[c_idx + 1:]
                 end_pos = m.end() + lead_ws + c_idx + 1
             else:
-                hm = _KA_PREFIX_NEG_HEAD_RE.match(seg_s)
+                hm = _FRONTED_EXCEPT_HEAD_RE.match(seg_s)
                 obj_len = hm.end() if hm else len(seg_s.split(' ', 1)[0])
                 obj, tail = seg_s[:obj_len].strip(), seg_s[obj_len:]
                 end_pos = m.end() + lead_ws + obj_len
+            gov_ctx = tail if tail.strip() else _prev_sentence(low, m.start())
             out.append(low[last:m.start()])
-            out.append(f'{obj};' if _has_neg_phrase(tail) else f'არ იღებს {obj};')
+            out.append(f'{obj};' if _has_neg_phrase(gov_ctx) else f'არ იღებს {obj};')
             last = end_pos
             continue
         prev_neg, bc_neg, after_neg = _has_neg_phrase(prev), _has_neg_phrase(before_comma), _has_neg_phrase(after_c)
+        prev_sent_neg = (
+            not prev_neg and not bc_neg and not after_neg
+            and not before_comma.strip() and not after_c.strip()
+            and not _AFFIRM_PRED_RE.search(prev)
+            and _has_neg_phrase(_prev_sentence(low, m.start()))
+        )
         at_end = nxt_ch in ('', ',', ';', '.', '!', '?', '\n')
         if prev_neg:
             neg_ms = list(_NEGATION_PHRASE_RE.finditer(prev_raw))
@@ -305,11 +356,11 @@ def _rewrite_ka_garda(low):
             out.append(low[last:m.start()])
             out.append(';')
             last = m.end() + skip_comma
-        elif bc_neg or after_neg:
+        elif bc_neg or after_neg or prev_sent_neg:
             out.append(low[last:m.start()])
             out.append(';')
             last = m.end() + skip_comma
-        elif not at_end and _AFFIRM_PRED_RE.search(prev):
+        elif not at_end and ((not prev and before_comma.strip()) or _AFFIRM_PRED_RE.search(prev)):
             out.append(low[last:m.start()])
             out.append('; არ იღებს')
             last = m.end()
@@ -434,7 +485,7 @@ def _split_affirm_before_stop(before, stop_tail):
 
 def _peel_conj_affirm_stop(nxt):
     """When preceded by an affirmative conjunction ('taking A and B C stopped'), peel active B from suffix-stopped C."""
-    for verb_re in (_KA_NEG_VERB_RE, _EN_STOPPED_RE):
+    for verb_re in (_KA_NEG_VERB_RE, _KA_NEG_PARTICLE_VERB_RE, _EN_STOPPED_RE):
         m = verb_re.search(nxt)
         if not m or m.start() == 0:
             continue
@@ -586,74 +637,97 @@ def _is_uniform_neg_chain(chunk_s):
     return False
 
 
+def _group_conj_parts(parts, sent_affirm):
+    """Group conjunction-separated subclauses while preserving inherited affirmative-list polarity."""
+    cur_buf = [parts[0]]
+    cur_neg = _has_neg_phrase(parts[0])
+    cur_pref_neg = cur_neg and bool(_PREFIX_NEG_START_RE.search(parts[0]))
+    if len(parts) == 1 and sent_affirm and cur_neg and not cur_pref_neg and not _AFFIRM_PRED_RE.search(_KA_NEG_PARTICLE_VERB_RE.sub('', parts[0])):
+        peeled = _peel_conj_affirm_stop(parts[0])
+        if peeled:
+            return peeled
+    saw_affirm = (not cur_neg) and (sent_affirm or bool(_AFFIRM_PRED_RE.search(parts[0])))
+    cur_alg = cur_dig = cur_aff = None
+    groups = []
+    for nxt in parts[1:]:
+        nxt_neg = _has_neg_phrase(nxt)
+        if cur_neg and not nxt_neg and cur_pref_neg:
+            if cur_alg is None:
+                cur_alg = bool(_ALLERGY_WORD_RE.search(cur_buf[0]))
+            if cur_dig is None:
+                cur_dig = bool(_DIGIT_RE.search(cur_buf[0]))
+            nxt_aff = bool(_AFFIRM_PRED_RE.search(nxt))
+            nxt_alg = bool(_ALLERGY_WORD_RE.search(nxt)) if cur_alg else False
+            nxt_dig = bool(_DIGIT_RE.search(nxt)) if not cur_dig else False
+            if not nxt_aff and not (cur_alg and nxt_alg) and (not nxt_dig or cur_dig):
+                cur_buf.append(nxt)
+                continue
+        elif not cur_neg and nxt_neg and not _PREFIX_NEG_START_RE.search(nxt):
+            if cur_aff is None:
+                cur_aff = saw_affirm or bool(_AFFIRM_PRED_RE.search(cur_buf[0]))
+            if cur_alg is None:
+                cur_alg = bool(_ALLERGY_WORD_RE.search(cur_buf[0]))
+            if cur_dig is None:
+                cur_dig = bool(_DIGIT_RE.search(cur_buf[0]))
+            nxt_dig = bool(_DIGIT_RE.search(nxt)) if cur_dig else False
+            if cur_aff and not _AFFIRM_PRED_RE.search(_KA_NEG_PARTICLE_VERB_RE.sub('', nxt)):
+                peeled = _peel_conj_affirm_stop(nxt)
+                if peeled:
+                    groups.append(' და '.join(cur_buf))
+                    groups.append(peeled[0])
+                    cur_buf, cur_neg, cur_pref_neg, saw_affirm = [peeled[1]], True, False, False
+                    cur_alg = cur_dig = cur_aff = None
+                    continue
+            if not cur_aff and not cur_alg and (not cur_dig or nxt_dig):
+                cur_buf.append(nxt)
+                cur_neg = True
+                saw_affirm = False
+                continue
+        groups.append(' და '.join(cur_buf))
+        cur_buf = [nxt]
+        cur_neg = nxt_neg
+        cur_pref_neg = nxt_neg and bool(_PREFIX_NEG_START_RE.search(nxt))
+        saw_affirm = False if nxt_neg else (saw_affirm or bool(_AFFIRM_PRED_RE.search(nxt)))
+        cur_alg = cur_dig = cur_aff = None
+    groups.append(' და '.join(cur_buf))
+    return groups
+
+
 def _split_neg_clauses(cleaned_txt):
     """Split text into negation-scoped clauses strictly in O(N) time (no O(N^2) string re-scans)."""
     out, seen_chunks, seen_segs = [], set(), set()
-    for chunk in _STRONG_CLAUSE_SPLIT_RE.split(cleaned_txt):
-        chunk_s = chunk.strip()
-        if not chunk_s or chunk_s in seen_chunks:
-            continue
-        seen_chunks.add(chunk_s)
-        if not _has_neg_phrase(chunk_s):
-            out.append(chunk_s)
-            continue
-        if _is_uniform_neg_chain(chunk_s):
-            continue
-        parts = [p.strip() for p in _CONJ_SPLIT_RE.split(chunk_s) if p.strip()]
-        if not parts:
-            continue
-        cur_buf = [parts[0]]
-        cur_neg = _has_neg_phrase(parts[0])
-        cur_pref_neg = cur_neg and bool(_PREFIX_NEG_START_RE.search(parts[0]))
-        saw_affirm = (not cur_neg) and bool(_AFFIRM_PRED_RE.search(parts[0]))
-        cur_alg = cur_dig = cur_aff = None
-        groups = []
-        for nxt in parts[1:]:
-            nxt_neg = _has_neg_phrase(nxt)
-            if cur_neg and not nxt_neg and cur_pref_neg:
-                if cur_alg is None:
-                    cur_alg = bool(_ALLERGY_WORD_RE.search(cur_buf[0]))
-                if cur_dig is None:
-                    cur_dig = bool(_DIGIT_RE.search(cur_buf[0]))
-                nxt_aff = bool(_AFFIRM_PRED_RE.search(nxt))
-                nxt_alg = bool(_ALLERGY_WORD_RE.search(nxt)) if cur_alg else False
-                nxt_dig = bool(_DIGIT_RE.search(nxt)) if not cur_dig else False
-                if not nxt_aff and not (cur_alg and nxt_alg) and (not nxt_dig or cur_dig):
-                    cur_buf.append(nxt)
-                    continue
-            elif not cur_neg and nxt_neg and not _PREFIX_NEG_START_RE.search(nxt):
-                if cur_aff is None:
-                    cur_aff = saw_affirm or bool(_AFFIRM_PRED_RE.search(cur_buf[0]))
-                if cur_alg is None:
-                    cur_alg = bool(_ALLERGY_WORD_RE.search(cur_buf[0]))
-                if cur_dig is None:
-                    cur_dig = bool(_DIGIT_RE.search(cur_buf[0]))
-                nxt_dig = bool(_DIGIT_RE.search(nxt)) if cur_dig else False
-                if cur_aff and not _AFFIRM_PRED_RE.search(nxt):
-                    peeled = _peel_conj_affirm_stop(nxt)
-                    if peeled:
-                        groups.append(' და '.join(cur_buf))
-                        groups.append(peeled[0])
-                        cur_buf, cur_neg, cur_pref_neg, saw_affirm = [peeled[1]], True, False, False
-                        cur_alg = cur_dig = cur_aff = None
-                        continue
-                if not cur_aff and not cur_alg and (not cur_dig or nxt_dig):
-                    cur_buf.append(nxt)
-                    cur_neg = True
-                    saw_affirm = False
-                    continue
-            groups.append(' და '.join(cur_buf))
-            cur_buf = [nxt]
-            cur_neg = nxt_neg
-            cur_pref_neg = nxt_neg and bool(_PREFIX_NEG_START_RE.search(nxt))
-            saw_affirm = False if nxt_neg else (saw_affirm or bool(_AFFIRM_PRED_RE.search(nxt)))
-            cur_alg = cur_dig = cur_aff = None
-        groups.append(' და '.join(cur_buf))
-        for seg in groups:
-            if seg in seen_segs:
+    for sent in _SENT_CLAUSE_SPLIT_RE.split(cleaned_txt):
+        sent_affirm = False
+        for chunk in sent.split(','):
+            chunk_s = chunk.strip()
+            if not chunk_s:
                 continue
-            seen_segs.add(seg)
-            out.extend(_split_inline_boundaries(seg))
+            key = (sent_affirm, chunk_s)
+            if key in seen_chunks:
+                if _has_neg_phrase(chunk_s):
+                    sent_affirm = False
+                elif _AFFIRM_PRED_RE.search(chunk_s):
+                    sent_affirm = True
+                continue
+            seen_chunks.add(key)
+            if not _has_neg_phrase(chunk_s):
+                out.append(chunk_s)
+                if _AFFIRM_PRED_RE.search(chunk_s):
+                    sent_affirm = True
+                continue
+            if not sent_affirm and _is_uniform_neg_chain(chunk_s):
+                sent_affirm = False
+                continue
+            parts = [p.strip() for p in _CONJ_SPLIT_RE.split(chunk_s) if p.strip()]
+            if not parts:
+                sent_affirm = False
+                continue
+            for seg in _group_conj_parts(parts, sent_affirm):
+                if seg in seen_segs:
+                    continue
+                seen_segs.add(seg)
+                out.extend(_split_inline_boundaries(seg))
+            sent_affirm = False
     return out
 
 

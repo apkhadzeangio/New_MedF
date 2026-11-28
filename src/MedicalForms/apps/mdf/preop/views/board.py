@@ -272,10 +272,11 @@ def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_r
     evla_inr_lim = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
     ft_keys = set(ev.get('ft_meds_keys') or ())
     if ev.get('has_mech_valve') and ev.get('eff_pregnant'):
+        mv_liv_b = ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით!' if s.get('liver_status') == '3x' else ''
         mv_preg_board = (
-            'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი + თირკმლის მძიმე უკმარისობა/დიალიზი — DOAC აკრძალულია, LMWH კუმულირდება; სავალდებულოა მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (IV/SC UFH ან ტრიმესტრით VKA)!'
+            f'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი + თირკმლის მძიმე უკმარისობა/დიალიზი — DOAC აკრძალულია, LMWH კუმულირდება; სავალდებულოა მეან-გინეკოლოგის, კარდიოლოგისა და ნეფროლოგის კონსილიუმი (IV/SC UFH ან ტრიმესტრით VKA)!{mv_liv_b}'
             if sev_renal else
-            'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი — DOAC აკრძალულია; VKA თვითნებურად არ მოხსნათ — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (VKA vs LMWH/UFH ტრიმესტრით)!'
+            f'VTE / ანტიკოაგულაცია: ორსულობა + მექანიკური სარქველი — DOAC აკრძალულია; VKA თვითნებურად არ მოხსნათ — სავალდებულოა მეან-გინეკოლოგისა და კარდიოლოგის კონსილიუმი (VKA vs LMWH/UFH ტრიმესტრით)!{mv_liv_b}'
         )
         task_candidates.append((_VTE_PREFIXES, mv_preg_board))
     elif has_contra_full_oac_b or (ev.get('eff_pregnant') and has_full_oac_b):
@@ -322,7 +323,11 @@ def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_r
         if sev_renal:
             par_notes.append(f'CrCl/eGFR <{ren_red}/დიალიზი: LMWH/ფონდაპარინუქსი აკრძალულია — უპირატესია UFH!')
         if s.get('liver_status') == '3x':
-            par_notes.append('ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — არგატრობანი −75% / DOAC აკრძალულია!')
+            par_notes.append(
+                'ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — DOAC აკრძალულია!'
+                if ev.get('eff_pregnant') else
+                'ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — არგატრობანი −75% / DOAC აკრძალულია!'
+            )
         par_sfx = f' ({" · ".join(par_notes)})' if par_notes else ''
         task_candidates.append((
             _VTE_PREFIXES,
@@ -397,7 +402,7 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
             team_s = 'ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის' if has_mv else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
             org_hit_s = ''.join(x for cond, x in (
                 (sev_renal, f' · CrCl<{ren_red}/დიალიზი: ფონდაპარინუქსი აკრძალულია!'),
-                (liver_3x, ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — ბივალირუდინი უპირატესია, არგატრობანი −75%!'),
+                (liver_3x, ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — უპირატესია ბივალირუდინი (არგატრობანი მოერიდეთ)!'),
             ) if cond)
             hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი (არაჰეპარინული IV სქემა / ტრიმესტრით VKA)!{org_hit_s}{oac_no_dbl}'
         elif has_full_oac_b and ev.get('is_evla_warfarin_only'):

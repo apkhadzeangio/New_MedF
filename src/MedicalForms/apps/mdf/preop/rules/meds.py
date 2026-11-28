@@ -3,7 +3,7 @@ from ...models import PreopPatient
 from ..calculators import _s_raw, _sat_num
 from ..meds import build_med_schedule
 from ..registry import rule_value
-from ..utils import _date, _has_raw_scalar, _num, _safe_display_str, has_prior_stroke_or_tia, is_pregnancy_eligible
+from ..utils import _date, _num, _safe_display_str, has_prior_stroke_or_tia, is_pregnancy_eligible
 
 
 def _eval_allergies_and_cied(ctx):
@@ -114,7 +114,7 @@ def _eval_allergy_cied_and_med_hold(ctx):
         q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran')
         or q.get('med_clopidogrel') or q.get('med_ticagrelor') or q.get('med_prasugrel')
         or q.get('med_aspirin') or ('rivaroxaban_2_5' in ctx.med_chips) or ('cilostazol' in ctx.med_chips)
-        or (ctx.med_chips & {'statin', 'beta_blocker', 'acei_arb', 'ccb', 'steroid', 'amiodarone', 'diuretic'})
+        or (ctx.med_chips & {'statin', 'beta_blocker', 'acei_arb', 'ccb', 'steroid', 'amiodarone', 'diuretic', 'ppi'})
         or q.get('metformin') or q.get('sglt2') or q.get('glp1') or q.get('dm_insulin')
         or q.get('ven_hormones') or q.get('recent_stent') or ctx.has_acs_stent_12m
         or ctx.ft_meds['unstructured_labels'] or ctx.ft_meds.get('has_ft_nsaid')
@@ -285,26 +285,29 @@ def _eval_antithrombotic_conflicts(ctx):
     eff_preg_m = bool(getattr(ctx, 'eff_pregnant', False))
     eff_ren_c = None if getattr(ctx, 'creat_unit_mismatch', False) else getattr(ctx, 'eff_renal_sat', ctx.eff_renal)
     active_gi_bleed = getattr(ctx, 'active_gi_bleed', False)
-    raw_s = getattr(ctx, 'raw_s', None) or {}
-    raw_di = raw_s['dos_inr'] if 'dos_inr' in raw_s else s.get('dos_inr')
-    inv_in_m = s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {}
-    dos_inr_bad_m = bool((_has_raw_scalar(raw_di) and _num(raw_di, lo=0.5, hi=15) is None) or ('dos_inr' in inv_in_m))
+    from ..meds_helpers import _vka_inr_status
+    _, dos_inr_bad_m, base_inr_bad_m, eff_inr_m = _vka_inr_status(ctx.patient, s, getattr(ctx, 'raw_s', None))
+    inr_bad_m = dos_inr_bad_m or base_inr_bad_m
     has_vka_evla = bool(q.get('med_warfarin') or ctx.ft_meds.get('has_ft_unstruct_warfarin'))
-    evla_vka_bad = bool(ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and has_vka_evla and not ctx.has_neuraxial_plan and (dos_inr_bad_m or (ctx.eff_inr_nx is not None and ctx.eff_inr_nx > evla_inr_lim)))
+    evla_vka_bad = bool(
+        ctx.is_venous and ctx.patient.op_subtype == PreopPatient.OpSubtype.EVLA and has_vka_evla
+        and (inr_bad_m or (eff_inr_m is not None and eff_inr_m > evla_inr_lim) or (has_mech_valve and eff_inr_m is not None and eff_inr_m < mech_inr_min))
+    )
+    has_ft_par_m = bool(getattr(ctx, 'has_ft_parenteral', False))
     has_full_oac_any = bool(ctx.on_oral_anticoag or getattr(ctx, 'has_ft_full_oac', False))
     ft_full_oac_contra = bool(getattr(ctx, 'has_ft_full_oac', False) and (
         oac_count >= 2 or eff_preg_m or active_gi_bleed or (ctx.ft_meds.get('has_ft_unstruct_warfarin') and evla_vka_bad)
         or (has_mech_valve and bool(ft_u_keys & {'doac', 'dabigatran'}))
-        or (bool(ft_u_keys & {'doac', 'dabigatran'}) and (ctx.on_dialysis or ctx.liver_3x or (eff_ren_c is not None and eff_ren_c < (dabi_low if 'dabigatran' in ft_u_keys else doac_low))))
+        or (bool(ft_u_keys & {'doac', 'dabigatran'}) and (has_ft_par_m or ctx.on_dialysis or ctx.liver_3x or (eff_ren_c is not None and eff_ren_c < (dabi_low if 'dabigatran' in ft_u_keys else doac_low))))
     ))
     ctx.has_contra_full_oac = bool(
         (has_full_oac_any and oac_count >= 2) or (has_mech_valve and (q.get('med_doac') or q.get('med_dabigatran')))
         or (eff_preg_m and has_full_oac_any) or (q.get('med_warfarin') and (active_gi_bleed or evla_vka_bad)) or ft_full_oac_contra
-        or (q.get('med_dabigatran') and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < dabi_low) or ctx.liver_3x or active_gi_bleed))
-        or (q.get('med_doac') and (ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < doac_low) or ctx.liver_3x or active_gi_bleed))
+        or (q.get('med_dabigatran') and (has_ft_par_m or ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < dabi_low) or ctx.liver_3x or active_gi_bleed))
+        or (q.get('med_doac') and (has_ft_par_m or ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < doac_low) or ctx.liver_3x or active_gi_bleed))
     )
     ctx.has_contra_oac = bool(ctx.has_contra_full_oac or ('rivaroxaban_2_5' in ctx.med_chips and (
-        oac_count >= 2 or has_mech_valve or eff_preg_m or ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < voy_min_egfr)
+        oac_count >= 2 or has_ft_par_m or has_mech_valve or eff_preg_m or ctx.on_dialysis or (eff_ren_c is not None and eff_ren_c < voy_min_egfr)
         or ctx.liver_3x or 'nsaid' in ctx.allergy_chips or active_gi_bleed or has_prior_stroke_tia
     )))
     ctx.has_mech_valve, ctx.has_acs_stent_12m, ctx.has_afib = has_mech_valve, has_acs_stent_12m, has_afib

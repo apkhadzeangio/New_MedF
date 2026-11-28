@@ -215,6 +215,21 @@ def resolve_doctor_user(raw_id):
     return cand if (cand and is_doctor_user(cand)) else None
 
 
+_RAAA_RESCHEDULE_ERR = (
+    'საეჭვო რუპტურირებული AAA გადაუდებელი მდგომარეობაა — '
+    'ოპერაციის თარიღის გადადება/შეცვლა დაბლოკილია; სასწრაფოდ დაუკავშირდით ქირურგს!'
+)
+
+
+def _planned_date_change_blocked_by_raaa(ev_before, old_op_dt, raw_val):
+    if not (ev_before and ev_before.get('is_rupture_suspect')):
+        return False
+    raw_s = (raw_val or '').strip()
+    cand = _date(raw_s)
+    cand_iso = cand.isoformat() if cand else raw_s
+    return cand_iso != (old_op_dt or '')
+
+
 def preop_admission_block_reason(ev, s):
     """Canonical safety gate for Board handoff, complete_and_board, and case_outcome='operated'."""
     from ..registry import rule_value
@@ -234,7 +249,7 @@ def preop_admission_block_reason(ev, s):
         or ev.get('solo_neuraxial_anatomic_mismatch')
     ):
         return 'STOP-სიგნალის, ნეირაქსიული ბლოკირების ან ოპერაციის დილის კრიტიკული ბლოკირების ფონზე ოპერაციის/დაფის მოქმედება დაბლოკილია!'
-    if any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ())):
+    if any((r.get('contraindicated') and not ev.get('is_rupture_suspect')) or r.get('unstructured') for r in (ev.get('med_schedule') or ())):
         return 'წამლების გრაფიკი შეიცავს უკუნაჩვენებ ან დაუზუსტებელ პრეპარატს — ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
     if ev.get('has_elapsed_hold_window'):
         return 'წამლის შეჩერების ფანჯარა ამოწურულია — ოპერაცია/დაფაზე გადაყვანა დაბლოკილია!'
@@ -321,7 +336,7 @@ def _set_planned_surgery_date_field(s, raw_val, today):
         s.pop('_invalid_inputs', None)
 
 
-def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
+def _parse_s2_fields_and_booleans(post, patient, ev_before, s, allow_op_date=True):
     for key, fn, lo, hi in (
         ('spiro_fev1', _num, 10, 160),
         ('abi_r', _num, 0.0, 3.0), ('abi_l', _num, 0.0, 3.0),
@@ -331,7 +346,7 @@ def _parse_s2_fields_and_booleans(post, patient, ev_before, s):
     ):
         if key in post:
             _set_num_field(s, key, post.get(key), lo=lo, hi=hi, norm_fn=(lambda v, f=fn, a=lo, b=hi: f(v, lo=a, hi=b)))
-    if 'planned_surgery_date' in post:
+    if allow_op_date and 'planned_surgery_date' in post:
         _set_planned_surgery_date_field(s, post.get('planned_surgery_date'), timezone.localdate())
     for sel_key, allowed in _S2_SELECT_FIELDS:
         if post.get(sel_key) in allowed:
@@ -459,3 +474,65 @@ def _invalidate_approval_if_needed(patient, uf, clear_anamnesis=False):
             return 'ready_demoted'
         return 'approval_cleared'
     return ''
+
+
+_DOS_CHECK_BOOLS = (
+    'dos_identity_consent', 'dos_site_marked', 'dos_fasting_confirmed',
+    'dos_med_hold_verified', 'dos_ketones_ok', 'dos_k_verified', 'dos_latex_free_or',
+    'dos_bhcg_negative', 'dos_abx_ready', 'dos_blood_implant_ready',
+)
+_VQI_CHECK_BOOLS = (
+    'icu_bed_booked', 'vqi_discharge_antiplatelet', 'vqi_discharge_statin',
+    'vqi_smoking_cessation', 'vqi_surveillance_scheduled',
+)
+
+
+def _apply_dos_vqi_post(post, s, today, dos_check_keys, form_present, dos_partial, prev_outcome='scheduled', allow_op_date=True):
+    from ..constants import CASE_OUTCOME_CHOICES, INACTIVE_CASE_OUTCOMES, VQI_30D_CHOICES
+    posted_out = post.get('case_outcome_status')
+    next_out = posted_out if posted_out in dict(CASE_OUTCOME_CHOICES) else prev_outcome
+    stay_inactive = (prev_outcome in INACTIVE_CASE_OUTCOMES) and (next_out in INACTIVE_CASE_OUTCOMES)
+    if not stay_inactive and allow_op_date and 'planned_surgery_date' in post:
+        _set_planned_surgery_date_field(s, post.get('planned_surgery_date'), today)
+    if 'operated_date' in post:
+        done_d = _date(post.get('operated_date'))
+        s['operated_date'] = done_d.isoformat() if (done_d and done_d <= today) else ''
+    if not stay_inactive:
+        for key, lo, hi in (
+            ('dos_bp_sys', 40, 300), ('dos_bp_dia', 20, 200),
+            ('dos_glucose', 0.5, 1000), ('dos_inr', 0.5, 15.0),
+        ):
+            if key in post:
+                _set_num_field(s, key, post.get(key), lo=lo, hi=hi)
+    present_keys = (
+        set(post.getlist('dos_present_keys'))
+        if (hasattr(post, 'getlist') and 'dos_present_keys' in post)
+        else dos_check_keys
+    )
+    if not stay_inactive:
+        for bf in _DOS_CHECK_BOOLS:
+            if (form_present and bf in present_keys) or (dos_partial and bf in present_keys) or bf in post:
+                s[bf] = post.get(bf) in ('1', 'on', 'true')
+    for bf in _VQI_CHECK_BOOLS:
+        if bf == 'icu_bed_booked':
+            if not stay_inactive and (bf in present_keys or bf in post):
+                s[bf] = post.get(bf) in ('1', 'on', 'true')
+        elif (form_present and not dos_partial) or (dos_partial and bf in present_keys) or bf in post:
+            s[bf] = post.get(bf) in ('1', 'on', 'true')
+    if posted_out in dict(CASE_OUTCOME_CHOICES):
+        s['case_outcome_status'] = posted_out
+    if post.get('vqi_30d_status') in dict(VQI_30D_CHOICES):
+        s['vqi_30d_status'] = post.get('vqi_30d_status')
+    if hasattr(post, 'getlist'):
+        if (form_present and not dos_partial) or 'cancel_reason_chips' in post:
+            s['cancel_reason_chips'] = [
+                k for k in post.getlist('cancel_reason_chips')
+                if k in CHIP_LABELS['cancel_reason_chips']
+            ]
+        if (form_present and not dos_partial) or 'vqi_complication_chips' in post:
+            s['vqi_complication_chips'] = [
+                k for k in post.getlist('vqi_complication_chips')
+                if k in CHIP_LABELS['vqi_complication_chips']
+            ]
+            if s['vqi_complication_chips'] and s.get('vqi_30d_status') in ('pending', 'uneventful', None, ''):
+                s['vqi_30d_status'] = 'complication'

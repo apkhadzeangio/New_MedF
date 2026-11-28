@@ -197,24 +197,31 @@ def _standalone_is_neuraxial(patient, anesth_plan, is_phleb, has_epidural_line, 
     return not blocked
 
 
-def _evla_ft_vka_contra(c):
+def _vka_inr_status(patient, s, raw_s=None):
+    """Canonical VKA INR validity and saturated value check (DoS INR overrides baseline INR)."""
     from .calculators import _sat_num
-    from .registry import rule_value
     from .utils import _has_raw_scalar
+    raw_st = raw_s if isinstance(raw_s, dict) else (patient.studies if isinstance(patient.studies, dict) else {})
+    inv = s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {}
+    raw_dos = _pick_study_raw(s, raw_st, inv, 'dos_inr')
+    dos_pres = _has_raw_scalar(raw_dos) or ('dos_inr' in inv)
+    dos_bad = dos_pres and (_num(raw_dos, 0.5, 15.0) is None)
+    raw_base = _pick_study_raw(s, raw_st, inv, 'inr')
+    base_pres = (not dos_pres) and (_has_raw_scalar(raw_base) or ('inr' in inv))
+    base_bad = base_pres and (_num(raw_base, 0.4, 20.0) is None)
+    eff_inr = _sat_num(raw_dos, 0.5, 15.0) if dos_pres else _sat_num(raw_base, 0.4, 20.0)
+    return dos_pres, dos_bad, base_bad, eff_inr
+
+
+def _evla_ft_vka_contra(c):
+    from .registry import rule_value
     vka_max = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']
     mech_min = rule_value('MED_MECH_VALVE_SAFETY')
-    s_ft = c['s']
-    raw_s_ft = c['patient'].studies if isinstance(c['patient'].studies, dict) else {}
-    inv_ft = s_ft.get('_invalid_inputs') if isinstance(s_ft.get('_invalid_inputs'), dict) else {}
-    raw_dos_ft = _pick_study_raw(s_ft, raw_s_ft, inv_ft, 'dos_inr')
-    dos_pres = _has_raw_scalar(raw_dos_ft) or ('dos_inr' in inv_ft)
-    if dos_pres and (_num(raw_dos_ft, 0.5, 15.0) is None):
+    _, dos_bad, base_bad, eff_inr = _vka_inr_status(c['patient'], c['s'])
+    if dos_bad:
         return f'ოპერაციის დილის INR დაუშვებელია EVLA-ს წინ — გადაამოწმეთ საკონტროლო INR (≤ {vka_max}) ჩარევამდე!', 'INR დაუშვებელია — გადაამოწმეთ!'
-    raw_base_ft = _pick_study_raw(s_ft, raw_s_ft, inv_ft, 'inr')
-    base_pres = (not dos_pres) and (_has_raw_scalar(raw_base_ft) or ('inr' in inv_ft))
-    if base_pres and (_num(raw_base_ft, 0.4, 20.0) is None):
+    if base_bad:
         return f'საბაზისო INR დაუშვებელია EVLA-ს წინ — გადაამოწმეთ საკონტროლო INR (≤ {vka_max}) ჩარევამდე!', 'INR დაუშვებელია — გადაამოწმეთ!'
-    eff_inr = _sat_num(raw_dos_ft, 0.5, 15.0) if dos_pres else _sat_num(raw_base_ft, 0.4, 20.0)
     if eff_inr is not None and eff_inr > vka_max:
         return f'სუპრათერაპიული INR ({eff_inr} > {vka_max}) EVLA-ს წინ — სისხლდენის რისკი, გადაამოწმეთ/შეაჩერეთ დოზა ქირურგთან!', f'INR {eff_inr} > {vka_max} — გადაამოწმეთ!'
     if c.get('has_mech_valve') and eff_inr is not None and eff_inr < mech_min:
@@ -416,6 +423,8 @@ def append_freetext_med_rows(c, immed_stop_plan, gi_bleed_plan):
     if ft.get('has_ft_acei_arb') and 'acei_arb' not in med_chips:
         if c['repro_pregnant']:
             add_row('ACEi / ARB (ტექსტიდან)', 'ორსულობის დროს ACEi / ARB აბსოლუტურად უკუნაჩვენებია (ნაყოფის ნეფროტოქსიკურობა — FDA Boxed Warning) — დაუყოვნებლივ შეცვალეთ ექიმთან!', 'red', immed_stop_plan, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
+        elif c.get('is_rupture_suspect'):
+            add_row('ACEi / ARB (ტექსტიდან)', f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია ACEi/ARB — შოკი/რუპტურა: დოზა დაუყოვნებლივ გამოტოვეთ!', 'red', 'გადაუდებელი ოპერაცია / შოკი — გამოტოვეთ ACEi/ARB!', hold_or_skip=True, force_date_plan=True, contraindicated=False, acute_hold=True)
         elif c.get('acei_acute_hold'):
             add_row('ACEi / ARB (ტექსტიდან)', f'თავისუფალ ტექსტში („{raw_txt}“) მითითებულია ACEi/ARB — დაბალი წნევის ან ჰიპერკალიემიის ფონზე ოპერაციის დილის დოზა გამოტოვეთ და შეათანხმეთ ექიმთან!', 'amber', 'გამოტოვეთ დილას! (დაბალი წნევა / მაღალი K+)', hold_or_skip=True, force_date_plan=True, contraindicated=False, acute_hold=True)
     has_any_oac_ns = bool(c['has_full_oac'] or ('rivaroxaban_2_5' in med_chips) or c['has_ft_full_oac'] or ft.get('has_ft_unstruct_riva_low') or c.get('has_ft_parenteral'))

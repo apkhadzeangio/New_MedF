@@ -50,7 +50,7 @@ def _collect_med_allergy_unknowns(ctx, add):
     sex_s = patient.sex if isinstance(patient.sex, str) else ''
     renal_oac = bool(q.get('med_doac') or q.get('med_dabigatran'))
     renal_other = bool(q.get('metformin') or 'rivaroxaban_2_5' in ctx.med_chips or 'cilostazol' in ctx.med_chips)
-    if not ctx.on_dialysis and (renal_oac or renal_other) and (ctx.crcl is None or ctx.creat_unit_ambiguous):
+    if not ctx.on_dialysis and not ctx.is_rupture_suspect and (renal_oac or renal_other) and (ctx.crcl is None or ctx.creat_unit_ambiguous):
         miss_bits = []
         if s.get('creat') is None or ctx.creat_unit_ambiguous:
             miss_bits.append('კრეატინინი')

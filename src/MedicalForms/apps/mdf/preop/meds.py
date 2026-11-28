@@ -15,13 +15,11 @@ from .meds_helpers import (
     _apply_stop_lock_to_med_schedule,
     _make_med_row_helpers,
     _med_renal_and_flags,
-    _pick_study_raw,
     _standalone_is_neuraxial,
     _valid_med_sbp,
 )
 from .utils import (
     _date,
-    _has_raw_scalar,
     _int,
     _num,
     _resolve_pathway,
@@ -92,6 +90,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     total_at_cnt = oac_count + p2y12_cnt + (1 if (q.get('med_aspirin') or 'aspirin' in ft_unstruct) else 0) + (1 if ('cilostazol' in med_chips or 'cilostazol' in ft_unstruct) else 0)
     has_hit, severe_renal = 'hit_heparin' in eff_allergy_chips, on_dialysis or (eff_renal is not None and eff_renal < ren_red_lim)
     dup_oac_warn = ' [ყურადღება: ერთდროულად ≥2 ანტიკოაგულანტია მონიშნული — გადაამოწმეთ დუბლირება!]' if oac_count >= 2 else ''
+    par_doac_warn = ' [ყურადღება: ორმაგი ანტიკოაგულაცია (DOAC + პარენტერული ანტიკოაგულანტი) — დაუყოვნებლივ შეათანხმეთ ქირურგთან/კარდიოლოგთან!]' if has_ft_parenteral else ''
     mech_doac_warn = ' [მექანიკურ სარქველზე აბსოლუტურად უკუნაჩვენებია (ESC Class III) — გადაამოწმეთ ვარფარინი!]' if has_mech_valve else ''
     liver_doac_warn = ' [ღვიძლის ≥3x დისფუნქცია: კოაგულოპათიის/Child-Pugh B–C დროს DOAC უკუნაჩვენებია (EHRA 2021)!]' if liver_3x else ''
     postop_oac_res = (
@@ -130,7 +129,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
         'repro_pregnant': repro_pregnant, 'active_gi_bleed': active_gi_bleed, 'acei_acute_hold': acei_acute_hold, 'preg_oac_alt': preg_oac_alt,
         'bp_sys_cur': bp_sys_cur, 'bp_inverted_only': bp_inverted_only, 'hr_cur': hr_cur, 'lvef_cur': lvef_cur, 'k_cur': k_cur,
         'chf_any': chf_any, 'has_true_hfref': has_true_hfref, 'oac_count': oac_count, 'dup_oac_warn': dup_oac_warn,
-        'doac_extra_warn': f'{mech_doac_warn}{dup_oac_warn}{liver_doac_warn}', 'force_doac_red': bool(has_mech_valve or oac_count >= 2 or liver_3x),
+        'doac_extra_warn': f'{mech_doac_warn}{dup_oac_warn}{par_doac_warn}{liver_doac_warn}', 'force_doac_red': bool(has_mech_valve or oac_count >= 2 or liver_3x or has_ft_parenteral),
         'postop_oac_res': postop_oac_res,
     }
 
@@ -371,7 +370,7 @@ def _append_doac_dabigatran_rows(c):
     has_mech_valve, is_evla, is_neuraxial, liver_3x = c['has_mech_valve'], c['is_evla'], c['is_neuraxial'], c['liver_3x']
     on_dialysis, renal_cl, cl_label, frail_no_wt_note = c['on_dialysis'], c['renal_cl'], c['cl_label'], c['frail_no_wt_note']
     dup_oac_warn, doac_extra_warn, force_doac_red = c['dup_oac_warn'], c['doac_extra_warn'], c['force_doac_red']
-    contra_doac = bool(c['oac_count'] >= 2 or liver_3x)
+    contra_doac = bool(c['oac_count'] >= 2 or liver_3x or c['has_ft_parenteral'])
     res_oac = '' if contra_doac else c['postop_oac_res']
     doac_low, doac_mid = doac_cfg['crcl_low'], doac_cfg['crcl_mid']
     dabi_low, dabi_mid, dabi_hi = dabi_cfg['crcl_low'], dabi_cfg['crcl_mid'], dabi_cfg['crcl_hi']
@@ -455,7 +454,7 @@ def _append_rivaroxaban_row(c):
     if 'rivaroxaban_2_5' not in c['med_chips']:
         return
     potent_p2y_riva = bool(q.get('med_ticagrelor') or q.get('med_prasugrel') or ((c['ft_meds'].get('unstructured_keys') or set()) & {'ticagrelor', 'prasugrel'}))
-    contra_riva = bool(c['oac_count'] >= 2 or c['liver_3x'] or potent_p2y_riva)
+    contra_riva = bool(c['oac_count'] >= 2 or c['liver_3x'] or potent_p2y_riva or c['has_ft_parenteral'])
     riva_red = c['force_doac_red'] or potent_p2y_riva
     doac_extra_warn, renal_cl = c['doac_extra_warn'], c['renal_cl']
     if c['is_cea_oac_p2y_stop']:
@@ -496,7 +495,7 @@ def _append_rivaroxaban_row(c):
 
 
 def _append_warfarin_row(c):
-    from .calculators import _sat_num
+    from .meds_helpers import _vka_inr_status
     from .registry import rule_value
     vka_cfg, cea_recent_d = rule_value('MED_WARFARIN_HOLD_DAYS'), rule_value('SCORE_ASA_PHYSICAL_STATUS')['cea_recent_d']
     mech_inr_min = rule_value('MED_MECH_VALVE_SAFETY')
@@ -516,14 +515,8 @@ def _append_warfarin_row(c):
     has_ft_par_vka = bool((c['ft_meds'].get('matched_keys') or set()) & {'parenteral_oac', 'parenteral_dti'})
     asra_cfg = rule_value('ASRA_NEURAXIAL_COAG_GATE')
     asra_inr_max, asra_inr_norm = asra_cfg['inr_max'], asra_cfg['inr_vka_norm']
-    raw_s_v = c['patient'].studies if isinstance(c['patient'].studies, dict) else {}
-    inv_v = s.get('_invalid_inputs') if isinstance(s.get('_invalid_inputs'), dict) else {}
-    raw_dos_v = _pick_study_raw(s, raw_s_v, inv_v, 'dos_inr')
-    dos_inr_pres_v = _has_raw_scalar(raw_dos_v) or ('dos_inr' in inv_v)
-    dos_inr_bad_v = dos_inr_pres_v and (_num(raw_dos_v, 0.5, 15.0) is None)
-    raw_base_v = _pick_study_raw(s, raw_s_v, inv_v, 'inr')
-    base_inr_bad_v = (not dos_inr_pres_v) and (_has_raw_scalar(raw_base_v) or ('inr' in inv_v)) and (_num(raw_base_v, 0.4, 20.0) is None)
-    eff_inr_vka = _sat_num(raw_dos_v, 0.5, 15.0) if dos_inr_pres_v else _sat_num(raw_base_v, 0.4, 20.0)
+    _, dos_inr_bad_v, base_inr_bad_v, eff_inr_vka = _vka_inr_status(c['patient'], s)
+    vka_inr_bad = dos_inr_bad_v or base_inr_bad_v
     evla_subther_mv = bool(has_mech_valve and eff_inr_vka is not None and eff_inr_vka < mech_inr_min)
     if c['is_cea_oac_p2y_stop']:
         add_row('ვარფარინი', f'{_cea_bleed_rule(c, "ვარფარინი / ანტიკოაგულაცია")}{liver_vka_warn}{dup_oac_warn}', 'red', 'შეათანხმეთ ნეიროქირურგთან / ნევროლოგთან!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
@@ -539,7 +532,7 @@ def _append_warfarin_row(c):
     elif c['active_gi_bleed']:
         add_row('ვარფარინი', f'აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — ვარფარინი სასწრაფოდ შეათანხმეთ შეჩერება/ჰემოსტაზზე ექიმთან (მექ. სარქველზე — კარდიოლოგის კონსილიუმი)!{liver_vka_warn}{dup_oac_warn}', 'red', _GI_BLEED_PLAN, hold_or_skip=False, force_date_plan=True, contraindicated=True, acute_hold=True)
     elif is_evla and not is_neuraxial and not dup_vka and not c['liver_3x'] and not has_ft_par_vka:
-        if dos_inr_bad_v or base_inr_bad_v:
+        if vka_inr_bad:
             add_row('ვარფარინი', f'INR დაუშვებელია EVLA-ს წინ — გადაამოწმეთ საკონტროლო INR (≤ {vka_cfg["inr_evla_max"]}) ჩარევამდე!{dup_oac_warn}', 'red', 'INR დაუშვებელია — გადაამოწმეთ!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
         elif eff_inr_vka is not None and eff_inr_vka > vka_cfg['inr_evla_max']:
             add_row('ვარფარინი', f'სუპრათერაპიული INR ({eff_inr_vka} > {vka_cfg["inr_evla_max"]}) EVLA-ს წინ — სისხლდენის რისკი, გადაამოწმეთ/შეაჩერეთ დოზა ქირურგთან!{liver_vka_warn}{dup_oac_warn}', 'red', f'INR {eff_inr_vka} > {vka_cfg["inr_evla_max"]} — გადაამოწმეთ!', hold_or_skip=False, force_date_plan=True, contraindicated=True)
@@ -565,9 +558,11 @@ def _append_warfarin_row(c):
             bridge_txt = f'მექანიკური სარქველი / მაღალი თრომბოემბოლიური რისკი — LMWH ხიდი (CHEST 2022 / ESC 2022): იწყება INR <{mv_inr}-ზე (~{d3_lbl}), წინა დილას ({d1_lbl}) კეთდება დღიური დოზის 50% (ნახევარი), წინა საღამოს დოზა გამოტოვეთ (ბოლო დოზა ≥24 სთ ოპერაციამდე); პოსტოპ. LMWH ხიდის აღდგენა {post_br} ჰემოსტაზით, თერაპიულ INR ≥{mv_inr}-მდე!'
         else:
             bridge_txt = 'რუტინული LMWH ხიდი AFib-ზე არ ტარდება (ESC 2022 Class III); თუ დაინიშნა პროფილაქტიკური LMWH, ჩერდება -12 სთ, თერაპიული -24 სთ'
-        vka_res_sfx = '' if dup_vka else ' · აღდგენა: 12–24 სთ-ში (საღამოს/D+1)'
+        vka_contra = bool(dup_vka or (is_evla and (vka_inr_bad or has_ft_par_vka)))
+        vka_inr_warn = ' [INR დაუშვებელია — გადაამოწმეთ!]' if (is_evla and vka_inr_bad) else ''
+        vka_res_sfx = '' if vka_contra else ' · აღდგენა: 12–24 სთ-ში (საღამოს/D+1)'
         bridge_dp = ''
-        if not dup_vka and high_thromb_vka:
+        if not vka_contra and high_thromb_vka:
             if has_mech_valve and c['has_hit']:
                 bridge_dp = ' · სავალდებულოა სტაციონარული IV ხიდი (ბივალირუდინი/არგატრობანი — HIT: LMWH/ჰეპარინი არა!)'
             elif c['has_hit']:
@@ -576,8 +571,8 @@ def _append_warfarin_row(c):
                 bridge_dp = f' · სავალდებულოა სტაციონარული IV UFH ხიდი (CrCl<{c["ren_red_lim"]}/დიალიზი: თვითნებურად არ შეწყვიტოთ!)'
             else:
                 bridge_dp = f' · სავალდებულო LMWH ხიდით (~{d_str(-3)}-დან, 50% დოზა {d_str(-1)} დილას)'
-        vka_dp = _IMMED_STOP_PLAN if dup_vka else f'{hold_str(vka_cfg["hold_days"])} · INR კონტროლი {d_str(-1)}{bridge_dp}'
-        add_row('ვარფარინი', f'შეჩერება {vka_cfg["hold_days"]} დღით ადრე + წინა დღეს საკონტროლო {inr_target}. {bridge_txt}{vka_res_sfx}{liver_vka_warn}{dup_oac_warn}', 'red', vka_dp, hold_or_skip=True, force_date_plan=dup_vka, contraindicated=dup_vka, mandatory_hold_days=vka_cfg['hold_days'])
+        vka_dp = ('INR დაუშვებელია — გადაამოწმეთ!' if (is_evla and vka_inr_bad) else _IMMED_STOP_PLAN) if vka_contra else f'{hold_str(vka_cfg["hold_days"])} · INR კონტროლი {d_str(-1)}{bridge_dp}'
+        add_row('ვარფარინი', f'შეჩერება {vka_cfg["hold_days"]} დღით ადრე + წინა დღეს საკონტროლო {inr_target}. {bridge_txt}{vka_res_sfx}{liver_vka_warn}{vka_inr_warn}{dup_oac_warn}', 'red', vka_dp, hold_or_skip=True, force_date_plan=vka_contra, contraindicated=vka_contra, mandatory_hold_days=vka_cfg['hold_days'])
 
 
 def _append_metabolic_rows(c):

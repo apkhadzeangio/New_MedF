@@ -67,7 +67,7 @@ class PreopStressFixesR23Tests(TestCase):
         self.c_doc.force_login(self.doc)
 
     def test_r23_s1_nlp_digitfree_counts_except_garda_and_xa_stems(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.23')
+        self.assertEqual(REGISTRY_VERSION, '1.2.24')
         # Fuzz S1-1: digit-free prefix-stopped drug switches never dropped by _is_uniform_neg_chain
         for txt, exp in (
             ('stopped warfarin apixaban', {'doac'}),

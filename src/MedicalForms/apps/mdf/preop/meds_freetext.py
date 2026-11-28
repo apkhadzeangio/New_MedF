@@ -98,7 +98,7 @@ def _is_riva_escalation_words(seg):
 
 
 def _riva_has_therapeutic_dose(low):
-    """Detect therapeutic rivaroxaban (10/15/20 mg) while ignoring unrelated co-med doses (comma- or space-separated)."""
+    """Detect therapeutic rivaroxaban (10/15/20 mg) in strictly O(N) time while ignoring unrelated co-med doses."""
     clauses = [c.strip() for c in _RIVA_CLAUSE_SPLIT_RE.split(low) if c.strip()]
     seen_riva = False
     for clause in clauses:
@@ -106,16 +106,25 @@ def _riva_has_therapeutic_dose(low):
         ther_ms = list(_RIVA_THER_DOSE_RE.finditer(clause))
         if riva_ms:
             seen_riva = True
-            for tm in ther_ms:
-                prev_r = [rm for rm in riva_ms if rm.end() <= tm.start()]
-                if prev_r:
-                    if _is_riva_escalation_words(clause[prev_r[-1].end():tm.start()]):
-                        return True
-                elif (
-                    _is_riva_escalation_words(clause[:tm.start()])
-                    and _is_riva_escalation_words(clause[tm.end():riva_ms[0].start()])
-                ):
+            if not ther_ms:
+                continue
+            r0_start, ti, tn = riva_ms[0].start(), 0, len(ther_ms)
+            if ther_ms[0].end() <= r0_start:
+                if _is_riva_escalation_words(clause[:r0_start]):
                     return True
+                while ti < tn and ther_ms[ti].end() <= r0_start:
+                    ti += 1
+            for idx, rm in enumerate(riva_ms):
+                span_end = riva_ms[idx + 1].start() if idx + 1 < len(riva_ms) else len(clause)
+                while ti < tn and ther_ms[ti].start() < rm.end():
+                    ti += 1
+                pos = rm.end()
+                while ti < tn and ther_ms[ti].start() < span_end:
+                    if _is_riva_escalation_words(clause[pos:ther_ms[ti].start()]):
+                        return True
+                    break
+                while ti < tn and ther_ms[ti].start() < span_end:
+                    ti += 1
             continue
         if seen_riva and ther_ms and _is_riva_escalation_words(clause):
             return True

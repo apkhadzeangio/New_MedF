@@ -23,7 +23,6 @@ from ..constants import (
     CEAP_CHOICES,
     CFS_CHOICES,
     CHIP_CATALOGS,
-    CHIP_LABELS,
     CIED_PLAN_CHOICES,
     DURATION_CHIPS,
     MALLAMPATI_CHOICES,
@@ -56,16 +55,21 @@ from ..utils import (
 )
 from .board import admit_preop_to_board, resolve_board_patient
 from .parsers import (  # noqa: F401
+    _DOS_CHECK_BOOLS,
+    _RAAA_RESCHEDULE_ERR,
     _S1_BOOL_FIELDS,
     _S1_NUM_FIELDS,
     _S1_SELECT_FIELDS,
     _S2_BOOL_FIELDS,
     _S2_SELECT_FIELDS,
+    _VQI_CHECK_BOOLS,
+    _apply_dos_vqi_post,
     _invalidate_approval_if_needed,
     _parse_s1_flags_and_selects,
     _parse_s1_numbers_and_dates,
     _parse_s2_fields_and_booleans,
     _parse_s2_notes_and_cardio,
+    _planned_date_change_blocked_by_raaa,
     _set_num_field,
     _set_planned_surgery_date_field,
     can_enter_ready_queue,
@@ -73,16 +77,6 @@ from .parsers import (  # noqa: F401
     med_hold_agreement_block_reason,
     preop_admission_block_reason,
     resolve_doctor_user,
-)
-
-_DOS_CHECK_BOOLS = (
-    'dos_identity_consent', 'dos_site_marked', 'dos_fasting_confirmed',
-    'dos_med_hold_verified', 'dos_ketones_ok', 'dos_k_verified', 'dos_latex_free_or',
-    'dos_bhcg_negative', 'dos_abx_ready', 'dos_blood_implant_ready',
-)
-_VQI_CHECK_BOOLS = (
-    'icu_bed_booked', 'vqi_discharge_antiplatelet', 'vqi_discharge_statin',
-    'vqi_smoking_cessation', 'vqi_surveillance_scheduled',
 )
 
 
@@ -141,7 +135,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
             if section == 'header':
                 ev_before = evaluate(patient)
-                had_hdr_err = self._save_header(request, patient)
+                had_hdr_err = self._save_header(request, patient, ev_before=ev_before)
                 _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
                 if not had_hdr_err:
                     messages.success(request, 'პაციენტის მონაცემები განახლდა.')
@@ -186,7 +180,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
             if section == 'stage2':
                 ev_before = evaluate(patient)
-                had_s2_err, inv_s2 = self._save_stage2(request, patient)
+                had_s2_err, inv_s2 = self._save_stage2(request, patient, ev_before=ev_before)
                 if request.POST.get('med_hold_agreed') not in ('1', 'on', 'true'):
                     _sync_med_hold_after_mutation(patient, ev_before, evaluate(patient))
                 if inv_s2 == 'ready_demoted':
@@ -207,16 +201,16 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]))
 
     @staticmethod
-    def _parse_header_demographics_and_dates(request, patient, s, today):
+    def _parse_header_demographics_and_dates(request, patient, s, today, ev_before=None):
         raw_inv = s.get('_invalid_inputs')
         inv = dict(raw_inv) if isinstance(raw_inv, dict) else {}
         age_in = _int(request.POST.get('age'), lo=12, hi=120)
-        had_bad_age = False
+        had_bad = False
         if 'age' in request.POST:
             raw_age = (request.POST.get('age') or '').strip()
             if raw_age and age_in is None:
                 inv['age'] = clean_text(raw_age, 24)
-                had_bad_age = True
+                had_bad = True
             else:
                 inv.pop('age', None)
         if 'person_id' in request.POST:
@@ -235,8 +229,8 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 if dob_age is not None:
                     age_in = dob_age
                     inv.pop('age', None)
-                    had_bad_age = False
-        if had_bad_age:
+                    had_bad = False
+        if had_bad:
             messages.warning(request, 'ასაკი უნდა იყოს 12–120 წლამდე — არასწორი მნიშვნელობა უარყოფილია.')
         if inv:
             s['_invalid_inputs'] = inv
@@ -245,10 +239,14 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         if age_in is not None or 'age' in request.POST:
             patient.age = age_in
         if 'planned_surgery_date' in request.POST:
-            _set_planned_surgery_date_field(s, request.POST.get('planned_surgery_date'), today)
-        return had_bad_age
+            if _planned_date_change_blocked_by_raaa(ev_before, s.get('planned_surgery_date'), request.POST.get('planned_surgery_date')):
+                messages.error(request, _RAAA_RESCHEDULE_ERR)
+                had_bad = True
+            else:
+                _set_planned_surgery_date_field(s, request.POST.get('planned_surgery_date'), today)
+        return had_bad
 
-    def _save_header(self, request, patient):
+    def _save_header(self, request, patient, ev_before=None):
         from .. import evaluate
 
         s, today = merged_studies(patient), timezone.localdate()
@@ -259,7 +257,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         name = clean_text(request.POST.get('patient_name'), 150).replace('\n', ' ')
         if name:
             patient.patient_name = name
-        if self._parse_header_demographics_and_dates(request, patient, s, today):
+        if self._parse_header_demographics_and_dates(request, patient, s, today, ev_before=ev_before):
             had_err = True
 
         if 'sex' in request.POST and (request.POST.get('sex') or '') in ('M', 'F', ''):
@@ -294,17 +292,25 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
 
         if 'slot_kind' in request.POST or 'visit_date' in request.POST:
             slot_kind = request.POST.get('slot_kind') or ''
+            is_raaa = bool(ev_before and ev_before.get('is_rupture_suspect'))
             if slot_kind.startswith('someday:'):
                 key = slot_kind.split(':', 1)[1]
-                if key == PreopPatient.SomedayList.READY and not can_enter_ready_queue(patient, evaluate(patient)):
-                    key = old_someday if (old_someday and old_someday != PreopPatient.SomedayList.READY) else PreopPatient.SomedayList.CONF
-                    messages.error(request, 'მზა სიაში გადატანა დასაშვებია მხოლოდ სრული მზაობისა და ქირურგის დადასტურების შემდეგ!')
+                if is_raaa and key != old_someday:
+                    messages.error(request, _RAAA_RESCHEDULE_ERR)
                     had_err = True
-                patient.someday_list = key if key in PreopPatient.SomedayList.values else PreopPatient.SomedayList.CONF
-                patient.visit_date = None
+                else:
+                    if key == PreopPatient.SomedayList.READY and not can_enter_ready_queue(patient, evaluate(patient)):
+                        key = old_someday if (old_someday and old_someday != PreopPatient.SomedayList.READY) else PreopPatient.SomedayList.CONF
+                        messages.error(request, 'მზა სიაში გადატანა დასაშვებია მხოლოდ სრული მზაობისა და ქირურგის დადასტურების შემდეგ!')
+                        had_err = True
+                    patient.someday_list = key if key in PreopPatient.SomedayList.values else PreopPatient.SomedayList.CONF
+                    patient.visit_date = None
             else:
                 vd = _date(request.POST.get('visit_date'))
-                if vd:
+                if is_raaa and vd and vd != patient.visit_date:
+                    messages.error(request, _RAAA_RESCHEDULE_ERR)
+                    had_err = True
+                elif vd:
                     patient.visit_date = vd
                     patient.someday_list = ''
                     if not patient.started_on:
@@ -412,10 +418,10 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         patient.save(update_fields=list(dict.fromkeys(uf)))
         return inv_res
 
-    def _save_stage2(self, request, patient):
+    def _save_stage2(self, request, patient, ev_before=None):
         from .. import evaluate
 
-        ev_before = evaluate(patient)
+        ev_before = ev_before if ev_before is not None else evaluate(patient)
         s = merged_studies(patient)
         old_op_dt = s.get('planned_surgery_date')
         old_nurse_chips = list(s.get('nurse_note_chips') or [])
@@ -423,7 +429,11 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         old_cardio_chips = list(s.get('cardio_note_chips') or [])
         old_cardio_chip_txt = chip_summary(old_cardio_chips, 'cardio_note_chips')
 
-        cab_present = _parse_s2_fields_and_booleans(request.POST, patient, ev_before, s)
+        raaa_date_blk = (
+            'planned_surgery_date' in request.POST
+            and _planned_date_change_blocked_by_raaa(ev_before, old_op_dt, request.POST.get('planned_surgery_date'))
+        )
+        cab_present = _parse_s2_fields_and_booleans(request.POST, patient, ev_before, s, allow_op_date=not raaa_date_blk)
         uf = _parse_s2_notes_and_cardio(
             request.POST, patient, s, cab_present,
             old_nurse_chips, old_nurse_chip_txt, old_cardio_chips, old_cardio_chip_txt,
@@ -439,6 +449,9 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         )
         blk_mh = med_hold_agreement_block_reason(ev_after, s) if s.get('med_hold_agreed') else ''
         had_err = False
+        if raaa_date_blk:
+            messages.error(request, _RAAA_RESCHEDULE_ERR)
+            had_err = True
         if (had_valid_plan_before and plan_changed) or blk_mh:
             s['med_hold_agreed'] = False
             s['med_hold_agreed_date'] = ''
@@ -455,55 +468,34 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         return had_err, inv_res
 
     @staticmethod
-    def _apply_dos_vqi_post(post, s, today, dos_check_keys, form_present, dos_partial, prev_outcome='scheduled'):
-        from ..constants import INACTIVE_CASE_OUTCOMES
-        posted_out = post.get('case_outcome_status')
-        next_out = posted_out if posted_out in dict(CASE_OUTCOME_CHOICES) else prev_outcome
-        stay_inactive = (prev_outcome in INACTIVE_CASE_OUTCOMES) and (next_out in INACTIVE_CASE_OUTCOMES)
-        if not stay_inactive and 'planned_surgery_date' in post:
-            _set_planned_surgery_date_field(s, post.get('planned_surgery_date'), today)
-        if 'operated_date' in post:
-            done_d = _date(post.get('operated_date'))
-            s['operated_date'] = done_d.isoformat() if (done_d and done_d <= today) else ''
-        if not stay_inactive:
-            for key, lo, hi in (
-                ('dos_bp_sys', 40, 300), ('dos_bp_dia', 20, 200),
-                ('dos_glucose', 0.5, 1000), ('dos_inr', 0.5, 15.0),
-            ):
-                if key in post:
-                    _set_num_field(s, key, post.get(key), lo=lo, hi=hi)
-        present_keys = (
-            set(post.getlist('dos_present_keys'))
-            if (hasattr(post, 'getlist') and 'dos_present_keys' in post)
-            else dos_check_keys
+    def _handle_complete_and_board(request, patient, s, today, prev_outcome, posted_outcome):
+        from .. import evaluate
+
+        s_chk = dict(s)
+        if prev_outcome != 'operated' and (prev_outcome != 'scheduled' or posted_outcome == 'operated'):
+            s_chk['case_outcome_status'] = prev_outcome
+        patient.studies = s_chk
+        blk = preop_admission_block_reason(evaluate(patient), s_chk)
+        if blk:
+            messages.error(request, blk)
+            return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
+        s['case_outcome_status'] = 'operated'
+        if not s.get('operated_date'):
+            s['operated_date'] = today.isoformat()
+        s['outcome_recorded_on'] = today.isoformat()
+        patient.studies = s
+        patient.updated_by = request.user
+        patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
+        bp, _, added_tasks = admit_preop_to_board(
+            patient, request.user,
+            unit=request.POST.get('unit') or '',
+            bed=request.POST.get('bed') or '',
         )
-        if not stay_inactive:
-            for bf in _DOS_CHECK_BOOLS:
-                if (form_present and bf in present_keys) or (dos_partial and bf in present_keys) or bf in post:
-                    s[bf] = post.get(bf) in ('1', 'on', 'true')
-        for bf in _VQI_CHECK_BOOLS:
-            if bf == 'icu_bed_booked':
-                if not stay_inactive and (bf in present_keys or bf in post):
-                    s[bf] = post.get(bf) in ('1', 'on', 'true')
-            elif (form_present and not dos_partial) or (dos_partial and bf in present_keys) or bf in post:
-                s[bf] = post.get(bf) in ('1', 'on', 'true')
-        if posted_out in dict(CASE_OUTCOME_CHOICES):
-            s['case_outcome_status'] = posted_out
-        if post.get('vqi_30d_status') in dict(VQI_30D_CHOICES):
-            s['vqi_30d_status'] = post.get('vqi_30d_status')
-        if hasattr(post, 'getlist'):
-            if (form_present and not dos_partial) or 'cancel_reason_chips' in post:
-                s['cancel_reason_chips'] = [
-                    k for k in post.getlist('cancel_reason_chips')
-                    if k in CHIP_LABELS['cancel_reason_chips']
-                ]
-            if (form_present and not dos_partial) or 'vqi_complication_chips' in post:
-                s['vqi_complication_chips'] = [
-                    k for k in post.getlist('vqi_complication_chips')
-                    if k in CHIP_LABELS['vqi_complication_chips']
-                ]
-                if s['vqi_complication_chips'] and s.get('vqi_30d_status') in ('pending', 'uneventful', None, ''):
-                    s['vqi_30d_status'] = 'complication'
+        messages.success(
+            request,
+            f'{patient.patient_name} — ოპერაცია დაფიქსირდა და პაციენტი გადაყვანილია დაფაზე ({bp.get_unit_display()}, +{added_tasks} დავალება).',
+        )
+        return HttpResponseRedirect(reverse('board-patient', args=[bp.pk]))
 
     def _save_dos_vqi(self, request, patient):
         from .. import evaluate
@@ -519,36 +511,20 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
         dos_partial = request.POST.get('dos_partial') == '1'
 
         prev_outcome = ev_before.get('case_outcome') or 'scheduled'
-        self._apply_dos_vqi_post(request.POST, s, today, dos_check_keys, form_present, dos_partial, prev_outcome=prev_outcome)
+        raaa_date_blk = (
+            'planned_surgery_date' in request.POST
+            and _planned_date_change_blocked_by_raaa(ev_before, old_op_dt, request.POST.get('planned_surgery_date'))
+        )
+        _apply_dos_vqi_post(
+            request.POST, s, today, dos_check_keys, form_present, dos_partial,
+            prev_outcome=prev_outcome, allow_op_date=not raaa_date_blk,
+        )
+        if raaa_date_blk:
+            messages.error(request, _RAAA_RESCHEDULE_ERR)
         posted_outcome = s.get('case_outcome_status') or 'scheduled'
 
         if action == 'complete_and_board':
-            s_chk = dict(s)
-            if prev_outcome != 'operated' and (prev_outcome != 'scheduled' or posted_outcome == 'operated'):
-                s_chk['case_outcome_status'] = prev_outcome
-            patient.studies = s_chk
-            ev_cur = evaluate(patient)
-            blk = preop_admission_block_reason(ev_cur, s_chk)
-            if blk:
-                messages.error(request, blk)
-                return HttpResponseRedirect(reverse('preop-patient', args=[patient.pk]) + '?tab=dos')
-            s['case_outcome_status'] = 'operated'
-            if not s.get('operated_date'):
-                s['operated_date'] = today.isoformat()
-            s['outcome_recorded_on'] = today.isoformat()
-            patient.studies = s
-            patient.updated_by = request.user
-            patient.save(update_fields=['studies', 'updated_at', 'updated_by'])
-            bp, _, added_tasks = admit_preop_to_board(
-                patient, request.user,
-                unit=request.POST.get('unit') or '',
-                bed=request.POST.get('bed') or '',
-            )
-            messages.success(
-                request,
-                f'{patient.patient_name} — ოპერაცია დაფიქსირდა და პაციენტი გადაყვანილია დაფაზე ({bp.get_unit_display()}, +{added_tasks} დავალება).',
-            )
-            return HttpResponseRedirect(reverse('board-patient', args=[bp.pk]))
+            return self._handle_complete_and_board(request, patient, s, today, prev_outcome, posted_outcome)
 
         operated_blocked = False
         if posted_outcome == 'operated':
@@ -596,7 +572,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 was_ready_demoted = True
         _sync_med_hold_after_mutation(patient, ev_before, ev_after, save=False)
         patient.save(update_fields=list(dict.fromkeys(uf)))
-        if not operated_blocked:
+        if not operated_blocked and not raaa_date_blk:
             if was_ready_demoted:
                 messages.warning(request, 'ოპერაციის დილის მონაცემები შეინახა, თუმცა ცვლილების გამო დადასტურება და „მზა“ სტატუსი მოიხსნა — საჭიროა ქირურგის ხელახალი დადასტურება.')
             else:
@@ -651,7 +627,7 @@ class PreopPatientView(LoginRequiredMixin, generic.View):
                 or ev.get('solo_neuraxial_anatomic_mismatch')
                 or ev.get('has_blocking_unknown_state')
                 or ev.get('has_elapsed_hold_window')
-                or any(r.get('contraindicated') or r.get('unstructured') for r in (ev.get('med_schedule') or ()))
+                or any((r.get('contraindicated') and not ev.get('is_rupture_suspect')) or r.get('unstructured') for r in (ev.get('med_schedule') or ()))
                 or (ev.get('needs_stale_labs') and not s.get('stale_labs_refreshed'))
             ):
                 messages.error(request, 'დაარქივებული ბარათის, აბსოლუტური უკუჩვენების, STOP-სიგნალის, შეჩერებული/ოპერირებული სტატუსის, ხანდაზმული ანალიზების, ნეირაქსიული/მედიკამენტური ბლოკირების ან შეუვსებელი კრიტიკული მონაცემის გამო დადასტურება დაბლოკილია!')
