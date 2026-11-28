@@ -60,28 +60,6 @@ def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is
             not is_venous and (lido_plan_or in ('local', 'plexus') or (is_pta and lido_plan_or == 'auto'))
         )
     )
-    exp_hard_contra = bool(
-        (pw == PreopPatient.Pathway.CEA and patient.side in ('R', 'L') and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)
-        or (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
-        or (pw == PreopPatient.Pathway.CEA and patient.side == 'B')
-        or (is_pta and not is_clti_or and not is_ali_or and s.get('pta_lesion_site') == 'infrapopliteal')
-        or (pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti_or and not is_ali_or and (
-            s.get('pad_runoff_status') == 'desert_foot'
-            or (s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
-        ))
-        or (pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and not is_clti_or and not is_ali_or and eff_preg_or)
-        or (uses_contrast_or and s.get('tsh_status') == 'hyperthyroid')
-        or (is_venous and s.get('ven_duplex_status') in ('acute_dvt', 'deep_obstruction'))
-        or (is_venous and eff_preg_or)
-        or evla_lido_stop_or
-        or (is_venous and (
-            (ev.get('min_abi') is not None and ev['min_abi'] < 0.60)
-            or (ev.get('min_tp') is not None and ev['min_tp'] < 30)
-            or (ev.get('min_tbi') is not None and ev['min_tbi'] < 0.30)
-        ))
-    )
-    oracles['hard_contraindication'].record(exp_hard_contra, ev['has_hard_contraindication'])
-
     bp_s, bp_sl = ev['s'].get('bp_sys'), ev['s'].get('bp_sys_l')
     bp_d, bp_dl = ev['s'].get('bp_dia'), ev['s'].get('bp_dia_l')
     s_r = int(round(bp_s)) if isinstance(bp_s, (int, float)) and not isinstance(bp_s, bool) and 30 <= bp_s <= 320 else None
@@ -92,6 +70,35 @@ def _oracle_hard_contra_and_vitals(oracles, patient, ev, q, s, pw, is_venous, is
     inv_l = (s_l is not None and d_l is not None and s_l <= d_l)
     eff_s = max([v for v, inv in ((s_r, inv_r), (s_l, inv_l)) if v is not None and not inv], default=None)
     eff_d = max([v for v, inv in ((d_r, inv_r), (d_l, inv_l)) if v is not None and not inv], default=None)
+    hr_v = ev['s'].get('hr')
+    hr_num = float(hr_v) if isinstance(hr_v, (int, float)) and not isinstance(hr_v, bool) and 15 <= hr_v <= 260 else None
+    sbp_rup_or = eff_s if eff_s is not None else min([min(sv, dv) for sv, dv, inv in ((s_r, d_r, inv_r), (s_l, d_l, inv_l)) if inv], default=None)
+    si_or = round(hr_num / sbp_rup_or, 2) if (hr_num is not None and sbp_rup_or is not None and sbp_rup_or > 0) else None
+    is_rupture_or = bool(
+        pw == PreopPatient.Pathway.AAA_INFRA and q.get('aaa_pain')
+        and ((sbp_rup_or is not None and sbp_rup_or < 90) or (si_or is not None and si_or >= 1.0))
+    )
+    exp_hard_contra = bool(
+        (pw == PreopPatient.Pathway.CEA and patient.side in ('R', 'L') and ev['ipsi_car'] is not None and ev['ipsi_car'] >= 100)
+        or (pw == PreopPatient.Pathway.CEA and s.get('brain_imaging') == 'large_or_hemorrhage')
+        or (pw == PreopPatient.Pathway.CEA and patient.side == 'B')
+        or (is_pta and not is_clti_or and not is_ali_or and s.get('pta_lesion_site') == 'infrapopliteal')
+        or (pw == PreopPatient.Pathway.PAD_BYPASS and not is_clti_or and not is_ali_or and (
+            s.get('pad_runoff_status') == 'desert_foot'
+            or (s.get('alt_vein_mapped') == 'no_autovein_prosthetic')
+        ))
+        or (pw in (PreopPatient.Pathway.ABF, PreopPatient.Pathway.PAD_BYPASS, PreopPatient.Pathway.PAD_PTA) and not is_clti_or and not is_ali_or and eff_preg_or)
+        or (uses_contrast_or and s.get('tsh_status') == 'hyperthyroid' and not is_rupture_or and not (is_pta and is_ali_or))
+        or (is_venous and s.get('ven_duplex_status') in ('acute_dvt', 'deep_obstruction'))
+        or (is_venous and eff_preg_or)
+        or evla_lido_stop_or
+        or (is_venous and (
+            (ev.get('min_abi') is not None and ev['min_abi'] < 0.60)
+            or (ev.get('min_tp') is not None and ev['min_tp'] < 30)
+            or (ev.get('min_tbi') is not None and ev['min_tbi'] < 0.30)
+        ))
+    )
+    oracles['hard_contraindication'].record(exp_hard_contra, ev['has_hard_contraindication'])
     k_v = ev['s'].get('k')
     k_num = float(k_v) if isinstance(k_v, (int, float)) and not isinstance(k_v, bool) and 1.0 <= k_v <= 12.0 else None
     exp_vital_lab_crit = bool(

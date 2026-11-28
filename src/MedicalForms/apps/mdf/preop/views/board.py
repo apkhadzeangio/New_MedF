@@ -378,6 +378,75 @@ def _vte_handoff_no_hit(task_candidates, ev, q, s, sev_renal, cap_low_max, ren_r
         ))
 
 
+def _hit_vte_handoff_agents(ev, q, s, sev_renal, ren_red, has_full_oac_b, has_contra_full_oac_b):
+    has_mv = 'mech_valve' in (q.get('cad_chips') or [])
+    liver_3x = s.get('liver_status') == '3x'
+    ft_keys_hit = set(ev.get('ft_meds_keys') or ())
+    has_ft_par_hit = bool(ft_keys_hit & {'parenteral_oac', 'parenteral_dti'})
+    has_mv_bad_oral_hit = bool(
+        ev.get('oac_count', 0) >= 2
+        or q.get('med_doac') or q.get('med_dabigatran')
+        or ('rivaroxaban_2_5' in (q.get('med_chips') or []))
+        or bool(ft_keys_hit & {'doac', 'dabigatran'})
+        or ev.get('has_ft_unstruct_riva_low')
+    )
+    oac_no_dbl = (
+        ' · პოსტოპ. მუდმივი ვარფარინის/OAC-ის აღდგენისას დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ — IPC აღდგენამდე (ორმაგი ანტიკოაგულაციის გარეშე!)'
+        if (has_full_oac_b and not has_contra_full_oac_b)
+        else (
+            ' · უკუნაჩვენები OAC არ განაახლოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
+            if has_contra_full_oac_b else (
+                ' · აქტიური პარენტერული ანტიკოაგულაცია — შეათანხმეთ ერთიანი არაჰეპარინული სქემა ჰემატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!)'
+                if has_ft_par_hit else ''
+            )
+        )
+    )
+    if ev.get('eff_pregnant'):
+        mv_hit_s = ' + მექანიკური სარქველი' if has_mv else ''
+        team_s = 'ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის' if has_mv else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
+        scheme_s = 'არაჰეპარინული IV სქემა / ტრიმესტრით VKA' if has_mv else 'არაჰეპარინული IV სქემა / IPC — ვარფარინი ტერატოგენულია!'
+        org_hit_s = ''.join(x for cond, x in (
+            (sev_renal, f' · CrCl<{ren_red}/დიალიზი: ფონდაპარინუქსი აკრძალულია!'),
+            (liver_3x, ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — უპირატესია ბივალირუდინი (არგატრობანი მოერიდეთ)!'),
+        ) if cond)
+        preg_hit_oac_sfx = (
+            (' · უკუნაჩვენები DOAC/დუბლირებული OAC არ განაახლოთ (ორმაგი ანტიკოაგულაციის გარეშე!)' if has_mv_bad_oral_hit else ' · VKA თვითნებურად არ მოხსნათ (ორმაგი ანტიკოაგულაციის გარეშე!)')
+            if (has_mv and has_contra_full_oac_b) else oac_no_dbl
+        )
+        return f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი ({scheme_s})!{org_hit_s}{preg_hit_oac_sfx}'
+    if has_full_oac_b and ev.get('is_evla_warfarin_only'):
+        return 'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
+    if has_mv:
+        mv_hit_base = (
+            'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე!) → ვარფარინი (VKA) — ფონდაპარინუქსი/DOAC არა!'
+            if liver_3x else 'ბივალირუდინი / არგატრობანი → ვარფარინი (VKA) — ფონდაპარინუქსი/DOAC არა!'
+        )
+        mv_hit_ren = f' · CrCl<{ren_red}/დიალიზი: ფონდაპარინუქსი აკრძალულია!' if sev_renal else ''
+        mv_hit_oac = (
+            ' · უკუნაჩვენები DOAC/დუბლირებული OAC არ განაახლოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
+            if has_mv_bad_oral_hit else (
+                ' · აქტიური პარენტერული ანტიკოაგულაცია — ერთიანი არაჰეპარინული სქემა ჰემატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!)'
+                if has_ft_par_hit else (
+                    ' · ორმაგი ანტიკოაგულაციის გარეშე!' if (has_full_oac_b or has_contra_full_oac_b) else ''
+                )
+            )
+        )
+        return f'{mv_hit_base}{mv_hit_ren}{mv_hit_oac}'
+    if liver_3x and sev_renal:
+        return f'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი CrCl<{ren_red}/დიალიზზე და ღვიძლის ≥3x-ზე აკრძალულია!){oac_no_dbl}'
+    if sev_renal:
+        return f'ბივალირუდინი / არგატრობანი (ფონდაპარინუქსი CrCl<{ren_red}/დიალიზზე აკრძალულია!){oac_no_dbl}'
+    if liver_3x:
+        return f'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი არარეკომენდებულია!){oac_no_dbl}'
+    if has_contra_full_oac_b:
+        return 'უკუნაჩვენები/დუბლირებული OAC არ განაახლოთ — შეარჩიეთ ერთი უსაფრთხო არაჰეპარინული სქემა (ფონდაპარინუქსი ან ერთი OAC ჰემატოლოგ/კარდიოლოგთან — ორმაგი ანტიკოაგულაციის გარეშე!)'
+    if has_full_oac_b:
+        return 'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე; დამატებითი პროფილაქტიკური ფონდაპარინუქსი/DOAC არ დაუმატოთ — ორმაგი ანტიკოაგულაციის გარეშე!)'
+    if has_ft_par_hit:
+        return 'აქტიური პარენტერული ანტიკოაგულაცია — შეათანხმეთ ერთიანი არაჰეპარინული პოსტოპ. სქემა ჰემატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!)'
+    return 'ფონდაპარინუქსი / არგატრობანი / ბივალირუდინი'
+
+
 def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips, eff_renal_board):
     ren_red = rule_value('REN_CKD_NEPHRO_HYDRATION')['red']
     cap_low_max = rule_value('SCORE_CAPRINI_VTE')['low_max']
@@ -407,62 +476,7 @@ def _append_vte_handoff_tasks(task_candidates, ev, q, s, pathway, allergy_chips,
             f'VTE / ანტიკოაგულაცია: აქტიური კუჭ-ნაწლავის სისხლდენა / მწვავე წყლული — მხოლოდ მექანიკური პროფილაქტიკა (IPC) ენდოსკოპიურ ჰემოსტაზამდე; ფარმაკოლოგიური ანტიკოაგულაცია შეაჩერეთ და აღდგენა შეათანხმეთ გასტროენტეროლოგთან და ქირურგთან{gi_sfx}!',
         ))
     elif 'hit_heparin' in allergy_chips:
-        has_mv = 'mech_valve' in (q.get('cad_chips') or [])
-        liver_3x = s.get('liver_status') == '3x'
-        ft_keys_hit = set(ev.get('ft_meds_keys') or ())
-        has_ft_par_hit = bool(ft_keys_hit & {'parenteral_oac', 'parenteral_dti'})
-        has_mv_bad_oral_hit = bool(
-            ev.get('oac_count', 0) >= 2
-            or q.get('med_doac') or q.get('med_dabigatran')
-            or ('rivaroxaban_2_5' in (q.get('med_chips') or []))
-            or bool(ft_keys_hit & {'doac', 'dabigatran'})
-            or ev.get('has_ft_unstruct_riva_low')
-        )
-        oac_no_dbl = (
-            ' · პოსტოპ. მუდმივი ვარფარინის/OAC-ის აღდგენისას დამატებითი პროფილაქტიკური ანტიკოაგულაცია არ დაუმატოთ — IPC აღდგენამდე (ორმაგი ანტიკოაგულაციის გარეშე!)'
-            if (has_full_oac_b and not has_contra_full_oac_b)
-            else (
-                ' · უკუნაჩვენები OAC არ განაახლოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
-                if has_contra_full_oac_b else (
-                    ' · აქტიური პარენტერული ანტიკოაგულაცია — შეათანხმეთ ერთიანი არაჰეპარინული სქემა ჰემატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!)'
-                    if has_ft_par_hit else ''
-                )
-            )
-        )
-        if ev.get('eff_pregnant'):
-            mv_hit_s = ' + მექანიკური სარქველი' if has_mv else ''
-            team_s = 'ჰემატოლოგის, კარდიოლოგისა და მეან-გინეკოლოგის' if has_mv else 'ჰემატოლოგისა და მეან-გინეკოლოგის'
-            scheme_s = 'არაჰეპარინული IV სქემა / ტრიმესტრით VKA' if has_mv else 'არაჰეპარინული IV სქემა / IPC — ვარფარინი ტერატოგენულია!'
-            org_hit_s = ''.join(x for cond, x in (
-                (sev_renal, f' · CrCl<{ren_red}/დიალიზი: ფონდაპარინუქსი აკრძალულია!'),
-                (liver_3x, ' · ღვიძლის ≥3x: კოაგულოგრამის კონტროლით — უპირატესია ბივალირუდინი (არგატრობანი მოერიდეთ)!'),
-            ) if cond)
-            preg_hit_oac_sfx = (
-                (' · უკუნაჩვენები DOAC/დუბლირებული OAC არ განაახლოთ (ორმაგი ანტიკოაგულაციის გარეშე!)' if has_mv_bad_oral_hit else ' · VKA თვითნებურად არ მოხსნათ (ორმაგი ანტიკოაგულაციის გარეშე!)')
-                if (has_mv and has_contra_full_oac_b) else oac_no_dbl
-            )
-            hit_board_agents = f'ორსულობა{mv_hit_s} + HIT: UFH, LMWH და DOAC აკრძალულია — სავალდებულოა {team_s} კონსილიუმი ({scheme_s})!{org_hit_s}{preg_hit_oac_sfx}'
-        elif has_full_oac_b and ev.get('is_evla_warfarin_only'):
-            hit_board_agents = 'თერაპიული ვარფარინი (OAC) გრძელდება მოუხსნელად — დამატებითი პროფილაქტიკა არ დაუმატოთ (ორმაგი ანტიკოაგულაციის გარეშე!)'
-        elif has_mv:
-            hit_board_agents = (
-                'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე!) → ვარფარინი (VKA)'
-                if liver_3x else 'ბივალირუდინი / არგატრობანი → ვარფარინი (VKA) — ფონდაპარინუქსი/DOAC არა!'
-            )
-        elif liver_3x and sev_renal:
-            hit_board_agents = f'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი CrCl<{ren_red}/დიალიზზე და ღვიძლის ≥3x-ზე აკრძალულია!){oac_no_dbl}'
-        elif sev_renal:
-            hit_board_agents = f'ბივალირუდინი / არგატრობანი (ფონდაპარინუქსი CrCl<{ren_red}/დიალიზზე აკრძალულია!){oac_no_dbl}'
-        elif liver_3x:
-            hit_board_agents = f'ბივალირუდინი (არგატრობანი −75% ღვიძლის ≥3x-ზე; ფონდაპარინუქსი არარეკომენდებულია!){oac_no_dbl}'
-        elif has_contra_full_oac_b:
-            hit_board_agents = 'უკუნაჩვენები/დუბლირებული OAC არ განაახლოთ — შეარჩიეთ ერთი უსაფრთხო არაჰეპარინული სქემა (ფონდაპარინუქსი ან ერთი OAC ჰემატოლოგ/კარდიოლოგთან — ორმაგი ანტიკოაგულაციის გარეშე!)'
-        elif has_full_oac_b:
-            hit_board_agents = 'მუდმივი თერაპიული OAC-ის აღდგენა ჰემოსტაზით (+ IPC აღდგენამდე; დამატებითი პროფილაქტიკური ფონდაპარინუქსი/DOAC არ დაუმატოთ — ორმაგი ანტიკოაგულაციის გარეშე!)'
-        elif has_ft_par_hit:
-            hit_board_agents = 'აქტიური პარენტერული ანტიკოაგულაცია — შეათანხმეთ ერთიანი არაჰეპარინული პოსტოპ. სქემა ჰემატოლოგთან (ორმაგი ანტიკოაგულაციის გარეშე!)'
-        else:
-            hit_board_agents = 'ფონდაპარინუქსი / არგატრობანი / ბივალირუდინი'
+        hit_board_agents = _hit_vte_handoff_agents(ev, q, s, sev_renal, ren_red, has_full_oac_b, has_contra_full_oac_b)
         task_candidates.append((
             _VTE_PREFIXES,
             f'HIT ანამნეზში! არაფრაქციული ჰეპარინი და LMWH აკრძალულია — არაჰეპარინული ანტიკოაგულაცია ({hit_board_agents})',

@@ -9,6 +9,7 @@ from .meds_freetext_nlp_patterns import (  # noqa: F401
     _CONJ_SPLIT_RE,
     _COUNT_DUR_UNIT,
     _COUNT_OR_DUR_TOK,
+    _DASH_DUR_TAIL_UNWRAP_RE,
     _DASH_NEG_UNWRAP_RE,
     _DIGIT_RE,
     _DOSE_FREQ_WORDS,
@@ -34,6 +35,7 @@ from .meds_freetext_nlp_patterns import (  # noqa: F401
     _KA_BUT_NOT_RE,
     _KA_BUT_SOV_NOT_RE,
     _KA_GARDA_RE,
+    _KA_GENITIVE_END_RE,
     _KA_MULTIWORD_HEAD_PREFIXES,
     _KA_NEG_FOLLOW_STOP,
     _KA_NEG_PARTICLE_VERB_RE,
@@ -45,97 +47,39 @@ from .meds_freetext_nlp_patterns import (  # noqa: F401
     _KA_STOP_VERBS,
     _KA_VERB_WORD_RE,
     _KA_VERBS,
+    _LEADING_KA_ALLERGY_HEAD_RE,
     _MULTIWORD_DRUG_HEAD,
     _MULTIWORD_DRUG_HEAD_RE,
     _MULTIWORD_DRUG_PREV_MODS,
     _NEG_FAST_HINT_RE,
     _NEGATION_PHRASE_RE,
     _NON_PREFIX_PROTECT_RE,
+    _PACK_NO_DOT_RE,
+    _PACK_NO_SPC_RE,
     _PAREN_DOSE_UNWRAP_RE,
     _PAREN_NEG_UNWRAP_RE,
     _POST_STOP_TAIL_RE,
     _PREFIX_NEG_START_RE,
     _SENT_CLAUSE_SPLIT_RE,
+    _SUBJ_OR_GENERIC_HEAD_RE,
     _SUBJECT_ONLY_RE,
     _SYMPTOM_NEG_RE,
     _TEMPORAL_ADV_TOK,
     _UNINTERRUPTED_AFFIRM_RE,
     _WS_RUN_RE,
+    _find_clause_comma,
+    _find_sent_sep,
+    _next_sent_chunk,
+    _prev_clause,
+    _prev_clause_info,
+    _prev_sentence,
+    _rfind_clause_comma,
+    _rfind_sent_sep,
 )
 
 
 def _has_neg_phrase(s):
     return bool(_NEG_FAST_HINT_RE.search(s) and _NEGATION_PHRASE_RE.search(s))
-
-
-def _rfind_sent_sep(text):
-    for i in range(len(text) - 1, -1, -1):
-        ch = text[i]
-        if ch in (';', '!', '?', '\n'):
-            return i
-        if ch == '.' and not (0 < i < len(text) - 1 and text[i - 1].isdigit() and text[i + 1].isdigit()):
-            return i
-    return -1
-
-
-def _find_sent_sep(text):
-    n = len(text)
-    for i, ch in enumerate(text):
-        if ch in (';', '!', '?', '\n'):
-            return i
-        if ch == '.' and not (0 < i < n - 1 and text[i - 1].isdigit() and text[i + 1].isdigit()):
-            return i
-    return -1
-
-
-def _rfind_clause_comma(text):
-    for i in range(len(text) - 1, -1, -1):
-        if text[i] == ',' and not (0 < i < len(text) - 1 and text[i - 1].isdigit() and text[i + 1].isdigit()):
-            return i
-    return -1
-
-
-def _find_clause_comma(text):
-    n = len(text)
-    for i, ch in enumerate(text):
-        if ch == ',' and not (0 < i < n - 1 and text[i - 1].isdigit() and text[i + 1].isdigit()):
-            return i
-    return -1
-
-
-def _prev_clause(s, pos, window=120):
-    end = pos - 1 if pos > 0 and s[pos - 1] == ',' else pos
-    chunk = s[max(0, end - window):end]
-    idx = _rfind_sent_sep(chunk)
-    if idx != -1:
-        chunk = chunk[idx + 1:]
-    c_idx = _rfind_clause_comma(chunk)
-    return chunk[c_idx + 1:] if c_idx != -1 else chunk
-
-
-def _prev_clause_info(s, pos, window=140):
-    chunk = s[max(0, pos - window):pos]
-    idx = _rfind_sent_sep(chunk)
-    if idx != -1:
-        chunk = chunk[idx + 1:]
-    c_idx = _rfind_clause_comma(chunk)
-    return (chunk[c_idx + 1:], chunk[:c_idx]) if c_idx != -1 else (chunk, '')
-
-
-def _prev_sentence(s, pos, window=140):
-    chunk = s[max(0, pos - window):pos]
-    idx = _rfind_sent_sep(chunk)
-    if idx == -1:
-        return ''
-    before = chunk[:idx].rstrip(' ;.!?\n')
-    prev_idx = _rfind_sent_sep(before)
-    return before[prev_idx + 1:] if prev_idx != -1 else before
-
-
-def _next_sent_chunk(s, pos, window=140):
-    chunk = s[pos:min(len(s), pos + window)]
-    idx = _find_sent_sep(chunk)
-    return chunk[:idx] if idx != -1 else chunk
 
 
 def _negate_except_items(obj, neg_prefix):
@@ -244,6 +188,24 @@ def _rewrite_en_except(low):
     return ''.join(out)
 
 
+def _peel_trailing_garda_obj(text):
+    """Peel trailing drug phrase (plus any 'და'/'ან'/'and'/'or'-joined drug phrases) immediately before 'გარდა'."""
+    toks = text.split(' ') if text else []
+    if not toks:
+        return ''
+    ci = len(toks) - 1
+    while True:
+        while ci > 0 and (_DIGIT_RE.search(toks[ci]) or toks[ci] in _DOSE_FREQ_WORDS):
+            ci -= 1
+        while ci > 0 and toks[ci - 1] in _MULTIWORD_DRUG_PREV_MODS:
+            ci -= 1
+        if ci >= 2 and toks[ci - 1] in ('და', 'ან', 'and', 'or'):
+            ci -= 2
+            continue
+        break
+    return ' '.join(toks[ci:])
+
+
 def _rewrite_ka_garda(low):
     """Rewrite pre/post/fronted/passive/fragment Georgian 'გარდა' exception clauses (with or without commas) in O(N)."""
     out, last = [], 0
@@ -273,17 +235,22 @@ def _rewrite_ka_garda(low):
         at_end = nxt_ch in ('', ',', ';', '.', '!', '?', '\n')
         if prev_neg:
             neg_ms = list(_NEGATION_PHRASE_RE.finditer(prev_raw))
-            obj = prev_raw[neg_ms[-1].end():].strip() if neg_ms else ''
+            obj = _peel_trailing_garda_obj(prev_raw[neg_ms[-1].end():].strip()) if neg_ms else ''
             cut = low.rfind(obj, last, m.start()) if obj else -1
             if obj and cut >= last:
                 out.append(low[last:cut].rstrip())
                 out.append(f'; {obj}')
-                last = m.end() + skip_comma
-                continue
-            out.append(low[last:m.start()])
-            out.append(';')
+            else:
+                out.append(low[last:m.start()])
+                out.append(';')
             last = m.end() + skip_comma
-        elif not at_end and not bc_neg and not _AFFIRM_PRED_RE.search(prev or before_comma) and (not prev or bool(_KA_PRE_GARDA_SUBJ_RE.search(prev))):
+            continue
+        after_first = after_sent.lstrip(' ').split(' ', 1)[0].rstrip(',')
+        is_pre_garda = (
+            not prev or bool(_KA_PRE_GARDA_SUBJ_RE.search(prev))
+            or (not _KA_GENITIVE_END_RE.search(prev) and bool(_KA_GENITIVE_END_RE.search(after_first)))
+        )
+        if not at_end and not bc_neg and not _AFFIRM_PRED_RE.search(prev or before_comma) and is_pre_garda:
             passive = _try_mid_sent_passive_except(low, m.end(), False)
             if passive:
                 obj, tail_pred, end_pos = passive
@@ -301,6 +268,16 @@ def _rewrite_ka_garda(low):
                 out.append(repl)
                 last = end_pos
         elif bc_neg or after_neg or prev_sent_neg:
+            after_s = after_c.strip()
+            if after_neg and not bc_neg and prev and not _AFFIRM_PRED_RE.search(prev) and _PREFIX_NEG_START_RE.search(after_s) and 'არაფერ' not in after_s and 'არცერთ' not in after_s:
+                obj = _peel_trailing_garda_obj(prev)
+                has_subj = len(obj) < len(prev) or (bool(before_comma.strip()) and not _DIGIT_RE.search(before_comma))
+                cut = low.rfind(obj, last, m.start()) if (obj and has_subj) else -1
+                if cut >= last:
+                    out.append(low[last:cut].rstrip(' ,'))
+                    out.append(f' {after_s}; {obj};')
+                    last = m.end() + skip_comma + len(after_c)
+                    continue
             out.append(low[last:m.start()])
             out.append(';')
             last = m.end() + skip_comma
@@ -316,17 +293,11 @@ def _rewrite_ka_garda(low):
                 out.append('; ' + _negate_except_items(prev, 'არ იღებს'))
                 last = m.end() + skip_comma
         else:
-            ptoks = prev.split(' ') if prev else []
-            ci = len(ptoks) - 1
-            while ci > 0 and (_DIGIT_RE.search(ptoks[ci]) or ptoks[ci] in _DOSE_FREQ_WORDS):
-                ci -= 1
-            while ci > 0 and ptoks[ci - 1] in _MULTIWORD_DRUG_PREV_MODS:
-                ci -= 1
-            tok = ' '.join(ptoks[ci:]) if ptoks else ''
+            tok = _peel_trailing_garda_obj(prev)
             cut = low.rfind(tok, last, m.start()) if tok else -1
             if tok and cut >= last:
                 out.append(low[last:cut].rstrip())
-                out.append(f'; არ იღებს {tok}')
+                out.append('; ' + _negate_except_items(tok, 'არ იღებს'))
                 last = m.end() + skip_comma
     out.append(low[last:])
     return ''.join(out)
@@ -336,6 +307,11 @@ def _normalize_nlp_text(text):
     """Collapse whitespace to single spaces in O(N) and normalize affirmative/non-prefix clinical idioms."""
     low = _WS_RUN_RE.sub(' ', text.strip().replace('\r\n', '\n').replace('\r', '\n').lower())
     changed = False
+    if 'no.' in low or ' no ' in low:
+        src = low
+        low = _PACK_NO_DOT_RE.sub('№', src)
+        low = _PACK_NO_SPC_RE.sub(' №', low)
+        changed = changed or (low != src)
     if '(' in low:
         src = low
         low = _PAREN_DOSE_UNWRAP_RE.sub(r' \1 ', src)
@@ -369,15 +345,16 @@ def _normalize_nlp_text(text):
         changed = changed or (low != src)
     if 'not ' in low or 'never ' in low or "n't " in low or 'cannot ' in low:
         low, changed = _DOUBLE_NEG_AFFIRM_EN_RE.sub(' continues ', low), True
-    if 'არ ' in low or 'არა ' in low or 'არაა' in low or 'არც ' in low or 'ვერ ' in low or 'არაქვს' in low or 'არმაქვს' in low:
+    if 'არ ' in low or 'არა ' in low or 'არაა' in low or 'არც ' in low or 'ვერ ' in low or 'აღარ ' in low or 'არაქვს' in low or 'არმაქვს' in low:
         low, changed = _DOUBLE_NEG_AFFIRM_KA_RE.sub(' უწერია ', low), True
     if '(' in low:
         src = low
-        low = _PAREN_NEG_UNWRAP_RE.sub(r' \1 ', src)
+        low = _PAREN_NEG_UNWRAP_RE.sub(r' \1; ', src)
         changed = changed or (low != src)
-    if '-' in low or '—' in low or '–' in low:
+    if '-' in low or '—' in low or '–' in low or ':' in low:
         src = low
-        low = _DASH_NEG_UNWRAP_RE.sub(r' \1', src)
+        low = _DASH_NEG_UNWRAP_RE.sub(r' \1; ', src)
+        low = _DASH_DUR_TAIL_UNWRAP_RE.sub(r' \1; ', low)
         changed = changed or (low != src)
     if 'გარეშე' in low or 'without ' in low:
         low, changed = _UNINTERRUPTED_AFFIRM_RE.sub(' ', low), True
@@ -470,52 +447,78 @@ def _peel_conj_affirm_stop(nxt):
 
 
 def _split_stop_verb_clauses(sub_s, verb_re, follow_stop, is_skip_fn):
-    """Split unpunctuated prefix/suffix stop-verb clauses (including post-stop duration tails) cleanly in O(N)."""
-    if not verb_re.search(sub_s):
+    """Split unpunctuated prefix/suffix stop-verb clauses (including post-stop duration tails) strictly in O(N)."""
+    m = verb_re.search(sub_s)
+    if not m:
         return [sub_s]
-    out, cur = [], sub_s
-    while cur:
-        m = verb_re.search(cur)
+    out, pos, n = [], 0, len(sub_s)
+    while pos < n:
+        while pos < n and sub_s[pos] == ' ':
+            pos += 1
+        if pos >= n:
+            break
+        if m is None or m.start() < pos:
+            m = verb_re.search(sub_s, pos)
         if not m:
-            out.append(cur)
+            out.append(sub_s[pos:].rstrip())
             break
-        before, after = cur[:m.start()].strip(), cur[m.end():].strip()
+        before = sub_s[pos:m.start()].strip()
+        a_pos = m.end()
+        while a_pos < n and sub_s[a_pos] == ' ':
+            a_pos += 1
+        a_win = sub_s[a_pos:min(n, a_pos + 180)]
         if not before or _SUBJECT_ONLY_RE.match(before):
-            hm = _KA_PREFIX_NEG_HEAD_RE.match(after) if after else None
+            p_dur, w_pos, w_win = '', a_pos, a_win
+            tm0 = _POST_STOP_TAIL_RE.match(w_win) if w_win else None
+            if tm0:
+                p_dur = tm0.group(0).strip()
+                w_pos = a_pos + tm0.end()
+                while w_pos < n and sub_s[w_pos] == ' ':
+                    w_pos += 1
+                w_win = sub_s[w_pos:min(n, w_pos + 180)]
+            hm = _KA_PREFIX_NEG_HEAD_RE.match(w_win) if w_win else None
             if hm:
-                head, rest = hm.group(0), after[hm.end():].strip()
-                nxt = rest.split(' ', 1)[0] if rest else ''
-                is_mw = bool(_MULTIWORD_DRUG_HEAD_RE.match(head))
-                if nxt and (is_mw or not is_skip_fn(head)) and nxt not in follow_stop and not _DIGIT_RE.match(nxt):
-                    out.append(f'{cur[:m.end()]} {head}'.strip())
-                    cur = rest
+                head, r_pos = hm.group(0), w_pos + hm.end()
+                while r_pos < n and sub_s[r_pos] == ' ':
+                    r_pos += 1
+                nxt = sub_s[r_pos:min(n, r_pos + 40)].split(' ', 1)[0] if r_pos < n else ''
+                if nxt and (bool(_MULTIWORD_DRUG_HEAD_RE.match(head)) or not is_skip_fn(head)) and nxt not in follow_stop and not _DIGIT_RE.match(nxt):
+                    mid = f' {p_dur}' if p_dur else ''
+                    out.append(f'{sub_s[pos:m.end()]}{mid} {head}'.strip())
+                    pos, m = r_pos, None
                     continue
-            out.append(cur)
+            out.append(sub_s[pos:].strip())
             break
-        nxt_a = after.split(' ', 1)[0] if after else ''
+        nxt_a = a_win.split(' ', 1)[0] if a_win else ''
         if _AFFIRM_PRED_RE.search(before):
-            is_pref_after = bool(nxt_a and nxt_a not in follow_stop and not _DIGIT_RE.match(nxt_a))
-            left, right = (before, cur[m.start():].strip()) if is_pref_after else _split_affirm_before_stop(before, cur[m.start():].strip())
-            if not is_pref_after and left == before and right == cur[m.start():].strip():
-                out.append(cur)
+            if nxt_a and nxt_a not in follow_stop and not _DIGIT_RE.match(nxt_a):
+                out.append(before)
+                pos, m = m.start(), None
+                continue
+            left, peeled = _split_affirm_before_stop(before, '')
+            new_pos = sub_s.rfind(peeled, pos, m.start()) if (left != before and peeled) else -1
+            if new_pos <= pos:
+                out.append(sub_s[pos:].strip())
                 break
             out.append(left)
-            cur = right
+            pos, m = new_pos, None
             continue
-        if after:
-            tm = _POST_STOP_TAIL_RE.match(after)
+        if a_win:
+            tm = _POST_STOP_TAIL_RE.match(a_win)
             if tm:
-                dur_tail, rem = tm.group(0).strip(), after[tm.end():].strip()
-                nxt_r = rem.split(' ', 1)[0] if rem else ''
+                r_pos = a_pos + tm.end()
+                while r_pos < n and sub_s[r_pos] == ' ':
+                    r_pos += 1
+                nxt_r = sub_s[r_pos:min(n, r_pos + 40)].split(' ', 1)[0] if r_pos < n else ''
                 if nxt_r and nxt_r not in follow_stop and not _DIGIT_RE.match(nxt_r):
-                    out.append(f'{cur[:m.end()]} {dur_tail}'.strip())
-                    cur = rem
+                    out.append(f'{sub_s[pos:m.end()]} {tm.group(0).strip()}'.strip())
+                    pos, m = r_pos, None
                     continue
             if nxt_a and nxt_a not in follow_stop and not _DIGIT_RE.match(nxt_a):
-                out.append(cur[:m.end()].strip())
-                cur = after
+                out.append(sub_s[pos:m.end()].strip())
+                pos, m = a_pos, None
                 continue
-        out.append(cur)
+        out.append(sub_s[pos:].strip())
         break
     return out or [sub_s]
 
@@ -528,12 +531,60 @@ def _split_ka_neg_clauses(sub_s):
 
 
 def _split_en_stopped(sub_s):
-    if 'stopped' not in sub_s and 'discontinued' not in sub_s and 'held' not in sub_s:
+    if not any(w in sub_s for w in ('stopped', 'discontinued', 'held', 'withheld', 'paused', 'omitted', 'suspended')):
         return [sub_s]
     return _split_stop_verb_clauses(
         sub_s, _EN_STOPPED_RE, _EN_NEG_FOLLOW_STOP,
         lambda h: h.split(' ', 1)[0] in _EN_NEG_HEAD_SKIP or h.split(' ', 1)[0].split('-', 1)[0] in _EN_NEG_HEAD_SKIP,
     )
+
+
+def _split_ka_affirm_inline(sub_s):
+    """Split unpunctuated Georgian verb-mediated clauses in strictly O(N) time."""
+    n = len(sub_s)
+    verb_ends = [vm.end() for vm in _KA_VERB_WORD_RE.finditer(sub_s)]
+    verb_total, vi = len(verb_ends), 0
+    last, last_pref_neg, pieces = 0, None, []
+    for m in _KA_AFFIRM_VERB_AFTER_RE.finditer(sub_s):
+        if m.start() < last:
+            continue
+        span_len = m.start() - last
+        tail_lo = max(last, m.start() - 80)
+        before_tail = sub_s[tail_lo:m.start()].rstrip()
+        if span_len <= 80 and (not before_tail or _SUBJ_OR_GENERIC_HEAD_RE.match(before_tail.lstrip())):
+            continue
+        prev_tok = before_tail.rsplit(' ', 1)[-1] if before_tail else ''
+        if prev_tok in _KA_NEG_PARTICLES:
+            neg_pos = tail_lo + len(before_tail) - len(prev_tok)
+            bn_len = neg_pos - last
+            bn_tail = sub_s[max(last, neg_pos - 80):neg_pos].strip()
+            after_tok = sub_s[m.end() - 1:min(n, m.end() + 40)].lstrip(' ').split(' ', 1)[0]
+            if (bn_len <= 80 and (not bn_tail or bn_tail in _GENERIC_SOV_HEADS or _SUBJ_OR_GENERIC_HEAD_RE.match(bn_tail))) or after_tok in _GENERIC_SOV_HEADS:
+                continue
+            while vi < verb_total and verb_ends[vi] <= last:
+                vi += 1
+            if (vi < verb_total and verb_ends[vi] <= neg_pos) or (verb_total == 1 and _DOSE_UNIT_END_RE.search(bn_tail)):
+                if neg_pos > last:
+                    pieces.append(sub_s[last:neg_pos].strip())
+                    last, last_pref_neg = neg_pos, None
+                    continue
+        if last_pref_neg is None:
+            last_pref_neg = bool(_PREFIX_NEG_START_RE.search(sub_s[last:min(n, last + 80)].lstrip()))
+        if last_pref_neg:
+            piece = sub_s[last:m.start()].rstrip()
+            if piece:
+                pieces.append(piece)
+            last, last_pref_neg = m.start(), None
+            continue
+        verb_end = m.end() - 1
+        piece = sub_s[last:verb_end].strip()
+        if piece:
+            pieces.append(piece)
+        last, last_pref_neg = verb_end + 1, None
+    tail = sub_s[last:].strip()
+    if tail:
+        pieces.append(tail)
+    return pieces
 
 
 def _split_inline_boundaries(seg):
@@ -551,37 +602,7 @@ def _split_inline_boundaries(seg):
                 if not _has_neg_phrase(sub_s):
                     out.append(sub_s)
                     continue
-                verb_total = len(_KA_VERB_WORD_RE.findall(sub_s))
-                last, pieces = 0, []
-                for m in _KA_AFFIRM_VERB_AFTER_RE.finditer(sub_s):
-                    before = sub_s[last:m.start()].rstrip()
-                    if not before or _SUBJECT_ONLY_RE.match(before):
-                        continue
-                    prev_tok = before.rsplit(' ', 1)[-1] if before else ''
-                    if prev_tok in _KA_NEG_PARTICLES:
-                        before_neg = before[: -len(prev_tok)].strip()
-                        after_tok = sub_s[m.end() - 1:].strip().split(' ', 1)[0]
-                        if not before_neg or before_neg in _GENERIC_SOV_HEADS or _SUBJECT_ONLY_RE.match(before_neg) or after_tok in _GENERIC_SOV_HEADS:
-                            continue
-                        if _KA_VERB_WORD_RE.search(before_neg) or (verb_total == 1 and _DOSE_UNIT_END_RE.search(before_neg)):
-                            neg_pos = sub_s.rfind(prev_tok, last, m.start())
-                            if neg_pos > last:
-                                pieces.append(sub_s[last:neg_pos].strip())
-                                last = neg_pos
-                                continue
-                    if _PREFIX_NEG_START_RE.search(before):
-                        pieces.append(before)
-                        last = m.start()
-                        continue
-                    verb_end = m.end() - 1
-                    piece = sub_s[last:verb_end].strip()
-                    if piece:
-                        pieces.append(piece)
-                    last = verb_end + 1
-                tail = sub_s[last:].strip()
-                if tail:
-                    pieces.append(tail)
-                for pc in pieces:
+                for pc in _split_ka_affirm_inline(sub_s):
                     out.extend(_split_ka_two_verb_tail(pc))
     return out
 
@@ -648,7 +669,7 @@ def _group_conj_parts(parts, sent_affirm):
                     cur_buf, cur_neg, cur_pref_neg, saw_affirm = [peeled[1]], True, False, False
                     cur_alg = cur_dig = cur_aff = None
                     continue
-            if not cur_aff and not cur_alg and (not cur_dig or nxt_dig):
+            if not cur_aff and not (cur_alg and not _LEADING_KA_ALLERGY_HEAD_RE.match(cur_buf[0])) and (not cur_dig or nxt_dig):
                 cur_buf.append(nxt)
                 cur_neg = True
                 saw_affirm = False

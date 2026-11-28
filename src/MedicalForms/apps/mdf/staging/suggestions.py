@@ -375,6 +375,9 @@ def compute(limb, measured=None):
     elif stage == 1:
         out['plan'] = 'none'
         out['plan_label'] = PLAN_LABEL['none'] + ' (WIfI stage 1).'
+    elif stage and out.get('i') == 0:
+        out['plan'] = 'none'
+        out['plan_label'] = 'იშემია მნიშვნელოვანი არ არის (ხარისხი 0).'
     elif stage and limb.get('risk') == 'high':
         out['plan'] = 'endo'
         i = out['i']

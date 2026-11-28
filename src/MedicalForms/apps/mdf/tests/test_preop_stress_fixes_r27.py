@@ -75,7 +75,7 @@ class PreopStressFixesRound27Tests(TestCase):
         self.c_nurse.force_login(self.nurse)
 
     def test_r27_nlp_inline_predicates_subject_negations_and_allergy_orphan(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.26')
+        self.assertEqual(REGISTRY_VERSION, '1.2.27')
         # Fuzz A-S1-1 & Clin CA-S1-2: negated English/Georgian predicates & subject-prefixed negations
         for txt in (
             'stopped taking warfarin',

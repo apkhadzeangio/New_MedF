@@ -237,18 +237,14 @@ def _caprini_tier_and_advice(
 
 
 def _oac_venous_vte_flags(patient, q_d, s_cur, severe_renal, severe_liver, active_gi_bleed=False, eff_preg=False):
-    from .meds_freetext import _detect_freetext_high_risk_meds
+    from .meds_freetext import _count_oac_agents, _detect_freetext_high_risk_meds
     from .meds_helpers import _vka_inr_status
     ft_m = _detect_freetext_high_risk_meds(q_d.get('other_meds') or '', q=q_d)
     has_ft_full_oac = bool(ft_m.get('has_ft_full_oac'))
     ft_unstruct = ft_m.get('unstructured_keys') or set()
     has_full_oac = bool(q_d.get('med_warfarin') or q_d.get('med_doac') or q_d.get('med_dabigatran') or has_ft_full_oac)
     med_set = set(_str_list(q_d.get('med_chips')))
-    oac_cnt = (
-        sum([bool(q_d.get('med_warfarin')), bool(q_d.get('med_doac')), bool(q_d.get('med_dabigatran')), ('rivaroxaban_2_5' in med_set)])
-        + len(ft_unstruct & {'warfarin', 'doac', 'dabigatran'})
-        + (1 if (ft_m.get('has_ft_dual_xa') or (ft_m.get('has_ft_unstruct_doac') and ft_m.get('has_ft_unstruct_riva_low'))) else 0)
-    )
+    oac_cnt = _count_oac_agents(q_d, med_set, ft_m)
     _, dos_inr_bad, base_inr_bad, inr_c = _vka_inr_status(patient, s_cur)
     inr_bad = dos_inr_bad or base_inr_bad
     evla_max_inr = rule_value('MED_WARFARIN_HOLD_DAYS')['inr_evla_max']

@@ -264,12 +264,9 @@ def _eval_antithrombotic_conflicts(ctx):
     has_mech_valve = 'mech_valve' in ctx.cad_chips
     has_acs_stent_12m = ('stent_6_12m' in ctx.cad_chips) and ('mi' in ctx.cad_chips)
     has_afib = ('afib' in ctx.cad_chips) or ((s.get('ecg') or 'pending') == 'afib_controlled')
+    from ..meds_freetext import _count_oac_agents
     ft_u_keys = ctx.ft_meds.get('unstructured_keys') or set()
-    oac_count = (
-        sum([bool(q.get('med_warfarin')), bool(q.get('med_doac')), bool(q.get('med_dabigatran')), ('rivaroxaban_2_5' in ctx.med_chips)])
-        + len(ft_u_keys & {'warfarin', 'doac', 'dabigatran'})
-        + (1 if (ctx.ft_meds.get('has_ft_dual_xa') or (ctx.ft_meds.get('has_ft_unstruct_doac') and ctx.ft_meds.get('has_ft_unstruct_riva_low'))) else 0)
-    )
+    oac_count = _count_oac_agents(q, ctx.med_chips, ctx.ft_meds)
     p2y12_count = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))]) + len(ft_u_keys & {'clopidogrel', 'ticagrelor', 'prasugrel'})
     total_at_count = oac_count + p2y12_count + (1 if (q.get('med_aspirin') or 'aspirin' in ft_u_keys) else 0) + (1 if ('cilostazol' in ctx.med_chips or 'cilostazol' in ft_u_keys) else 0)
     has_prior_stroke_tia = bool(ctx.is_symp_cea or has_prior_stroke_or_tia(ctx.patient, q=q, s=s, today=ctx.today))

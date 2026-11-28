@@ -4,6 +4,7 @@ from .meds_freetext import (
     _ASA_WORD_RE,
     _ASPIRIN_FT_STEMS,
     _RIVA_LOW_RE,
+    _count_oac_agents,
     _detect_freetext_allergies,
     _detect_freetext_high_risk_meds,
     _effective_allergy_state,
@@ -86,7 +87,7 @@ def _med_schedule_ctx(patient, q, s, egfr, crcl, has_neuraxial_override, today=N
     has_true_hfref = (lvef_cur is not None and lvef_cur < lvef_red_lim) or (('hf' in cad_chips) and lvef_cur is None)
     has_full_oac = bool(q.get('med_warfarin') or q.get('med_doac') or q.get('med_dabigatran'))
     p2y12_cnt = sum([bool(q.get('med_clopidogrel')), bool(q.get('med_ticagrelor')), bool(q.get('med_prasugrel'))]) + len(ft_unstruct & {'clopidogrel', 'ticagrelor', 'prasugrel'})
-    oac_count = sum([bool(q.get('med_warfarin')), bool(q.get('med_doac')), bool(q.get('med_dabigatran')), ('rivaroxaban_2_5' in med_chips)]) + len(ft_unstruct & {'warfarin', 'doac', 'dabigatran'}) + (1 if (ft_meds.get('has_ft_dual_xa') or (has_ft_unstruct_doac and has_ft_unstruct_riva_low)) else 0)
+    oac_count = _count_oac_agents(q, med_chips, ft_meds)
     total_at_cnt = oac_count + p2y12_cnt + (1 if (q.get('med_aspirin') or 'aspirin' in ft_unstruct) else 0) + (1 if ('cilostazol' in med_chips or 'cilostazol' in ft_unstruct) else 0)
     has_hit, severe_renal = 'hit_heparin' in eff_allergy_chips, on_dialysis or (eff_renal is not None and eff_renal < ren_red_lim)
     dup_oac_warn = ' [ყურადღება: ერთდროულად ≥2 ანტიკოაგულანტია მონიშნული — გადაამოწმეთ დუბლირება!]' if oac_count >= 2 else ''

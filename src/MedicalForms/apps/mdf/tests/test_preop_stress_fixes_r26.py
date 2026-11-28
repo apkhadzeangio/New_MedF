@@ -71,7 +71,7 @@ class PreopStressFixesRound26Tests(TestCase):
         self.c_doc.force_login(self.doc)
 
     def test_r26_nlp_double_neg_except_decimal_comma_2verb_neg_allergies_and_stems(self):
-        self.assertEqual(REGISTRY_VERSION, '1.2.26')
+        self.assertEqual(REGISTRY_VERSION, '1.2.27')
         # Fuzz A-S1-1: Georgian SOV double negation & English modal double negation
         for txt, want in (
             ('ვარფარინი მოხსნილი არ არის', {'warfarin'}),

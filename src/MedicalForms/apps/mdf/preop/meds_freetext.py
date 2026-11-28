@@ -30,12 +30,12 @@ _RIVA_LOW_RE = re.compile(
     rf'|(?<![\d.,])2[.,]5 ?(?:მგ|mg)?[^\w\n]{{0,8}}{_RIVA_STEM})'
 )
 _RIVA_NON_DOSE_UNIT = (
-    r'(?:აბი|აბ|ტაბ|tab|tabs|tablets?|caps?|capsules?|pills?|დოზა|dose'
+    r'(?:აბი|აბ|ტაბ(?:ლეტ[ა-ჰ]*)?|კაფს(?:ულ[ა-ჰ]*)?|tab|tabs|tablets?|caps?|capsules?|pills?|დოზა|dose'
     r'|დღის|დღე|დღით|დღეა|დღეები|კვირის|კვირა|კვირაა|კვირით|თვის|თვე|თვეა|თვით|წლის|წელი|წელია|წლიდან|წლამდე|საათის|საათით|საათი|საათია|სთ|ჯერ|-ჯერ'
     r'|days?|weeks?|wks?|months?|mos?|years?|yrs?|hrs?|hours?|am|pm|d|h)(?![a-zა-ჰ])'
 )
 _RIVA_THER_DOSE_RE = re.compile(
-    rf'(?<![\d.,:/№#])(?<!\d-)(?<!№ )(?<!# )(?:10|15|20)(?![\d.,:]|/\d|-\d| ?{_RIVA_NON_DOSE_UNIT})',
+    rf'(?<![\d.,:/№#x×])(?<!\d[-–])(?<!№ )(?<!# )(?<!no\.)(?<!no )(?:10|15|20)(?![\d.,:]|/\d|[-–]\d| ?{_RIVA_NON_DOSE_UNIT})',
     re.IGNORECASE,
 )
 _RIVA_CLAUSE_SPLIT_RE = re.compile(r'[;\n+]|(?<!\d)[,/]|[,/](?!\d)| (?:და|ან|and|or) ')
@@ -293,6 +293,21 @@ def _detect_freetext_high_risk_meds(text, q=None):
         'has_ft_unstruct_doac': has_ft_unstruct_doac,
         'has_ft_unstruct_riva_low': has_ft_unstruct_riva_low,
     }
+
+
+def _count_oac_agents(q, med_chips, ft_meds):
+    """Count distinct oral anticoagulant agents across structured flags and free-text without double-counting."""
+    ft_u = ft_meds.get('unstructured_keys') or set()
+    w_cnt = 1 if (q.get('med_warfarin') or 'warfarin' in ft_u) else 0
+    d_cnt = 1 if (q.get('med_dabigatran') or 'dabigatran' in ft_u) else 0
+    s_xa = bool(q.get('med_doac'))
+    s_riva_low = 'rivaroxaban_2_5' in med_chips
+    ft_xa_full = bool(('doac' in ft_u) and not ft_meds.get('has_ft_riva_low'))
+    ft_riva_low = bool(ft_meds.get('has_ft_unstruct_riva_low'))
+    xa_cnt = (1 if (s_xa or ft_xa_full) else 0) + (1 if (s_riva_low or ft_riva_low) else 0)
+    if ft_meds.get('has_ft_dual_xa'):
+        xa_cnt = max(xa_cnt, 2)
+    return w_cnt + d_cnt + xa_cnt
 
 
 from .meds_helpers import (  # noqa: E402, F401

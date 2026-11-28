@@ -1,7 +1,7 @@
 """Schema, versioning, and changelog for the preoperative clinical rule registry."""
 from dataclasses import dataclass
 
-REGISTRY_VERSION = '1.2.26'
+REGISTRY_VERSION = '1.2.27'
 REGISTRY_UPDATED_ON = '2026-11-28'
 
 STATUS_VERIFIED = 'source-verified'
@@ -78,6 +78,17 @@ class RuleEntry:
 
 
 CHANGELOG = (
+    {
+        'version': '1.2.27',
+        'date': '2026-11-28',
+        'title_ka': 'სტრეს-ტესტის რაუნდ-28: NLP შეფუთვის No., ფრჩხილ/ტირეს/ორმაგი უარყოფის/გარდა/O(N) გაძლიერება, rAAA failsafe და გადაუდებელი ჰიპერთირეოზი, WIfI I=0, OAC დუბლირების აღმოფხვრა, MV+HIT+ღვიძლი ≥3x დაფა და Plain-KA',
+        'changes_ka': (
+            'დაიხურა ყველა 10 S1 ხარვეზი: meds_freetext_nlp.py-სა და meds_freetext_nlp_patterns.py-ში შეფუთვის ASCII აღნიშვნები („No.30“, „No 28“) ნორმალიზდება №-ზე აქტიური ანტიკოაგულანტების წაშლის გარეშე; ფრჩხილისა და ტირე/ორწერტილის უარყოფები („warfarin (not taking) clopidogrel 75mg“, „warfarin - stopped 5 days ago apixaban 5mg“, „ვარფარინი - მოხსნილია 5 დღის წინ ელიქვისი 5მგ“, პრეფიქსული ვადის კუდი „stopped 5 days ago warfarin apixaban 5mg“) წყვეტენ საზღვარს წერტილმძიმით პოლარობის ინვერსიის გარეშე; გაფართოვდა ორმაგი უარყოფის წესები („is not to be stopped/held“, „is not being stopped“, „cannot be safely stopped“, „not off“, „არავითარ შემთხვევაში არ შეწყვიტოთ“, „არ შეწყვეტილია/არ მოხსნილია“); _INLINE_NEG_SPLIT_RE ხლეჩს უპუნქტუაციო დღის დროის/სიხშირისა („დილას/საღამოს/ყოველდღე/morning/evening“) და „არა“-ზე დამთავრებულ წამლის შეცვლის წინადადებებს; ქართული ქვემდებარიანი და საწყისი ალერგიის უარყოფები („პაციენტს ალერგია არ აქვს ჰეპარინზე“, „ალერგია ჰეპარინზე და იოდზე არ აქვს“, „არ აღნიშნავს/არ ჰქონია ალერგიას“) აღარ იწვევს ცრუ HIT-ს; _rewrite_ka_garda და _peel_trailing_garda_obj სწორად ამუშავებს სახელიანი წამლების პასიურ „გარდა“ კლაუზებს („ელიქვისი და პრადაქსა გარდა ვარფარინისა მოხსნილია“, „ელიქვისი და კლექსანი ვარფარინის გარდა მოხსნილია“); rules/failsafe.py rAAA რუპტურაზე არ ბლოკავს გადაუდებელ დადასტურებას/დაფაზე გადაყვანას missing/ambiguous/implausible/iodine-unasked failsafe-ებით; rules/labs.py rAAA/ALI გადაუდებელ ჩვენებებზე მანიფესტურ ჰიპერთირეოზს აჩვენებს წითელ ალამზე STOP ბლოკირების გარეშე (გეგმიურზე STOP უცვლელია); staging/suggestions.py WIfI იშემია 0-ზე (I=0) უპირობოდ აბრუნებს plan="none"-ს (GVG 2019).',
+            'დაიხურა ყველა 5 S2 ხარვეზი: meds_freetext.py-ში დაემატა კანონიკური _count_oac_agents (meds.py, rules/meds.py, caprini.py) ორმაგი OAC-ის ცრუ დათვლის აღმოსაფხვრელად (med_doac + rivaroxaban_2_5 / თავისუფალი ტექსტის აპიქსაბანი); _RIVA_THER_DOSE_RE გამორიცხავს ქართულ „ტაბლეტი/კაფსულა“, „x20“ და „10–20“ დიაპაზონებს; _split_stop_verb_clauses და _split_ka_affirm_inline გადაიწერა მკაცრ O(N) ინდექს-კურსორზე (200k/50k ~4.1x); შეივსო უარყოფის ლექსიკონი („off“, „neither/nor“, „withheld/paused/omitted/suspended“, „ruled out“, „negative/absent“, „არც“, „არასდროს“, „ვღებულობ“, „იყენებს“, „იღებდა“); views/board.py ინარჩუნებს „ფონდაპარინუქსი/DOAC არა!“ დირექტივას მექანიკური სარქველი + HIT + ღვიძლი ≥3x / CrCl<30 შემთხვევაში.',
+            'დაიხურა ყველა 2 S3 ხარვეზი: rules/briefings.py ათანაბრებს HIT + თავისუფალი ტექსტის პარენტერული ანტიკოაგულაციის heparin_plan-ს Caprini/დაფის ერთიან არაჰეპარინულ სქემასთან; plain_ka.py სრულად ასუფთავებს ASRA 2025, ESVS 2023, ESAIC 2025, ISTH 2021, AAAAI 2022, IDSA 2019, ASA 2023/2024 და ASH 2018 ციტატებს პაციენტის ტექსტში.',
+        ),
+        'sources': 'ESVS 2022–2024 · GVG 2019 (WIfI) · ESC/EACTS 2021 VHD · EHRA 2021 · ESC 2022 NCS · ASRA 5th Ed 2025 · ESUR v10.0 · ASH 2018 · ISTH 2021 · AAAAI 2022 · ASA 2024',
+    },
     {
         'version': '1.2.26',
         'date': '2026-11-28',

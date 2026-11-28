@@ -83,12 +83,17 @@ def _collect_med_allergy_unknowns(ctx, add):
             'თავისუფალ ტექსტში მითითებულია მედიკამენტური ალერგია, მაგრამ სტრუქტურულად მონიშნული არ არის — დადასტურებამდე GO ბეჭედი არ გაიცემა.',
             blocking=True,
         )
+    is_raaa = bool(getattr(ctx, 'is_rupture_suspect', False))
     if ctx.uses_contrast and ctx.q_filled and not q.get('allergy_iodine_asked') and not ctx.eff_allergy_iodine:
         add(
             'iodine_allergy_unasked', 'q', 'allergy_iodine',
             'იოდზე / კონტრასტზე ალერგია გამოკითხული არ არის',
-            'კონტრასტული ჩარევის წინ სავალდებულოა იოდზე/კონტრასტზე ალერგიის გამოკითხვა და დაფიქსირება.',
-            blocking=True,
+            (
+                'საეჭვო რუპტურაზე გადაუდებელი ოპერაცია არ გადავადდება — დააზუსტეთ კონტრასტზე ალერგია და მზად იყავით ანაფილაქსიისთვის / CO2-ისთვის.'
+                if is_raaa
+                else 'კონტრასტული ჩარევის წინ სავალდებულოა იოდზე/კონტრასტზე ალერგიის გამოკითხვა და დაფიქსირება.'
+            ),
+            blocking=not is_raaa,
         )
     if ctx.ft_meds.get('unstructured_labels'):
         labels_txt = ', '.join(ctx.ft_meds['unstructured_labels'])
@@ -105,17 +110,17 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
     sex_s = patient.sex if isinstance(patient.sex, str) else ''
     side_s = patient.side if isinstance(patient.side, str) else ''
     age_ok = _int(patient.age, lo=12, hi=120) is not None
+    is_raaa = bool(getattr(ctx, 'is_rupture_suspect', False))
     if getattr(ctx, 'implausible_fields', None):
-        is_raaa_imp = bool(getattr(ctx, 'is_rupture_suspect', False))
         add(
             'implausible_values', 's1', 'creat',
             f'დაუშვებელი მნიშვნელობები: {", ".join(ctx.implausible_fields[:3])}',
             (
                 'საეჭვო რუპტურაზე კრიტიკული/დიაპაზონს გარეთა მნიშვნელობა გადაამოწმეთ პარალელურად გადაუდებელი ოპერაციის გადავადების გარეშე.'
-                if is_raaa_imp
+                if is_raaa
                 else 'შეყვანილია ფიზიოლოგიურ დიაპაზონს გარეთა ან არასწორი ფორმატის მონაცემი — შეფასება ვერ დადასტურდება.'
             ),
-            blocking=not is_raaa_imp,
+            blocking=not is_raaa,
         )
     from ..registry import rule_value
     if getattr(ctx, 'creat_unit_ambiguous', False) and not ctx.on_dialysis:
@@ -124,7 +129,7 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
             'ambiguous_creat_unit', 's1', 'creat',
             f'კრეატინინის ერთეული დაუზუსტებელია ({int(ren_am["ambig_lo"])}–{int(ren_am["ambig_hi"])} ზონა)',
             'მიუთითეთ კრეატინინის ერთეული (µmol/L ან mg/dL) — ერთეულის გარეშე eGFR/CrCl ვერ ფასდება და GO ბეჭედი დაბლოკილია.',
-            blocking=True,
+            blocking=not is_raaa,
         )
     if getattr(ctx, 'hb_unit_ambiguous', False):
         u_cfg = rule_value('LAB_UNIT_AUTO_CONVERSION')
@@ -133,7 +138,7 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
             'ambiguous_hb_unit', 's1', 'hb',
             f'ჰემოგლობინის ერთეული დაუზუსტებელია ({hb_span} შუალედი)',
             'მიუთითეთ ჰემოგლობინი გ/ლ (მაგ. 130) ან გ/დლ (მაგ. 13.0) ფორმატში — დაზუსტებამდე GO ბეჭედი დაბლოკილია.',
-            blocking=True,
+            blocking=not is_raaa,
         )
     has_any_lab = any(s.get(k) is not None for k in _LAB_KEYS)
     if has_any_lab:
@@ -143,8 +148,12 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
             add(
                 'labs_missing_date', 's1', 'labs_date',
                 'ანალიზების თარიღი აკლია ან არასწორია',
-                f'შეყვანილია ლაბორატორიული შედეგები ვალიდური აღების თარიღის გარეშე — {stale_d}-დღიანი ვარგისიანობის გადამოწმება შეუძლებელია.',
-                blocking=True,
+                (
+                    'საეჭვო რუპტურაზე გადაუდებელი ოპერაცია არ გადავადდება — დააზუსტეთ STAT ანალიზების აღების თარიღი პარალელურად.'
+                    if is_raaa
+                    else f'შეყვანილია ლაბორატორიული შედეგები ვალიდური აღების თარიღის გარეშე — {stale_d}-დღიანი ვარგისიანობის გადამოწმება შეუძლებელია.'
+                ),
+                blocking=not is_raaa,
             )
     if (not age_ok or sex_s not in ('M', 'F')) and (q_filled or has_any_lab):
         add(
@@ -174,8 +183,12 @@ def _collect_demographics_and_vitals_unknowns(ctx, add):
             add(
                 'missing_core_vitals', 's1', 'spo2' if ctx.spo2 is None else 'bp_sys',
                 f'აკლია საბაზისო ვიტალური პარამეტრები ({", ".join(miss_v)})',
-                'საბაზისო წნევის, პულსისა და SpO2-ის გარეშე ჰემოდინამიკური რისკი სრულად ვერ ფასდება და GO დაშვება არ გაიცემა.',
-                blocking=True,
+                (
+                    'საეჭვო რუპტურაზე კრიტიკული შოკის/არაგაზომვადი პარამეტრების გამო გადაუდებელი ოპერაცია არ გადავადდება — მონიტორინგი საოპერაციოში!'
+                    if is_raaa
+                    else 'საბაზისო წნევის, პულსისა და SpO2-ის გარეშე ჰემოდინამიკური რისკი სრულად ვერ ფასდება და GO დაშვება არ გაიცემა.'
+                ),
+                blocking=not is_raaa,
             )
 
 

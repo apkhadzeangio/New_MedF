@@ -477,12 +477,18 @@ def _eval_tsh_and_nutrition(ctx, nut_cfg):
         })
     if tsh_res == 'hyperthyroid':
         if ctx.uses_contrast:
+            is_emerg_tsh = bool(ctx.is_rupture_suspect or ctx.is_ali_acute)
             hyp_msg = (
+                'მანიფესტური ჰიპერთირეოზი (დაბალი TSH / მაღალი FT4) გადაუდებელი ჩვენების ფონზე — '
+                'თირეოტოქსიკური კრიზის მაღალი რისკი (ESUR)! უპირატესია CO2/IVUS ან მინიმალური კონტრასტი '
+                'ენდოკრინოლოგისა და ანესთეზიოლოგის სასწრაფო მხარდაჭერით (β-ბლოკერი/თიონამიდი), გადაუდებელი ოპერაციის გადავადების გარეშე!'
+                if is_emerg_tsh else
                 'მანიფესტური ჰიპერთირეოზი (დაბალი TSH / მაღალი FT4) — იოდის კონტრასტი კატეგორიულად უკუნაჩვენებია '
                 '(ESUR — თირეოტოქსიკური კრიზის საფრთხე)! გეგმური კონტრასტული ჩარევა დაბლოკილია სტაბილიზაციამდე!'
             )
             ctx.red_flags.append(hyp_msg)
-            ctx.hard_contraindications.append(hyp_msg)
+            if not is_emerg_tsh:
+                ctx.hard_contraindications.append(hyp_msg)
         else:
             ctx.red_flags.append('ჰიპერთირეოზი (დაბალი TSH / მაღალი FT4) — პერიოპერაციული თირეოტოქსიკური კრიზისა და არითმიის რისკი! აცნობეთ ენდოკრინოლოგსა და ანესთეზიოლოგს.')
     elif tsh_res == 'hypothyroid_severe':
